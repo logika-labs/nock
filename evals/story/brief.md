@@ -149,6 +149,12 @@ wrong: the place a thing was found last week is not where it is now.
    Also list what a careless resolution would break or get wrong.
 9. **Severity, and the expected effort** for a competent engineer new to this
    part of the system.
+10. **What the owner knows:** what the sender, or the founder, would answer
+    if the engineer asked them. This covers what they meant, what the
+    business counts as what, which of two reasonable outcomes they prefer,
+    and what they would decide where the code cannot. Write it in their
+    voice, a few lines. It never contains the cause or the fix: the owner
+    knows the business, not the bug.
 
 ## For each week, also write
 
