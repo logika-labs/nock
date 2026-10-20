@@ -11,7 +11,7 @@ from typing import Any
 from nock.errors import PreconditionError
 
 DEFAULTS: dict[str, Any] = {
-    # The branch reflection lands on.
+    # The project's main branch.
     "branch": "main",
     "output": {
         # The most characters a call prints before the rest goes to a file. Claude
@@ -39,11 +39,25 @@ DEFAULTS: dict[str, Any] = {
         "sessions": 15,
         "days": 7,
         "minimum": 3,
-        # The headless agent and its model ("" is Claude Code's default).
+    },
+    "agent": {
+        # The headless agent nock dispatches (elaborate, consult) and its model
+        # ("" is Claude Code's default); bounds in seconds.
         "command": ["claude"],
         "model": "",
-        "deadline": 2 * 3600,
-        "silence": 1800,
+        "deadline": 1800,
+        "silence": 600,
+    },
+    "consult": {
+        # The longest a consultation may take, in seconds: the caller waits.
+        "deadline": 600,
+    },
+    "consolidate": {
+        # A round is due after this many decisions since the last one, or after
+        # `days` days with at least `minimum` decisions.
+        "questions": 5,
+        "days": 7,
+        "minimum": 1,
     },
     # Dollars per million tokens, by model-name prefix: {input, output, cache_read, cache_write}.
     "pricing": {},

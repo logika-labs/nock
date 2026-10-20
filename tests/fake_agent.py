@@ -1,9 +1,8 @@
-"""A stand-in for `claude -p` in the reflector's seat: a real process that does
-what a scripted round would — through nock's own CLI, in the worktree it was
-started in — and writes a transcript where Claude Code would. FAKE_REFLECT
-picks the round: `add` (a tool and its record), `silent` (no record), `broken`
-(a tool whose example fails). In the elaborator's seat it rewrites the question
-it was given, unless FAKE_ELABORATE is `silent`."""
+"""A stand-in for `claude -p` in the seats nock dispatches: a real process that
+does what a scripted session would — through nock's own CLI, in the directory
+it was started in — and writes a transcript where Claude Code would. As the
+elaborator it rewrites the question it was given, unless FAKE_ELABORATE is
+`silent`; as the consultant it answers at once."""
 
 from __future__ import annotations
 
@@ -14,26 +13,6 @@ import subprocess
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
-
-TOOL = '''\
-import nock
-
-
-@nock.command(examples=["--name x"])
-def greet(*, name: str = "world") -> str:
-    """Say hello."""
-    return f"hello {name}"
-'''
-
-BROKEN = '''\
-import nock
-
-
-@nock.command(examples=[""])
-def greet() -> str:
-    """Say hello, badly."""
-    raise nock.PreconditionError("the greeting machine is down")
-'''
 
 
 def run(*arguments: str) -> subprocess.CompletedProcess[str]:
@@ -77,28 +56,15 @@ def main() -> int:
     prompt = arguments[-1]
     if os.environ.get("NOCK_ROLE") == "elaborator":
         return elaborate(session, prompt)
-    behavior = os.environ.get("FAKE_REFLECT", "add")
-    assert "# The material" in prompt and os.environ.get("NOCK_ROLE") == "reflector"
-    if behavior in ("add", "broken"):
-        Path(".nock/tools/greet.py").write_text(TOOL if behavior == "add" else BROKEN)
-        run("git", "add", "-A")
-        run("git", "commit", "-qm", "Add greet: the human keeps asking for greetings")
-        record = {
-            "summary": "Added greet.",
-            "changes": [
-                {
-                    "kind": "add",
-                    "target": "greet",
-                    "why": "asked for 3 times",
-                    "expect": "greet is called at least twice",
-                }
-            ],
-        }
-        result = run(".nock/nock", "reflect", "record", json.dumps(record))
-        print(json.dumps({"type": "system", "message": result.stdout + result.stderr}), flush=True)
-    write_transcript(session, prompt)
-    print(json.dumps({"type": "result", "result": f"round done ({behavior})"}), flush=True)
-    return 0
+    if os.environ.get("NOCK_ROLE") == "consultant":
+        assert "# What it said" in prompt
+        write_transcript(session, prompt)
+        print(
+            json.dumps({"type": "result", "result": "**The task, reframed** — as asked."}),
+            flush=True,
+        )
+        return 0
+    raise SystemExit(f"no seat for role {os.environ.get('NOCK_ROLE')!r}")
 
 
 def elaborate(session: str, prompt: str) -> int:

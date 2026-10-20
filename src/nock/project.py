@@ -49,7 +49,7 @@ class Project:
 
     @property
     def local(self) -> Path:
-        """Machine state, never committed: telemetry, logs, caches, worktrees."""
+        """Machine state, never committed: telemetry, logs, caches."""
         path = self.root / NOCK_DIRECTORY / "local"
         path.mkdir(parents=True, exist_ok=True)
         return path

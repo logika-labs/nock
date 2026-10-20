@@ -1,12 +1,16 @@
 """Questions: what an agent asks the owner while it works — one committed file
 per question in the main checkout's `.nock/questions/` — answered on a page
 (`nock questions page`) and handed back to the session that asked. Answered,
-they are the project's record of its decisions."""
+they are the project's record of its decisions: each names the files it
+governs (`touches`) and the decisions it overturns (`supersedes`), and
+`map.md` beside them says how they bear on each other and on the work."""
 
 from __future__ import annotations
 
+import fnmatch
 import json
 import os
+import re
 import subprocess
 import sys
 import webbrowser
@@ -19,6 +23,7 @@ from typing import TYPE_CHECKING, Any, NotRequired, TypedDict
 from nock.commands import schema_of
 from nock.dispatch import Dispatcher
 from nock.errors import Error, NotFoundError, UsageError
+from nock.render import Problem
 from nock.schema import validate
 from nock.templates import Library
 from nock.utils import now, read_json, write_json
@@ -32,6 +37,9 @@ PACKAGE = Path(__file__).resolve().parent
 BRIEFS = PACKAGE / "briefs"
 # The git states in which a commit would land in the middle of someone's work.
 BUSY_MARKERS = ("MERGE_HEAD", "CHERRY_PICK_HEAD", "REVERT_HEAD", "rebase-merge", "rebase-apply")
+MAP = "map.md"
+# How the map cites a question: `[Q7]`.
+CITATION = re.compile(r"\[Q(\d+)\]")
 
 
 class Priority(StrEnum):
@@ -62,6 +70,23 @@ class Draft(TypedDict):
     recommended: NotRequired[int]
     """The number of the option you would take (default 1)."""
     priority: NotRequired[Priority]
+    touches: NotRequired[list[str]]
+    """The files the decision governs, as paths or globs: `src/pricing.py`, `migrations/**`."""
+    supersedes: NotRequired[list[int]]
+    """The decided questions this one overturns, when it is decided."""
+
+
+class Lesson(TypedDict):
+    """What the work taught, recorded as a question already decided."""
+
+    title: str
+    """The question the lesson answers, in one line."""
+    context: str
+    """Markdown: what happened that taught it, with the evidence."""
+    answer: str
+    """The lesson: what to do, and why."""
+    touches: NotRequired[list[str]]
+    supersedes: NotRequired[list[int]]
 
 
 class Owner(TypedDict):
@@ -85,6 +110,19 @@ def said(question: dict[str, Any]) -> str:
 
 def has_input(owner: Owner) -> bool:
     return bool(owner["choice"] or (owner["comment"] or "").strip() or owner["elaborate"])
+
+
+def governs(pattern: str, path: str) -> bool:
+    """Whether a `touches` entry covers a repository path: a glob, a file, or a directory."""
+    directory = pattern.rstrip("/")
+    return (
+        fnmatch.fnmatchcase(path, pattern) or path == directory or path.startswith(f"{directory}/")
+    )
+
+
+def live(question: dict[str, Any]) -> bool:
+    """A decision that stands: decided, and not overturned since."""
+    return question["state"] == State.CLOSED and not question.get("superseded_by")
 
 
 class Questions:
@@ -122,23 +160,45 @@ class Questions:
         with self.project.lock("questions"):
             numbers = [question["number"] for question in self.all()]
             number = max(numbers, default=0) + 1
-            question: dict[str, Any] = {
-                "number": number,
-                "priority": str(draft.get("priority", Priority.NORMAL)),
-                "state": str(State.OPEN),
-                **self.drafted(draft),
-                "owner": dict(NO_INPUT),
-                "answer": None,
-                "asked": {
-                    "moment": now(),
-                    "session": self.project.current_session(),
-                    "role": self.project.current_role() or "interactive",
-                },
-            }
+            question = self.new(number, draft)
             self.save(question)
-            return number, self.commit(number, f"Question {number}: {draft['title']}")
+            return number, self.commit([number], f"Question {number}: {draft['title']}")
 
-    def drafted(self, draft: Draft) -> dict[str, Any]:
+    def record(self, lesson: Lesson) -> tuple[int, str | None]:
+        """File a lesson as a question decided at once, closing what it supersedes."""
+        if not lesson["answer"].strip():
+            raise UsageError("the answer is empty")
+        with self.project.lock("questions"):
+            numbers = [question["number"] for question in self.all()]
+            number = max(numbers, default=0) + 1
+            draft: Draft = {"title": lesson["title"], "context": lesson["context"]}
+            if "touches" in lesson:
+                draft["touches"] = lesson["touches"]
+            if "supersedes" in lesson:
+                draft["supersedes"] = lesson["supersedes"]
+            question = self.new(number, draft)
+            question.update(state=str(State.CLOSED), answer=lesson["answer"].strip(), lesson=True)
+            self.save(question)
+            overturned = self.overturn(question)
+            return number, self.commit([number, *overturned], f"Lesson {number}: {lesson['title']}")
+
+    def new(self, number: int, draft: Draft) -> dict[str, Any]:
+        return {
+            "number": number,
+            "priority": str(draft.get("priority", Priority.NORMAL)),
+            "state": str(State.OPEN),
+            **self.drafted(draft, number),
+            "owner": dict(NO_INPUT),
+            "answer": None,
+            "superseded_by": None,
+            "asked": {
+                "moment": now(),
+                "session": self.project.current_session(),
+                "role": self.project.current_role() or "interactive",
+            },
+        }
+
+    def drafted(self, draft: Draft, number: int) -> dict[str, Any]:
         options = draft.get("options", [])
         recommended = draft.get("recommended", 1) if options else None
         if recommended is not None and not 1 <= recommended <= len(options):
@@ -148,42 +208,144 @@ class Questions:
             "context": draft["context"],
             "options": options,
             "recommended": recommended,
+            "touches": draft.get("touches", []),
+            "supersedes": self.overturnable(draft.get("supersedes", []), number),
         }
+
+    def overturnable(self, numbers: list[int], number: int) -> list[int]:
+        """Only a decision that stands can be superseded, and not by itself."""
+        for earlier in numbers:
+            if earlier == number:
+                raise UsageError(f"question {number} cannot supersede itself")
+            if not live(self.get(earlier)):
+                raise UsageError(f"question {earlier} is not a standing decision to supersede")
+        return sorted(set(numbers))
+
+    def overturn(self, question: dict[str, Any]) -> list[int]:
+        """Mark what a decided question supersedes as superseded by it."""
+        for earlier in question.get("supersedes", []):
+            overturned = self.get(earlier)
+            overturned["superseded_by"] = question["number"]
+            self.save(overturned)
+        return list(question.get("supersedes", []))
 
     def rewrite(self, number: int, draft: Draft) -> str | None:
         """Say again what the owner found missing: the question is open again."""
         question = self.get(number)
         if question["state"] == State.CLOSED:
             raise UsageError(f"question {number} is closed")
-        question.update(self.drafted(draft), state=str(State.OPEN), owner=dict(NO_INPUT))
+        question.update(self.drafted(draft, number), state=str(State.OPEN), owner=dict(NO_INPUT))
         if "priority" in draft:
             question["priority"] = str(draft["priority"])
         self.save(question)
-        return self.commit(number, f"Question {number}, elaborated: {question['title']}")
+        return self.commit([number], f"Question {number}, elaborated: {question['title']}")
 
-    def answer(self, number: int, answer: str) -> str | None:
-        """Record the decision, the owner's input folded in, and close it."""
+    def answer(
+        self,
+        number: int,
+        answer: str,
+        touches: list[str] | None = None,
+        supersedes: list[int] | None = None,
+    ) -> str | None:
+        """Record the decision, the owner's input folded in, and close it —
+        and what it governs and overturns, when that is known only now."""
         if not answer.strip():
             raise UsageError("the answer is empty")
         question = self.get(number)
+        if touches:
+            question["touches"] = sorted({*question.get("touches", []), *touches})
+        if supersedes:
+            question["supersedes"] = self.overturnable(
+                [*question.get("supersedes", []), *supersedes], number
+            )
         question.update(state=str(State.CLOSED), answer=answer.strip(), owner=dict(NO_INPUT))
         self.save(question)
-        return self.commit(number, f"Question {number}, answered: {question['title']}")
+        overturned = self.overturn(question)
+        return self.commit(
+            [number, *overturned], f"Question {number}, answered: {question['title']}"
+        )
 
-    def commit(self, number: int, message: str) -> str | None:
-        """Commit the one file in the main checkout — unless that would land in
-        the middle of a merge or rebase there; then say so, and leave it."""
+    def commit(self, numbers: list[int], message: str, *extra: Path) -> str | None:
+        """Commit these questions' files (and any `extra`) in the main checkout —
+        unless that would land in the middle of a merge or rebase there; then
+        say so, and leave them written."""
         git = self.project.git
         git_directory = Path(git("rev-parse", "--absolute-git-dir"))
         busy = next((marker for marker in BUSY_MARKERS if (git_directory / marker).exists()), None)
-        relative = str(self.path(number).relative_to(self.project.root))
+        paths = [self.path(number) for number in numbers] + list(extra)
+        relative = [str(path.relative_to(self.project.root)) for path in paths]
         if busy is not None:
-            return (
-                f"not committed: the main checkout is mid-operation ({busy}); {relative} is written"
-            )
-        git("add", "--", relative)
-        git("commit", "--quiet", "--no-verify", "--only", "-m", message, "--", relative)
+            return f"not committed: the main checkout is mid-operation ({busy}); {', '.join(relative)} written"
+        git("add", "--", *relative)
+        git("commit", "--quiet", "--no-verify", "--only", "-m", message, "--", *relative)
         return None
+
+    # --- what the decisions govern ----------------------------------------------
+
+    def governing(self, path: str) -> list[dict[str, Any]]:
+        """The standing decisions whose `touches` cover a repository path."""
+        return [
+            question
+            for question in self.all()
+            if live(question)
+            and any(governs(pattern, path) for pattern in question.get("touches", []))
+        ]
+
+    def reminders_for(self, session: str, path: str) -> list[dict[str, Any]]:
+        """The decisions governing `path` this session has not been shown yet;
+        showing them is recorded."""
+        shown = {
+            row["question"]
+            for row in self.project.store.rows(
+                "SELECT question FROM reminded WHERE session = ?", (session,)
+            )
+        }
+        found = [question for question in self.governing(path) if question["number"] not in shown]
+        for question in found:
+            self.project.store.insert(
+                "reminded", {"session": session, "question": question["number"]}
+            )
+        return found
+
+    @property
+    def map(self) -> Path:
+        return self.directory / MAP
+
+    def citation_problems(self) -> list[Problem]:
+        """Every map citation of a question that is missing, undecided or superseded."""
+        if not self.map.is_file():
+            return []
+        questions = {question["number"]: question for question in self.all()}
+        place = str(self.map.relative_to(self.project.root))
+        problems = []
+        for line, text in enumerate(self.map.read_text().splitlines(), start=1):
+            for match in CITATION.finditer(text):
+                number = int(match.group(1))
+                cited = questions.get(number)
+                if cited is None:
+                    problems.append(Problem(f"[Q{number}] is no question", place, line))
+                elif cited["state"] != State.CLOSED:
+                    problems.append(Problem(f"[Q{number}] is not decided yet", place, line))
+                elif cited.get("superseded_by"):
+                    problems.append(
+                        Problem(
+                            f"[Q{number}] is superseded by [Q{cited['superseded_by']}]", place, line
+                        )
+                    )
+        return problems
+
+    def stale_touches(self, files: list[str]) -> list[Problem]:
+        """Every `touches` entry of a standing decision that no file of `files` matches."""
+        return [
+            Problem(
+                f"question {question['number']} touches `{pattern}`, which matches no file — is the decision stale?",
+                str(self.path(question["number"]).relative_to(self.project.root)),
+            )
+            for question in self.all()
+            if live(question)
+            for pattern in question.get("touches", [])
+            if not any(governs(pattern, file) for file in files)
+        ]
 
     # --- the owner's side -----------------------------------------------------
 

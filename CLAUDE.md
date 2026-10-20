@@ -3,8 +3,10 @@
 A toolbox coding agents build for themselves: an agent-friendly CLI framework
 (`commands.py`, `fixtures.py`, `render.py`, woven together in `cli.py`),
 telemetry of every call and session (`store.py`, `telemetry.py`,
-`sessions.py`), and reflection rounds that turn it into better tools
-(`reflect.py`, `briefs/reflect.md`). It is vendored into the projects that use
+`sessions.py`), reflection rounds that turn it into better tools
+(`reflect.py`, the `/reflect` skill in `briefs/reflect.md`), and the owner's
+decisions — questions, their map, consultation (`questions.py`,
+`consolidate.py`, `consult.py`). It is vendored into the projects that use
 it (`nock init` copies `src/nock` into their `.nock/core/`), so everything
 here must run on Python 3.12 with the standard library and nothing else:
 templates are `nock.templates`, schemas the JSON Schema subset in
@@ -12,8 +14,8 @@ templates are `nock.templates`, schemas the JSON Schema subset in
 
 - `uv run pytest -n 4`, `uv run ruff check`, `uv run ruff format`,
   `uv run basedpyright` — all green before a commit.
-- Tests use real git repositories and real processes; the reflecting agent is
-  `tests/fake_agent.py`, configured as `reflect.command`. No mocks.
+- Tests use real git repositories and real processes; the dispatched agents
+  are `tests/fake_agent.py`, configured as `agent.command`. No mocks.
 - The README is the product's documentation; keep it true when behavior
   changes. `briefs/_framework.md` is the agents' documentation (`nock guide`,
   and the reflection brief): keep it true too.

@@ -267,6 +267,11 @@ kbd {
 @keyframes spin { to { transform: rotate(360deg); } }
 
 
+.links { display: flex; flex-wrap: wrap; gap: 8px 20px; color: var(--muted); font-size: 13px; align-items: baseline; }
+.links .label { margin-right: 6px; font-size: 11px; }
+.links code { font: 12px var(--mono); background: var(--background); color: var(--foreground); padding: 1px 4px; border-radius: 4px; }
+.reference { border: 0; background: none; padding: 0; color: var(--link); font: 500 13px var(--sans); text-decoration: underline; text-underline-offset: 2px; }
+.reference:hover { text-decoration: none; }
 .empty { text-align: center; padding: 64px 16px; color: var(--muted); display: grid; gap: 6px; justify-items: center; }
 .empty strong { color: var(--foreground); font: 700 17px/24px var(--sans); }
 .empty code { font: 13px var(--mono); background: var(--card); padding: 1px 5px; border-radius: 4px; }
@@ -422,6 +427,8 @@ function badges(question) {
   if (question.state !== "closed" && question.priority === "blocking") found.push('<span class="badge error">blocking</span>');
   if (question.state !== "closed" && question.priority === "important") found.push('<span class="badge warning">important</span>');
   if (elaborating(question)) found.push('<span class="badge info">elaborating</span>');
+  if (question.lesson) found.push('<span class="badge">lesson</span>');
+  if (question.superseded_by) found.push(`<span class="badge">superseded by ${question.superseded_by}</span>`);
   return found.join("");
 }
 
@@ -469,8 +476,13 @@ function body(question) {
     parts.push(`<div class="actions"><span class="hint">${elaborating(question) ? "The question comes back here, rewritten." : "It reaches the session that asked when you next type there."}</span>
       <div class="buttons"><button type="button" class="button secondary" data-action="withdraw" data-number="${question.number}">take back</button></div></div>`);
   } else {
-    parts.push(`<div class="panel ok"><span class="label">decided</span><div class="context">${markdown(question.answer)}</div></div>`);
+    const heading = question.superseded_by ? `superseded by question ${question.superseded_by}` : "decided";
+    parts.push(`<div class="panel ${question.superseded_by ? "agent" : "ok"}"><span class="label">${heading}</span><div class="context">${markdown(question.answer)}</div></div>`);
   }
+  const links = [];
+  if ((question.touches || []).length) links.push(`<span><span class="label">governs</span> ${question.touches.map(path => `<code>${escape(path)}</code>`).join(" ")}</span>`);
+  if ((question.supersedes || []).length) links.push(`<span><span class="label">supersedes</span> ${question.supersedes.map(number => `<button type="button" class="reference" data-open="${number}">${number}</button>`).join(" ")}</span>`);
+  if (links.length) parts.push(`<div class="links">${links.join("")}</div>`);
   return `<div class="body">${parts.join("")}</div>`;
 }
 
@@ -478,7 +490,7 @@ function matches(question) {
   if (state.priorities.size && !state.priorities.has(question.priority)) return false;
   const words = state.search.toLowerCase().split(/\s+/).filter(Boolean);
   if (!words.length) return true;
-  const text = [question.number, question.title, question.context, ...question.options, question.owner.comment, question.answer]
+  const text = [question.number, question.title, question.context, ...question.options, question.owner.comment, question.answer, ...(question.touches || [])]
     .filter(Boolean).join(" ").toLowerCase();
   return words.every(word => text.includes(word));
 }
@@ -631,6 +643,20 @@ document.addEventListener("click", event => {
     if (state.expanded.has(number)) state.expanded.delete(number);
     else { state.expanded.add(number); state.active = number; }
     render();
+    return;
+  }
+  const reference = event.target.closest("[data-open]");
+  if (reference) {
+    const target = find(Number(reference.dataset.open));
+    if (target) {
+      state.tab = target.state;
+      state.search = "";
+      state.priorities.clear();
+      document.getElementById("search").value = "";
+      state.expanded.add(target.number);
+      render();
+      document.querySelector(`[data-toggle="${target.number}"]`)?.scrollIntoView({ block: "center" });
+    }
     return;
   }
   const action = event.target.closest("[data-action]");

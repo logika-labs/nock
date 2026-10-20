@@ -1,7 +1,12 @@
-You are running reflection round {{ round }} on this project, in a fresh
-session, in a worktree of your own: `{{ directory }}` (branch
-`nock/reflect-{{ round }}`). Work only there. Nobody will answer a question:
-decide, and say why in the record.
+---
+name: reflect
+description: Run a reflection round on this project's nock toolbox — read the telemetry and the work, change .nock/tools, record what each change should do. Use when nock says a round is due, or when asked to reflect.
+---
+
+You are running a reflection round on this project. Decide for yourself, and
+say why in the record; ask the human only what nothing in the material can
+settle. If you have been working on something else in this session, set it
+aside: the round starts from the material, not from what you remember.
 
 # Why this round exists
 
@@ -35,7 +40,9 @@ Before the numbers, understand the work — the material below starts with it:
    arguments consistent across them? Is something missing that the work
    plainly needs?
 
-Then let the numbers find and confirm candidates. Drill down with
+Start with `.nock/nock reflect material`: it prints the record, computed —
+the big picture first, then the numbers. Then let the numbers find and confirm
+candidates. Drill down with
 `.nock/nock query` — read the actual events of the sessions involved before
 you decide anything.
 
@@ -81,11 +88,12 @@ violations in the record's notes.
 Run every tool you added or changed, on this project, as an agent would, and
 read the output as that agent: is it what the next decision needs, and
 nothing more? Give each new command `examples=[...]`. Then run
-`.nock/nock check` — the round lands only when it passes.
+`.nock/nock check`: commit nothing it fails on.
 
 # Finish
 
-1. Commit on this branch — a commit per change, its message saying why.
+1. Commit — a commit per change, its message saying why, and only `.nock/`
+   (and a generator's file): leave anything else in the working tree alone.
 2. Record the round. It is what the next round holds you to:
 
        .nock/nock reflect record '{"summary": "a sentence or two",
@@ -99,8 +107,5 @@ nothing more? Give each new command `examples=[...]`. Then run
    `kind` is add, change, retire, check, generator or other. Judge every
    expectation the last round left: held, did not (then fix or revert that
    change), or too early to tell (`"held": null`).
-3. End. nock runs the checks and lands the branch.
-
-# The material
-
-{{ material }}
+3. Commit the record (`.nock/reflections/`), and say in a few lines what the
+   round changed and why.

@@ -13,13 +13,17 @@ from typing import Annotated, Any, NotRequired, TypedDict
 
 from nock.checks import Checks
 from nock.commands import Option
+from nock.consolidate import Consolidation
+from nock.consult import Consultant, Consultation
 from nock.errors import Error, ExitCode, Failed, UsageError
 from nock.fixtures import Shell
 from nock.generators import Catalogs, Generators
+from nock.git import Git
 from nock.processes import Output
 from nock.project import Project
-from nock.questions import Draft, Questions, Server, State, said
-from nock.reflect import ROUND_VARIABLE, Record, Reflection, Rounds, stamp, tool_rows
+from nock.questions import Draft, Lesson, Questions, Server, State, said
+from nock.reflect import Record, Reflection, tool_rows
+from nock.render import Problem
 from nock.schema import check_schema
 from nock.sessions import Sessions
 from nock.setup import Installer, Upgrader, wired_events
@@ -192,17 +196,6 @@ def sessions(project: Project, *, limit: int = 15) -> list[dict[str, Any]]:
 # --- reflection ---------------------------------------------------------------------
 
 
-@command(name="run", group="reflect")
-def reflect_run(project: Project) -> dict[str, Any]:
-    """Run a reflection round: an agent reads the telemetry and the work, and
-    changes the toolbox on a branch that lands when the checks pass. Takes a
-    while — run it in the background."""
-    outcome = Reflection(project).run()
-    if outcome.get("landed") is None:
-        raise Failed(f"round {outcome['round']} did not land", outcome)
-    return outcome
-
-
 @command(name="due", group="reflect")
 def reflect_due(project: Project) -> str | bool:
     """Whether a reflection round is due; exit 1 when it is not."""
@@ -211,16 +204,15 @@ def reflect_due(project: Project) -> str | bool:
 
 @command(name="material", group="reflect")
 def reflect_material(project: Project) -> str:
-    """What the next round would read."""
+    """What a round reads: the work, the telemetry, the last round's expectations."""
     return Reflection(project).material()
 
 
 @command(name="record", group="reflect")
 def reflect_record(project: Project, record: Record) -> str:
-    """Record the round being run: what changed, why, and what each change
-    should do by the next round. Run by the reflecting session."""
-    name = os.environ.get(ROUND_VARIABLE) or stamp()
-    path = Rounds(project).write(name, record)
+    """Record the round, at its end (the `/reflect` skill): what changed, why,
+    and what each change should do by the next round. Commit it with the work."""
+    path = Reflection(project).record(record)
     return f"recorded {path.relative_to(project.here)}"
 
 
@@ -267,12 +259,32 @@ def questions_show(project: Project, number: int) -> dict[str, Any]:
 
 
 @command(name="answer", group="questions")
-def questions_answer(project: Project, number: int, answer: str) -> list[str]:
+def questions_answer(
+    project: Project,
+    number: int,
+    answer: str,
+    *,
+    touches: Annotated[
+        list[str] | None, Option(help="A file the decision governs, as a path or glob (repeats).")
+    ] = None,
+    supersedes: Annotated[
+        list[int] | None, Option(help="A decided question this one overturns (repeats).")
+    ] = None,
+) -> list[str]:
     """Close a question: ANSWER is the decision in its own words, the owner's
-    comment folded in, so that it reads on its own later. Then act on it, and
-    commit what it changed with the work."""
-    problem = Questions(project).answer(number, answer)
+    comment folded in, so that it reads on its own later. Name the files it
+    governs, so that an edit to one shows it, and what it overturns. Then act
+    on it, and commit what it changed with the work."""
+    problem = Questions(project).answer(number, answer, touches, supersedes)
     return [f"answered question {number}", *([problem] if problem else [])]
+
+
+@command(name="record", group="questions")
+def questions_record(project: Project, lesson: Lesson) -> list[str]:
+    """Record a lesson: what the work taught, as a question decided at once,
+    so that the map can cite it. Part of a consolidation round."""
+    number, problem = Questions(project).record(lesson)
+    return [f"recorded lesson {number}", *([problem] if problem else [])]
 
 
 @command(name="rewrite", group="questions")
@@ -302,6 +314,43 @@ def questions_page(
 ) -> None:
     """Serve the owner's page, where questions are answered, until stopped."""
     Server(Questions(project), port).run(open_page)
+
+
+# --- consulting -----------------------------------------------------------------------
+
+
+@command
+def consult(project: Project, consultation: Consultation) -> str:
+    """Before something serious — a feature, a migration, a redesign, a change
+    of course, or when stuck — have a fresh agent read the project's
+    decisions and documents and reframe the task: what it really asks, the
+    decisions that bear on it, what could go wrong. Waits for the answer, a
+    few minutes; not for routine edits."""
+    return Consultant(project).consult(consultation)
+
+
+# --- consolidation ------------------------------------------------------------------
+
+
+@command(name="record", group="consolidate")
+def consolidate_record(project: Project) -> str:
+    """Record the round, at its end (the `/consolidate` skill): the decisions it
+    covered, and when — the next round starts from there. Commit it with the map."""
+    path = Consolidation(project).finish()
+    return f"recorded {path.relative_to(project.root)}"
+
+
+@command(name="due", group="consolidate")
+def consolidate_due(project: Project) -> str | bool:
+    """Whether a consolidation round is due; exit 1 when it is not."""
+    return Consolidation(project).due() or False
+
+
+@command(name="material", group="consolidate")
+def consolidate_material(project: Project) -> str:
+    """What a round reads: the decisions since the last one, every standing
+    decision, and the map."""
+    return Consolidation(project).material()
 
 
 # --- generators -----------------------------------------------------------------------
@@ -469,6 +518,16 @@ def generated_files_in_step(project: Project, root: Path) -> list[str]:
         for path in Generators(project).drifted(root)
     ]
     return problems
+
+
+@check(name="nock-map")
+def decisions_hold(project: Project, root: Path) -> list[Problem]:
+    """Every question the map cites is a standing decision, and every file a
+    decision touches still exists."""
+    questions = Questions(project)
+    listed = Git(root)("ls-files", "--cached", "--others", "--exclude-standard").splitlines()
+    files = [file for file in listed if (root / file).exists()]
+    return questions.citation_problems() + questions.stale_touches(files)
 
 
 @check(name="nock-wiring")

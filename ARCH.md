@@ -15,9 +15,9 @@ README covers what nock is for and how to use it.
 - **One process per call.** Every `.nock/nock …` call is a fresh interpreter.
   Nothing is held in memory between calls: state is in SQLite and in files
   under `.nock/local/`, and caches are keyed on content.
-- **Telemetry on the main checkout, code in the working tree.** A reflection
-  round runs in a git worktree. Its calls must use that worktree's tools, but
-  must record into the one database. `Project` holds both places: `root` is
+- **Telemetry on the main checkout, code in the working tree.** An agent may
+  work in a git worktree. Its calls must use that worktree's tools, but must
+  record into the one database, and its questions go to the main checkout. `Project` holds both places: `root` is
   the main checkout, and `here` is the working tree the call runs in.
 - **nock eats its own cooking.** nock's own commands, checks and fixtures are
   registered with the same decorators a project uses. `builtin.py` and
@@ -46,15 +46,19 @@ src/nock/
   sessions.py        Claude Code transcripts → sessions, prompts and events
 
   # the loop
-  reflect.py         Reflection (due, material, run, land), Rounds, Material, Worktree
+  reflect.py         Reflection (due, material, record), Rounds, Material
+  questions.py       Questions (ask, answer, record, rewrite, elaborate, the map's problems) and the owner's page
+  questions.html     the page
+  consolidate.py     Consolidation (due, material, finish): the round that keeps the map
+  consult.py         Consultant: a fresh agent reframes a serious task
   dispatch.py        Dispatcher: launch a headless `claude -p` session and ingest it
   hooks.py           `nock hook EVENT`: nock's own handlers, then the project's
-  questions.py       Questions (ask, answer, rewrite, elaborate) and the owner's page
-  questions.html     the page
   briefs/
-    reflect.md       the reflecting agent's brief (a template)
+    reflect.md       the `/reflect` skill (a template: it includes _framework.md)
+    consolidate.md   the `/consolidate` skill: the map's rules
     elaborate.md     the brief of the agent that elaborates on a question
-    _framework.md    the framework on one page: `nock guide`, included in the brief
+    consult.md       the consultant's brief
+    _framework.md    the framework on one page: `nock guide`, and part of `/reflect`
 
   # the rest of the toolbox
   checks.py          Checks: command checks and @check functions → one Verdict
@@ -72,7 +76,7 @@ src/nock/
 
 tests/               real git repositories and processes; no mocks
   conftest.py        a fresh repository with nock installed, per test; the `nock()` runner
-  fake_agent.py      the scripted reflecting agent (FAKE_REFLECT=add|silent|broken)
+  fake_agent.py      the scripted stand-in for the dispatched agents (elaborator, consultant)
 evals/               does reflection pay? real sessions, with and without a toolbox
 ```
 
@@ -80,7 +84,7 @@ evals/               does reflection pay? real sessions, with and without a tool
 
 ```
              ┌─────────────────────────────────────────────────────┐
-  the loop   │ hooks.py   reflect.py ── dispatch.py ── briefs/       │
+  the loop   │ hooks.py  reflect.py  questions.py  consult.py …     │
              ├─────────────────────────────────────────────────────┤
  telemetry   │ telemetry.py   sessions.py   store.py (nock.db)      │
              ├─────────────────────────────────────────────────────┤
@@ -190,7 +194,7 @@ evidence, or it returns the `Output` when `check=False`.
 
 ## Telemetry
 
-`store.Store` is one SQLite file, `.nock/local/nock.db`, with six tables:
+`store.Store` is one SQLite file, `.nock/local/nock.db`, with seven tables:
 
 | table | written by | when |
 |---|---|---|
@@ -198,6 +202,7 @@ evidence, or it returns the `Output` when `check=False`.
 | `runs` | `processes.Supervisor` | every supervised process |
 | `sessions`, `prompts`, `events` | `sessions.Sessions.ingest` | at SessionEnd, at a round's start (`catch_up`), and after a dispatched session |
 | `told` | `questions.Questions.news_for` | when a session is told the owner's input on a question it asked |
+| `reminded` | `questions.Questions.reminders_for` | when a session is shown the decisions governing a file it edited |
 
 Sessions are tied to calls through `CLAUDE_CODE_SESSION_ID`, which Claude Code
 sets in its Bash tool and nock records on each call.
@@ -224,10 +229,14 @@ else and hands it to `hooks.run`, which:
 1. reads the payload from stdin and discovers the project from its `cwd`;
 2. runs nock's own handlers:
    - **SessionStart** returns the project's tools, any load failures, and,
-     for a session the human started, whether a round is due and which
+     for a session the human started, whether a reflection or consolidation
+     round is due (said to the human too, as `systemMessage`) and which
      answered questions wait on an agent;
    - **UserPromptSubmit** tells the session the owner's input on the
      questions it asked, once per change (the `told` table);
+   - **PostToolUse**, wired with an edit-tools matcher unless a project hook
+     wants every tool, shows the standing decisions whose `touches` cover the
+     edited file, once per session (the `reminded` table);
    - **SessionEnd** ingests the transcript;
 3. runs the project's `@nock.hook`s for the event, each in a fixture
    `Scope` with `payload`. Returned text is joined into `additionalContext`,
@@ -239,14 +248,52 @@ else and hands it to `hooks.run`, which:
 listens to. The `nock-wiring` check fails when a hook exists for an event
 that isn't wired.
 
+### Questions and consolidation
+
+`questions.Questions` keeps one JSON file per question in the main
+checkout's `.nock/questions/` and commits each change there with
+`git commit --only`, so a worktree's question lands on the main branch at
+once. It skips the commit, and says so, when the main checkout is mid-merge
+or mid-rebase. The page (`questions.Server`) writes the owner's input
+without committing. "Elaborate" starts `nock questions elaborate N` as a
+detached process, which dispatches the elaborator.
+
+A consolidation round is the `/consolidate` skill in an ordinary session.
+`Consolidation.material` gives it the decisions closed since
+`consolidated.json` (lessons left out), every standing decision and the map.
+The agent edits the map, records lessons with `nock questions record`
+(committed as they are recorded), and runs `nock check nock-map`
+(`Questions.citation_problems`). `nock consolidate record` then rewrites
+`consolidated.json`, which `due()` counts from, and the agent commits it
+with the map.
+
+`consult.Consultant` renders `briefs/consult.md` with the caller's intent
+and context, and dispatches a read-only consultant in the caller's working
+tree under `consult.deadline`. The session's last message is the answer the
+caller prints.
+
+### Dispatch
+
+`dispatch.Dispatcher.launch` runs `claude -p --output-format stream-json
+--session-id … --permission-mode bypassPermissions` (`agent.command`,
+`agent.model`) for the sessions no human sits in: the elaborator and the
+consultant. It:
+
+- runs under a Supervisor, with `agent.deadline` (or the caller's) and
+  `agent.silence`;
+- strips the parent session's variables, and sets `NOCK_ROLE`;
+- ingests the transcript afterwards, with that role, so the reflection
+  material leaves those sessions out.
+
 ### Reflection
 
-`reflect.Reflection.run()`, under the `reflect` lock:
+A round is the `/reflect` skill in an ordinary session. `nock init` renders
+it from `briefs/reflect.md`, with `!include("_framework.md")` bringing in the
+framework guide.
 
-1. **Catch up.** `Sessions.catch_up` ingests any transcript written since the
-   last read.
-2. **Material.** `reflect.Material` renders markdown. The big picture comes
-   first:
+1. **Material.** `nock reflect material` catches up on transcripts
+   (`Sessions.catch_up`) and renders `reflect.Material` as markdown. The big
+   picture comes first:
    - `requests`: the human's prompts;
    - `direction`: the commits and the areas they touch;
    - `expectations`: the last round's `expect` lines, beside each tool's
@@ -261,36 +308,13 @@ that isn't wired.
      trimmed by hand, recurring pairs and the largest outputs;
    - `reading`: the files read most;
    - `sessions_table`.
-
-   The material is saved under `.nock/local/reflections/`.
-3. **Worktree.** `reflect.Worktree` creates `<root>.worktrees/reflect-NAME` on
-   branch `nock/reflect-NAME`, beside the checkout. `unused_name` adds a
-   suffix if a round with the same stamp already exists.
-4. **Dispatch.** The brief, `briefs/reflect.md` or the project's
-   `.nock/briefs/reflect.md`, is rendered through `templates.Library`.
-   `!include("_framework.md")` brings in the framework guide. Then
-   `dispatch.Dispatcher.launch` runs
-   `claude -p --output-format stream-json --session-id … --permission-mode
-   bypassPermissions` in the worktree:
-   - it runs under a Supervisor, with `reflect.deadline` and
-     `reflect.silence`;
-   - it strips the parent session's variables;
-   - it sets `NOCK_ROLE=reflector` and `NOCK_ROUND`;
-   - it ingests the transcript afterwards.
-5. **Record.** Inside the session, the agent calls `nock reflect record JSON`,
-   which is checked against the `Record` TypedDict (summary, changes,
-   verdicts, notes). It writes `.nock/reflections/STAMP.json` in the
-   worktree.
-6. **Land.** `Reflection.land`:
-   - requires the record;
-   - adds the snapshot of per-tool numbers and the window;
-   - commits;
-   - runs the worktree's own `.nock/nock check`, which includes `nock-tools`,
-     so every example of every tool runs;
-   - if the checks pass, merges `--no-ff` into `branch` under the `merge`
-     lock, and removes the worktree.
-
-   On any failure the branch and worktree stay, and the reason is printed.
+2. **The work.** The agent changes `.nock/`, runs `nock check` (which
+   includes `nock-tools`, so every example of every tool runs) and commits
+   what passes.
+3. **Record.** `nock reflect record JSON` is checked against the `Record`
+   TypedDict (summary, changes, verdicts, notes). `Reflection.record` writes
+   `.nock/reflections/STAMP.json` with the window it started from and the
+   snapshot of per-tool numbers, and the agent commits it.
 
 `Rounds` reads `.nock/reflections/*.json`. There is one file per round, named
 by timestamp, so records from different machines merge as plain files. The
@@ -313,7 +337,8 @@ Everything a project adds lives in `.nock/` and is committed:
 | hook | `.nock/tools/*.py` | `@nock.hook(event)` | `hooks.HookRunner` |
 | generated file | `.nock/tools/*.py` | `@nock.generator(path)` | `generators.Generators` |
 | catalog | `.nock/generators/NAME/` | `nock gen new` | `generators.Catalog` |
-| brief | `.nock/briefs/reflect.md` | the file's presence | `templates.Library`, before the packaged briefs |
+| brief | `.nock/briefs/NAME.md` (elaborate, consult) | the file's presence | `templates.Library`, before the packaged briefs |
+| skill | `.claude/skills/reflect/`, `.claude/skills/consolidate/` | `nock init` | Claude Code; `nock init` rewrites them |
 | settings | `.nock/config.toml`, `.nock/local/config.toml` | — | `configuration.Configuration` |
 | the core itself | `.nock/core/nock/` | edit it | kept by `nock upgrade`'s three-way merge |
 
@@ -350,7 +375,8 @@ Notes:
 - records the source and commit in `.nock/core/VERSION.json`;
 - imports `@.nock/context.md` into CLAUDE.md;
 - wires `.claude/settings.json`: the hooks and the `Bash(.nock/nock:*)`
-  permission.
+  permission;
+- writes the `/reflect` and `/consolidate` skills.
 
 It is idempotent, so running it again re-wires.
 
@@ -367,13 +393,13 @@ unless `--force` is given.
 ## Tests and evals
 
 - `tests/` runs the vendored `.nock/nock` in real temporary repositories,
-  with real git and real processes. The reflecting agent is
-  `tests/fake_agent.py`, configured as `reflect.command`, and it either adds
-  a tool, stays silent or breaks the toolbox, so landing and refusing are
-  both covered. There are no mocks.
+  with real git and real processes. The dispatched agents are
+  `tests/fake_agent.py`, configured as `agent.command`: it rewrites a
+  question as the elaborator (or stays silent) and answers as the
+  consultant. There are no mocks.
 - `evals/run.py` measures the whole loop with real Claude Code sessions:
   1. training tasks on a seeded shop project;
-  2. one real reflection round;
+  2. one real `/reflect` round, in a headless session;
   3. different test tasks of the same kinds, with and without the landed
      toolbox, each in a fresh clone.
 

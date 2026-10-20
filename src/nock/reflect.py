@@ -1,10 +1,10 @@
-"""Reflection: a round in which an agent reads what the work has been — the
-human's requests, the sessions, the toolbox's telemetry, where the code is
-going — and changes the toolbox: builds tools for what keeps costing turns and
-tokens, repairs and retunes the ones that misbehave, retires the ones nobody
-needs. It works on a branch in a worktree of its own, writes down what it
-expects of each change, and lands only when every check passes. The next round
-holds those expectations against what actually happened."""
+"""Reflection: a round in which an agent, following the `/reflect` skill,
+reads what the work has been — the human's requests, the sessions, the
+toolbox's telemetry, where the code is going — and changes the toolbox:
+builds tools for what keeps costing turns and tokens, repairs and retunes the
+ones that misbehave, retires the ones nobody needs. It writes down what it
+expects of each change, and the next round holds those expectations against
+what actually happened."""
 
 from __future__ import annotations
 
@@ -14,7 +14,6 @@ import os
 import re
 import shlex
 import statistics
-import subprocess
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -22,20 +21,15 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, NotRequired, TypedDict
 
 from nock.commands import schema_of
-from nock.dispatch import Dispatcher
-from nock.errors import ConflictError, PreconditionError
-from nock.git import Git, GitError
+from nock.errors import PreconditionError
+from nock.git import GitError
 from nock.schema import validate
 from nock.sessions import Sessions
-from nock.templates import Library
 from nock.utils import format_duration, now, parse_moment, read_json, write_json
 
 if TYPE_CHECKING:
     from nock.project import Project
 
-ROLE = "reflector"
-ROUND_VARIABLE = "NOCK_ROUND"
-BRIEFS = Path(__file__).resolve().parent / "briefs"
 # Programs whose second word says what they do: `git status`, `uv run`.
 TWO_WORDS = {
     "git", "uv", "npm", "npx", "pnpm", "yarn", "poetry", "cargo", "go", "make", "docker",
@@ -203,136 +197,17 @@ class Reflection:
             for row in tool_rows(self.project, since)
         }
 
-    # --- the round ----------------------------------------------------------------
+    # --- the record ---------------------------------------------------------------
 
-    def run(self) -> dict[str, Any]:
-        """One round, start to finish: material, a dispatched session on a
-        branch, then — when it left a record and every check passes — landing."""
-        with self.project.lock("reflect"):
-            name = self.unused_name()
-            since = self.window().since
-            material = self.material()
-            report = self.project.local / "reflections" / f"{name}.md"
-            report.parent.mkdir(parents=True, exist_ok=True)
-            report.write_text(material)
-            worktree = Worktree(self.project, name)
-            path = worktree.create()
-            brief = Library(self.project.code_path("briefs"), BRIEFS).render(
-                "reflect.md",
-                material=material,
-                directory=str(path),
-                round=name,
-                rounds=len(self.rounds.all()),
-            )
-            session = Dispatcher(self.project).launch(ROLE, brief, path, {ROUND_VARIABLE: name})
-            outcome: dict[str, Any] = {"round": name, "session": session.id, "worktree": str(path)}
-            if session.exit_code != 0:
-                return {
-                    **outcome,
-                    "landed": None,
-                    "problem": f"the session ended with exit {session.exit_code} (log: {session.log})",
-                }
-            return {**outcome, **self.land(worktree, name, since, session.result)}
-
-    def unused_name(self) -> str:
-        """The round's name: when it started, made unique against rounds kept for inspection."""
-        name, count = stamp(), 1
-        while self.project.git.succeeds(
-            "rev-parse", "--verify", "--quiet", f"refs/heads/{Worktree(self.project, name).branch}"
-        ):
-            count += 1
-            name = f"{stamp()}-{count}"
-        return name
-
-    def land(
-        self, worktree: Worktree, name: str, since: str | None, last_word: str | None
-    ) -> dict[str, Any]:
-        git = worktree.git
-        record_path = worktree.path / ".nock" / "reflections" / f"{name}.json"
-        if not record_path.is_file():
-            return {
-                "landed": None,
-                "problem": f"the round left no record — the session said: {(last_word or '')[:400]}",
-            }
-        record = read_json(record_path)
-        record["snapshot"] = self.snapshot(since)
-        record["since"] = since
-        write_json(record_path, record)
-        git("add", "-A")
-        git(
-            "commit",
-            "--quiet",
-            "--no-verify",
-            "-m",
-            f"Reflection {name}: the record, with the numbers it started from",
-            check=False,
-        )
-        checks = subprocess.run(
-            [str(worktree.path / ".nock" / "nock"), "check"],
-            cwd=worktree.path,
-            capture_output=True,
-            text=True,
-        )
-        if checks.returncode != 0:
-            return {
-                "landed": None,
-                "changes": record.get("changes", []),
-                "problem": f"checks fail on the round's branch (exit {checks.returncode}):\n{(checks.stdout + checks.stderr).strip()[:3000]}",
-            }
-        main = self.project.git
-        with self.project.lock("merge"):
-            if main.branch() != self.project.branch:
-                raise PreconditionError(
-                    f"the main checkout is on {main.branch()}, not {self.project.branch}; nothing landed"
-                )
-            try:
-                main(
-                    "merge",
-                    "--no-ff",
-                    "--no-edit",
-                    "--quiet",
-                    "-m",
-                    f"Reflection {name}\n\n{record.get('summary', '')}",
-                    worktree.branch,
-                )
-            except GitError as error:
-                main("merge", "--abort", check=False)
-                raise ConflictError(
-                    f"could not land {worktree.branch} (uncommitted changes in the way?): {error}"
-                ) from error
-        worktree.remove()
-        return {
-            "landed": main.head()[:12],
-            "summary": record.get("summary"),
-            "changes": record.get("changes", []),
-        }
-
-
-class Worktree:
-    """The round's own branch and directory, beside the checkout — never inside
-    it, where test runners and linters would find it."""
-
-    def __init__(self, project: Project, name: str) -> None:
-        self.project = project
-        self.branch = f"nock/reflect-{name}"
-        self.path = project.root.with_name(f"{project.root.name}.worktrees") / f"reflect-{name}"
-
-    @property
-    def git(self) -> Git:
-        return Git(self.path)
-
-    def create(self) -> Path:
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.project.git("worktree", "prune")
-        self.project.git(
-            "worktree", "add", "--quiet", "-b", self.branch, str(self.path), self.project.branch
-        )
-        return self.path
-
-    def remove(self) -> None:
-        self.project.git("worktree", "remove", "--force", str(self.path), check=False)
-        self.project.git("worktree", "prune", check=False)
-        self.project.git("branch", "-D", self.branch, check=False)
+    def record(self, record: Record) -> Path:
+        """Write the round's record, with the numbers it started from — what the
+        next round holds it to, and when it is due again."""
+        since = self.window().since
+        name = stamp()
+        path = self.rounds.write(name, record)
+        written = read_json(path)
+        write_json(path, {**written, "since": since, "snapshot": self.snapshot(since)})
+        return path
 
 
 def tool_rows(project: Project, since: str | None) -> list[dict[str, Any]]:

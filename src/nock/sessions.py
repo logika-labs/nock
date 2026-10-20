@@ -51,7 +51,7 @@ def encoded(path: Path) -> str:
 
 def transcript_directories(root: Path) -> list[Path]:
     """The transcript directories of the checkout at `root` and of the
-    worktrees nock puts beside it."""
+    worktrees beside it."""
     projects = configuration_directory() / "projects"
     if not projects.is_dir():
         return []
@@ -323,9 +323,9 @@ class Sessions:
 
     def since(self, moment: str | None) -> list[dict[str, Any]]:
         """Sessions that ended after `moment` (all of them when None), oldest first,
-        reflection rounds' own sessions left out."""
+        the sessions nock dispatched left out."""
         rows = self.project.store.rows(
-            "SELECT * FROM sessions WHERE role != 'reflector' ORDER BY started"
+            "SELECT * FROM sessions WHERE role = 'interactive' ORDER BY started"
         )
         start = parse_moment(moment)
         if start is None:

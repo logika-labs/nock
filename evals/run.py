@@ -194,25 +194,29 @@ def train(project: Path, base: str, model: str, log: Path) -> None:
 
 
 def reflect(project: Path, reflect_model: str, out: Path) -> str | None:
+    """One round: the `/reflect` skill in a headless session. Its toolbox counts
+    only when it recorded the round and the checks pass."""
+    command = ["claude", "-p", "--permission-mode", "bypassPermissions", "--output-format", "json"]
     if reflect_model:
-        local = project / ".nock" / "local" / "config.toml"
-        local.write_text(f'[reflect]\nmodel = "{reflect_model}"\n')
+        command += ["--model", reflect_model]
     started = time.monotonic()
     result = subprocess.run(
-        [str(project / ".nock" / "nock"), "reflect", "run"],
+        [*command, "--", "/reflect"], cwd=project, capture_output=True, text=True, env=environment()
+    )
+    checks = subprocess.run(
+        [str(project / ".nock" / "nock"), "check"],
         cwd=project,
         capture_output=True,
         text=True,
         env=environment(),
     )
+    recorded = any((project / ".nock" / "reflections").glob("*.json"))
+    report = f"session exit {result.returncode}, checks exit {checks.returncode}, recorded: {recorded}, after {time.monotonic() - started:.0f}s"
     (out / "reflection.txt").write_text(
-        f"exit {result.returncode} after {time.monotonic() - started:.0f}s\n\n{result.stdout}\n{result.stderr}"
+        f"{report}\n\n{result.stdout}\n{result.stderr}\n\n{checks.stdout}{checks.stderr}"
     )
-    print(
-        f"reflection: exit {result.returncode}\n{result.stdout[-2000:]}{result.stderr[-1000:]}",
-        flush=True,
-    )
-    if result.returncode != 0:
+    print(f"reflection: {report}", flush=True)
+    if result.returncode != 0 or checks.returncode != 0 or not recorded:
         return None
     return git(project, "rev-parse", "HEAD")
 

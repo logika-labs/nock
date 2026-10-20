@@ -21,8 +21,9 @@ round built.
    - **flag:** adding a flag in all three places.
 
    The sessions go into nock's telemetry, as they would in a real project.
-3. **Reflection.** One real `nock reflect run` reads that telemetry and lands
-   a toolbox, or does not.
+3. **Reflection.** One real `/reflect` round, a headless session running the
+   skill, reads that telemetry and builds a toolbox. The toolbox counts only
+   if the round recorded itself and `nock check` passes.
 4. **Test.** Seven *different* tasks of the same kinds. Each runs on a fresh
    clone, `--repeats` times in each arm:
    - **control:** the baseline, with an empty toolbox;

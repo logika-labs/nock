@@ -273,6 +273,7 @@ committed:
 | `prompts` | what the human typed |
 | `events` | every tool call of every session: the command, path or pattern, whether it failed, the bytes returned, and the duration |
 | `told` | which sessions were told the owner's answers to their questions |
+| `reminded` | which sessions were shown the decisions behind a file they edited |
 
 Sessions are read from Claude Code's transcripts when they end, and any
 that were missed are read when a reflection round starts. To look:
@@ -282,9 +283,10 @@ that were missed are read when a reflection round starts. To look:
 
 ## Reflection
 
-When a round is due, the session start says so: by default after 15 sessions,
-or after a week with at least 3. `nock reflect run` takes a while, so run it
-in the background.
+A round is the `/reflect` skill, which `nock init` installs, run in a
+session like any other. When one is due, the session start says so, to the
+agent and to you: by default after 15 sessions, or after a week with at least
+3.
 
 1. **The material.** nock computes it from the telemetry and git, starting
    with the big picture:
@@ -301,14 +303,15 @@ in the background.
    - raw shell work: what recurs, what fails, what agents trimmed by hand
      with `| tail`, which pairs of commands recur, and the largest outputs;
    - which files agents read again and again.
-2. **The round.** An agent gets the material and the brief. It works in a
-   worktree on its own branch, and changes only `.nock/`:
+   `nock reflect material` prints it; the round starts there.
+2. **The round.** The agent follows the skill, and changes only `.nock/`:
    - it adds, changes or retires tools (retired ones go to
      `.nock/tools/archive/`, which is not loaded);
    - it adds checks and generators;
    - or it changes nothing, when nothing earns a change.
 
-   It commits each change.
+   It runs `nock check`, which includes every tool's examples, and commits
+   each change only when the checks pass.
 3. **The record.** `nock reflect record` writes `.nock/reflections/STAMP.json`.
    The record holds:
    - the round's summary;
@@ -316,16 +319,12 @@ in the background.
      next round;
    - verdicts on the last round's expectations.
 
-   nock adds a snapshot of each tool's numbers. There is one file per round,
-   so rounds from different machines merge.
-4. **Landing.** nock runs `nock check` on the branch, which includes every
-   tool's examples. If the checks pass, the branch is merged into the main
-   branch. If they fail, or the agent left no record, nothing lands, and the
-   branch and worktree are kept to look at.
+   nock adds a snapshot of each tool's numbers, for the next round to judge
+   against. There is one file per round, so rounds from different machines
+   merge. The record is what the next round's window counts from.
 
-`nock reflect material` prints what the next round would read, and
-`nock reflect due` says whether a round is due. A project can replace the
-brief with its own `.nock/briefs/reflect.md`.
+`nock reflect due` says whether a round is due. The skill is
+`.claude/skills/reflect/SKILL.md`; `nock init` rewrites it from the core.
 
 ## Questions
 
@@ -354,7 +353,13 @@ project's record of its decisions.
   wait on an agent.
 - **The agent closes it.** `nock questions answer N ANSWER` records the
   decision in its own words, the owner's comment folded in, and commits it.
-- **"Ask for more" starts an agent at once.** It reads the project, rewrites
+  `--touches PATH` names a file or glob the decision governs, and
+  `--supersedes M` a decision it overturns. Both can also be given when
+  asking. An overturned decision is marked superseded, and stays as history.
+- **An edit shows the decisions behind a file.** The first time a session
+  edits a file that a standing decision touches, the edit hook shows it the
+  decision.
+- **"Elaborate" starts an agent at once.** It reads the project, rewrites
   the question's context, options and recommendation with what was missing
   (`nock questions rewrite`), and the question is open again. It changes
   nothing else.
@@ -364,6 +369,47 @@ project's record of its decisions.
 | `open` | the owner | asked, or rewritten |
 | `pending` | an agent | the owner chose, commented, or asked for more |
 | `closed` | nobody | `answer` holds the decision |
+
+### The map and consolidation
+
+`.nock/questions/map.md` says what the decisions mean for the work: when
+each matters, and how they bear on each other. Agents read it before
+starting anything serious. A consolidation round keeps it.
+
+A round is the `/consolidate` skill. It is due, and the session start says
+so, after 5 decisions, or a week with at least one. The agent reads
+`nock consolidate material` (the decisions made since the last round, every
+standing decision, and the map), and edits the map as it sees fit, within
+three rules:
+
+- triggers, not facts: "if you touch X, then Y, because Z [Q7]";
+- a rejected option comes with what would make it viable again;
+- what it inferred, rather than read or observed, is marked *(inferred)*.
+
+What the work taught that isn't a decision yet, it records as a lesson: a
+question decided at once (`nock questions record`), which the map can cite.
+It ends with `nock check nock-map` passing, then `nock consolidate record`,
+and commits the map with the record.
+
+The `nock-map` check fails when the map cites a question that is missing,
+undecided or superseded, or when a standing decision touches a path that
+matches no file.
+
+### Consulting
+
+Before something serious, such as a feature, a migration, a redesign, a
+change of course, or being stuck, an agent consults:
+
+```sh
+$ .nock/nock consult '{"intent": "Move orders to Postgres.", "context": "SQLite locks under load."}'
+```
+
+A fresh headless agent reads the map, the decisions it points to and the
+project's documents. It changes nothing, and answers within
+`consult.deadline` seconds: the task reframed, the decisions that bear on
+it, what could go wrong, and what to ask the owner first. The calling agent
+waits for that answer. The primer tells agents to consult at strategic
+moments, never for routine edits.
 
 ## Reference
 
@@ -376,9 +422,11 @@ project's record of its decisions.
 | `nock run -- COMMAND` | run anything supervised and condensed |
 | `nock guide` | how to write a tool, check, hook or generator |
 | `nock calls`, `stats`, `sessions`, `query SQL` | the telemetry |
-| `nock reflect run`, `due`, `material`, `record JSON` | reflection |
+| `nock reflect due`, `material`, `record JSON` | reflection; the round is the `/reflect` skill |
 | `nock ask JSON` | ask the owner a question |
-| `nock questions list`, `show`, `answer`, `rewrite`, `elaborate`, `page` | questions: where they stand, closing one, the owner's page |
+| `nock questions list`, `show`, `answer`, `rewrite`, `elaborate`, `record`, `page` | questions: where they stand, closing one, lessons, the owner's page |
+| `nock consolidate due`, `material`, `record` | consolidation; the round is the `/consolidate` skill |
+| `nock consult JSON` | a fresh agent reframes a serious task, and the caller waits |
 | `nock gen write`, `new`, `add`, `set`, `rm`, `show`, `bind`, `unbind` | generators |
 | `nock init`, `nock upgrade` | install (or re-wire), and upgrade the vendored core with a three-way merge |
 
@@ -413,13 +461,15 @@ one machine.
 
 | key | default | is |
 |---|---|---|
-| `branch` | `main` | where reflection rounds land |
+| `branch` | `main` | the main branch, which `changed` diffs against |
 | `output.characters`, `output.rows` | 8000, 60 | the cap on what a call prints |
 | `run.deadline`, `run.silence` | 3600, 900 | seconds before a supervised process is stopped |
 | `checks.NAME.command` | — | a command that is a check |
 | `checks.concurrency` | 2 | checks run at once, machine-wide |
 | `reflect.sessions`, `reflect.days`, `reflect.minimum` | 15, 7, 3 | when a round is due |
-| `reflect.command`, `reflect.model` | `claude`, — | the agent a round (or an elaboration) dispatches |
+| `agent.command`, `agent.model`, `agent.deadline` | `claude`, —, 1800 | the headless agent nock dispatches (elaborate, consult) |
+| `consult.deadline` | 600 | seconds a consultation may take |
+| `consolidate.questions`, `consolidate.days`, `consolidate.minimum` | 5, 7, 1 | when a consolidation round is due |
 | `pricing` | — | per-model prices, to cost sessions |
 
 ## Developing nock

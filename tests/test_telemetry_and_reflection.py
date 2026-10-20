@@ -130,9 +130,7 @@ def test_the_session_hooks_list_the_tools_and_read_the_transcript(project: Proje
 
 def test_a_round_is_due_after_enough_sessions(project: Project) -> None:
     local = project.root / ".nock" / "local" / "config.toml"
-    local.write_text(
-        local.read_text().replace("[reflect]\n", "[reflect]\nsessions = 4\ndays = 30\n")
-    )
+    local.write_text(local.read_text() + "[reflect]\nsessions = 4\ndays = 30\n")
     for index in range(3):
         transcript(project, f"s{index}", ["work"], [])
     Sessions(project).catch_up()
@@ -178,32 +176,37 @@ def test_shapes_name_what_a_command_is() -> None:
     assert shape("ls -la") == "ls"
 
 
-def test_a_round_lands_its_tool_and_its_record(project: Project) -> None:
-    result = nock(project.root, "reflect", "run")
-    assert result.returncode == 0, result.stdout + result.stderr
-    assert "landed:" in result.stdout and "greet" in result.stdout
-    assert (project.root / ".nock" / "tools" / "greet.py").is_file()
-    assert nock(project.root, "greet", "--name", "dan").stdout == "hello dan\n"
-    rounds = Rounds(project).all()
-    assert (
-        len(rounds) == 1 and rounds[0]["changes"][0]["expect"] == "greet is called at least twice"
-    )
-    assert "snapshot" in rounds[0]
-    assert "Reflection" in git(project.root, "log", "-1", "--format=%s")
-    assert git(project.root, "branch", "--list", "nock/reflect-*") == ""
-    material = Reflection(project).material()
-    assert "# The last round" in material and "expected greet is called at least twice" in material
-
-
-def test_a_round_without_a_record_or_with_a_broken_tool_does_not_land(
-    project: Project, monkeypatch
+def test_a_round_records_its_expectations_and_the_numbers_it_started_from(
+    project: Project,
 ) -> None:
-    monkeypatch.setenv("FAKE_REFLECT", "silent")
-    silent = nock(project.root, "reflect", "run")
-    assert silent.returncode == 1 and "left no record" in silent.stdout
-    monkeypatch.setenv("FAKE_REFLECT", "broken")
-    broken = nock(project.root, "reflect", "run")
-    assert broken.returncode == 1 and "checks fail on the round's branch" in broken.stdout
-    assert "the greeting machine is down" in broken.stdout
-    assert not (project.root / ".nock" / "tools" / "greet.py").exists()
-    assert git(project.root, "branch", "--list", "nock/reflect-*") != ""
+    for _ in range(2):
+        nock(project.root, "calls", "--limit", "1")
+    record = {
+        "summary": "Added nothing; calls is fine.",
+        "changes": [
+            {
+                "kind": "other",
+                "target": "calls",
+                "why": "used twice",
+                "expect": "calls stays under 1k",
+            }
+        ],
+    }
+    result = nock(project.root, "reflect", "record", json.dumps(record))
+    assert result.returncode == 0, result.stderr
+    (round_,) = Rounds(project).all()
+    assert round_["changes"][0]["expect"] == "calls stays under 1k"
+    assert round_["snapshot"]["calls"]["calls"] == 2 and round_["since"] is None
+    material = Reflection(project).material()
+    assert "# The last round" in material and "expected calls stays under 1k" in material
+
+
+def test_init_installs_the_round_skills(project: Project) -> None:
+    skills = project.root / ".claude" / "skills"
+    reflect = (skills / "reflect" / "SKILL.md").read_text()
+    assert reflect.startswith("---\nname: reflect\n")
+    assert (
+        "`.nock/nock reflect material`" in reflect
+        and "**Ask for what you need by name**" in reflect
+    )
+    assert (skills / "consolidate" / "SKILL.md").read_text().startswith("---\nname: consolidate\n")

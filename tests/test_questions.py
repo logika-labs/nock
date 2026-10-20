@@ -13,6 +13,7 @@ from pathlib import Path
 
 import pytest
 
+from nock.consolidate import Consolidation
 from nock.hooks import HookRunner
 from nock.project import Project
 from nock.questions import Questions, Server
@@ -151,3 +152,103 @@ def test_an_elaboration_that_rewrites_nothing_leaves_the_comment_for_an_agent(
     question = questions.get(number)
     assert question["state"] == "pending" and question["owner"]["elaborate"] is False
     assert question["owner"]["comment"] == "what load?"
+
+
+def decide(project: Project, draft: dict[str, object], answer: str, *flags: str) -> int:
+    number = ask(project.root, draft)
+    result = nock(project.root, "questions", "answer", str(number), answer, *flags)
+    assert result.returncode == 0, result.stderr
+    return number
+
+
+def edited(project: Project, session: str, path: str) -> str | None:
+    payload = {"session_id": session, "tool_name": "Edit", "tool_input": {"file_path": path}}
+    output = HookRunner(project, payload).handle("PostToolUse")
+    return output["hookSpecificOutput"]["additionalContext"] if output else None
+
+
+def test_an_edit_to_a_governed_file_shows_its_standing_decisions_once(project: Project) -> None:
+    first = decide(project, DRAFT, "SQLite.", "--touches", "README.md")
+    told = edited(project, "s1", str(project.root / "README.md"))
+    assert told is not None and f"[Q{first}] Which database: SQLite." in told
+    assert edited(project, "s1", "README.md") is None
+    assert edited(project, "s1", str(project.root / ".nock" / "config.toml")) is None
+
+    second = decide(
+        project, {"title": "Which database, again", "context": "Load grew."}, "Postgres.",
+        "--touches", "README.md", "--supersedes", str(first),
+    )  # fmt: skip
+    assert Questions(project).get(first)["superseded_by"] == second
+    told = edited(project, "s2", "README.md")
+    assert told is not None and f"[Q{second}]" in told and f"[Q{first}]" not in told
+    again = nock(project.root, "questions", "answer", str(second), "x", "--supersedes", str(first))
+    assert again.returncode == 40 and "not a standing decision" in again.stderr
+
+
+def test_the_map_check_holds_citations_and_touches_to_what_exists(project: Project) -> None:
+    number = decide(project, DRAFT, "SQLite.", "--touches", "README.md")
+    questions = Questions(project)
+    questions.map.write_text(f"- If you touch the database, SQLite [Q{number}].\n")
+    assert nock(project.root, "check", "nock-map").returncode == 0
+    questions.map.write_text(f"- [Q{number}] and [Q42]\n")
+    (project.root / "README.md").unlink()
+    result = nock(project.root, "check", "nock-map")
+    assert result.returncode == 1
+    assert ".nock/questions/map.md:1: [Q42] is no question" in result.stdout
+    assert "touches `README.md`, which matches no file" in result.stdout
+
+
+def consolidate_after_one_decision(project: Project) -> None:
+    local = project.root / ".nock" / "local" / "config.toml"
+    local.write_text(local.read_text() + "[consolidate]\nquestions = 1\n")
+
+
+def test_a_round_reads_the_new_decisions_and_the_check_holds_its_map(project: Project) -> None:
+    consolidate_after_one_decision(project)
+    assert nock(project.root, "consolidate", "due").returncode == 1
+    first = decide(project, DRAFT, "SQLite.")
+    assert (
+        "consolidation is due (1 decisions since the last)"
+        in nock(project.root, "consolidate", "due").stdout
+    )
+    start = HookRunner(project, {"session_id": "s1"}).handle("SessionStart")
+    assert start is not None and "/consolidate" in start["systemMessage"]
+    material = nock(project.root, "consolidate", "material").stdout
+    assert f"## [Q{first}] Which database" in material and "There is no map yet." in material
+
+    lesson = {
+        "title": "Round per total?",
+        "context": "Totals drifted.",
+        "answer": "Yes (inferred).",
+    }
+    recorded = nock(project.root, "questions", "record", json.dumps(lesson))
+    number = int(recorded.stdout.split()[-1])
+    questions = Questions(project)
+    assert questions.get(number)["lesson"] is True and questions.get(number)["state"] == "closed"
+
+    questions.map.write_text(f"- If you touch the database, SQLite [Q{first}]; rounding [Q99].\n")
+    refused = nock(project.root, "check", "nock-map")
+    assert refused.returncode == 1 and "[Q99] is no question" in refused.stdout
+    questions.map.write_text(
+        f"- If you touch the database, SQLite [Q{first}]; rounding [Q{number}].\n"
+    )
+    assert nock(project.root, "check", "nock-map").returncode == 0
+    recorded = nock(project.root, "consolidate", "record")
+    assert recorded.returncode == 0, recorded.stderr
+    assert json.loads(Consolidation(project).record.read_text())["covered"] == [first]
+    assert nock(project.root, "consolidate", "due").returncode == 1
+
+
+def test_the_edit_hook_is_wired_for_edits_only(project: Project) -> None:
+    settings = json.loads((project.root / ".claude" / "settings.json").read_text())
+    (entry,) = settings["hooks"]["PostToolUse"]
+    assert entry["matcher"] == "Edit|MultiEdit|Write|NotebookEdit"
+
+
+def test_a_consultation_waits_for_the_reframed_task(project: Project) -> None:
+    consultation = {"intent": "Move orders to Postgres.", "context": "SQLite is slow."}
+    result = nock(project.root, "consult", json.dumps(consultation))
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert result.stdout.startswith("**The task, reframed**")
+    roles = [row["role"] for row in project.store.rows("SELECT role FROM sessions")]
+    assert roles == ["consultant"]

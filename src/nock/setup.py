@@ -9,12 +9,14 @@ import subprocess
 import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 from nock.errors import ConflictError, PreconditionError
 from nock.git import Git, GitError
-from nock.hooks import BUILT_IN_EVENTS
+from nock.hooks import BUILT_IN_EVENTS, EDIT_TOOLS
 from nock.project import NOCK_DIRECTORY, Project
-from nock.tools import NATIVE_EVENTS
+from nock.templates import Library
+from nock.tools import NATIVE_EVENTS, Event
 from nock.utils import read_json, write_atomic, write_json
 
 PACKAGE = Path(__file__).resolve().parent
@@ -50,8 +52,16 @@ branch = "main"
 sessions = 15
 days = 7
 minimum = 3
-# The reflecting agent's model; empty is Claude Code's default.
+
+[agent]
+# The model of the agents nock dispatches (elaborate, consult); empty is Claude Code's default.
 model = ""
+
+[consolidate]
+# A round is due after this many decisions, or `days` days with `minimum` decisions.
+questions = 5
+days = 7
+minimum = 1
 """
 
 GITIGNORE = "local/\n"
@@ -73,20 +83,29 @@ listed. Reach for a tool before doing the same work by hand.
   runs anything noisy or long, supervised, with its output condensed.
 - Every call and every session is recorded. Reflection rounds turn that
   record into better tools: when a session starts by saying a round is due,
-  run `.nock/nock reflect run` in the background.
+  offer the human the `/reflect` skill (and `/consolidate` for decisions).
 - When a decision is the owner's to make, and neither the code, the
   documents nor an earlier answer settles it, ask:
   `.nock/nock ask '{"title": …, "context": …, "options": […], "recommended": 1}'`
   (`--help` has the fields). Take your recommendation meanwhile, say so, and
   keep going; the answer arrives with the owner's next prompt. Decided
-  questions are the project's decisions (`.nock/nock questions list --state
-  closed`): read them before deciding again.
+  questions are the project's decisions, and `.nock/questions/map.md` says
+  when each matters: read it before starting anything serious. When you
+  close a question, name the files it governs (`--touches`) and what it
+  overturns (`--supersedes`); an edit to a governed file shows its decisions.
+- Before something serious — a feature, a migration, a redesign, a change of
+  course, or when stuck — consult:
+  `.nock/nock consult '{"intent": …, "context": …}'`. A fresh agent reads the
+  decisions and documents and reframes the task; it takes a few minutes, so
+  never for routine edits.
 - When a chore repeats, make it a tool — `.nock/nock guide` says how, in a
   page; it is live on the next call. When a rule can be checked mechanically,
   make it a check, not a note: a check beats a hook beats prose.
 """
 
 IMPORT_LINE = "@.nock/context.md"
+# The rounds an agent runs as Claude Code skills, from `briefs/NAME.md`.
+SKILLS = ("reflect", "consolidate")
 HOOK_COMMAND = '"$CLAUDE_PROJECT_DIR"/.nock/nock hook {event}'
 PERMISSION = "Bash(.nock/nock:*)"
 
@@ -167,7 +186,15 @@ class Installer:
         self.write("tools/.gitkeep", "", replace=False)
         self.import_context()
         self.wire_claude()
+        self.install_skills()
         return self.report
+
+    def install_skills(self) -> None:
+        """The `/reflect` and `/consolidate` skills, kept in step with the core like the primer."""
+        for name in SKILLS:
+            relative = f".claude/skills/{name}/SKILL.md"
+            write_atomic(self.root / relative, Library(PACKAGE / "briefs").render(f"{name}.md"))
+            self.report.written.append(relative)
 
     def copy_core(self, core: Path) -> None:
         for relative, content in core_files(PACKAGE).items():
@@ -209,19 +236,24 @@ class Installer:
         settings_path = self.root / ".claude" / "settings.json"
         settings = read_json(settings_path) if settings_path.is_file() else {}
         hooks = settings.setdefault("hooks", {})
-        listened = {*BUILT_IN_EVENTS, *(entry.event for entry in Project(self.root).registry.hooks)}
+        project_events = {entry.event for entry in Project(self.root).registry.hooks}
+        listened = {*BUILT_IN_EVENTS, *project_events}
         for event in sorted(NATIVE_EVENTS[event] for event in listened):
             command = HOOK_COMMAND.format(event=event)
+            entry: dict[str, Any] = {"hooks": [{"type": "command", "command": command}]}
+            # nock's own after-tool handler wants only edits; a project hook may want every tool.
+            if event == NATIVE_EVENTS[Event.AFTER_TOOL] and Event.AFTER_TOOL not in project_events:
+                entry["matcher"] = EDIT_TOOLS
             entries = hooks.setdefault(event, [])
             entries[:] = [
-                entry
-                for entry in entries
+                existing
+                for existing in entries
                 if not any(
                     ".nock/nock hook" in str(hook.get("command", ""))
-                    for hook in entry.get("hooks", [])
+                    for hook in existing.get("hooks", [])
                 )
             ]
-            entries.append({"hooks": [{"type": "command", "command": command}]})
+            entries.append(entry)
         allowed = settings.setdefault("permissions", {}).setdefault("allow", [])
         if PERMISSION not in allowed:
             allowed.append(PERMISSION)

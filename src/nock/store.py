@@ -1,7 +1,7 @@
 """The telemetry store: one SQLite database in `.nock/local/`, never committed —
 every call to a nock command, every supervised process, and what each Claude
-Code session did, read from its transcript (and which questions' answers it
-was told). Reflection reads it; so can any
+Code session did, read from its transcript (and which questions' answers and
+decisions it was shown). Reflection reads it; so can any
 agent, with `nock query`."""
 
 from __future__ import annotations
@@ -85,6 +85,10 @@ CREATE TABLE IF NOT EXISTS told (
     session TEXT NOT NULL,       -- a session told of the owner's input on a question it asked
     question INTEGER NOT NULL,
     updated TEXT NOT NULL        -- the question's `updated` when it was told
+);
+CREATE TABLE IF NOT EXISTS reminded (
+    session TEXT NOT NULL,       -- a session shown a decision governing a file it edited
+    question INTEGER NOT NULL
 );
 """
 

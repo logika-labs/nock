@@ -49,14 +49,19 @@ class Dispatcher:
         self.project = project
 
     def launch(
-        self, role: str, brief: str, directory: Path, variables: dict[str, str] | None = None
+        self,
+        role: str,
+        brief: str,
+        directory: Path,
+        variables: dict[str, str] | None = None,
+        deadline: float | None = None,
     ) -> Session:
         session = str(uuid.uuid4())
         settings = self.project.configuration
-        command = [*settings.get("reflect.command")]
+        command = [*settings.get("agent.command")]
         command += ["-p", "--output-format", "stream-json", "--verbose", "--session-id", session]
         command += ["--permission-mode", "bypassPermissions"]
-        model = str(settings.get("reflect.model") or "")
+        model = str(settings.get("agent.model") or "")
         if model:
             command += ["--model", model]
         command += ["--", self.carried(session, brief)]
@@ -65,8 +70,8 @@ class Dispatcher:
             self.project,
             command,
             directory=directory,
-            deadline=float(settings.get("reflect.deadline")),
-            silence=float(settings.get("reflect.silence")),
+            deadline=deadline or float(settings.get("agent.deadline")),
+            silence=float(settings.get("agent.silence")),
             environment={**self.environment(session, role), **(variables or {})},
             session=session,
         ).run()
