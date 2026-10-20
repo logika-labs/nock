@@ -167,7 +167,9 @@ class World:
 
 def story(out: Path, model: str) -> None:
     out.mkdir(parents=True, exist_ok=True)
-    prompt = f"Read {HERE / 'brief.md'} in full, then write STORY.md in this directory as it asks."
+    # The writer sees the brief and nothing else: no word of what the story is for.
+    shutil.copy2(HERE / "brief.md", out / "brief.md")
+    prompt = "Read brief.md, in the current directory, in full. Then write STORY.md beside it, as it asks. Work only in the current directory."
     record = claude(prompt, out, model, str(uuid.uuid4()))
     print(f"story: ${record.get('total_cost_usd', 0):.2f}, {record['seconds']}s", flush=True)
 
