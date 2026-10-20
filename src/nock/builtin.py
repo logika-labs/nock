@@ -18,6 +18,7 @@ from nock.fixtures import Shell
 from nock.generators import Catalogs, Generators
 from nock.processes import Output
 from nock.project import Project
+from nock.questions import Draft, Questions, Server, State, said
 from nock.reflect import ROUND_VARIABLE, Record, Reflection, Rounds, stamp, tool_rows
 from nock.schema import check_schema
 from nock.sessions import Sessions
@@ -221,6 +222,86 @@ def reflect_record(project: Project, record: Record) -> str:
     name = os.environ.get(ROUND_VARIABLE) or stamp()
     path = Rounds(project).write(name, record)
     return f"recorded {path.relative_to(project.here)}"
+
+
+# --- questions ---------------------------------------------------------------------
+
+
+@command
+def ask(project: Project, question: Draft) -> list[str]:
+    """Ask the owner what the code, the documents and earlier answers cannot
+    settle — a decision that is theirs to make. Meanwhile take the option you
+    recommend, say so in your work, and keep going; the owner answers on
+    `.nock/nock questions page`, and the answer reaches this session."""
+    number, problem = Questions(project).ask(question)
+    return [f"asked question {number}", *([problem] if problem else [])]
+
+
+@command(name="list", group="questions")
+def questions_list(
+    project: Project,
+    *,
+    state: Annotated[
+        State | None, Option(help="Only questions in this state; the default is all but closed.")
+    ] = None,
+) -> list[dict[str, Any]]:
+    """The questions, and where each stands: open waits on the owner, pending
+    on an agent."""
+    return [
+        {
+            "number": question["number"],
+            "state": question["state"],
+            "priority": question["priority"],
+            "title": question["title"],
+            "owner": said(question) if question["state"] == State.PENDING else None,
+        }
+        for question in Questions(project).all()
+        if (question["state"] == state if state else question["state"] != State.CLOSED)
+    ]
+
+
+@command(name="show", group="questions")
+def questions_show(project: Project, number: int) -> dict[str, Any]:
+    """One question in full: its context, options, and the owner's input or the answer."""
+    return Questions(project).get(number)
+
+
+@command(name="answer", group="questions")
+def questions_answer(project: Project, number: int, answer: str) -> list[str]:
+    """Close a question: ANSWER is the decision in its own words, the owner's
+    comment folded in, so that it reads on its own later. Then act on it, and
+    commit what it changed with the work."""
+    problem = Questions(project).answer(number, answer)
+    return [f"answered question {number}", *([problem] if problem else [])]
+
+
+@command(name="rewrite", group="questions")
+def questions_rewrite(project: Project, number: int, question: Draft) -> list[str]:
+    """Say a question again, with what the owner found missing: its context,
+    options and recommendation rewritten. It is open again."""
+    problem = Questions(project).rewrite(number, question)
+    return [f"rewrote question {number}", *([problem] if problem else [])]
+
+
+@command(name="elaborate", group="questions")
+def questions_elaborate(project: Project, number: int) -> dict[str, Any]:
+    """Have an agent elaborate on a question, as the owner asked: it reads the
+    project and rewrites the question. The page runs this itself."""
+    outcome = Questions(project).elaborate(number)
+    if not outcome["elaborated"]:
+        raise Failed(f"question {number} was not elaborated", outcome)
+    return outcome
+
+
+@command(name="page", group="questions")
+def questions_page(
+    project: Project,
+    *,
+    port: Annotated[int, Option(help="0 picks a free one.")] = 8765,
+    open_page: Annotated[bool, Option("--open", help="Open it in the browser.")] = False,
+) -> None:
+    """Serve the owner's page, where questions are answered, until stopped."""
+    Server(Questions(project), port).run(open_page)
 
 
 # --- generators -----------------------------------------------------------------------

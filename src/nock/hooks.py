@@ -1,7 +1,8 @@
 """Claude Code's hook events, handled: `nock hook EVENT` reads the payload on
 stdin and answers in Claude Code's hook format. nock's own: a session starts
-knowing the toolbox (and whether a reflection round is due), and its
-transcript is read into telemetry when it ends. The project's `@nock.hook`s
+knowing the toolbox (and whether a reflection round is due, or questions
+wait on an agent), a prompt brings the owner's answers to the questions the
+session asked, and its transcript is read into telemetry when it ends. The project's `@nock.hook`s
 run after. Every handler fails open — a nock that cannot load must never block
 the tool call that would fix it."""
 
@@ -14,13 +15,14 @@ from typing import Any
 
 from nock.fixtures import Call, Scope
 from nock.project import Project
+from nock.questions import Questions, said
 from nock.reflect import Reflection
 from nock.sessions import Sessions
 from nock.tools import NATIVE_EVENTS, Event
 
 EVENTS = {native: event for event, native in NATIVE_EVENTS.items()}
 # The events nock itself always listens to.
-BUILT_IN_EVENTS = (Event.SESSION_START, Event.SESSION_END)
+BUILT_IN_EVENTS = (Event.SESSION_START, Event.PROMPT, Event.SESSION_END)
 
 
 class Block(Exception):
@@ -37,6 +39,8 @@ class HookRunner:
         messages: list[str] = []
         if event is Event.SESSION_START:
             messages.append(self.session_start())
+        elif event is Event.PROMPT:
+            messages.append(self.answers())
         elif event is Event.SESSION_END:
             self.session_end()
         blocks: list[str] = []
@@ -81,7 +85,34 @@ class HookRunner:
             due = Reflection(self.project).due()
             if due:
                 lines.append(f"nock: {due} — run `.nock/nock reflect run` in the background.")
+            pending = [
+                f"{question['number']} ({question['title']})"
+                for question in Questions(self.project).pending()
+                if not question["owner"]["elaborate"]
+            ]
+            if pending:
+                lines.append(
+                    f"nock: the owner answered question(s) {', '.join(pending)} — they wait on an agent: `.nock/nock questions list`."
+                )
         return "\n".join(lines)
+
+    def answers(self) -> str:
+        """The owner's input on this session's questions, the first time it sees it."""
+        session = self.payload.get("session_id")
+        if not isinstance(session, str):
+            return ""
+        lines = []
+        for question in Questions(self.project).news_for(session):
+            lines.append(f"- question {question['number']} ({question['title']}): {said(question)}")
+        if not lines:
+            return ""
+        return "\n".join(
+            [
+                "nock: the owner answered your question(s):",
+                *lines,
+                "Act on each, then close it: `.nock/nock questions answer N ANSWER`, the decision in its own words.",
+            ]
+        )
 
     def session_end(self) -> None:
         transcript = self.payload.get("transcript_path")

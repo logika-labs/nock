@@ -49,8 +49,11 @@ src/nock/
   reflect.py         Reflection (due, material, run, land), Rounds, Material, Worktree
   dispatch.py        Dispatcher: launch a headless `claude -p` session and ingest it
   hooks.py           `nock hook EVENT`: nock's own handlers, then the project's
+  questions.py       Questions (ask, answer, rewrite, elaborate) and the owner's page
+  questions.html     the page
   briefs/
     reflect.md       the reflecting agent's brief (a template)
+    elaborate.md     the brief of the agent that elaborates on a question
     _framework.md    the framework on one page: `nock guide`, included in the brief
 
   # the rest of the toolbox
@@ -187,13 +190,14 @@ evidence, or it returns the `Output` when `check=False`.
 
 ## Telemetry
 
-`store.Store` is one SQLite file, `.nock/local/nock.db`, with five tables:
+`store.Store` is one SQLite file, `.nock/local/nock.db`, with six tables:
 
 | table | written by | when |
 |---|---|---|
 | `calls` | `telemetry.Calls` | every call, including refusals |
 | `runs` | `processes.Supervisor` | every supervised process |
 | `sessions`, `prompts`, `events` | `sessions.Sessions.ingest` | at SessionEnd, at a round's start (`catch_up`), and after a dispatched session |
+| `told` | `questions.Questions.news_for` | when a session is told the owner's input on a question it asked |
 
 Sessions are tied to calls through `CLAUDE_CODE_SESSION_ID`, which Claude Code
 sets in its Bash tool and nock records on each call.
@@ -220,7 +224,10 @@ else and hands it to `hooks.run`, which:
 1. reads the payload from stdin and discovers the project from its `cwd`;
 2. runs nock's own handlers:
    - **SessionStart** returns the project's tools, any load failures, and,
-     for a session the human started, whether a round is due;
+     for a session the human started, whether a round is due and which
+     answered questions wait on an agent;
+   - **UserPromptSubmit** tells the session the owner's input on the
+     questions it asked, once per change (the `told` table);
    - **SessionEnd** ingests the transcript;
 3. runs the project's `@nock.hook`s for the event, each in a fixture
    `Scope` with `payload`. Returned text is joined into `additionalContext`,

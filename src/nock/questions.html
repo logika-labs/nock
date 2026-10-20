@@ -1,0 +1,684 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>nock questions</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap">
+<style>
+/* nock's studio look: warm paper, off-black ink, one red for everything interactive,
+   white cards with borders and no shadows, outlined pills, uppercase labels.
+   Layout: a red field band, then one centred column of questions; a question opens in place. */
+:root {
+  --paper: #f2efe9;
+  --ink: #393939;
+  --red: #da121a;
+  --white: #ffffff;
+  --grey: #8a8a8a;
+  --ok-hue: #1f7a44;
+  --warning-hue: #d1881b;
+  --error-hue: #a4161a;
+  --info-hue: #1b94d1;
+
+  --background: var(--paper);
+  --foreground: var(--ink);
+  --card: var(--white);
+  --muted: color-mix(in oklab, var(--grey) 62%, var(--ink));
+  --border: color-mix(in oklab, var(--paper) 85%, var(--ink));
+  --input: color-mix(in oklab, var(--paper) 78%, var(--ink));
+  --hover: color-mix(in oklab, var(--paper) 55%, var(--white));
+  --selection: var(--red);
+  --selection-foreground: var(--white);
+  --selection-tint: color-mix(in oklab, var(--red) 8%, var(--white));
+  --ring: var(--red);
+  --link: var(--red);
+  --ok: var(--ok-hue);
+  --ok-tint: color-mix(in oklab, var(--ok-hue) 9%, var(--white));
+  --warning: var(--warning-hue);
+  --error: var(--error-hue);
+  --info: var(--info-hue);
+  --field: var(--red);
+  --field-foreground: var(--white);
+  --field-grid: color-mix(in oklab, var(--white) 20%, transparent);
+
+  --sans: "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "Geist Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --column: 46rem;
+  --number: 2.25rem;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --background: color-mix(in oklab, var(--ink) 94%, var(--paper));
+    --foreground: color-mix(in oklab, var(--white) 94%, var(--ink));
+    --card: color-mix(in oklab, var(--ink) 86%, var(--paper));
+    --muted: color-mix(in oklab, var(--grey) 70%, var(--paper));
+    --border: color-mix(in oklab, var(--paper) 16%, var(--ink));
+    --input: color-mix(in oklab, var(--paper) 26%, var(--ink));
+    --hover: color-mix(in oklab, var(--ink) 80%, var(--paper));
+    --selection: color-mix(in oklab, var(--red) 70%, var(--white));
+    --selection-tint: color-mix(in oklab, var(--red) 16%, var(--card));
+    --ring: color-mix(in oklab, var(--red) 62%, var(--paper));
+    --link: color-mix(in oklab, var(--red) 55%, var(--paper));
+    --ok: color-mix(in oklab, var(--ok-hue) 72%, var(--white));
+    --ok-tint: color-mix(in oklab, var(--ok-hue) 16%, var(--card));
+    --warning: color-mix(in oklab, var(--warning-hue) 74%, var(--white));
+    --error: color-mix(in oklab, var(--error-hue) 74%, var(--white));
+    --info: color-mix(in oklab, var(--info-hue) 70%, var(--white));
+    --field: color-mix(in oklab, var(--red) 70%, var(--ink));
+    --field-grid: color-mix(in oklab, var(--white) 16%, transparent);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --background: color-mix(in oklab, var(--ink) 94%, var(--paper));
+  --foreground: color-mix(in oklab, var(--white) 94%, var(--ink));
+  --card: color-mix(in oklab, var(--ink) 86%, var(--paper));
+  --muted: color-mix(in oklab, var(--grey) 70%, var(--paper));
+  --border: color-mix(in oklab, var(--paper) 16%, var(--ink));
+  --input: color-mix(in oklab, var(--paper) 26%, var(--ink));
+  --hover: color-mix(in oklab, var(--ink) 80%, var(--paper));
+  --selection: color-mix(in oklab, var(--red) 70%, var(--white));
+  --selection-tint: color-mix(in oklab, var(--red) 16%, var(--card));
+  --ring: color-mix(in oklab, var(--red) 62%, var(--paper));
+  --link: color-mix(in oklab, var(--red) 55%, var(--paper));
+  --ok: color-mix(in oklab, var(--ok-hue) 72%, var(--white));
+  --ok-tint: color-mix(in oklab, var(--ok-hue) 16%, var(--card));
+  --warning: color-mix(in oklab, var(--warning-hue) 74%, var(--white));
+  --error: color-mix(in oklab, var(--error-hue) 74%, var(--white));
+  --info: color-mix(in oklab, var(--info-hue) 70%, var(--white));
+  --field: color-mix(in oklab, var(--red) 70%, var(--ink));
+  --field-grid: color-mix(in oklab, var(--white) 16%, transparent);
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html, body { background: var(--background); color: var(--foreground); }
+body { margin: 0; font: 400 15px/1.6 var(--sans); -webkit-font-smoothing: antialiased; }
+button:not(:disabled), label[for] { cursor: pointer; }
+.frame {
+  max-width: calc(var(--column) + 32px); margin: 0 auto;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.label { font: 500 12px/16px var(--sans); letter-spacing: .04em; text-transform: uppercase; }
+.numeral { font-variant-numeric: tabular-nums; }
+
+/* The field band: the page's one loud surface. */
+.band {
+  background-color: var(--field); color: var(--field-foreground);
+  background-image:
+    linear-gradient(to right, var(--field-grid) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--field-grid) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+.band .frame { padding-block: 40px 32px; display: grid; gap: 6px; }
+.band .wordmark { opacity: .85; }
+.band h1 { margin: 0; font: 700 32px/40px var(--sans); letter-spacing: -.02em; }
+.band p { margin: 0; font-size: 16px; opacity: .92; }
+
+nav { display: flex; flex-wrap: wrap; align-items: center; gap: 0 24px; border-bottom: 1px solid var(--border); margin-top: 8px; }
+
+/* Search and filters: one line under the tabs, every control a bare field with a bottom border. */
+.tools { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px; padding-top: 20px; }
+.search { position: relative; flex: 1 1 16rem; min-width: 0; display: flex; align-items: center; }
+.search svg { position: absolute; left: 0; width: 15px; height: 15px; color: var(--muted); pointer-events: none; }
+.search input[type="search"] { padding-left: 24px; font-size: 14px; }
+.search input::-webkit-search-cancel-button { filter: grayscale(1); }
+/* Priority chips: toggles, several at once, each with how many it would show. */
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip {
+  display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 11px; border-radius: 999px;
+  border: 1px solid var(--input); background: transparent; color: var(--foreground);
+  font: 500 11px/1 var(--sans); letter-spacing: .05em; text-transform: uppercase; transition: background .12s, border-color .12s;
+}
+.chip .count { color: var(--muted); font-variant-numeric: tabular-nums; letter-spacing: 0; }
+.chip:hover { background: var(--card); }
+.chip[data-priority="blocking"] { --tone: var(--error); }
+.chip[data-priority="important"] { --tone: var(--warning); }
+.chip[data-priority="normal"] { --tone: var(--foreground); }
+.chip[aria-pressed="true"] { border-color: var(--tone); color: var(--tone); background: color-mix(in oklab, var(--tone) 10%, var(--card)); }
+.chip[aria-pressed="true"] .count { color: inherit; }
+.chip:disabled { opacity: .4; cursor: default; background: transparent; }
+.chip:focus-visible, .sort button:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+/* Sort: three words, the chosen one in ink and underlined. */
+.sort { display: flex; align-items: center; gap: 2px; margin-left: auto; }
+.sort .label { color: var(--muted); margin-right: 6px; }
+.sort button {
+  border: 0; background: none; padding: 4px 6px; border-radius: 4px; color: var(--muted); font: 13px/20px var(--sans);
+}
+.sort button:hover { color: var(--foreground); }
+.sort button[aria-pressed="true"] { color: var(--foreground); font-weight: 600; }
+nav [role="tab"] {
+  display: inline-flex; align-items: center; gap: 8px; margin-bottom: -1px;
+  padding: 14px 2px 12px; border: 0; border-bottom: 2px solid transparent; background: none;
+  color: var(--muted); font: 500 12px/16px var(--sans); letter-spacing: .04em; text-transform: uppercase;
+}
+nav [role="tab"]:hover { color: var(--foreground); }
+nav [role="tab"][aria-selected="true"] { color: var(--foreground); border-bottom-color: var(--selection); }
+nav .count { color: var(--muted); font-variant-numeric: tabular-nums; }
+
+main { padding-block: 20px 80px; }
+#list { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; }
+
+.question { background: var(--card); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+.question.blocking { border-color: color-mix(in oklab, var(--error) 45%, var(--border)); }
+.row {
+  display: grid; grid-template-columns: var(--number) minmax(0, 1fr) auto; align-items: start; gap: 14px;
+  width: 100%; padding: 16px 18px; border: 0; background: none; color: inherit; font: inherit; text-align: left;
+}
+.row:hover { background: var(--hover); }
+.row:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; }
+.row .number { color: var(--muted); font: 500 14px/24px var(--sans); font-variant-numeric: tabular-nums; text-align: right; }
+.row .title { font: 600 16px/24px var(--sans); letter-spacing: -.005em; text-wrap: balance; }
+.row .side { display: flex; align-items: center; gap: 10px; justify-self: end; height: 24px; }
+.row time { color: var(--muted); font-size: 13px; line-height: 24px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.chevron { width: 16px; height: 16px; color: var(--muted); transition: transform .15s; flex: none; display: block; }
+.question.open .chevron { transform: rotate(90deg); }
+
+.badge {
+  display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;
+  border: 1px solid var(--input); border-radius: 999px; padding: 4px 8px;
+  font: 500 10px/1 var(--sans); letter-spacing: .05em; text-transform: uppercase; color: var(--foreground);
+}
+.badge.error { color: var(--error); border-color: var(--error); }
+.badge.warning { color: var(--warning); border-color: var(--warning); }
+.badge.info { color: var(--info); border-color: var(--info); }
+.badge.ok { color: var(--ok); border-color: var(--ok); }
+
+.body {
+  display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px; border-top: 1px solid var(--border);
+  padding: 20px 18px 18px calc(18px + var(--number) + 14px);
+}
+.context { min-width: 0; overflow-wrap: anywhere; max-width: 65ch; }
+.context > :first-child { margin-top: 0; }
+.context > :last-child { margin-bottom: 0; }
+.context p, .context ul, .context ol { margin: 0 0 .75em; }
+.context ul, .context ol { padding-left: 1.25em; }
+.context h2, .context h3, .context h4, .context h5 { font: 700 15px/24px var(--sans); margin: 1.1em 0 .3em; }
+.context code { font: 13px var(--mono); background: var(--background); padding: 1px 4px; border-radius: 4px; }
+.context pre { background: var(--background); color: var(--foreground); padding: 12px 14px; border-radius: 8px; overflow-x: auto; }
+.context pre code { background: none; padding: 0; color: inherit; }
+.context a { color: var(--link); text-underline-offset: 2px; }
+.context a:hover { text-decoration: none; }
+
+.options { display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px; margin: 0; padding: 0; border: 0; min-width: 0; }
+.options legend { color: var(--muted); padding: 0; margin-bottom: 8px; }
+.option {
+  display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; align-items: center; gap: 12px;
+  padding: 8px 10px; margin-inline: -10px; border-radius: 10px;
+}
+.option:hover { background: var(--hover); }
+.option:has(input:checked) { background: var(--selection-tint); }
+.option input { position: absolute; opacity: 0; pointer-events: none; }
+.dial {
+  display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%;
+  border: 1.5px solid var(--input); color: var(--muted); background: var(--card);
+  font: 600 13px/1 var(--sans); font-variant-numeric: tabular-nums;
+  transition: background .12s, border-color .12s, color .12s;
+}
+.option:hover .dial { border-color: var(--foreground); color: var(--foreground); }
+.option input:checked + .dial { background: var(--selection); border-color: var(--selection); color: var(--selection-foreground); }
+.option input:focus-visible + .dial { outline: 2px solid var(--ring); outline-offset: 2px; }
+.option input:disabled ~ * { cursor: default; }
+.option .text { min-width: 0; }
+
+textarea, input[type="search"] {
+  width: 100%; padding: 4px 0; border: 0; border-bottom: 1px solid var(--input); border-radius: 0;
+  font: 15px/24px var(--sans); color: var(--foreground); background: transparent; outline: none;
+}
+textarea { display: block; resize: none; overflow: hidden; field-sizing: content; min-height: 32px; }
+textarea::placeholder, input[type="search"]::placeholder { color: color-mix(in oklab, var(--muted) 60%, transparent); }
+textarea:focus-visible, input[type="search"]:focus-visible { border-bottom-color: var(--ring); }
+
+.actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
+.hint { color: var(--muted); font-size: 13px; }
+.hint.error { color: var(--error); }
+kbd {
+  font: 500 11px/1 var(--mono); padding: 3px 5px; border: 1px solid var(--border); border-bottom-width: 2px;
+  border-radius: 4px; color: var(--foreground); background: var(--card);
+}
+.buttons { display: flex; gap: 8px; margin-left: auto; }
+.button {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 40px; padding: 0 16px;
+  border-radius: 6px; border: 1px solid transparent; font: 500 14px var(--sans); transition: background .12s;
+}
+.button.primary { background: var(--selection); border-color: var(--selection); color: var(--selection-foreground); }
+.button.primary:hover { background: color-mix(in oklab, var(--selection) 88%, var(--ink)); }
+.button.secondary { background: var(--card); border-color: var(--border); color: var(--foreground); }
+.button.secondary:hover, .button.ghost:hover { background: var(--hover); }
+.button.ghost { background: none; color: var(--foreground); }
+.button:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+.button:disabled { opacity: .5; cursor: not-allowed; }
+
+.panel { border-radius: 10px; padding: 14px 16px; display: grid; gap: 6px; max-width: 65ch; }
+.panel .label { display: flex; align-items: center; gap: 8px; }
+.panel.agent { background: var(--background); }
+.panel.agent .label { color: var(--muted); }
+.panel.ok { background: var(--ok-tint); }
+.panel.ok .label { color: var(--ok); }
+.panel .context { max-width: none; }
+.spinner {
+  width: 12px; height: 12px; border-radius: 50%; border: 2px solid currentColor; border-top-color: transparent;
+  animation: spin .8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+
+.empty { text-align: center; padding: 64px 16px; color: var(--muted); display: grid; gap: 6px; justify-items: center; }
+.empty strong { color: var(--foreground); font: 700 17px/24px var(--sans); }
+.empty code { font: 13px var(--mono); background: var(--card); padding: 1px 5px; border-radius: 4px; }
+
+.toast {
+  position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom, 0px)); transform: translate(-50%, 8px);
+  background: var(--foreground); color: var(--background); padding: 10px 16px; border-radius: 8px; font-size: 14px;
+  opacity: 0; pointer-events: none; transition: opacity .15s, transform .15s; max-width: calc(100vw - 32px);
+}
+.toast.shown { opacity: 1; transform: translate(-50%, 0); }
+
+@media (max-width: 560px) {
+  :root { --number: 1.5rem; }
+  .row { grid-template-columns: var(--number) minmax(0, 1fr); padding: 14px; gap: 10px; }
+  .row .side { grid-column: 2; justify-self: start; }
+  .body { padding: 16px 14px 16px; }
+  .band .frame { padding-block: 28px 24px; }
+  .band h1 { font-size: 26px; line-height: 32px; }
+  .search { flex-basis: 100%; }
+  .sort { margin-left: 0; padding-block: 4px 8px; flex-basis: 100%; }
+}
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; }
+  .spinner { animation-duration: 2.4s; }
+}
+</style>
+</head>
+<body>
+<header class="band">
+  <div class="frame">
+    <span class="label wordmark">nock</span>
+    <h1>Questions</h1>
+    <p id="summary">Loading…</p>
+  </div>
+</header>
+<div class="frame">
+  <nav role="tablist" aria-label="Which questions">
+    <button type="button" role="tab" data-tab="open" aria-selected="true">waiting on you <span class="count" id="count-open"></span></button>
+    <button type="button" role="tab" data-tab="pending" aria-selected="false">with an agent <span class="count" id="count-pending"></span></button>
+    <button type="button" role="tab" data-tab="closed" aria-selected="false">decided <span class="count" id="count-closed"></span></button>
+    <div class="sort" role="group" aria-label="Sort">
+      <span class="label">sort</span>
+      <button type="button" data-sort="priority" aria-pressed="true">priority</button>
+      <button type="button" data-sort="newest" aria-pressed="false">newest</button>
+      <button type="button" data-sort="oldest" aria-pressed="false">oldest</button>
+    </div>
+  </nav>
+  <div class="tools">
+    <label class="search" for="search">
+      <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="7" cy="7" r="4.75" stroke="currentColor" stroke-width="1.5"/><path d="m10.5 10.5 3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+      <input type="search" id="search" placeholder="search" autocomplete="off" aria-label="Search questions">
+    </label>
+    <div class="chips" role="group" aria-label="Filter by priority">
+      <button type="button" class="chip" data-priority="blocking" aria-pressed="false">blocking <span class="count"></span></button>
+      <button type="button" class="chip" data-priority="important" aria-pressed="false">important <span class="count"></span></button>
+      <button type="button" class="chip" data-priority="normal" aria-pressed="false">normal <span class="count"></span></button>
+    </div>
+  </div>
+  <main><section id="list" aria-live="polite"></section></main>
+</div>
+<div class="toast" id="toast" role="status"></div>
+<script>
+const PRIORITY = { blocking: 0, important: 1, normal: 2 };
+const CHEVRON = '<svg class="chevron" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M6 3.5 10.5 8 6 12.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+const MAC = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
+const state = { search: "", priorities: new Set(), sort: "priority", tab: "open", questions: [], expanded: new Set(), drafts: new Map(), active: null, seen: "" };
+
+function escape(text) {
+  return String(text).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+}
+
+// --- time: relative and local, the exact moment on hover ---------------------------
+
+const RELATIVE = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
+const UNITS = [["year", 31536000], ["month", 2592000], ["week", 604800], ["day", 86400], ["hour", 3600], ["minute", 60]];
+function ago(moment) {
+  const seconds = (new Date(moment).getTime() - Date.now()) / 1000;
+  if (Math.abs(seconds) < 45) return "just now";
+  for (const [unit, size] of UNITS) {
+    if (Math.abs(seconds) >= size || unit === "minute") return RELATIVE.format(Math.round(seconds / size), unit);
+  }
+}
+function exact(moment) {
+  return new Date(moment).toLocaleString(undefined, { dateStyle: "full", timeStyle: "short" });
+}
+function time(moment) {
+  if (!moment) return "";
+  return `<time datetime="${escape(moment)}" title="${escape(exact(moment))}" data-ago>${escape(ago(moment))}</time>`;
+}
+function refreshTimes() {
+  for (const element of document.querySelectorAll("time[data-ago]")) element.textContent = ago(element.dateTime);
+}
+
+// --- Markdown, as much as questions use ----------------------------------------------
+
+function inline(text) {
+  return escape(text)
+    .replace(/`([^`]+)`/g, "<code>$1</code>")
+    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+    .replace(/(^|[^*])\*([^*\s][^*]*)\*/g, "$1<em>$2</em>")
+    .replace(/\[([^\]]+)\]\((https?:[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+}
+function markdown(source) {
+  const lines = String(source || "").replace(/\r/g, "").split("\n");
+  const out = [];
+  let paragraph = [], list = null;
+  const flush = () => {
+    if (paragraph.length) out.push(`<p>${inline(paragraph.join(" "))}</p>`);
+    paragraph = [];
+    if (list) out.push(`<${list.tag}>${list.items.map(item => `<li>${inline(item)}</li>`).join("")}</${list.tag}>`);
+    list = null;
+  };
+  for (let index = 0; index < lines.length; index++) {
+    const line = lines[index];
+    if (line.trimStart().startsWith("```")) {
+      flush();
+      const code = [];
+      while (++index < lines.length && !lines[index].trimStart().startsWith("```")) code.push(lines[index]);
+      out.push(`<pre><code>${escape(code.join("\n"))}</code></pre>`);
+      continue;
+    }
+    const heading = line.match(/^(#{1,4})\s+(.*)$/);
+    const bullet = line.match(/^\s*[-*]\s+(.*)$/);
+    const numbered = line.match(/^\s*\d+[.)]\s+(.*)$/);
+    if (heading) { flush(); const level = heading[1].length + 1; out.push(`<h${level}>${inline(heading[2])}</h${level}>`); }
+    else if (bullet || numbered) {
+      const tag = bullet ? "ul" : "ol";
+      if (paragraph.length || (list && list.tag !== tag)) flush();
+      list = list || { tag, items: [] };
+      list.items.push((bullet || numbered)[1]);
+    }
+    else if (!line.trim()) flush();
+    else if (list && /^\s{2,}/.test(line)) list.items[list.items.length - 1] += " " + line.trim();
+    else { if (list) flush(); paragraph.push(line.trim()); }
+  }
+  flush();
+  return out.join("");
+}
+
+// --- the questions -----------------------------------------------------------------
+
+function find(number) { return state.questions.find(question => question.number === number); }
+function elaborating(question) { return question.state === "pending" && question.owner.elaborate; }
+function draft(question) {
+  if (!state.drafts.has(question.number)) {
+    state.drafts.set(question.number, { choice: question.owner.choice ?? question.recommended, comment: question.owner.comment ?? "" });
+  }
+  return state.drafts.get(question.number);
+}
+
+function badges(question) {
+  const found = [];
+  if (question.state !== "closed" && question.priority === "blocking") found.push('<span class="badge error">blocking</span>');
+  if (question.state !== "closed" && question.priority === "important") found.push('<span class="badge warning">important</span>');
+  if (elaborating(question)) found.push('<span class="badge info">elaborating</span>');
+  return found.join("");
+}
+
+function options(question, editable) {
+  if (!question.options.length) return "";
+  const chosen = editable ? draft(question).choice : question.owner.choice;
+  const rows = question.options.map((text, index) => {
+    const number = index + 1;
+    const id = `q${question.number}-${number}`;
+    const suggested = number === question.recommended ? '<span class="badge">suggested</span>' : "";
+    return `<label class="option" for="${id}">
+      <input type="radio" id="${id}" name="q${question.number}" value="${number}" ${number === chosen ? "checked" : ""} ${editable ? "" : "disabled"}>
+      <span class="dial">${number}</span>
+      <span class="text">${inline(text)}</span>
+      ${suggested}
+    </label>`;
+  }).join("");
+  return `<fieldset class="options"><legend class="label">options</legend>${rows}</fieldset>`;
+}
+
+function said(question) {
+  const owner = question.owner, words = [];
+  if (owner.choice) words.push(`You chose <strong>${owner.choice}</strong>, ${inline(question.options[owner.choice - 1])}.`);
+  if (owner.comment) words.push(inline(owner.comment));
+  return words.join(" ") || "You asked for more.";
+}
+
+function body(question) {
+  const parts = [`<div class="context">${markdown(question.context)}</div>`];
+  if (question.state === "open") {
+    const count = question.options.length;
+    const keys = [count ? `<kbd>1</kbd>${count > 1 ? `–<kbd>${count}</kbd>` : ""} to choose` : "", `<kbd>${MAC ? "⌘" : "Ctrl"}</kbd> <kbd>↵</kbd> to answer`].filter(Boolean).join(" · ");
+    parts.push(options(question, true));
+    parts.push(`<textarea id="comment-${question.number}" data-number="${question.number}" rows="1" aria-label="Comment" placeholder="${count ? "Add a comment (optional)" : "Your answer"}">${escape(draft(question).comment)}</textarea>`);
+    parts.push(`<div class="actions">
+      <span class="hint" id="hint-${question.number}">${keys}</span>
+      <div class="buttons">
+        <button type="button" class="button ghost" data-action="elaborate" data-number="${question.number}">elaborate</button>
+        <button type="button" class="button primary" data-action="answer" data-number="${question.number}">answer</button>
+      </div>
+    </div>`);
+  } else if (question.state === "pending") {
+    const heading = elaborating(question) ? '<span class="spinner" aria-hidden="true"></span>an agent is looking into it' : "with an agent";
+    parts.push(`<div class="panel agent"><span class="label">${heading}</span><div>${said(question)}</div></div>`);
+    parts.push(`<div class="actions"><span class="hint">${elaborating(question) ? "The question comes back here, rewritten." : "It reaches the session that asked when you next type there."}</span>
+      <div class="buttons"><button type="button" class="button secondary" data-action="withdraw" data-number="${question.number}">take back</button></div></div>`);
+  } else {
+    parts.push(`<div class="panel ok"><span class="label">decided</span><div class="context">${markdown(question.answer)}</div></div>`);
+  }
+  return `<div class="body">${parts.join("")}</div>`;
+}
+
+function matches(question) {
+  if (state.priorities.size && !state.priorities.has(question.priority)) return false;
+  const words = state.search.toLowerCase().split(/\s+/).filter(Boolean);
+  if (!words.length) return true;
+  const text = [question.number, question.title, question.context, ...question.options, question.owner.comment, question.answer]
+    .filter(Boolean).join(" ").toLowerCase();
+  return words.every(word => text.includes(word));
+}
+
+// When a question was asked, or — once decided — when it was decided.
+function moment(question) { return question.state === "closed" ? question.updated : question.asked.moment; }
+
+function visible() {
+  const newest = (left, right) => moment(right).localeCompare(moment(left));
+  const order = {
+    priority: (left, right) => (PRIORITY[left.priority] - PRIORITY[right.priority]) || left.number - right.number,
+    newest,
+    oldest: (left, right) => newest(right, left),
+  }[state.sort];
+  return state.questions.filter(question => question.state === state.tab && matches(question)).sort(order);
+}
+
+const EMPTY_SEARCH = "<strong>No matches</strong><span>Nothing in this tab fits the search and filters.</span>";
+const EMPTY = {
+  open: "<strong>Nothing waits on you</strong><span>Agents ask with <code>.nock/nock ask</code>; their questions appear here.</span>",
+  pending: "<strong>Nothing is with an agent</strong><span>Questions you answer wait here until an agent acts on them.</span>",
+  closed: "<strong>Nothing decided yet</strong><span>Answered questions become the project's record of its decisions.</span>",
+};
+
+function draw() {
+  const counts = { open: 0, pending: 0, closed: 0 };
+  for (const question of state.questions) counts[question.state]++;
+  for (const key of Object.keys(counts)) document.getElementById(`count-${key}`).textContent = counts[key] || "";
+  const blocking = state.questions.filter(question => question.state === "open" && question.priority === "blocking").length;
+  document.getElementById("summary").textContent = counts.open
+    ? `${counts.open} ${counts.open === 1 ? "question waits" : "questions wait"} on you${blocking ? `, ${blocking} blocking work` : ""}.`
+    : "Nothing waits on you.";
+  for (const tab of document.querySelectorAll("[data-tab]")) tab.setAttribute("aria-selected", String(tab.dataset.tab === state.tab));
+  for (const chip of document.querySelectorAll(".chip")) {
+    const priority = chip.dataset.priority;
+    const count = state.questions.filter(question => question.state === state.tab && question.priority === priority).length;
+    chip.querySelector(".count").textContent = count;
+    chip.disabled = count === 0 && !state.priorities.has(priority);
+    chip.setAttribute("aria-pressed", String(state.priorities.has(priority)));
+  }
+  for (const button of document.querySelectorAll("[data-sort]")) button.setAttribute("aria-pressed", String(button.dataset.sort === state.sort));
+  const shown = visible();
+  document.getElementById("list").innerHTML = shown.length ? shown.map(question => {
+    const open = state.expanded.has(question.number);
+    return `<article class="question ${open ? "open" : ""} ${question.state === "open" && question.priority === "blocking" ? "blocking" : ""}">
+      <button type="button" class="row" data-toggle="${question.number}" aria-expanded="${open}">
+        <span class="number">${question.number}</span>
+        <span class="title">${escape(question.title)}</span>
+        <span class="side">${badges(question)}${time(moment(question))}${CHEVRON}</span>
+      </button>
+      ${open ? body(question) : ""}
+    </article>`;
+  }).join("") : `<div class="empty">${state.search.trim() || state.priorities.size ? EMPTY_SEARCH : EMPTY[state.tab]}</div>`;
+  grow();
+}
+
+// Browsers without `field-sizing` grow the comment by hand.
+function grow(element) {
+  if (CSS.supports("field-sizing", "content")) return;
+  for (const field of element ? [element] : document.querySelectorAll("textarea")) {
+    field.style.height = "auto";
+    field.style.height = `${field.scrollHeight + 1}px`;
+  }
+}
+
+// A refresh keeps the comment being typed where it was: its text is in `drafts`, its focus here.
+function render() {
+  const active = document.activeElement;
+  const typing = active && active.tagName === "TEXTAREA" ? { id: active.id, start: active.selectionStart, end: active.selectionEnd } : null;
+  draw();
+  const again = typing && document.getElementById(typing.id);
+  if (again) { again.focus(); again.setSelectionRange(typing.start, typing.end); }
+}
+
+async function load() {
+  try {
+    const response = await fetch("/questions");
+    const text = await response.text();
+    if (text === state.seen) return;
+    state.seen = text;
+    state.questions = JSON.parse(text).questions;
+    if (!state.expanded.size) {
+      const first = visible()[0];
+      if (first) { state.expanded.add(first.number); state.active = first.number; }
+    }
+    render();
+  } catch (error) {
+    document.getElementById("summary").textContent = "Lost touch with nock — is `nock questions page` still running?";
+  }
+}
+
+let toastTimer = null;
+function toast(message) {
+  const element = document.getElementById("toast");
+  element.textContent = message;
+  element.classList.add("shown");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => element.classList.remove("shown"), 2600);
+}
+
+async function send(number, owner, message) {
+  const response = await fetch(`/questions/${number}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(owner) });
+  const result = await response.json();
+  if (!response.ok) {
+    const hint = document.getElementById(`hint-${number}`);
+    if (hint) { hint.textContent = result.error; hint.className = "hint error"; }
+    else toast(result.error);
+    return;
+  }
+  state.drafts.delete(number);
+  state.expanded.delete(number);
+  state.seen = "";
+  toast(message);
+  await load();
+}
+
+function submit(number, elaborate) {
+  const question = find(number);
+  if (!question || question.state !== "open") return;
+  const current = draft(question);
+  const comment = current.comment.trim() || null;
+  if (elaborate) {
+    send(number, { choice: null, comment, elaborate: true }, `An agent is looking into question ${number}.`);
+    return;
+  }
+  if (!current.choice && !comment) {
+    const hint = document.getElementById(`hint-${number}`);
+    hint.textContent = question.options.length ? "Choose an option or write a comment first." : "Write your answer first.";
+    hint.className = "hint error";
+    return;
+  }
+  send(number, { choice: current.choice || null, comment, elaborate: false }, `Answered question ${number}.`);
+}
+
+document.addEventListener("click", event => {
+  const tab = event.target.closest("[data-tab]");
+  if (tab) { state.tab = tab.dataset.tab; render(); return; }
+  const chip = event.target.closest("[data-priority]");
+  if (chip) {
+    const priority = chip.dataset.priority;
+    state.priorities.has(priority) ? state.priorities.delete(priority) : state.priorities.add(priority);
+    render();
+    return;
+  }
+  const sort = event.target.closest("[data-sort]");
+  if (sort) { state.sort = sort.dataset.sort; render(); return; }
+  const toggle = event.target.closest("[data-toggle]");
+  if (toggle) {
+    const number = Number(toggle.dataset.toggle);
+    if (state.expanded.has(number)) state.expanded.delete(number);
+    else { state.expanded.add(number); state.active = number; }
+    render();
+    return;
+  }
+  const action = event.target.closest("[data-action]");
+  if (!action) {
+    const card = event.target.closest(".question .body");
+    if (card) state.active = Number(card.parentElement.querySelector("[data-toggle]").dataset.toggle);
+    return;
+  }
+  const number = Number(action.dataset.number);
+  state.active = number;
+  if (action.dataset.action === "withdraw") send(number, { choice: null, comment: null, elaborate: false }, `Question ${number} is back with you.`);
+  else submit(number, action.dataset.action === "elaborate");
+});
+document.addEventListener("change", event => {
+  if (event.target.type !== "radio") return;
+  const number = Number(event.target.name.slice(1));
+  draft(find(number)).choice = Number(event.target.value);
+  state.active = number;
+});
+document.addEventListener("input", event => {
+  if (event.target.id === "search") { state.search = event.target.value; draw(); return; }
+  if (event.target.tagName !== "TEXTAREA") return;
+  grow(event.target);
+  const number = Number(event.target.dataset.number);
+  draft(find(number)).comment = event.target.value;
+  state.active = number;
+});
+// `/` searches; digits choose an option of the question in hand (not while typing); ⌘/Ctrl-Enter answers it.
+document.addEventListener("keydown", event => {
+  const search = document.getElementById("search");
+  if (event.key === "/" && !["TEXTAREA", "INPUT"].includes(event.target.tagName)) { event.preventDefault(); search.focus(); return; }
+  if (event.key === "Escape" && event.target === search) { search.value = ""; state.search = ""; draw(); search.blur(); return; }
+  const number = state.active;
+  const question = number !== null && find(number);
+  if (!question || question.state !== "open" || !state.expanded.has(number) || state.tab !== "open") return;
+  if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) { event.preventDefault(); submit(number, false); return; }
+  const typing = ["TEXTAREA", "INPUT"].includes(event.target.tagName) && event.target.type !== "radio";
+  if (typing || event.metaKey || event.ctrlKey || event.altKey || !/^[1-9]$/.test(event.key)) return;
+  const choice = Number(event.key);
+  if (choice > question.options.length) return;
+  event.preventDefault();
+  draft(question).choice = choice;
+  render();
+});
+
+load();
+setInterval(load, 3000);
+setInterval(refreshTimes, 30000);
+</script>
+</body>
+</html>

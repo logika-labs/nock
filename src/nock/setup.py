@@ -74,6 +74,13 @@ listed. Reach for a tool before doing the same work by hand.
 - Every call and every session is recorded. Reflection rounds turn that
   record into better tools: when a session starts by saying a round is due,
   run `.nock/nock reflect run` in the background.
+- When a decision is the owner's to make, and neither the code, the
+  documents nor an earlier answer settles it, ask:
+  `.nock/nock ask '{"title": …, "context": …, "options": […], "recommended": 1}'`
+  (`--help` has the fields). Take your recommendation meanwhile, say so, and
+  keep going; the answer arrives with the owner's next prompt. Decided
+  questions are the project's decisions (`.nock/nock questions list --state
+  closed`): read them before deciding again.
 - When a chore repeats, make it a tool — `.nock/nock guide` says how, in a
   page; it is live on the next call. When a rule can be checked mechanically,
   make it a check, not a note: a check beats a hook beats prose.

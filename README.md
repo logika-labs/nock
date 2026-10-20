@@ -272,6 +272,7 @@ committed:
 | `sessions` | each Claude Code session's title, tokens, cost, prompts, interrupts and compactions |
 | `prompts` | what the human typed |
 | `events` | every tool call of every session: the command, path or pattern, whether it failed, the bytes returned, and the duration |
+| `told` | which sessions were told the owner's answers to their questions |
 
 Sessions are read from Claude Code's transcripts when they end, and any
 that were missed are read when a reflection round starts. To look:
@@ -326,6 +327,44 @@ in the background.
 `nock reflect due` says whether a round is due. A project can replace the
 brief with its own `.nock/briefs/reflect.md`.
 
+## Questions
+
+Some decisions are the owner's to make. An agent asks with one JSON record,
+and goes on working with the option it recommends:
+
+```sh
+$ .nock/nock ask '{"title": "Should refunds claw back spent points?",
+    "context": "312 accounts would go negative…",
+    "options": ["Allow negative balances", "Cap at the balance"],
+    "recommended": 2, "priority": "blocking"}'
+asked question 4
+```
+
+Each question is a file, `.nock/questions/0004.json`, written and committed in
+the main checkout, whichever worktree asked. Answered, questions are the
+project's record of its decisions.
+
+- **The owner answers on a page.** `nock questions page --open` serves it
+  locally: the questions waiting on you (blocking ones first), those with an
+  agent, and those decided. Pick an option, comment, or both. The page writes
+  to the file and never commits.
+- **The answer goes back to the session that asked.** When the owner next
+  types in that session, the prompt hook tells it what they chose and said,
+  once. Any session the human starts is told which answered questions still
+  wait on an agent.
+- **The agent closes it.** `nock questions answer N ANSWER` records the
+  decision in its own words, the owner's comment folded in, and commits it.
+- **"Ask for more" starts an agent at once.** It reads the project, rewrites
+  the question's context, options and recommendation with what was missing
+  (`nock questions rewrite`), and the question is open again. It changes
+  nothing else.
+
+| state | waiting on | means |
+|---|---|---|
+| `open` | the owner | asked, or rewritten |
+| `pending` | an agent | the owner chose, commented, or asked for more |
+| `closed` | nobody | `answer` holds the decision |
+
 ## Reference
 
 ### Commands
@@ -338,6 +377,8 @@ brief with its own `.nock/briefs/reflect.md`.
 | `nock guide` | how to write a tool, check, hook or generator |
 | `nock calls`, `stats`, `sessions`, `query SQL` | the telemetry |
 | `nock reflect run`, `due`, `material`, `record JSON` | reflection |
+| `nock ask JSON` | ask the owner a question |
+| `nock questions list`, `show`, `answer`, `rewrite`, `elaborate`, `page` | questions: where they stand, closing one, the owner's page |
 | `nock gen write`, `new`, `add`, `set`, `rm`, `show`, `bind`, `unbind` | generators |
 | `nock init`, `nock upgrade` | install (or re-wire), and upgrade the vendored core with a three-way merge |
 
@@ -378,7 +419,7 @@ one machine.
 | `checks.NAME.command` | — | a command that is a check |
 | `checks.concurrency` | 2 | checks run at once, machine-wide |
 | `reflect.sessions`, `reflect.days`, `reflect.minimum` | 15, 7, 3 | when a round is due |
-| `reflect.command`, `reflect.model` | `claude`, — | the agent a round dispatches |
+| `reflect.command`, `reflect.model` | `claude`, — | the agent a round (or an elaboration) dispatches |
 | `pricing` | — | per-model prices, to cost sessions |
 
 ## Developing nock

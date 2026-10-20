@@ -2,7 +2,8 @@
 what a scripted round would — through nock's own CLI, in the worktree it was
 started in — and writes a transcript where Claude Code would. FAKE_REFLECT
 picks the round: `add` (a tool and its record), `silent` (no record), `broken`
-(a tool whose example fails)."""
+(a tool whose example fails). In the elaborator's seat it rewrites the question
+it was given, unless FAKE_ELABORATE is `silent`."""
 
 from __future__ import annotations
 
@@ -74,6 +75,8 @@ def main() -> int:
     arguments = sys.argv[1:]
     session = arguments[arguments.index("--session-id") + 1]
     prompt = arguments[-1]
+    if os.environ.get("NOCK_ROLE") == "elaborator":
+        return elaborate(session, prompt)
     behavior = os.environ.get("FAKE_REFLECT", "add")
     assert "# The material" in prompt and os.environ.get("NOCK_ROLE") == "reflector"
     if behavior in ("add", "broken"):
@@ -95,6 +98,23 @@ def main() -> int:
         print(json.dumps({"type": "system", "message": result.stdout + result.stderr}), flush=True)
     write_transcript(session, prompt)
     print(json.dumps({"type": "result", "result": f"round done ({behavior})"}), flush=True)
+    return 0
+
+
+def elaborate(session: str, prompt: str) -> int:
+    number = os.environ["NOCK_QUESTION"]
+    assert f"question {number}" in prompt
+    if os.environ.get("FAKE_ELABORATE") != "silent":
+        rewritten = {
+            "title": "Which database, now that we know the load",
+            "context": "The load is 40 writes a second: SQLite holds it.",
+            "options": ["SQLite", "Postgres"],
+            "recommended": 1,
+        }
+        result = run(".nock/nock", "questions", "rewrite", number, json.dumps(rewritten))
+        print(json.dumps({"type": "system", "message": result.stdout + result.stderr}), flush=True)
+    write_transcript(session, prompt)
+    print(json.dumps({"type": "result", "result": "elaborated"}), flush=True)
     return 0
 
 
