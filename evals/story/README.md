@@ -42,4 +42,6 @@ uv run python evals/story/run.py report /tmp/story
 ```
 
 Outcomes are appended to `OUT/outcomes.jsonl` as they happen. The arms'
-repositories stay in `OUT/arms/` to look at.
+repositories are linked from `OUT/arms/` to look at. They live in a
+temporary directory of their own, and hold only the week's history: from
+inside `OUT`, or with later weeks' tags, the answers would be in reach.

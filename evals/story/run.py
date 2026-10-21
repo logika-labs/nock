@@ -132,7 +132,8 @@ class World:
         return self.directory / "reports" / report["id"] / name
 
     def problems(self) -> list[str]:
-        """Every report's verifier fails on its setup and passes on its resolution."""
+        """Every report's verifier fails on its setup and passes on its resolution,
+        on a checkout like an arm's: the week's history only."""
         problems = []
         tags = git(self.repo, "tag").split()
         for week in self.weeks:
@@ -149,8 +150,9 @@ class World:
                 continue
             with tempfile.TemporaryDirectory() as scratch:
                 checkout = Path(scratch) / "repo"
-                git(self.directory, "clone", "-q", str(self.repo), str(checkout))
-                git(checkout, "checkout", "-q", f"week-{report['week']}")
+                git(Path(scratch), "init", "-q", "-b", "main", str(checkout))
+                git(checkout, "fetch", "-q", "--no-tags", str(self.repo), f"refs/tags/week-{report['week']}")  # fmt: skip
+                git(checkout, "checkout", "-q", "-B", "main", "FETCH_HEAD^{commit}")
                 for step, expected in (("setup.py", None), ("verify.py", False), ("resolve.py", None), ("verify.py", True)):  # fmt: skip
                     result = run_script(self.file(report, step), checkout)
                     if expected is None and result.returncode != 0:
@@ -204,14 +206,21 @@ class Arm:
     def __init__(self, out: Path, world: World, name: str, model: str, label: str = "") -> None:
         self.out, self.world, self.name, self.model = out, world, name, model
         self.directory = out / "arms" / (label or name)
-        self.repo = self.directory / "repo"
         self.carried = self.directory / "carried"
 
+    @property
+    def repo(self) -> Path:
+        """The arm's repository, away from the world and the other arms: in
+        `OUT/arms/<arm>/repo` the answers would be two directories up."""
+        return (self.directory / "repo").resolve()
+
     def create(self, carried_from: Path | None = None) -> None:
-        if self.repo.exists():
+        if (self.directory / "repo").exists():
             return
         self.directory.mkdir(parents=True, exist_ok=True)
-        git(self.directory, "clone", "-q", str(self.world.repo), str(self.repo))
+        repo = Path(tempfile.mkdtemp(prefix="kerb-")) / "kerb"
+        git(repo.parent, "init", "-q", "-b", "main", str(repo))
+        (self.directory / "repo").symlink_to(repo)
         git(self.repo, "config", "user.name", "Engineer")
         git(self.repo, "config", "user.email", "engineer@example.com")
         if carried_from is not None:
@@ -219,7 +228,7 @@ class Arm:
             return
         self.carried.mkdir()
         if self.name == "nock":
-            git(self.repo, "checkout", "-q", f"week-{self.world.weeks[0]}")
+            self.checkout(self.world.weeks[0])
             subprocess.run(
                 [sys.executable, "-m", "nock", "init"],
                 cwd=self.repo,
@@ -230,10 +239,15 @@ class Arm:
             self.keep()
 
     def checkout(self, week: int) -> None:
-        """The week's state, the arm's kept files on top, committed as the team's tooling."""
-        git(self.repo, "reset", "-q", "--hard")
-        git(self.repo, "clean", "-qfdx", "-e", ".nock/local")
-        git(self.repo, "checkout", "-q", "--detach", f"week-{week}")
+        """The week's state, the arm's kept files on top, committed as the team's
+        tooling. Only the week's history is fetched, without tags or a remote:
+        later weeks hold the team's fixes."""
+        if subprocess.run(["git", "rev-parse", "-q", "--verify", "HEAD"], cwd=self.repo, capture_output=True).returncode == 0:  # fmt: skip
+            git(self.repo, "reset", "-q", "--hard")
+            git(self.repo, "clean", "-qfdx", "-e", ".nock/local")
+        git(self.repo, "fetch", "-q", "--no-tags", str(self.world.repo), f"refs/tags/week-{week}")
+        git(self.repo, "checkout", "-q", "-B", "main", "FETCH_HEAD^{commit}")
+        (self.repo / ".git" / "FETCH_HEAD").unlink()
         if any(self.carried.iterdir()):
             shutil.copytree(self.carried, self.repo, dirs_exist_ok=True)
             git(self.repo, "add", "-A")
