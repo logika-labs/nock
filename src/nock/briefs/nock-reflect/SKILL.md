@@ -46,19 +46,13 @@ the round starts from its material, not from what you remember.
    path.
 
 4. **Write the summary to share** — `share.md`. It goes, if the owner
-   agrees, to nock's makers, and perhaps to other nock users on nock.dev, to
-   help improve nock. Write it from the nock part's shareable account and
-   the round as a whole, abstractly enough that nobody could tell which
-   project or company it is:
-   - what kind of project, in a few general words ("a delivery
-     marketplace's backend, about ten thousand lines of Python"), how long
-     nock has been in use, and how much work the window held;
-   - how nock is used here, what it helped with, what got in the way, and
-     what should change in nock — with the numbers that show it;
-   - no names of the project, its company, people, partners or customers;
-     no paths, file or function names, code, addresses or links; no
-     figures that would identify the business. Say "the payments partner",
-     not its name. When in doubt, leave it out.
+   agrees, to nock's makers, to help improve nock. Write it from the nock
+   part's shareable account and the round as a whole: what kind of project,
+   in a few general words, how long nock has been in use and how much work
+   the window held; how nock is used, what it helped with, what got in the
+   way, what should change in nock, with the numbers that show it. Keep it
+   abstract — no names, paths or code of the project's; `nock share` has an
+   agent vet it before anything is sent.
 
 5. **Finish.** With the toolbox part's changes and verdicts:
 
@@ -76,7 +70,7 @@ the round starts from its material, not from what you remember.
 6. **Tell the owner**, in a few lines: what the round changed, what waits
    on them, where the report is. Then say that the summary is ready to
    share, and why it matters: it is how nock's makers learn how nock does
-   in real projects. `.nock/nock share '{"visibility": "private"}'` shows
-   exactly what would be sent. Private goes only to nock's makers; public
-   is posted on nock.dev, where others can discuss it. Ask whether they
-   want to share it, and how; send it (`"send": true`) only on their yes.
+   in real projects. `.nock/nock share '{"visibility": "private"}'` has an
+   agent vet it and shows exactly what would be sent. Private goes only to
+   nock's makers; public is published on nock.dev. Ask whether they want to
+   share it, and how; send it (`"send": true`) only on their yes.

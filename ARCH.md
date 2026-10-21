@@ -62,6 +62,7 @@ src/nock/
     nock-triage/     the `/nock-triage` skill: going through decisions with the owner
     elaborate.md     the brief of the agent that elaborates on a decision
     consult.md       the consultant's brief
+    share.md         the brief of the agent that vets a summary before it is shared
     _framework.md    the framework on one page: `nock guide`, and part of the toolbox brief
 
   # the rest of the toolbox
@@ -280,8 +281,8 @@ caller prints.
 `dispatch.Dispatcher.launch` runs `claude -p --output-format stream-json
 --session-id … --permission-mode bypassPermissions` (`agent.command`,
 `agent.model`) for the sessions no human sits in: the elaborator and the
-consultant. (A reflection round's three parts are the lead's own
-subagents, not dispatched.) It:
+consultant and the sharer. (A reflection round's three parts are the
+lead's own subagents, not dispatched.) It:
 
 - runs under a Supervisor, with `agent.deadline` (or the caller's) and
   `agent.silence`;
@@ -332,9 +333,13 @@ round, whichever comes first, given at least one session.
 `share.Sharing` reads a round's `share.md`. Its `problems` — the
 `nock-share` check — flag every line naming the repository's directory or
 remotes, a tracked path or a file name (common ones aside), an author's
-name or address, an email address or a link off nock.dev. `share` returns
-the text and where it would go; with `send`, it posts it to
-`share.endpoint`, records `shared` in the round's record, and commits.
+name or address, an email address or a link off nock.dev. `share`
+dispatches the sharer (`briefs/share.md`) to vet the summary, scrubs its
+answer the same way, and keeps it in the round's scratch directory, keyed
+by the summary and the visibility, so a preview and the send that follows
+vet once. It returns the text and where it would go; with `send`, it posts
+it to `share.endpoint`, records `shared` in the round's record, and
+commits.
 
 ## Extension points
 

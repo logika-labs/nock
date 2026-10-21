@@ -1,26 +1,35 @@
 """Sharing a round's summary with nock's makers: the abstract one the round
-wrote (`share.md`), held to saying nothing that names the project, sent only
-when the owner says so — privately (only nock's makers read it) or publicly
-(posted on nock.dev, for discussion)."""
+wrote (`share.md`), vetted by a fresh agent that reads the project to learn
+what would identify it and rewrites whatever does, then held to a mechanical
+scrub — and sent only when the owner says so: privately (only nock's makers
+read it) or publicly (on nock.dev)."""
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import urllib.error
 import urllib.request
 from enum import StrEnum
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, NotRequired, TypedDict
 
-from nock.errors import ExternalError, NotFoundError
+from nock.dispatch import Dispatcher
+from nock.errors import ExternalError, Failed, NotFoundError
 from nock.git import GitError
 from nock.reflect import SHARE, Reflection
 from nock.render import Problem
-from nock.utils import now
+from nock.templates import Library
+from nock.utils import now, read_json, write_json
 
 if TYPE_CHECKING:
     from nock.project import Project
 
+ROLE = "sharer"
+BRIEFS = Path(__file__).resolve().parent / "briefs"
+# How the vetting agent says the summary cannot be shared at all.
+NOTHING = "NOTHING TO SHARE:"
 EMAIL = re.compile(r"[\w.+-]+@[\w-]+\.[\w.-]+")
 URL = re.compile(r"https?://[^\s)>\]]+")
 # Files every project has: naming one says nothing about this one.
@@ -35,7 +44,7 @@ class Visibility(StrEnum):
     PRIVATE = "private"
     """Only nock's makers read it."""
     PUBLIC = "public"
-    """Posted on nock.dev, where others can discuss it."""
+    """Published on nock.dev, for other nock users to read and discuss."""
 
 
 class Request(TypedDict):
@@ -44,6 +53,8 @@ class Request(TypedDict):
     """The round's date, as its directory is named; the default is the latest."""
     send: NotRequired[bool]
     """Send it. Only on the owner's word; without it, see what would be sent."""
+    again: NotRequired[bool]
+    """Vet it afresh, even though the summary has not changed since it was."""
 
 
 class Sharing:
@@ -62,22 +73,49 @@ class Sharing:
     def text(self, name: str) -> str:
         return (self.reflection.rounds.directory / name / SHARE).read_text().strip()
 
+    def vetted(self, name: str, visibility: Visibility, again: bool) -> str:
+        """The summary as it would be sent: vetted by an agent — again only
+        when the summary or the visibility changed, or when asked — and
+        scrubbed."""
+        text = self.text(name)
+        fingerprint = hashlib.sha256(f"{visibility}\n{text}".encode()).hexdigest()
+        kept = self.reflection.rounds.scratch / name / "outgoing.json"
+        if not again and kept.is_file() and read_json(kept).get("fingerprint") == fingerprint:
+            return read_json(kept)["text"]
+        brief = Library(self.project.code_path("briefs"), BRIEFS).render(
+            "share.md", text=text, visibility=str(visibility)
+        )
+        session = Dispatcher(self.project).launch(ROLE, brief, self.project.here)
+        result = (session.result or "").strip()
+        if session.exit_code != 0 or not result:
+            raise Failed(
+                f"the vetting agent gave no text (exit {session.exit_code}; log: {session.log})"
+            )
+        if result.startswith(NOTHING):
+            raise Failed(
+                f"the vetting agent found nothing that can be shared — {result.removeprefix(NOTHING).strip()}"
+            )
+        problems = self.problems_in(result, "the vetted summary")
+        if problems:
+            raise Failed("the vetted summary still names the project", problems)
+        write_json(kept, {"fingerprint": fingerprint, "text": result, "session": session.id})
+        return result
+
     def share(self, request: Request) -> dict[str, Any]:
         record = self.round(request.get("round"))
         name = record["round"]
-        text = self.text(name)
+        visibility = Visibility(request["visibility"])
+        text = self.vetted(name, visibility, bool(request.get("again")))
         endpoint = str(self.project.configuration.get("share.endpoint"))
         if not request.get("send"):
             return {
                 "round": name,
                 "to": endpoint,
-                "visibility": str(request["visibility"]),
+                "visibility": str(visibility),
                 "shared": record.get("shared"),
                 "text": text,
             }
-        body = json.dumps(
-            {"summary": text, "visibility": str(request["visibility"]), "round": name}
-        ).encode()
+        body = json.dumps({"summary": text, "visibility": str(visibility), "round": name}).encode()
         post = urllib.request.Request(
             endpoint, data=body, headers={"Content-Type": "application/json"}, method="POST"
         )
@@ -86,13 +124,9 @@ class Sharing:
                 answer = json.loads(response.read() or b"{}")
         except (urllib.error.URLError, TimeoutError, ValueError) as error:
             raise ExternalError(f"could not reach {endpoint}: {error}") from error
-        shared = {
-            "moment": now(),
-            "visibility": str(request["visibility"]),
-            "url": answer.get("url"),
-        }
+        shared = {"moment": now(), "visibility": str(visibility), "id": answer.get("id")}
         self.reflection.record_shared(name, shared)
-        self.reflection.commit(f"Reflection round {name}: shared, {request['visibility']}")
+        self.reflection.commit(f"Reflection round {name}: shared, {visibility}")
         return {"round": name, **shared}
 
     # --- what the summary may not say -------------------------------------------
@@ -130,18 +164,20 @@ class Sharing:
         path = self.reflection.rounds.directory / name / SHARE
         if not path.is_file():
             return []
+        return self.problems_in(path.read_text(), str(path.relative_to(self.project.here)))
+
+    def problems_in(self, text: str, place: str) -> list[Problem]:
         loose, exact = self.identifiers()
-        place = str(path.relative_to(self.project.here))
         found = []
-        for line, text in enumerate(path.read_text().splitlines(), start=1):
-            said: list[str] = EMAIL.findall(text)
-            said += [url for url in URL.findall(text) if "nock.dev" not in url]
+        for line, content in enumerate(text.splitlines(), start=1):
+            said: list[str] = EMAIL.findall(content)
+            said += [url for url in URL.findall(content) if "nock.dev" not in url]
             said += [
                 token
                 for token in loose
-                if re.search(rf"(?<![\w.-]){re.escape(token)}(?![\w-])", text, re.IGNORECASE)
+                if re.search(rf"(?<![\w.-]){re.escape(token)}(?![\w-])", content, re.IGNORECASE)
             ]
-            said += [token for token in exact if re.search(rf"\b{re.escape(token)}\b", text)]
+            said += [token for token in exact if re.search(rf"\b{re.escape(token)}\b", content)]
             found += [
                 Problem(f"names `{token}` — say it abstractly", place, line)
                 for token in sorted(set(said))

@@ -11,6 +11,8 @@ import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
+import pytest
+
 from nock.hooks import HookRunner
 from nock.project import Project
 from nock.reflect import Reflection, Rounds, shape
@@ -236,13 +238,15 @@ def test_a_round_finishes_with_its_report_its_summary_and_its_numbers(project: P
     assert f"| {started['round']} | this window |" in nock_material
 
 
-def test_a_summary_is_shared_only_when_sent(project: Project) -> None:
+def test_a_summary_is_vetted_and_shared_only_when_sent(
+    project: Project, monkeypatch: pytest.MonkeyPatch
+) -> None:
     received: list[dict[str, object]] = []
 
     class Receiver(BaseHTTPRequestHandler):
         def do_POST(self) -> None:
             received.append(json.loads(self.rfile.read(int(self.headers["Content-Length"]))))
-            body = json.dumps({"url": "https://nock.dev/r/1"}).encode()
+            body = json.dumps({"id": 1}).encode()
             self.send_response(200)
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
@@ -269,13 +273,22 @@ def test_a_summary_is_shared_only_when_sent(project: Project) -> None:
     again = HookRunner(project, {"session_id": "s2"}).handle("SessionStart")
     assert again is None or "not shared" not in again.get("systemMessage", "")
 
+    def vetted() -> int:
+        return len(project.store.rows("SELECT id FROM sessions WHERE role = 'sharer'"))
+
     shown = json.loads(nock(project.root, "share", '{"visibility": "private"}', "--json").stdout)
-    assert shown["text"] == "Early days; little to say." and received == []
+    assert shown["text"] == "Early days, vetted." and received == [] and vetted() == 1
+    nock(project.root, "share", '{"visibility": "private"}')
+    assert vetted() == 1
+    monkeypatch.setenv("FAKE_SHARE", "Early days, says test@example.com.")
+    named = nock(project.root, "share", '{"visibility": "private", "again": true}')
+    assert named.returncode == 1 and "names `test@example.com`" in named.stdout
+    monkeypatch.delenv("FAKE_SHARE")
     sent = nock(project.root, "share", '{"visibility": "public", "send": true}', "--json")
     assert sent.returncode == 0, sent.stderr
-    assert json.loads(sent.stdout)["url"] == "https://nock.dev/r/1"
+    assert json.loads(sent.stdout)["id"] == 1 and vetted() == 3
     assert received == [
-        {"summary": "Early days; little to say.", "visibility": "public", "round": started["round"]}
+        {"summary": "Early days, vetted.", "visibility": "public", "round": started["round"]}
     ]
     assert Sharing(project).unshared() is None
     assert git(project.root, "status", "--porcelain") == ""

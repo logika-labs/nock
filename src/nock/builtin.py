@@ -333,9 +333,10 @@ def reflect_finish(project: Project, record: Record) -> dict[str, Any]:
 
 @command
 def share(project: Project, request: ShareRequest) -> dict[str, Any]:
-    """A round's shareable summary, and where it would go; with `send`, send
-    it — privately to nock's makers, or publicly to nock.dev. Send only when
-    the owner says so."""
+    """A round's summary as it would be shared, and where it would go: a fresh
+    agent vets it first, rewriting whatever would identify the project. With
+    `send`, send it — privately to nock's makers, or publicly to nock.dev.
+    Send only when the owner says so."""
     return Sharing(project).share(request)
 
 

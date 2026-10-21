@@ -2,7 +2,8 @@
 does what a scripted session would — through nock's own CLI, in the directory
 it was started in — and writes a transcript where Claude Code would. As the
 elaborator it deepens the decision it was given, unless FAKE_ELABORATE is
-`silent`; as the consultant it answers at once."""
+`silent`; as the consultant it answers at once; as the sharer it hands back
+the vetted summary (FAKE_SHARE, or a stock one)."""
 
 from __future__ import annotations
 
@@ -63,6 +64,12 @@ def main() -> int:
             json.dumps({"type": "result", "result": "**The task, reframed** — as asked."}),
             flush=True,
         )
+        return 0
+    if os.environ.get("NOCK_ROLE") == "sharer":
+        assert "# The summary" in prompt
+        write_transcript(session, prompt)
+        text = os.environ.get("FAKE_SHARE", "Early days, vetted.")
+        print(json.dumps({"type": "result", "result": text}), flush=True)
         return 0
     raise SystemExit(f"no seat for role {os.environ.get('NOCK_ROLE')!r}")
 

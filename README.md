@@ -407,9 +407,11 @@ first.
    It commits `.nock/`.
 
 The round ends by asking the owner whether to share the summary. `nock share
-'{"visibility": "private"}'` shows exactly what would be sent; with `"send":
-true` it goes to nock's makers (`private`), or is posted on nock.dev for
-discussion (`public`). Nothing is sent otherwise.
+'{"visibility": "private"}'` has a fresh agent vet it — it reads the project
+to learn its names, people, partners and customers, and rewrites whatever
+would identify it — scrubs the result again, and shows exactly what would be
+sent. With `"send": true` it goes to nock's makers (`private`), or is
+published on nock.dev (`public`). Nothing is sent otherwise.
 
 ## Reference
 

@@ -42,10 +42,8 @@ Answer, in your last message, in two parts:
 
 - **For the owner**: your assessment, with the evidence — numbers, decision
   numbers, sessions — in under 500 words.
-- **To share**: the same account for nock's makers and other nock users,
-  who do not know this project and must not be able to tell which it is:
-  the kind of project in a few general words, how long nock has been in
-  use, the numbers that matter, what works, what does not, what nock should
-  change. No names of the project, company, people, partners or customers,
-  no paths, file or function names, no code, addresses or links, no
-  figures that identify the business. Under 400 words.
+- **To share**: the same account for nock's makers, who do not know this
+  project and must not be able to tell which it is: the kind of project in
+  a few general words, how long nock has been in use, the numbers that
+  matter, what works, what does not, what nock should change. No names,
+  paths or code of the project's. Under 400 words.
