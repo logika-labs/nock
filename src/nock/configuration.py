@@ -53,7 +53,7 @@ DEFAULTS: dict[str, Any] = {
     },
     "share": {
         # Where `nock share` sends a round's summary, when the owner says so.
-        "endpoint": "https://nock.dev/api/reflections",
+        "endpoint": "https://api.nock.dev/reflections",
     },
     # Dollars per million tokens, by model-name prefix: {input, output, cache_read, cache_write}.
     "pricing": {},

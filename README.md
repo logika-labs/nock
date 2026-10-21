@@ -471,7 +471,7 @@ one machine.
 | `reflect.sessions`, `reflect.days` | 15, 7 | when a round is due, whichever comes first |
 | `agent.command`, `agent.model`, `agent.deadline` | `claude`, —, 1800 | the headless agent nock dispatches (elaborate, consult) |
 | `consult.deadline` | 600 | seconds a consultation may take |
-| `share.endpoint` | `https://nock.dev/api/reflections` | where `nock share` sends a summary |
+| `share.endpoint` | `https://api.nock.dev/reflections` | where `nock share` sends a summary |
 | `pricing` | — | per-model prices, to cost sessions |
 
 ## Developing nock
