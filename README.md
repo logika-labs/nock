@@ -82,11 +82,13 @@ fix it if it must.
 
 ## Getting started
 
-From a checkout of nock, inside the repository you want it in:
+Inside the repository you want it in:
 
 ```sh
-uv run --project ~/path/to/nock nock init
+uvx --from git+https://github.com/dan-gittik/nock nock init
 ```
+
+(From a checkout of nock: `uv run --project ~/path/to/nock nock init`.)
 
 `nock init`:
 
