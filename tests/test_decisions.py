@@ -84,7 +84,7 @@ def test_a_decision_recorded_in_a_worktree_is_committed_on_the_main_checkout(
     recorded = decide(worktree)
     assert recorded["number"] == 1 and recorded["new_tags"] == ["storage"]
     assert set(recorded["tags_in_use"][:2]) == {"storage", "technical"}
-    assert not (worktree / ".nock" / "decisions").exists()
+    assert not (worktree / ".nock" / "decisions" / "0001.json").exists()
     assert git(project.root, "log", "-1", "--format=%s") == "Decision 1: Orders live in SQLite"
     assert git(project.root, "status", "--porcelain") == ""
     decision = Decisions(project).get(1)
@@ -216,17 +216,42 @@ def test_an_edit_to_a_governed_file_shows_its_standing_decisions_once(project: P
     assert "The owner: it can be long" in told
 
 
-def test_the_map_check_holds_citations_and_touches_to_what_exists(project: Project) -> None:
-    number = decide(project.root)["number"]
+def test_the_map_check_holds_citations_and_gone_files_go_to_the_round(project: Project) -> None:
     decisions = Decisions(project)
+    assert "Empty until the first reflection round" in decisions.map.read_text()
+    number = decide(project.root)["number"]
     decisions.map.write_text(f"- If you touch the database, SQLite [D{number}].\n")
     assert nock(project.root, "check", "nock-map").returncode == 0
-    decisions.map.write_text(f"- [D{number}] and [D42]\n")
     (project.root / "README.md").unlink()
+    assert nock(project.root, "check", "nock-map").returncode == 0
+    assert decisions.stale()[0][1] == ["README.md"]
+    decisions.map.write_text(f"- [D{number}] and [D42]\n")
     result = nock(project.root, "check", "nock-map")
     assert result.returncode == 1
     assert ".nock/decisions/map.md:1: [D42] is no decision" in result.stdout
-    assert "touches `README.md`, which matches no file" in result.stdout
+
+
+def test_a_decision_naming_files_that_do_not_exist_is_told_so(project: Project) -> None:
+    recorded = decide(project.root, {**DRAFT, "touches": ["README.md", "ANSWER.md"]})
+    assert recorded["touches_no_file"] == ["ANSWER.md"]
+    assert "touches_no_file" not in decide(project.root)
+
+
+def test_a_session_starts_with_the_owner_s_backlog_and_notes(project: Project) -> None:
+    todo = decide(
+        project.root,
+        {"title": "Remind before keys expire", "status": "todo", "summary": "A calendar."},
+    )
+    done = decide(project.root)
+    edit(project.root, {"number": todo["number"], "review": "accepted", "note": "Do it this week."})
+    edit(project.root, {"number": done["number"], "review": "accepted", "note": "Check the sums."})
+    begun = start(project, "s1")
+    context = begun["hookSpecificOutput"]["additionalContext"]
+    assert (
+        f"- [D{todo['number']}] Remind before keys expire — the owner: Do it this week." in context
+    )
+    assert f"- [D{done['number']}] Orders live in SQLite — the owner: Check the sums." in context
+    assert "backlog" not in begun.get("systemMessage", "")
 
 
 def test_the_edit_hook_is_wired_for_edits_only(project: Project) -> None:

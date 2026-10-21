@@ -397,18 +397,30 @@ class Decisions:
                     )
         return problems
 
-    def stale_touches(self, files: list[str]) -> list[Problem]:
-        """Every `touches` entry of a standing decision that no file of `files` matches."""
+    def files(self) -> list[str]:
+        """The working tree's files, tracked or not, but not ignored ones."""
+        here = self.project.here
+        listed = self.project.git("ls-files", "--cached", "--others", "--exclude-standard")
+        return [file for file in listed.splitlines() if (here / file).exists()]
+
+    def unmatched(self, decision: dict[str, Any], files: list[str] | None = None) -> list[str]:
+        """The decision's `touches` entries that match no file."""
+        files = self.files() if files is None else files
         return [
-            Problem(
-                f"decision {decision['number']} touches `{pattern}`, which matches no file — is the decision stale?",
-                str(self.path(decision["number"]).relative_to(self.project.root)),
-            )
-            for decision in self.all()
-            if live(decision) and decision["status"] == Status.DONE
+            pattern
             for pattern in decision["touches"]
             if not any(governs(pattern, file) for file in files)
         ]
+
+    def stale(self) -> list[tuple[dict[str, Any], list[str]]]:
+        """The standing done decisions governing files that are gone, and which."""
+        files = self.files()
+        found = [
+            (decision, self.unmatched(decision, files))
+            for decision in self.all()
+            if live(decision) and decision["status"] == Status.DONE
+        ]
+        return [(decision, patterns) for decision, patterns in found if patterns]
 
     # --- elaborating ------------------------------------------------------------
 

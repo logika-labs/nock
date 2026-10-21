@@ -342,8 +342,10 @@ decisions it overturns, which stay as history.
   (`nock decisions elaborate N`).
 
 Any session the human starts says how many todos and done decisions wait on
-review, and which rejected ones wait to be reworked. `nock status` says the
-same, and whether a reflection round is due.
+review, which rejected ones wait to be reworked, the owner's backlog (todos
+they accepted), and what they said about decisions since the last round —
+a note often asks for something. `nock status` says the same, and whether a
+reflection round is due.
 
 ### The map
 
@@ -355,8 +357,10 @@ starting anything serious. A reflection round keeps it, within three rules:
 - a rejected option comes with what would make it viable again;
 - what was inferred, rather than read or observed, is marked *(inferred)*.
 
-The `nock-map` check fails when the map cites a decision that is missing or
-superseded, or when a done decision touches a path that matches no file.
+`nock init` starts it empty. The `nock-map` check fails when the map cites a
+decision that is missing or superseded. A done decision whose files are gone
+is not a failure: the round's material lists it, for the map part to look
+at; and `decide` says at once when `touches` names a file that doesn't exist.
 
 ### Consulting
 

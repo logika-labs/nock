@@ -15,6 +15,14 @@ if TYPE_CHECKING:
     from nock.project import Project
 
 
+def brief(decision: dict[str, Any]) -> dict[str, Any]:
+    return {"number": decision["number"], "title": decision["title"], "note": decision["note"]}
+
+
+def said(decision: dict[str, Any]) -> str:
+    return f" — the owner: {decision['note']}" if decision["note"] else ""
+
+
 class Standing:
     def __init__(self, project: Project) -> None:
         self.project = project
@@ -31,9 +39,20 @@ class Standing:
                 "days_since": round(reflection.days(window), 1),
             },
             "decisions": decisions.counts(),
-            "to_rework": [
-                {"number": decision["number"], "title": decision["title"], "note": decision["note"]}
-                for decision in decisions.to_rework()
+            "to_rework": [brief(decision) for decision in decisions.to_rework()],
+            # What the owner approved and has not been done, and what they said since the last round.
+            "backlog": [
+                brief(decision)
+                for decision in decisions.matching(
+                    {"status": Status.TODO, "review": Review.ACCEPTED}
+                )
+            ],
+            "notes": [
+                brief(decision)
+                for decision in decisions.matching({})
+                if decision["note"]
+                and decision["review"] != Review.REJECTED
+                and decision["updated"] > (window.since or "")
             ],
             "unshared": Sharing(self.project).unshared(),
         }
@@ -56,8 +75,18 @@ class Standing:
                 f"nock: decisions — {parts}: review them on `.nock/nock web`, or with `/nock-triage`."
             )
         for decision in standing["to_rework"]:
-            note = f" — the owner: {decision['note']}" if decision["note"] else ""
-            lines.append(f"- rework [D{decision['number']}] {decision['title']}{note}")
+            lines.append(f"- rework [D{decision['number']}] {decision['title']}{said(decision)}")
+        if standing["backlog"]:
+            lines.append("nock: the owner's backlog — todos they accepted, not done yet:")
+            lines += [
+                f"- [D{item['number']}] {item['title']}{said(item)}" for item in standing["backlog"]
+            ]
+        notes = [item for item in standing["notes"] if item not in standing["backlog"]]
+        if notes:
+            lines.append(
+                "nock: what the owner said about decisions lately — some may ask for something:"
+            )
+            lines += [f"- [D{item['number']}] {item['title']}{said(item)}" for item in notes]
         if standing["unshared"]:
             lines.append(
                 f"nock: the {standing['unshared']} round's summary is not shared yet — "

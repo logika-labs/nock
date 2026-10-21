@@ -207,7 +207,7 @@ def test_a_round_finishes_with_its_report_its_summary_and_its_numbers(project: P
         part: (project.root / path).read_text() for part, path in started["material"].items()
     }
     assert "This is the first round." in material["process"]
-    assert "There is no map yet." in material["knowledge"]
+    assert "Empty until the first reflection round" in material["knowledge"]
     assert "these numbers are the baseline" in material["nock"]
     report, share = (project.root / path for path in started["write"])
     refused = finish(project, RECORD)

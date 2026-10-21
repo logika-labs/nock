@@ -18,7 +18,6 @@ from nock.decisions import TAGS, Change, Decisions, Draft, Filter, row
 from nock.errors import Error, ExitCode, Failed, UsageError
 from nock.fixtures import Shell
 from nock.generators import Catalogs, Generators
-from nock.git import Git
 from nock.processes import Output
 from nock.project import Project
 from nock.reflect import Record, Reflection, tool_rows
@@ -245,12 +244,20 @@ def recorded_result(
     project: Project, decision: dict[str, Any], problem: str | None
 ) -> dict[str, Any]:
     """The number, and the tags in use — so a near-duplicate tag is fixed while it is cheap."""
-    tags = Decisions(project).tags()
+    decisions = Decisions(project)
+    tags = decisions.tags()
     result: dict[str, Any] = {
         "number": decision["number"],
         "new_tags": [tag for tag in decision["tags"] if tags.get(tag) == 1 and tag not in TAGS],
         "tags_in_use": list(tags),
     }
+    unmatched = decisions.unmatched(decision)
+    if unmatched:
+        result["touches_no_file"] = unmatched
+        result["say"] = (
+            "`touches` names files the decision governs: these match none — "
+            "fix them with `decisions edit` unless the files are yet to be written"
+        )
     if problem:
         result["not_committed"] = problem
     return result
@@ -284,6 +291,9 @@ def decisions_edit(project: Project, change: Change) -> dict[str, Any]:
     if change.get("elaborate"):
         decisions.elaborate_in_background(decision["number"])
     result = {key: decision[key] for key in ("number", "title", "status", "review", "note")}
+    unmatched = decisions.unmatched(decision) if "touches" in change else []
+    if unmatched:
+        result["touches_no_file"] = unmatched
     if problem:
         result["not_committed"] = problem
     return result
@@ -508,13 +518,10 @@ def generated_files_in_step(project: Project, root: Path) -> list[str]:
 
 
 @check(name="nock-map")
-def decisions_hold(project: Project, root: Path) -> list[Problem]:
-    """Every decision the map cites stands, and every file a done decision
-    touches still exists."""
-    decisions = Decisions(project)
-    listed = Git(root)("ls-files", "--cached", "--others", "--exclude-standard").splitlines()
-    files = [file for file in listed if (root / file).exists()]
-    return decisions.citation_problems() + decisions.stale_touches(files)
+def decisions_hold(project: Project) -> list[Problem]:
+    """Every decision the map cites stands. (Decisions whose files are gone
+    are for a reflection round to look at, not a failure.)"""
+    return Decisions(project).citation_problems()
 
 
 @check(name="nock-share")

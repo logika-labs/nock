@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from nock.decisions import MAP
 from nock.errors import ConflictError, PreconditionError
 from nock.git import Git, GitError
 from nock.hooks import BUILT_IN_EVENTS, EDIT_TOOLS
@@ -102,6 +103,15 @@ listed. Reach for a tool before doing the same work by hand.
   make it a check, not a note: a check beats a hook beats prose.
 """
 
+MAP_STUB = """\
+# The map of decisions
+
+When each of the project's decisions matters, and how they bear on each
+other. Empty until the first reflection round writes it; until then,
+`.nock/nock decisions list` lists the decisions, and an edit to a file a
+decision governs shows it.
+"""
+
 IMPORT_LINE = "@.nock/context.md"
 # Claude Code skills, from `briefs/NAME/` (a SKILL.md and what it reads).
 SKILLS = ("nock-reflect", "nock-triage")
@@ -188,6 +198,7 @@ class Installer:
         self.import_context()
         self.wire_claude()
         self.install_skills()
+        self.start_map()
         return self.report
 
     def install_skills(self) -> None:
@@ -206,6 +217,14 @@ class Installer:
                 if not any(skill.parent.iterdir()):
                     skill.parent.rmdir()
                 self.report.written.append(f"removed .claude/skills/{name}")
+
+    def start_map(self) -> None:
+        """An empty map of decisions, so an agent told to read it finds it."""
+        relative = f"{NOCK_DIRECTORY}/decisions/{MAP}"
+        if (self.root / relative).exists():
+            return
+        write_atomic(self.root / relative, MAP_STUB)
+        self.report.written.append(relative)
 
     def copy_core(self, core: Path) -> None:
         for relative, content in core_files(PACKAGE).items():

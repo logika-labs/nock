@@ -43,8 +43,9 @@ about.
    tags asks for no fresh review, and `edit` commits itself). Change
    nothing else in a decision.
 4. Change nothing else: not the code, not the toolbox. When a decision
-   should name the files it governs and does not, or two decisions
-   contradict each other, say so in your report.
+   should name the files it governs and does not, names files that are
+   gone (your material lists them), or contradicts another, say so in your
+   report.
 5. `.nock/nock check nock-map` must pass: it fails while the map cites a
    decision that is missing or superseded. Commit nothing: the lead commits
    the round.

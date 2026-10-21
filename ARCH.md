@@ -269,7 +269,10 @@ change to a field in `SUBSTANCE` resets the review. "Elaborate" starts
 elaborator; the decision's `elaborating` flag holds until an edit changes
 it, or the elaborator ends without one.
 
-`citation_problems` and `stale_touches` are the `nock-map` check.
+`citation_problems` is the `nock-map` check; `stale` (done decisions whose
+files are gone) goes to the round's knowledge material instead, and
+`unmatched` warns `decide` and `edit` of a `touches` entry that matches no
+file. `nock init` writes an empty `map.md`.
 
 `consult.Consultant` renders `briefs/consult.md` with the caller's intent
 and context, and dispatches a read-only consultant in the caller's working

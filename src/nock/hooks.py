@@ -104,7 +104,10 @@ class HookRunner:
                 self.project.store.insert("nudged", {"round": unshared})
             said = standing.lines(collected)
             lines += said
-            self.notices += [line for line in said if line.startswith("nock:")]
+            # The human hears what calls for them; the backlog and their own notes, they know.
+            self.notices += [
+                line for line in said if line.startswith("nock:") and "the owner" not in line
+            ]
         return "\n".join(lines)
 
     def decisions(self) -> str:

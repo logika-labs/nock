@@ -833,6 +833,13 @@ class Knowledge:
             "",
             ", ".join(f"{tag} ({count})" for tag, count in tags.items()),
         ]
+        stale = self.decisions.stale()
+        if stale:
+            lines += ["", "# Done decisions whose files are gone", ""]
+            lines += [
+                f"- [D{decision['number']}] {decision['title']}: {', '.join(patterns)}"
+                for decision, patterns in stale
+            ]
         problems = self.decisions.citation_problems()
         current = self.decisions.map.read_text() if self.decisions.map.is_file() else ""
         lines += ["", "# The map as it stands", "", current.strip() or "There is no map yet."]
