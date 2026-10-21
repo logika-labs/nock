@@ -85,10 +85,11 @@ fix it if it must.
 Inside the repository you want it in:
 
 ```sh
-uvx --from git+https://github.com/dan-gittik/nock nock init
+uvx nock-cli init
 ```
 
-(From a checkout of nock: `uv run --project ~/path/to/nock nock init`.)
+(Or `pipx run nock-cli init`; from a checkout of nock, `uv run --project
+~/path/to/nock nock init`.)
 
 `nock init`:
 
@@ -100,6 +101,12 @@ uvx --from git+https://github.com/dan-gittik/nock nock init
 
 Commit the result. From then on, every agent session in the repository starts
 with the project's tools listed, and is recorded when it ends.
+
+To upgrade, `.nock/nock upgrade`. It merges the latest release from PyPI into
+the vendored core, keeping any local edits to it (a three-way merge against
+the release you have), and re-wires the project: primer, hooks and skills.
+Once a day at most, a session you start asks PyPI whether a newer nock is out
+and says so; `upgrade.check = false` turns that off.
 
 To make your test suite and linters the gate that tools and reflection rounds
 must pass, add them as checks:
@@ -438,7 +445,7 @@ published on nock.dev (`public`). Nothing is sent otherwise.
 | `nock reflect start`, `finish JSON` | a reflection round; the round is the `/nock-reflect` skill |
 | `nock share JSON` | a round's summary, and sending it |
 | `nock gen write`, `new`, `add`, `set`, `rm`, `show`, `bind`, `unbind` | generators |
-| `nock init`, `nock upgrade` | install (or re-wire), and upgrade the vendored core with a three-way merge |
+| `nock init`, `nock upgrade` | install (or re-wire), and upgrade the vendored core to the latest release, with a three-way merge |
 
 Every command takes `--json` and `--full`, and every cached command also takes
 `--fresh`.
@@ -479,6 +486,7 @@ one machine.
 | `reflect.sessions`, `reflect.days` | 15, 7 | when a round is due, whichever comes first |
 | `agent.command`, `agent.model`, `agent.deadline` | `claude`, —, 1800 | the headless agent nock dispatches (elaborate, consult) |
 | `consult.deadline` | 600 | seconds a consultation may take |
+| `upgrade.check`, `upgrade.index` | true, PyPI's `nock-cli` | whether a session start says a newer nock is out, and where releases are looked up |
 | `share.endpoint` | `https://api.nock.dev/reflections` | where `nock share` sends a summary |
 | `pricing` | — | per-model prices, to cost sessions |
 

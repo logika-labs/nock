@@ -209,8 +209,8 @@ def sessions(project: Project, *, limit: int = 15) -> list[dict[str, Any]]:
 @command
 def status(project: Project) -> dict[str, Any]:
     """Where the project stands with nock: whether a reflection round is due,
-    the decisions by status and review, the rejected ones to rework, and a
-    round summary not yet shared."""
+    the decisions by status and review, the rejected ones to rework, a round
+    summary not yet shared, and whether a newer nock is out."""
     return Standing(project).collect()
 
 
@@ -453,11 +453,30 @@ def init(
 def upgrade(
     project: Project,
     *,
-    source: Annotated[str | None, Option(help="A git URL or a local checkout.")] = None,
+    source: Annotated[
+        str | None, Option(help="`pypi` (the default), a git URL or a local checkout.")
+    ] = None,
     force: Annotated[bool, Option(help="Replace the core, losing local edits to it.")] = False,
 ) -> list[str]:
-    """Upgrade the vendored core, keeping local edits to it (a three-way merge)."""
-    return Upgrader(project).upgrade(source, force).lines()
+    """Upgrade the vendored core to the latest release, keeping local edits to
+    it (a three-way merge); then the upgraded core re-wires the project —
+    primer, hooks, skills — as `nock init` does."""
+    report = Upgrader(project).upgrade(source, force)
+    lines = report.lines()
+    if report.conflicts:
+        return [*lines, "resolve the conflicts, then `.nock/nock init` re-wires the project"]
+    rewired = subprocess.run(
+        [str(project.root / ".nock" / "nock"), "init"],
+        cwd=project.root,
+        capture_output=True,
+        text=True,
+    )
+    if rewired.returncode != 0:
+        raise Failed(
+            "upgraded, but the new core could not re-wire the project",
+            rewired.stderr.strip()[-600:],
+        )
+    return [*lines, *rewired.stdout.strip().splitlines()]
 
 
 # --- nock's own checks ---------------------------------------------------------------------

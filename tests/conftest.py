@@ -58,6 +58,7 @@ def project(repository: Path, monkeypatch: pytest.MonkeyPatch) -> Project:
     local.mkdir(exist_ok=True)
     (local / "config.toml").write_text(
         f'[agent]\ncommand = ["{sys.executable}", "{FAKE_AGENT}"]\n[run]\nheartbeat = 0\n'
+        "[upgrade]\ncheck = false\n"
     )
     git(repository, "add", "-A")
     git(repository, "commit", "-q", "-m", "Add nock")

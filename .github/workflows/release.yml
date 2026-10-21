@@ -1,0 +1,33 @@
+# The only workflow: a pushed tag `vX.Y.Z` is tested, then published to PyPI
+# as nock-cli through trusted publishing (environment `pypi`). Nothing runs on
+# ordinary pushes.
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: The tag is the package's version
+        run: test "v$(uv version --short)" = "$GITHUB_REF_NAME"
+      - run: uv sync
+      - run: uv run ruff check
+      - run: uv run basedpyright
+      - run: uv run pytest -n 4
+
+  publish:
+    needs: test
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv build
+      - uses: pypa/gh-action-pypi-publish@release/v1
