@@ -1,10 +1,11 @@
-"""Reflection: a round in which an agent, following the `/reflect` skill,
-reads what the work has been — the human's requests, the sessions, the
-toolbox's telemetry, where the code is going — and changes the toolbox:
-builds tools for what keeps costing turns and tokens, repairs and retunes the
-ones that misbehave, retires the ones nobody needs. It writes down what it
-expects of each change, and the next round holds those expectations against
-what actually happened."""
+"""Reflection rounds: an agent, following the `/nock-reflect` skill, has three
+subagents look at what the work has been since the last round — one improves
+the toolbox (`.nock/tools/`), one keeps the map of decisions
+(`.nock/decisions/map.md`), one weighs how well nock itself is serving the
+project — and writes the owner a report, and a summary abstract enough to
+share. `nock reflect start` computes what they read; `nock reflect finish`
+checks the round and commits it. Each round keeps its numbers, so the next
+holds its changes to them, and the first is the baseline."""
 
 from __future__ import annotations
 
@@ -20,9 +21,11 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, NotRequired, TypedDict
 
+from nock.checks import Checks
 from nock.commands import schema_of
-from nock.errors import PreconditionError
-from nock.git import GitError
+from nock.decisions import Decisions, live
+from nock.errors import Failed, PreconditionError
+from nock.git import Git, GitError
 from nock.schema import validate
 from nock.sessions import Sessions
 from nock.utils import format_duration, now, parse_moment, read_json, write_json
@@ -38,6 +41,11 @@ TWO_WORDS = {
 # Where an agent cut a command's output down by hand.
 TRIMMERS = re.compile(r"\|\s*(head|tail|grep|sed -n|awk|cut|wc)\b")
 SECTION_ROWS = 25
+# What the round's lead writes beside its record.
+REPORT = "report.md"
+SHARE = "share.md"
+# The checks a round must pass before it counts: nock's own.
+ROUND_CHECKS = ["nock-tools", "nock-generators", "nock-map", "nock-share"]
 
 
 class Change(TypedDict):
@@ -58,13 +66,13 @@ class Verdict(TypedDict):
 
 class Record(TypedDict):
     summary: str
+    """The round in a sentence or two."""
     changes: list[Change]
+    """What it changed in the toolbox."""
     verdicts: NotRequired[list[Verdict]]
+    """On each expectation the last round left."""
     notes: NotRequired[str]
-
-
-def stamp() -> str:
-    return datetime.now(UTC).strftime("%Y-%m-%d-%H%M%S")
+    """What the next round should look at."""
 
 
 def shape(command: str) -> str:
@@ -112,8 +120,9 @@ class Window:
 
 
 class Rounds:
-    """The record of every round: `.nock/reflections/STAMP.json`, committed, one
-    file per round so that rounds on different machines merge."""
+    """Every round: `.nock/reflections/DATE/` — its record, report and shareable
+    summary, committed — and, while it runs, what it reads, in
+    `.nock/local/reflections/DATE/`."""
 
     def __init__(self, project: Project) -> None:
         self.project = project
@@ -122,16 +131,25 @@ class Rounds:
     def directory(self) -> Path:
         return self.project.code_path("reflections")
 
+    @property
+    def scratch(self) -> Path:
+        return self.project.local / "reflections"
+
     def all(self) -> list[dict[str, Any]]:
+        """Every finished round, oldest first (rounds from before rounds had
+        directories included)."""
         if not self.directory.is_dir():
             return []
         records = []
-        for path in sorted(self.directory.glob("*.json")):
+        paths = [*self.directory.glob("*/record.json"), *self.directory.glob("*.json")]
+        for path in paths:
             try:
                 record = read_json(path)
             except PreconditionError:
                 continue
-            record.setdefault("round", path.stem)
+            record.setdefault(
+                "round", path.parent.name if path.name == "record.json" else path.stem
+            )
             records.append(record)
         return sorted(records, key=lambda record: record.get("finished") or record["round"])
 
@@ -139,12 +157,25 @@ class Rounds:
         records = self.all()
         return records[-1] if records else None
 
-    def write(self, name: str, record: Record) -> Path:
-        validate(record, schema())
-        path = self.directory / f"{name}.json"
-        existing = read_json(path) if path.is_file() else {}
-        write_json(path, {**existing, **record, "round": name, "finished": now()})
-        return path
+    def current(self) -> str | None:
+        """The round started and not finished, if there is one."""
+        if not self.scratch.is_dir():
+            return None
+        started = sorted(
+            path.parent.name
+            for path in self.scratch.glob("*/round.json")
+            if not (self.directory / path.parent.name / "record.json").is_file()
+        )
+        return started[-1] if started else None
+
+    def new_name(self) -> str:
+        """Today's date, with `-2`, `-3`… for another round the same day."""
+        today = datetime.now(UTC).strftime("%Y-%m-%d")
+        name, count = today, 1
+        while (self.directory / name).exists() or (self.scratch / name).exists():
+            count += 1
+            name = f"{today}-{count}"
+        return name
 
 
 def schema() -> dict[str, Any]:
@@ -164,27 +195,114 @@ class Reflection:
         return Window(since, Sessions(self.project).since(since))
 
     def due(self) -> str:
-        """Why a round is due, or nothing when it is not."""
+        """Why a round is due, or nothing when it is not: enough sessions or
+        enough days since the last one, and at least one session to look at."""
         settings = self.project.configuration
         window = self.window()
         count = len(window.sessions)
+        if not count:
+            return ""
         if count >= int(settings.get("reflect.sessions")):
             return f"a reflection round is due ({count} sessions since the last)"
-        since = parse_moment(window.since) or (
-            parse_moment(window.sessions[0]["started"]) if window.sessions else None
-        )
-        days = (datetime.now(UTC) - since).total_seconds() / 86400 if since else 0
-        if days >= float(settings.get("reflect.days")) and count >= int(
-            settings.get("reflect.minimum")
-        ):
+        days = self.days(window)
+        if days >= float(settings.get("reflect.days")):
             return f"a reflection round is due ({count} sessions over {days:.0f} days)"
         return ""
 
-    # --- the material -----------------------------------------------------------
+    def days(self, window: Window) -> float:
+        since = parse_moment(window.since) or (
+            parse_moment(window.sessions[0]["started"]) if window.sessions else None
+        )
+        return (datetime.now(UTC) - since).total_seconds() / 86400 if since else 0
 
-    def material(self) -> str:
+    # --- a round ----------------------------------------------------------------
+
+    def start(self) -> dict[str, Any]:
+        """Start a round — or pick up the one started and not finished — and
+        write what its three parts read."""
         Sessions(self.project).catch_up()
-        return Material(self.project, self.window(), self.rounds.last()).render()
+        name = self.rounds.current() or self.rounds.new_name()
+        scratch = self.rounds.scratch / name
+        scratch.mkdir(parents=True, exist_ok=True)
+        window = self.window()
+        last = self.rounds.last()
+        metrics = self.metrics(window)
+        write_json(
+            scratch / "round.json",
+            {"round": name, "since": window.since, "started": now(), "metrics": metrics},
+        )
+        material = {
+            "process": Material(self.project, window, last).render(),
+            "knowledge": Knowledge(self.project, window).render(),
+            "nock": Evidence(self.project, metrics, self.rounds.all()).render(),
+        }
+        for part, text in material.items():
+            (scratch / f"{part}.md").write_text(text)
+        (self.rounds.directory / name).mkdir(parents=True, exist_ok=True)
+        root = self.project.here
+        return {
+            "round": name,
+            "since": window.since,
+            # On the main checkout, wherever the round runs.
+            "material": {part: str(scratch / f"{part}.md") for part in material},
+            "write": [
+                str((self.rounds.directory / name / file).relative_to(root))
+                for file in (REPORT, SHARE)
+            ],
+        }
+
+    def finish(self, record: Record) -> dict[str, Any]:
+        """Check the round and commit it: its report and summary written,
+        nock's checks passing, the record kept with the numbers it started from."""
+        name = self.rounds.current()
+        if name is None:
+            raise PreconditionError("no round is under way — `.nock/nock reflect start` starts one")
+        validate(record, schema())
+        directory = self.rounds.directory / name
+        missing = [
+            file
+            for file in (REPORT, SHARE)
+            if not (directory / file).is_file() or not (directory / file).read_text().strip()
+        ]
+        if missing:
+            raise PreconditionError(f"write {' and '.join(missing)} in {directory} first")
+        problems = Checks(self.project).run(ROUND_CHECKS).problems()
+        if problems:
+            raise Failed("the round does not pass nock's checks yet", problems)
+        started = read_json(self.rounds.scratch / name / "round.json")
+        write_json(
+            directory / "record.json",
+            {
+                **record,
+                "round": name,
+                "since": started["since"],
+                "started": started["started"],
+                "finished": now(),
+                "metrics": started["metrics"],
+                "snapshot": self.snapshot(started["since"]),
+                "shared": None,
+            },
+        )
+        self.commit(f"Reflection round {name}: {record['summary']}")
+        return {"round": name, "share": str((directory / SHARE).relative_to(self.project.here))}
+
+    def commit(self, message: str) -> None:
+        """Commit `.nock/`, and the main checkout's decisions when the round ran
+        in a worktree; nothing else in either."""
+        places = [(self.project.here, ".nock")]
+        if self.project.root != self.project.here:
+            places.append((self.project.root, ".nock/decisions"))
+        for root, path in places:
+            git = Git(root)
+            git("add", "--all", "--", path)
+            if git("diff", "--cached", "--name-only", "--", path):
+                git("commit", "--quiet", "--no-verify", "--only", "-m", message, "--", path)
+
+    def record_shared(self, name: str, shared: dict[str, Any]) -> None:
+        path = self.rounds.directory / name / "record.json"
+        write_json(path, {**read_json(path), "shared": shared})
+
+    # --- the numbers --------------------------------------------------------------
 
     def snapshot(self, since: str | None) -> dict[str, Any]:
         """Each tool's numbers over the window, kept in the round's record so
@@ -197,17 +315,71 @@ class Reflection:
             for row in tool_rows(self.project, since)
         }
 
-    # --- the record ---------------------------------------------------------------
-
-    def record(self, record: Record) -> Path:
-        """Write the round's record, with the numbers it started from — what the
-        next round holds it to, and when it is due again."""
-        since = self.window().since
-        name = stamp()
-        path = self.rounds.write(name, record)
-        written = read_json(path)
-        write_json(path, {**written, "since": since, "snapshot": self.snapshot(since)})
-        return path
+    def metrics(self, window: Window) -> dict[str, Any]:
+        """The window in numbers, computed the same way every round: the work,
+        nock's use, the decisions and how the owner met them, the toolbox and
+        the map. The first round's are the baseline."""
+        since = window.since or ""
+        identities = [row["id"] for row in window.sessions]
+        marks = ",".join("?" for _ in identities) or "''"
+        events = self.project.store.rows(
+            f"SELECT failed FROM events WHERE session IN ({marks})", tuple(identities)
+        )
+        calls = self.project.store.rows("SELECT exit_code FROM calls WHERE started > ?", (since,))
+        codes = Counter(row["exit_code"] for row in calls)
+        decisions = Decisions(self.project)
+        every = decisions.all()
+        recorded = [d for d in every if d["recorded"]["moment"] > since]
+        reviewed = [d for d in every if d["reviewed"] and d["reviewed"]["moment"] > since]
+        tools = [row for row in tool_rows(self.project, since) if row["source"] != "nock"]
+        try:
+            commits = int(
+                self.project.git("rev-list", "--count", f"--since={since or '1970-01-01'}", "HEAD")
+            )
+        except GitError:
+            commits = 0
+        cited = (
+            len(set(re.findall(r"\[D(\d+)\]", decisions.map.read_text())))
+            if decisions.map.is_file()
+            else 0
+        )
+        return {
+            "days": round(self.days(window), 1),
+            "sessions": len(window.sessions),
+            "requests": sum(row["prompts"] or 0 for row in window.sessions),
+            "interrupts": sum(row["interrupts"] or 0 for row in window.sessions),
+            "compactions": sum(row["compactions"] or 0 for row in window.sessions),
+            "tool_calls": len(events),
+            "failed_tool_calls": sum(row["failed"] or 0 for row in events),
+            "tokens": sum(
+                (row["input_tokens"] or 0)
+                + (row["output_tokens"] or 0)
+                + (row["cache_read_tokens"] or 0)
+                + (row["cache_write_tokens"] or 0)
+                for row in window.sessions
+            ),
+            "cost": round(sum(row["cost"] or 0 for row in window.sessions), 2),
+            "commits": commits,
+            "nock_calls": len(calls),
+            "nock_said_no": codes.get(1, 0),
+            "nock_called_wrong": sum(n for code, n in codes.items() if code and 40 <= code < 50),
+            "nock_broke": sum(n for code, n in codes.items() if code and code >= 50),
+            "decisions_recorded": len(recorded),
+            "decisions_todo": sum(1 for d in recorded if d["status"] == "todo"),
+            "decisions_reviewed": len(reviewed),
+            "decisions_accepted": sum(1 for d in reviewed if d["review"] == "accepted"),
+            "decisions_rejected": sum(1 for d in reviewed if d["review"] == "rejected"),
+            "decisions_unreviewed": sum(
+                1 for d in every if live(d) and d["review"] == "unreviewed"
+            ),
+            "tools": len(tools),
+            "tools_used": sum(1 for row in tools if row["calls"]),
+            "tool_calls_to_project_tools": sum(row["calls"] for row in tools),
+            "map_lines": len(decisions.map.read_text().splitlines())
+            if decisions.map.is_file()
+            else 0,
+            "map_citations": cited,
+        }
 
 
 def tool_rows(project: Project, since: str | None) -> list[dict[str, Any]]:
@@ -254,7 +426,8 @@ def tool_rows(project: Project, since: str | None) -> list[dict[str, Any]]:
 
 
 class Material:
-    """What a round reads, computed: the big picture first, then the numbers."""
+    """What the round's toolbox part reads, computed: the big picture first,
+    then the numbers."""
 
     def __init__(self, project: Project, window: Window, last: dict[str, Any] | None) -> None:
         self.project = project
@@ -623,3 +796,88 @@ processes, their logs in .nock/local/logs/run-ID.log), sessions, prompts
 (session, moment, text), events (session, moment, tool, input, failed,
 output_bytes, duration — every tool call of every session). Example:
 `.nock/nock query "SELECT input, output_bytes FROM events WHERE tool = 'Bash' AND input LIKE '%pytest%' ORDER BY output_bytes DESC LIMIT 5"`."""
+
+
+class Knowledge:
+    """What the round's map part reads: the decisions recorded, changed or
+    reviewed since the last round in full, every standing one in a line, the
+    tags in use, and the map as it stands."""
+
+    def __init__(self, project: Project, window: Window) -> None:
+        self.decisions = Decisions(project)
+        self.since = window.since or ""
+
+    def render(self) -> str:
+        every = self.decisions.all()
+        recent = [decision for decision in every if decision["updated"] > self.since]
+        lines = [
+            f"# Recorded, changed or reviewed since the last round ({self.since or 'never'})",
+            "",
+        ]
+        if not recent:
+            lines.append("Nothing.")
+        for decision in recent:
+            lines += [f"## [D{decision['number']}] {decision['title']}", "", "```json"]
+            lines += [json.dumps(decision, indent=2, ensure_ascii=False), "```", ""]
+        lines += ["", "# Every standing decision", ""]
+        lines += [
+            f"- [D{decision['number']}] {decision['status']}, {decision['review']}: {decision['title']}"
+            + (f" — touches {', '.join(decision['touches'])}" if decision["touches"] else "")
+            for decision in every
+            if live(decision)
+        ] or ["None yet."]
+        tags = self.decisions.tags()
+        lines += [
+            "",
+            "# Tags in use",
+            "",
+            ", ".join(f"{tag} ({count})" for tag, count in tags.items()),
+        ]
+        problems = self.decisions.citation_problems()
+        current = self.decisions.map.read_text() if self.decisions.map.is_file() else ""
+        lines += ["", "# The map as it stands", "", current.strip() or "There is no map yet."]
+        if problems:
+            lines += ["", "Its citations that no longer hold:"]
+            lines += [f"- line {problem.line}: {problem.message}" for problem in problems]
+        return "\n".join(lines) + "\n"
+
+
+class Evidence:
+    """What the round's nock part reads: this window's numbers beside every
+    earlier round's — the first is the baseline."""
+
+    def __init__(
+        self, project: Project, metrics: dict[str, Any], rounds: list[dict[str, Any]]
+    ) -> None:
+        self.project = project
+        self.metrics = metrics
+        self.rounds = [record for record in rounds if record.get("metrics")]
+
+    def render(self) -> str:
+        columns = [*(record["round"] for record in self.rounds), "this window"]
+        rows = [*(record["metrics"] for record in self.rounds), self.metrics]
+        lines = [
+            "# nock, in numbers",
+            "",
+            "Each column is a round's window, computed the same way every time; the first is the baseline."
+            if self.rounds
+            else "This is the first round: these numbers are the baseline the next rounds compare to.",
+            "",
+            "| | " + " | ".join(columns) + " |",
+            "|---|" + "---|" * len(columns),
+        ]
+        for key in self.metrics:
+            lines.append(f"| {key} | " + " | ".join(str(row.get(key, "-")) for row in rows) + " |")
+        lines += ["", METRICS_HELP, "", QUERY_HELP]
+        return "\n".join(lines) + "\n"
+
+
+METRICS_HELP = """\
+What they count: sessions the human started in the window (`days` long) and
+what they asked (`requests`), interrupted and compacted; every tool call
+they made and how many failed; tokens and dollars; commits. `nock_*`: calls
+to nock, and how many said no (exit 1), were called wrong (40s) or broke
+(50s). `decisions_*`: recorded in the window (and how many as todos),
+reviewed by the owner in it (accepted, rejected), and every standing one
+still unreviewed. `tools`: the project's own commands, how many were used,
+and how often. `map_*`: the map's length and the decisions it cites."""

@@ -1,7 +1,7 @@
 """A stand-in for `claude -p` in the seats nock dispatches: a real process that
 does what a scripted session would — through nock's own CLI, in the directory
 it was started in — and writes a transcript where Claude Code would. As the
-elaborator it rewrites the question it was given, unless FAKE_ELABORATE is
+elaborator it deepens the decision it was given, unless FAKE_ELABORATE is
 `silent`; as the consultant it answers at once."""
 
 from __future__ import annotations
@@ -68,16 +68,15 @@ def main() -> int:
 
 
 def elaborate(session: str, prompt: str) -> int:
-    number = os.environ["NOCK_QUESTION"]
-    assert f"question {number}" in prompt
+    number = os.environ["NOCK_DECISION"]
+    assert f"decision {number}" in prompt
     if os.environ.get("FAKE_ELABORATE") != "silent":
-        rewritten = {
-            "title": "Which database, now that we know the load",
-            "context": "The load is 40 writes a second: SQLite holds it.",
-            "options": ["SQLite", "Postgres"],
-            "recommended": 1,
+        change = {
+            "number": int(number),
+            "summary": "SQLite holds the load: 40 writes a second.",
+            "evidence": ["the busiest hour wrote 40 rows a second"],
         }
-        result = run(".nock/nock", "questions", "rewrite", number, json.dumps(rewritten))
+        result = run(".nock/nock", "decisions", "edit", json.dumps(change))
         print(json.dumps({"type": "system", "message": result.stdout + result.stderr}), flush=True)
     write_transcript(session, prompt)
     print(json.dumps({"type": "result", "result": "elaborated"}), flush=True)

@@ -1,35 +1,36 @@
-An agent working on this project asked its owner question {{ question["number"] }},
-and the owner asked for more before deciding. You are a fresh session, here
-only to say the question again, better. Nobody will answer you.
+An agent working on this project recorded decision {{ decision["number"] }},
+and the owner asked for more before reviewing it. You are a fresh session,
+here only to say it better. Nobody will answer you.
 
-# The question
+# The decision
 
 ```json
 {{ rendered }}
 ```
 
-`owner` is what the owner said: `comment`, when there is one, is what they
-found missing or want looked at; `choice`, the option they lean towards.
+`note`, when there is one, is the owner's: what they found missing, or want
+looked at.
 
 # What to do
 
-1. Find out what the question needs. Read the code, the documents, git
-   history, and the questions already answered (`.nock/nock questions list
-   --state closed`, `.nock/nock questions show N`): the decision may be
-   settled there, or depend on one that is.
+1. Find out what the decision needs. Read the code, the documents, git
+   history, and the other decisions (`.nock/nock decisions list`,
+   `.nock/nock decisions show N`): it may depend on one of them, or
+   contradict one.
 2. Change nothing in the project: read, run, try things in a scratch
    directory, but leave the repository as you found it.
-3. Rewrite the question, once, with one JSON record:
+3. Edit the decision, once, with one JSON record:
 
-       .nock/nock questions rewrite {{ question["number"] }} '{"title": …, "context": …, "options": […], "recommended": 1}'
+       .nock/nock decisions edit '{"number": {{ decision["number"] }}, "summary": …, "evidence": […], "alternatives": [{"option": …, "why_not": …}]}'
 
-   - `context` is Markdown the owner reads cold: what the decision is, what
-     each way leads to (what changes, what it costs, what it rules out), and
-     what you found — with the files, numbers or commits that show it. Answer
-     the owner's comment first, in its own terms.
-   - `options` are real, distinct answers, in the order you would weigh them;
-     drop one that turned out moot, add one you found. `recommended` is the
-     number of the one you would take, and `context` says why.
-   - Keep the title unless it no longer says what is being decided.
+   - `summary` is Markdown for someone who knows what the system does but
+     not how it is built: what was decided, what it changes, what it costs
+     and rules out. Answer the owner's note first, in its own terms.
+   - `evidence` is what you found, a line each — the files, numbers or
+     commits that show it.
+   - `alternatives` are the ways that were really open, each with why not;
+     drop one that turns out moot, add one you found. If you find the
+     decision is wrong, say so in the summary: the owner decides.
+   - Keep the title unless it no longer says what was decided.
 
 Finish with a line saying what you added.

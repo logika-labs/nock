@@ -5,7 +5,8 @@ interface:
   (a bool is a flag, a list repeats, an enum or Literal gives the choices);
 - a parameter typed as a record — a dataclass, a TypedDict, or a dict — is one
   JSON argument (inline, a path to a JSON file, or JSON on stdin), checked
-  against the schema derived from the type, which `--help` prints;
+  against the schema derived from the type, which `--help` prints; one with
+  a default, left out, is its default;
 - a parameter named after a fixture is not on the command line at all: the
   framework supplies it (see `nock.fixtures`);
 - the docstring is the help; `Annotated[T, Option("--flag", help=…)]` renames
@@ -373,11 +374,8 @@ class Command:
         return values
 
     def record(self, parameter: Parameter, argument: str | None) -> Any:
-        if (
-            argument is None
-            and parameter.default is not inspect.Parameter.empty
-            and sys.stdin.isatty()
-        ):
+        # An optional record left out is its default; `-` reads it from stdin.
+        if argument is None and parameter.default is not inspect.Parameter.empty:
             return parameter.default
         value = read_record(argument)
         validate(value, schema_of(parameter.annotation))

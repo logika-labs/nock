@@ -1,12 +1,7 @@
----
-name: reflect
-description: Run a reflection round on this project's nock toolbox — read the telemetry and the work, change .nock/tools, record what each change should do. Use when nock says a round is due, or when asked to reflect.
----
-
-You are running a reflection round on this project. Decide for yourself, and
-say why in the record; ask the human only what nothing in the material can
-settle. If you have been working on something else in this session, set it
-aside: the round starts from the material, not from what you remember.
+You are the toolbox part of a reflection round on this project; two other
+parts look at the project's decisions and at nock itself, and the round's
+lead puts it together. Decide for yourself, and say why in your report;
+nobody will answer questions.
 
 # Why this round exists
 
@@ -40,8 +35,8 @@ Before the numbers, understand the work — the material below starts with it:
    arguments consistent across them? Is something missing that the work
    plainly needs?
 
-Start with `.nock/nock reflect material`: it prints the record, computed —
-the big picture first, then the numbers. Then let the numbers find and confirm
+Your material — the file the lead named — is the record, computed: the big
+picture first, then the numbers. Then let the numbers find and confirm
 candidates. Drill down with
 `.nock/nock query` — read the actual events of the sessions involved before
 you decide anything.
@@ -73,11 +68,12 @@ you decide anything.
 - **Change nothing** that nothing earns. A round that confirms the toolbox is
   a good round; fewer, better tools beat more tools.
 
-Change only `.nock/` — this round changes the toolbox, not the product. The
-one exception is a file a generator you add writes: run `.nock/nock gen write`
-and commit it with the generator. A new check must pass on the code as it
+Change only `.nock/` — the tools, the generators, the config: this part
+changes the toolbox, not the product, and not the decisions. The one
+exception is a file a generator you add writes: run `.nock/nock gen write`
+and name the file in your report, for the lead to commit. A new check must pass on the code as it
 stands: ask for `changed` to hold only new code to it, and name the existing
-violations in the record's notes.
+violations in your report.
 
 # How to write a tool
 
@@ -88,24 +84,17 @@ violations in the record's notes.
 Run every tool you added or changed, on this project, as an agent would, and
 read the output as that agent: is it what the next decision needs, and
 nothing more? Give each new command `examples=[...]`. Then run
-`.nock/nock check`: commit nothing it fails on.
+`.nock/nock check`: leave nothing it fails on.
 
-# Finish
+# Report
 
-1. Commit — a commit per change, its message saying why, and only `.nock/`
-   (and a generator's file): leave anything else in the working tree alone.
-2. Record the round. It is what the next round holds you to:
+Commit nothing: the lead commits the round. Answer, in your last message:
 
-       .nock/nock reflect record '{"summary": "a sentence or two",
-         "changes": [{"kind": "add", "target": "failures",
-           "why": "the evidence, with numbers",
-           "expect": "what should measurably change by the next round, and how to tell"}],
-         "verdicts": [{"expectation": "one the last round left", "held": true,
-           "evidence": "the numbers"}],
-         "notes": "what the next round should look at"}'
-
-   `kind` is add, change, retire, check, generator or other. Judge every
-   expectation the last round left: held, did not (then fix or revert that
-   change), or too early to tell (`"held": null`).
-3. Commit the record (`.nock/reflections/`), and say in a few lines what the
-   round changed and why.
+1. What you changed, each as `{"kind": "add", "target": "failures", "why":
+   "the evidence, with numbers", "expect": "what should measurably change
+   by the next round, and how to tell"}` — `kind` is add, change, retire,
+   check, generator or other.
+2. A verdict on every expectation the last round left: `{"expectation": …,
+   "held": true, "evidence": "the numbers"}` — held, did not (then fix or
+   revert that change), or too early to tell (`"held": null`).
+3. In a few lines, what the next round should look at.

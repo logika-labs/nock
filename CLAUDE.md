@@ -3,14 +3,15 @@
 A toolbox coding agents build for themselves: an agent-friendly CLI framework
 (`commands.py`, `fixtures.py`, `render.py`, woven together in `cli.py`),
 telemetry of every call and session (`store.py`, `telemetry.py`,
-`sessions.py`), reflection rounds that turn it into better tools
-(`reflect.py`, the `/reflect` skill in `briefs/reflect.md`), and the owner's
-decisions — questions, their map, consultation (`questions.py`,
-`consolidate.py`, `consult.py`). It is vendored into the projects that use
-it (`nock init` copies `src/nock` into their `.nock/core/`), so everything
-here must run on Python 3.12 with the standard library and nothing else:
-templates are `nock.templates`, schemas the JSON Schema subset in
-`schema.py`.
+`sessions.py`), the decisions agents record and the owner reviews
+(`decisions.py`, the page in `web.py`), consultation (`consult.py`), and
+reflection rounds that turn it all into better tools, a map of the
+decisions and an account of how nock is doing (`reflect.py`, `share.py`,
+the `/nock-reflect` skill in `briefs/nock-reflect/`). It is vendored into
+the projects that use it (`nock init` copies `src/nock` into their
+`.nock/core/`), so everything here must run on Python 3.12 with the standard
+library and nothing else: templates are `nock.templates`, schemas the JSON
+Schema subset in `schema.py`.
 
 - `uv run pytest -n 4`, `uv run ruff check`, `uv run ruff format`,
   `uv run basedpyright` — all green before a commit.

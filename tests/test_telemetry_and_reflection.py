@@ -1,16 +1,21 @@
 """Sessions read into telemetry, the hooks around them, and reflection rounds:
-the material a round reads, and a round that lands — or does not."""
+what a round's parts read, a round that finishes — or does not — and
+sharing its summary."""
 
 from __future__ import annotations
 
 import json
 import os
+import subprocess
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 from nock.hooks import HookRunner
 from nock.project import Project
 from nock.reflect import Reflection, Rounds, shape
 from nock.sessions import Sessions, encoded
+from nock.share import Sharing
 
 from .conftest import git, nock, write_tool
 
@@ -138,6 +143,8 @@ def test_a_round_is_due_after_enough_sessions(project: Project) -> None:
     transcript(project, "s3", ["more work"], [])
     Sessions(project).catch_up()
     assert Reflection(project).due() == "a reflection round is due (4 sessions since the last)"
+    start = HookRunner(project, {"session_id": "s9"}).handle("SessionStart")
+    assert start is not None and "`/nock-reflect` runs one" in start["systemMessage"]
 
 
 def test_the_material_starts_from_the_work_and_names_the_waste(project: Project) -> None:
@@ -159,7 +166,8 @@ def test_the_material_starts_from_the_work_and_names_the_waste(project: Project)
     nock(project.root, "unusd")
     for _ in range(12):
         nock(project.root, "calls", "--limit", "1")
-    material = Reflection(project).material()
+    started = Reflection(project).start()
+    material = (project.root / started["material"]["process"]).read_text()
     assert material.index("# What the human asked for") < material.index("# The toolbox")
     assert "- no — run the slow suite too" in material
     assert "Add login rate limiting" in material
@@ -176,37 +184,120 @@ def test_shapes_name_what_a_command_is() -> None:
     assert shape("ls -la") == "ls"
 
 
-def test_a_round_records_its_expectations_and_the_numbers_it_started_from(
-    project: Project,
-) -> None:
+def finish(project: Project, record: dict[str, object]) -> subprocess.CompletedProcess[str]:
+    return nock(project.root, "reflect", "finish", json.dumps(record))
+
+
+RECORD = {
+    "summary": "Added nothing; calls is fine.",
+    "changes": [
+        {"kind": "other", "target": "calls", "why": "used twice", "expect": "calls stays under 1k"}
+    ],
+}
+
+
+def test_a_round_finishes_with_its_report_its_summary_and_its_numbers(project: Project) -> None:
     for _ in range(2):
         nock(project.root, "calls", "--limit", "1")
-    record = {
-        "summary": "Added nothing; calls is fine.",
-        "changes": [
-            {
-                "kind": "other",
-                "target": "calls",
-                "why": "used twice",
-                "expect": "calls stays under 1k",
-            }
-        ],
+    assert finish(project, RECORD).returncode == 42
+    started = json.loads(nock(project.root, "reflect", "start", "--json").stdout)
+    material = {
+        part: (project.root / path).read_text() for part, path in started["material"].items()
     }
-    result = nock(project.root, "reflect", "record", json.dumps(record))
-    assert result.returncode == 0, result.stderr
+    assert "This is the first round." in material["process"]
+    assert "There is no map yet." in material["knowledge"]
+    assert "these numbers are the baseline" in material["nock"]
+    report, share = (project.root / path for path in started["write"])
+    refused = finish(project, RECORD)
+    assert refused.returncode == 42 and "write report.md and share.md" in refused.stderr
+
+    report.write_text("# The round\n\nNothing needs you.\n")
+    share.write_text("A small project. See README.md, or write to test@example.com.\n")
+    named = finish(project, RECORD)
+    assert named.returncode == 1 and "names `README.md`" not in named.stdout
+    assert "names `test@example.com`" in named.stdout
+    share.write_text("A small project, a few days in; the toolbox is barely used yet.\n")
+    finished = finish(project, RECORD)
+    assert finished.returncode == 0, finished.stdout + finished.stderr
+    assert git(project.root, "status", "--porcelain") == ""
+    assert git(project.root, "log", "-1", "--format=%s").startswith(
+        f"Reflection round {started['round']}"
+    )
     (round_,) = Rounds(project).all()
     assert round_["changes"][0]["expect"] == "calls stays under 1k"
     assert round_["snapshot"]["calls"]["calls"] == 2 and round_["since"] is None
-    material = Reflection(project).material()
-    assert "# The last round" in material and "expected calls stays under 1k" in material
+    assert round_["metrics"]["nock_calls"] >= 2 and round_["shared"] is None
+
+    again = Reflection(project).start()
+    assert again["round"] == f"{started['round']}-2"
+    process = (project.root / again["material"]["process"]).read_text()
+    assert "# The last round" in process and "expected calls stays under 1k" in process
+    nock_material = (project.root / again["material"]["nock"]).read_text()
+    assert f"| {started['round']} | this window |" in nock_material
 
 
-def test_init_installs_the_round_skills(project: Project) -> None:
-    skills = project.root / ".claude" / "skills"
-    reflect = (skills / "reflect" / "SKILL.md").read_text()
-    assert reflect.startswith("---\nname: reflect\n")
-    assert (
-        "`.nock/nock reflect material`" in reflect
-        and "**Ask for what you need by name**" in reflect
+def test_a_summary_is_shared_only_when_sent(project: Project) -> None:
+    received: list[dict[str, object]] = []
+
+    class Receiver(BaseHTTPRequestHandler):
+        def do_POST(self) -> None:
+            received.append(json.loads(self.rfile.read(int(self.headers["Content-Length"]))))
+            body = json.dumps({"url": "https://nock.dev/r/1"}).encode()
+            self.send_response(200)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, format: str, *arguments: object) -> None:
+            pass
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Receiver)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    local = project.root / ".nock" / "local" / "config.toml"
+    local.write_text(
+        local.read_text() + f'[share]\nendpoint = "http://127.0.0.1:{server.server_address[1]}/"\n'
     )
-    assert (skills / "consolidate" / "SKILL.md").read_text().startswith("---\nname: consolidate\n")
+    started = Reflection(project).start()
+    for path, text in zip(
+        started["write"], ("# Report\n", "Early days; little to say.\n"), strict=True
+    ):
+        (project.root / path).write_text(text)
+    assert finish(project, RECORD).returncode == 0
+    assert Sharing(project).unshared() == started["round"]
+    begun = HookRunner(project, {"session_id": "s1"}).handle("SessionStart")
+    assert begun is not None and "summary is not shared yet" in begun["systemMessage"]
+    again = HookRunner(project, {"session_id": "s2"}).handle("SessionStart")
+    assert again is None or "not shared" not in again.get("systemMessage", "")
+
+    shown = json.loads(nock(project.root, "share", '{"visibility": "private"}', "--json").stdout)
+    assert shown["text"] == "Early days; little to say." and received == []
+    sent = nock(project.root, "share", '{"visibility": "public", "send": true}', "--json")
+    assert sent.returncode == 0, sent.stderr
+    assert json.loads(sent.stdout)["url"] == "https://nock.dev/r/1"
+    assert received == [
+        {"summary": "Early days; little to say.", "visibility": "public", "round": started["round"]}
+    ]
+    assert Sharing(project).unshared() is None
+    assert git(project.root, "status", "--porcelain") == ""
+    server.shutdown()
+    server.server_close()
+
+
+def test_init_installs_the_skills_and_retires_the_old_ones(project: Project) -> None:
+    skills = project.root / ".claude" / "skills"
+    lead = (skills / "nock-reflect" / "SKILL.md").read_text()
+    assert lead.startswith("---\nname: nock-reflect\n") and "`.nock/nock reflect start`" in lead
+    process = (skills / "nock-reflect" / "process.md").read_text()
+    assert "**Ask for what you need by name**" in process
+    assert {path.name for path in (skills / "nock-reflect").iterdir()} == {
+        "SKILL.md",
+        "process.md",
+        "knowledge.md",
+        "nock.md",
+    }
+    assert (skills / "nock-triage" / "SKILL.md").read_text().startswith("---\nname: nock-triage\n")
+    old = skills / "consolidate" / "SKILL.md"
+    old.parent.mkdir()
+    old.write_text("---\nname: consolidate\n---\n")
+    assert nock(project.root, "init").returncode == 0
+    assert not old.parent.exists()

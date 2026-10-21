@@ -15,7 +15,8 @@ file per area is good). It is live on the next call — nothing to register.
 a keyword-only one (after `*`) is an `--option` — a `bool` is a flag, a
 `list[str]` repeats, an `Enum` or `Literal` gives the choices. A parameter
 typed as a TypedDict or a dataclass is one JSON argument (inline, a path to a
-JSON file, or stdin), checked against the type. The docstring's first line is
+JSON file, or stdin), checked against the type; give it a default to make it
+optional. The docstring's first line is
 the tool's summary everywhere it is listed; the rest is its `--help`.
 `group="db"` makes it `.nock/nock db NAME`.
 

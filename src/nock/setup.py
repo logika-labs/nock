@@ -48,20 +48,13 @@ branch = "main"
 # command = "pytest -q"
 
 [reflect]
-# A round is due after this many sessions, or `days` days with `minimum` sessions.
+# A round is due after this many sessions or days, whichever comes first.
 sessions = 15
 days = 7
-minimum = 3
 
 [agent]
 # The model of the agents nock dispatches (elaborate, consult); empty is Claude Code's default.
 model = ""
-
-[consolidate]
-# A round is due after this many decisions, or `days` days with `minimum` decisions.
-questions = 5
-days = 7
-minimum = 1
 """
 
 GITIGNORE = "local/\n"
@@ -81,31 +74,39 @@ listed. Reach for a tool before doing the same work by hand.
   output is cut, and the rest saved to a file whose path is printed.
 - `.nock/nock check` runs the project's checks. `.nock/nock run -- COMMAND`
   runs anything noisy or long, supervised, with its output condensed.
-- Every call and every session is recorded. Reflection rounds turn that
-  record into better tools: when a session starts by saying a round is due,
-  offer the human the `/reflect` skill (and `/consolidate` for decisions).
-- When a decision is the owner's to make, and neither the code, the
-  documents nor an earlier answer settles it, ask:
-  `.nock/nock ask '{"title": …, "context": …, "options": […], "recommended": 1}'`
-  (`--help` has the fields). Take your recommendation meanwhile, say so, and
-  keep going; the answer arrives with the owner's next prompt. Decided
-  questions are the project's decisions, and `.nock/questions/map.md` says
-  when each matters: read it before starting anything serious. When you
-  close a question, name the files it governs (`--touches`) and what it
-  overturns (`--supersedes`); an edit to a governed file shows its decisions.
+- Record decisions as you make them:
+  `.nock/nock decide '{"title": …, "status": "done", "summary": …, "evidence": […], "alternatives": [{"option": …, "why_not": …}], "tags": […], "touches": […]}'`
+  (`--help` has the fields). A decision is a non-trivial choice between
+  ways that could each work, a deliberate simplification, or a reading of
+  something ambiguous; with `"status": "todo"`, it is something that should
+  be done and is not yet (tag a possible improvement `improvement`). What
+  has one obvious right way is not a decision, and an alternative you never
+  weighed is not one either. Write for someone who knows what the system
+  does but not how it is built. The owner reviews decisions later — accepts,
+  rejects, notes — so keep going; set `review` or `note` only on their word.
+- `.nock/decisions/map.md` says when each decision matters: read it before
+  starting anything serious. An edit to a file a decision `touches` shows
+  it; a rejected done decision is to be reworked — edit it to say what you
+  did. When you do a todo, edit it to `"status": "done"` and say what was done.
 - Before something serious — a feature, a migration, a redesign, a change of
   course, or when stuck — consult:
   `.nock/nock consult '{"intent": …, "context": …}'`. A fresh agent reads the
   decisions and documents and reframes the task; it takes a few minutes, so
   never for routine edits.
+- Every call and every session is recorded. `.nock/nock status` says where
+  things stand; when a session starts by saying a reflection round is due,
+  offer the human `/nock-reflect`, and `/nock-triage` to go through
+  decisions together.
 - When a chore repeats, make it a tool — `.nock/nock guide` says how, in a
   page; it is live on the next call. When a rule can be checked mechanically,
   make it a check, not a note: a check beats a hook beats prose.
 """
 
 IMPORT_LINE = "@.nock/context.md"
-# The rounds an agent runs as Claude Code skills, from `briefs/NAME.md`.
-SKILLS = ("reflect", "consolidate")
+# Claude Code skills, from `briefs/NAME/` (a SKILL.md and what it reads).
+SKILLS = ("nock-reflect", "nock-triage")
+# Skills earlier versions installed, removed on install.
+RETIRED_SKILLS = ("reflect", "consolidate")
 HOOK_COMMAND = '"$CLAUDE_PROJECT_DIR"/.nock/nock hook {event}'
 PERMISSION = "Bash(.nock/nock:*)"
 
@@ -190,11 +191,21 @@ class Installer:
         return self.report
 
     def install_skills(self) -> None:
-        """The `/reflect` and `/consolidate` skills, kept in step with the core like the primer."""
+        """The `/nock-reflect` and `/nock-triage` skills, kept in step with the core like the primer."""
+        briefs = PACKAGE / "briefs"
+        library = Library(briefs)
         for name in SKILLS:
-            relative = f".claude/skills/{name}/SKILL.md"
-            write_atomic(self.root / relative, Library(PACKAGE / "briefs").render(f"{name}.md"))
-            self.report.written.append(relative)
+            for source in sorted((briefs / name).glob("*.md")):
+                relative = f".claude/skills/{name}/{source.name}"
+                write_atomic(self.root / relative, library.render(f"{name}/{source.name}"))
+                self.report.written.append(relative)
+        for name in RETIRED_SKILLS:
+            skill = self.root / ".claude" / "skills" / name / "SKILL.md"
+            if skill.is_file() and skill.read_text().startswith(f"---\nname: {name}\n"):
+                skill.unlink()
+                if not any(skill.parent.iterdir()):
+                    skill.parent.rmdir()
+                self.report.written.append(f"removed .claude/skills/{name}")
 
     def copy_core(self, core: Path) -> None:
         for relative, content in core_files(PACKAGE).items():

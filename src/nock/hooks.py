@@ -1,12 +1,12 @@
 """Claude Code's hook events, handled: `nock hook EVENT` reads the payload on
 stdin and answers in Claude Code's hook format. nock's own: a session starts
-knowing the toolbox (and whether a reflection round is due, or questions
-wait on an agent), a prompt brings the owner's answers to the questions the
-session asked, an edit to a file shows the decisions that govern it, and the
-transcript is read into telemetry when the session ends. What is due is also
-said to the human. The project's `@nock.hook`s
-run after. Every handler fails open — a nock that cannot load must never block
-the tool call that would fix it."""
+knowing the toolbox and — when the human started it — where things stand
+(a reflection round due, decisions waiting on review or rework); a prompt
+brings the owner's reviews of the decisions the session recorded; an edit to
+a file shows the decisions that govern it; and the transcript is read into
+telemetry when the session ends. What calls for the owner is also said to
+the human. The project's `@nock.hook`s run after. Every handler fails open —
+a nock that cannot load must never block the tool call that would fix it."""
 
 from __future__ import annotations
 
@@ -15,12 +15,11 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from nock.consolidate import Consolidation
+from nock.decisions import Decisions
 from nock.fixtures import Call, Scope
 from nock.project import Project
-from nock.questions import Questions, said
-from nock.reflect import Reflection
 from nock.sessions import Sessions
+from nock.status import Standing
 from nock.tools import NATIVE_EVENTS, Event
 
 EVENTS = {native: event for event, native in NATIVE_EVENTS.items()}
@@ -47,7 +46,7 @@ class HookRunner:
         if event is Event.SESSION_START:
             messages.append(self.session_start())
         elif event is Event.PROMPT:
-            messages.append(self.answers())
+            messages.append(self.reviews())
         elif event is Event.AFTER_TOOL:
             messages.append(self.decisions())
         elif event is Event.SESSION_END:
@@ -84,7 +83,7 @@ class HookRunner:
 
     def session_start(self) -> str:
         """The toolbox, so the session reaches for a tool before scripting one,
-        and — for a session the human started — whether a round is due."""
+        and — for a session the human started — where things stand."""
         registry = self.project.registry
         lines = []
         own = registry.project_tools()
@@ -94,23 +93,18 @@ class HookRunner:
         if registry.failures:
             lines += [f"nock: a tool did not load — {failure}" for failure in registry.failures]
         if self.project.current_role() is None:
-            due = Reflection(self.project).due()
-            if due:
-                lines.append(f"nock: {due} — the `/reflect` skill does it.")
-                self.notices.append(f"nock: {due} — run `/reflect`.")
-            due = Consolidation(self.project).due()
-            if due:
-                lines.append(f"nock: {due} — the `/consolidate` skill does it.")
-                self.notices.append(f"nock: {due} — run `/consolidate`.")
-            pending = [
-                f"{question['number']} ({question['title']})"
-                for question in Questions(self.project).pending()
-                if not question["owner"]["elaborate"]
-            ]
-            if pending:
-                lines.append(
-                    f"nock: the owner answered question(s) {', '.join(pending)} — they wait on an agent: `.nock/nock questions list`."
-                )
+            standing = Standing(self.project)
+            collected = standing.collect()
+            unshared = collected["unshared"]
+            if unshared and self.project.store.rows(
+                "SELECT round FROM nudged WHERE round = ?", (unshared,)
+            ):
+                collected["unshared"] = None
+            elif unshared:
+                self.project.store.insert("nudged", {"round": unshared})
+            said = standing.lines(collected)
+            lines += said
+            self.notices += [line for line in said if line.startswith("nock:")]
         return "\n".join(lines)
 
     def decisions(self) -> str:
@@ -128,33 +122,38 @@ class HookRunner:
         if not path.resolve().is_relative_to(self.project.here.resolve()):
             return ""
         relative = str(path.resolve().relative_to(self.project.here.resolve()))
-        found = Questions(self.project).reminders_for(session, relative)
+        found = Decisions(self.project).reminders_for(session, relative)
         if not found:
             return ""
-        lines = [
-            f"nock: decisions govern {relative} — keep to them, or ask before changing course:"
-        ]
-        lines += [
-            f"- [Q{question['number']}] {question['title']}: {question['answer']}"
-            for question in found
-        ]
+        lines = [f"nock: decisions govern {relative} — keep to them, or record why not:"]
+        for decision in found:
+            note = f" The owner: {decision['note']}" if decision["note"] else ""
+            lines.append(
+                f"- [D{decision['number']}] ({decision['status']}, {decision['review']}) "
+                f"{decision['title']}.{note}"
+            )
+        lines.append("`.nock/nock decisions show N` has the reasoning.")
         return "\n".join(lines)
 
-    def answers(self) -> str:
-        """The owner's input on this session's questions, the first time it sees it."""
+    def reviews(self) -> str:
+        """The owner's reviews and notes on this session's decisions, the first time it sees them."""
         session = self.payload.get("session_id")
         if not isinstance(session, str):
             return ""
         lines = []
-        for question in Questions(self.project).news_for(session):
-            lines.append(f"- question {question['number']} ({question['title']}): {said(question)}")
+        for decision in Decisions(self.project).news_for(session):
+            note = f": {decision['note']}" if decision["note"] else ""
+            lines.append(
+                f"- [D{decision['number']}] {decision['title']} — {decision['review']}{note}"
+            )
         if not lines:
             return ""
         return "\n".join(
             [
-                "nock: the owner answered your question(s):",
+                "nock: the owner reviewed decision(s) you recorded:",
                 *lines,
-                "Act on each, then close it: `.nock/nock questions answer N ANSWER`, the decision in its own words.",
+                "Rework what was rejected, and edit the decision to say what you did: "
+                "`.nock/nock decisions edit '{\"number\": N, …}'`.",
             ]
         )
 

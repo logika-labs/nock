@@ -3,14 +3,14 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>nock questions</title>
+<title>nock decisions</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap">
 <style>
 /* nock's studio look: warm paper, off-black ink, one red for everything interactive,
    white cards with borders and no shadows, outlined pills, uppercase labels.
-   Layout: a red field band, then one centred column of questions; a question opens in place. */
+   Layout: a red field band, then one centred column of decisions; a decision opens in place. */
 :root {
   --paper: #f2efe9;
   --ink: #393939;
@@ -95,6 +95,7 @@
 }
 
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 html, body { background: var(--background); color: var(--foreground); }
 body { margin: 0; font: 400 15px/1.6 var(--sans); -webkit-font-smoothing: antialiased; }
 button:not(:disabled), label[for] { cursor: pointer; }
@@ -136,9 +137,9 @@ nav { display: flex; flex-wrap: wrap; align-items: center; gap: 0 24px; border-b
 }
 .chip .count { color: var(--muted); font-variant-numeric: tabular-nums; letter-spacing: 0; }
 .chip:hover { background: var(--card); }
-.chip[data-priority="blocking"] { --tone: var(--error); }
-.chip[data-priority="important"] { --tone: var(--warning); }
-.chip[data-priority="normal"] { --tone: var(--foreground); }
+.chip { --tone: var(--foreground); }
+.chip[data-tag="important"] { --tone: var(--warning); }
+.chips .divider { width: 1px; align-self: stretch; margin: 4px 2px; background: var(--border); }
 .chip[aria-pressed="true"] { border-color: var(--tone); color: var(--tone); background: color-mix(in oklab, var(--tone) 10%, var(--card)); }
 .chip[aria-pressed="true"] .count { color: inherit; }
 .chip:disabled { opacity: .4; cursor: default; background: transparent; }
@@ -163,8 +164,8 @@ nav .count { color: var(--muted); font-variant-numeric: tabular-nums; }
 main { padding-block: 20px 80px; }
 #list { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; }
 
-.question { background: var(--card); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
-.question.blocking { border-color: color-mix(in oklab, var(--error) 45%, var(--border)); }
+.decision { background: var(--card); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+.decision.superseded { opacity: .7; }
 .row {
   display: grid; grid-template-columns: var(--number) minmax(0, 1fr) auto; align-items: start; gap: 14px;
   width: 100%; padding: 16px 18px; border: 0; background: none; color: inherit; font: inherit; text-align: left;
@@ -176,7 +177,7 @@ main { padding-block: 20px 80px; }
 .row .side { display: flex; align-items: center; gap: 10px; justify-self: end; height: 24px; }
 .row time { color: var(--muted); font-size: 13px; line-height: 24px; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .chevron { width: 16px; height: 16px; color: var(--muted); transition: transform .15s; flex: none; display: block; }
-.question.open .chevron { transform: rotate(90deg); }
+.decision.open .chevron { transform: rotate(90deg); }
 
 .badge {
   display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;
@@ -204,26 +205,14 @@ main { padding-block: 20px 80px; }
 .context a { color: var(--link); text-underline-offset: 2px; }
 .context a:hover { text-decoration: none; }
 
-.options { display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px; margin: 0; padding: 0; border: 0; min-width: 0; }
-.options legend { color: var(--muted); padding: 0; margin-bottom: 8px; }
-.option {
-  display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; align-items: center; gap: 12px;
-  padding: 8px 10px; margin-inline: -10px; border-radius: 10px;
-}
-.option:hover { background: var(--hover); }
-.option:has(input:checked) { background: var(--selection-tint); }
-.option input { position: absolute; opacity: 0; pointer-events: none; }
-.dial {
-  display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%;
-  border: 1.5px solid var(--input); color: var(--muted); background: var(--card);
-  font: 600 13px/1 var(--sans); font-variant-numeric: tabular-nums;
-  transition: background .12s, border-color .12s, color .12s;
-}
-.option:hover .dial { border-color: var(--foreground); color: var(--foreground); }
-.option input:checked + .dial { background: var(--selection); border-color: var(--selection); color: var(--selection-foreground); }
-.option input:focus-visible + .dial { outline: 2px solid var(--ring); outline-offset: 2px; }
-.option input:disabled ~ * { cursor: default; }
-.option .text { min-width: 0; }
+.section { display: grid; gap: 6px; min-width: 0; max-width: 65ch; }
+.section > .label { color: var(--muted); }
+.section ul { margin: 0; padding-left: 1.25em; display: grid; gap: 4px; }
+.section li { overflow-wrap: anywhere; }
+.section li::marker { color: var(--muted); }
+.alternative .option { font-weight: 600; }
+.alternative .why { color: var(--muted); }
+.section code { font: 13px var(--mono); background: var(--background); padding: 1px 4px; border-radius: 4px; }
 
 textarea, input[type="search"] {
   width: 100%; padding: 4px 0; border: 0; border-bottom: 1px solid var(--input); border-radius: 0;
@@ -259,6 +248,8 @@ kbd {
 .panel.agent .label { color: var(--muted); }
 .panel.ok { background: var(--ok-tint); }
 .panel.ok .label { color: var(--ok); }
+.panel.rejected { background: color-mix(in oklab, var(--error) 8%, var(--card)); }
+.panel.rejected .label { color: var(--error); }
 .panel .context { max-width: none; }
 .spinner {
   width: 12px; height: 12px; border-radius: 50%; border: 2px solid currentColor; border-top-color: transparent;
@@ -303,41 +294,38 @@ kbd {
 <header class="band">
   <div class="frame">
     <span class="label wordmark">nock</span>
-    <h1>Questions</h1>
+    <h1>Decisions</h1>
     <p id="summary">Loading…</p>
   </div>
 </header>
 <div class="frame">
-  <nav role="tablist" aria-label="Which questions">
-    <button type="button" role="tab" data-tab="open" aria-selected="true">waiting on you <span class="count" id="count-open"></span></button>
-    <button type="button" role="tab" data-tab="pending" aria-selected="false">with an agent <span class="count" id="count-pending"></span></button>
-    <button type="button" role="tab" data-tab="closed" aria-selected="false">decided <span class="count" id="count-closed"></span></button>
+  <nav role="tablist" aria-label="Which decisions">
+    <button type="button" role="tab" data-tab="unreviewed" aria-selected="true">to review <span class="count" id="count-unreviewed"></span></button>
+    <button type="button" role="tab" data-tab="accepted" aria-selected="false">accepted <span class="count" id="count-accepted"></span></button>
+    <button type="button" role="tab" data-tab="rejected" aria-selected="false">rejected <span class="count" id="count-rejected"></span></button>
     <div class="sort" role="group" aria-label="Sort">
       <span class="label">sort</span>
-      <button type="button" data-sort="priority" aria-pressed="true">priority</button>
+      <button type="button" data-sort="oldest" aria-pressed="true">oldest</button>
       <button type="button" data-sort="newest" aria-pressed="false">newest</button>
-      <button type="button" data-sort="oldest" aria-pressed="false">oldest</button>
     </div>
   </nav>
   <div class="tools">
     <label class="search" for="search">
       <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="7" cy="7" r="4.75" stroke="currentColor" stroke-width="1.5"/><path d="m10.5 10.5 3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
-      <input type="search" id="search" placeholder="search" autocomplete="off" aria-label="Search questions">
+      <input type="search" id="search" placeholder="search" autocomplete="off" aria-label="Search decisions">
     </label>
-    <div class="chips" role="group" aria-label="Filter by priority">
-      <button type="button" class="chip" data-priority="blocking" aria-pressed="false">blocking <span class="count"></span></button>
-      <button type="button" class="chip" data-priority="important" aria-pressed="false">important <span class="count"></span></button>
-      <button type="button" class="chip" data-priority="normal" aria-pressed="false">normal <span class="count"></span></button>
-    </div>
+    <div class="chips" id="chips" role="group" aria-label="Filter"></div>
   </div>
   <main><section id="list" aria-live="polite"></section></main>
 </div>
 <div class="toast" id="toast" role="status"></div>
 <script>
-const PRIORITY = { blocking: 0, important: 1, normal: 2 };
 const CHEVRON = '<svg class="chevron" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M6 3.5 10.5 8 6 12.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 const MAC = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
-const state = { search: "", priorities: new Set(), sort: "priority", tab: "open", questions: [], expanded: new Set(), drafts: new Map(), active: null, seen: "" };
+// The chips: done/todo, then the tags in use, the fixed ones first.
+const STATUSES = ["done", "todo"];
+const SHOWN_TAGS = 6;
+const state = { search: "", statuses: new Set(), tags: new Set(), sort: "oldest", tab: "unreviewed", decisions: [], tags_in_use: {}, expanded: new Set(), notes: new Map(), active: null, seen: "" };
 
 function escape(text) {
   return String(text).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
@@ -365,7 +353,7 @@ function refreshTimes() {
   for (const element of document.querySelectorAll("time[data-ago]")) element.textContent = ago(element.dateTime);
 }
 
-// --- Markdown, as much as questions use ----------------------------------------------
+// --- Markdown, as much as decisions use ----------------------------------------------
 
 function inline(text) {
   return escape(text)
@@ -411,143 +399,146 @@ function markdown(source) {
   return out.join("");
 }
 
-// --- the questions -----------------------------------------------------------------
+// --- the decisions -------------------------------------------------------------------
 
-function find(number) { return state.questions.find(question => question.number === number); }
-function elaborating(question) { return question.state === "pending" && question.owner.elaborate; }
-function draft(question) {
-  if (!state.drafts.has(question.number)) {
-    state.drafts.set(question.number, { choice: question.owner.choice ?? question.recommended, comment: question.owner.comment ?? "" });
-  }
-  return state.drafts.get(question.number);
+function find(number) { return state.decisions.find(decision => decision.number === number); }
+function note(decision) {
+  if (!state.notes.has(decision.number)) state.notes.set(decision.number, decision.note ?? "");
+  return state.notes.get(decision.number);
 }
+// When it was recorded, or — once reviewed — when it was reviewed.
+function moment(decision) { return decision.reviewed ? decision.reviewed.moment : decision.recorded.moment; }
 
-function badges(question) {
+function badges(decision) {
   const found = [];
-  if (question.state !== "closed" && question.priority === "blocking") found.push('<span class="badge error">blocking</span>');
-  if (question.state !== "closed" && question.priority === "important") found.push('<span class="badge warning">important</span>');
-  if (elaborating(question)) found.push('<span class="badge info">elaborating</span>');
-  if (question.lesson) found.push('<span class="badge">lesson</span>');
-  if (question.superseded_by) found.push(`<span class="badge">superseded by ${question.superseded_by}</span>`);
+  if (decision.status === "todo") found.push('<span class="badge info">todo</span>');
+  if (decision.tags.includes("important")) found.push('<span class="badge warning">important</span>');
+  if (decision.elaborating) found.push('<span class="badge info">elaborating</span>');
+  if (decision.superseded_by) found.push(`<span class="badge">superseded by ${decision.superseded_by}</span>`);
   return found.join("");
 }
 
-function options(question, editable) {
-  if (!question.options.length) return "";
-  const chosen = editable ? draft(question).choice : question.owner.choice;
-  const rows = question.options.map((text, index) => {
-    const number = index + 1;
-    const id = `q${question.number}-${number}`;
-    const suggested = number === question.recommended ? '<span class="badge">suggested</span>' : "";
-    return `<label class="option" for="${id}">
-      <input type="radio" id="${id}" name="q${question.number}" value="${number}" ${number === chosen ? "checked" : ""} ${editable ? "" : "disabled"}>
-      <span class="dial">${number}</span>
-      <span class="text">${inline(text)}</span>
-      ${suggested}
-    </label>`;
-  }).join("");
-  return `<fieldset class="options"><legend class="label">options</legend>${rows}</fieldset>`;
+function section(label, items) {
+  if (!items.length) return "";
+  return `<div class="section"><span class="label">${label}</span><ul>${items.join("")}</ul></div>`;
 }
 
-function said(question) {
-  const owner = question.owner, words = [];
-  if (owner.choice) words.push(`You chose <strong>${owner.choice}</strong>, ${inline(question.options[owner.choice - 1])}.`);
-  if (owner.comment) words.push(inline(owner.comment));
-  return words.join(" ") || "You asked for more.";
-}
+const VERDICT = { accepted: "accepted", rejected: "rejected" };
+const AFTER = {
+  done: { accepted: "It stands.", rejected: "An agent reworks it: the next session that touches what it governs is told." },
+  todo: { accepted: "It is on the backlog.", rejected: "It will not be done." },
+};
 
-function body(question) {
-  const parts = [`<div class="context">${markdown(question.context)}</div>`];
-  if (question.state === "open") {
-    const count = question.options.length;
-    const keys = [count ? `<kbd>1</kbd>${count > 1 ? `–<kbd>${count}</kbd>` : ""} to choose` : "", `<kbd>${MAC ? "⌘" : "Ctrl"}</kbd> <kbd>↵</kbd> to answer`].filter(Boolean).join(" · ");
-    parts.push(options(question, true));
-    parts.push(`<textarea id="comment-${question.number}" data-number="${question.number}" rows="1" aria-label="Comment" placeholder="${count ? "Add a comment (optional)" : "Your answer"}">${escape(draft(question).comment)}</textarea>`);
+function body(decision) {
+  const parts = [`<div class="context">${markdown(decision.summary)}</div>`];
+  parts.push(section("evidence", decision.evidence.map(line => `<li>${inline(line)}</li>`)));
+  parts.push(section("considered instead", decision.alternatives.map(item =>
+    `<li class="alternative"><span class="option">${inline(item.option)}</span> — <span class="why">${inline(item.why_not)}</span></li>`)));
+  if (decision.elaborating) {
+    parts.push(`<div class="panel agent"><span class="label"><span class="spinner" aria-hidden="true"></span>an agent is looking into it</span>${decision.note ? `<div>${inline(decision.note)}</div>` : ""}</div>`);
+  } else if (decision.review !== "unreviewed") {
+    const heading = `${VERDICT[decision.review]} ${decision.reviewed ? time(decision.reviewed.moment) : ""}`;
+    parts.push(`<div class="panel ${decision.review === "accepted" ? "ok" : "rejected"}"><span class="label">${heading}</span><div>${AFTER[decision.status][decision.review]}</div></div>`);
+  }
+  if (!decision.superseded_by) {
+    const keys = `<kbd>${MAC ? "⌘" : "Ctrl"}</kbd> <kbd>↵</kbd> to accept`;
+    const disabled = decision.elaborating ? "disabled" : "";
+    const verdicts = ["rejected", "accepted"].filter(review => review !== decision.review).map(review =>
+      `<button type="button" class="button ${review === "accepted" ? "primary" : "secondary"}" data-action="${review}" data-number="${decision.number}" ${disabled}>${review === "accepted" ? "accept" : "reject"}</button>`).join("");
+    const saving = decision.review !== "unreviewed" ? `<button type="button" class="button ghost" data-action="note" data-number="${decision.number}" ${disabled} hidden>save note</button>` : "";
+    parts.push(`<textarea id="note-${decision.number}" data-number="${decision.number}" rows="1" aria-label="Note" placeholder="Add a note" ${disabled}>${escape(note(decision))}</textarea>`);
     parts.push(`<div class="actions">
-      <span class="hint" id="hint-${question.number}">${keys}</span>
+      <span class="hint" id="hint-${decision.number}">${decision.review === "unreviewed" ? keys : ""}</span>
       <div class="buttons">
-        <button type="button" class="button ghost" data-action="elaborate" data-number="${question.number}">elaborate</button>
-        <button type="button" class="button primary" data-action="answer" data-number="${question.number}">answer</button>
+        ${saving}
+        <button type="button" class="button ghost" data-action="elaborate" data-number="${decision.number}" ${disabled}>elaborate</button>
+        ${verdicts}
       </div>
     </div>`);
-  } else if (question.state === "pending") {
-    const heading = elaborating(question) ? '<span class="spinner" aria-hidden="true"></span>an agent is looking into it' : "with an agent";
-    parts.push(`<div class="panel agent"><span class="label">${heading}</span><div>${said(question)}</div></div>`);
-    parts.push(`<div class="actions"><span class="hint">${elaborating(question) ? "The question comes back here, rewritten." : "It reaches the session that asked when you next type there."}</span>
-      <div class="buttons"><button type="button" class="button secondary" data-action="withdraw" data-number="${question.number}">take back</button></div></div>`);
-  } else {
-    const heading = question.superseded_by ? `superseded by question ${question.superseded_by}` : "decided";
-    parts.push(`<div class="panel ${question.superseded_by ? "agent" : "ok"}"><span class="label">${heading}</span><div class="context">${markdown(question.answer)}</div></div>`);
   }
   const links = [];
-  if ((question.touches || []).length) links.push(`<span><span class="label">governs</span> ${question.touches.map(path => `<code>${escape(path)}</code>`).join(" ")}</span>`);
-  if ((question.supersedes || []).length) links.push(`<span><span class="label">supersedes</span> ${question.supersedes.map(number => `<button type="button" class="reference" data-open="${number}">${number}</button>`).join(" ")}</span>`);
+  if (decision.touches.length) links.push(`<span><span class="label">governs</span> ${decision.touches.map(path => `<code>${escape(path)}</code>`).join(" ")}</span>`);
+  if (decision.supersedes.length) links.push(`<span><span class="label">supersedes</span> ${decision.supersedes.map(number => `<button type="button" class="reference" data-open="${number}">${number}</button>`).join(" ")}</span>`);
+  if (decision.superseded_by) links.push(`<span><span class="label">superseded by</span> <button type="button" class="reference" data-open="${decision.superseded_by}">${decision.superseded_by}</button></span>`);
+  const tags = decision.tags.filter(tag => tag !== "important");
+  if (tags.length) links.push(`<span><span class="label">tags</span> ${tags.map(escape).join(", ")}</span>`);
   if (links.length) parts.push(`<div class="links">${links.join("")}</div>`);
-  return `<div class="body">${parts.join("")}</div>`;
+  return `<div class="body">${parts.filter(Boolean).join("")}</div>`;
 }
 
-function matches(question) {
-  if (state.priorities.size && !state.priorities.has(question.priority)) return false;
+function matches(decision) {
+  if (state.statuses.size && !state.statuses.has(decision.status)) return false;
+  if (state.tags.size && ![...state.tags].every(tag => decision.tags.includes(tag))) return false;
   const words = state.search.toLowerCase().split(/\s+/).filter(Boolean);
   if (!words.length) return true;
-  const text = [question.number, question.title, question.context, ...question.options, question.owner.comment, question.answer, ...(question.touches || [])]
-    .filter(Boolean).join(" ").toLowerCase();
+  const text = [decision.number, decision.title, decision.summary, ...decision.evidence, ...decision.alternatives.flatMap(item => [item.option, item.why_not]),
+    decision.note, ...decision.tags, ...decision.touches].filter(Boolean).join(" ").toLowerCase();
   return words.every(word => text.includes(word));
 }
 
-// When a question was asked, or — once decided — when it was decided.
-function moment(question) { return question.state === "closed" ? question.updated : question.asked.moment; }
+function inTab(decision) { return decision.review === state.tab; }
 
 function visible() {
-  const newest = (left, right) => moment(right).localeCompare(moment(left));
-  const order = {
-    priority: (left, right) => (PRIORITY[left.priority] - PRIORITY[right.priority]) || left.number - right.number,
-    newest,
-    oldest: (left, right) => newest(right, left),
-  }[state.sort];
-  return state.questions.filter(question => question.state === state.tab && matches(question)).sort(order);
+  const oldest = (left, right) => moment(left).localeCompare(moment(right));
+  const order = state.sort === "oldest" ? oldest : (left, right) => oldest(right, left);
+  // Superseded decisions sink to the bottom of their tab.
+  return state.decisions.filter(decision => inTab(decision) && matches(decision))
+    .sort((left, right) => (!!left.superseded_by - !!right.superseded_by) || order(left, right));
 }
 
 const EMPTY_SEARCH = "<strong>No matches</strong><span>Nothing in this tab fits the search and filters.</span>";
 const EMPTY = {
-  open: "<strong>Nothing waits on you</strong><span>Agents ask with <code>.nock/nock ask</code>; their questions appear here.</span>",
-  pending: "<strong>Nothing is with an agent</strong><span>Questions you answer wait here until an agent acts on them.</span>",
-  closed: "<strong>Nothing decided yet</strong><span>Answered questions become the project's record of its decisions.</span>",
+  unreviewed: "<strong>Nothing to review</strong><span>Agents record decisions with <code>.nock/nock decide</code>; they appear here.</span>",
+  accepted: "<strong>Nothing accepted yet</strong><span>Decisions you accept stand, and govern the files they touch.</span>",
+  rejected: "<strong>Nothing rejected</strong><span>A rejected decision is reworked; a rejected todo is not done.</span>",
 };
 
+function chip(kind, value, count) {
+  const chosen = (kind === "status" ? state.statuses : state.tags).has(value);
+  return `<button type="button" class="chip" data-${kind}="${escape(value)}" aria-pressed="${chosen}" ${count === 0 && !chosen ? "disabled" : ""}>${escape(value)} <span class="count">${count}</span></button>`;
+}
+
+function drawChips() {
+  const tab = state.decisions.filter(inTab);
+  const statuses = STATUSES.map(status => chip("status", status, tab.filter(decision => decision.status === status).length));
+  const counted = Object.keys(state.tags_in_use).map(tag => [tag, tab.filter(decision => decision.tags.includes(tag)).length]);
+  const tags = counted.filter(([tag, count]) => count || state.tags.has(tag)).sort((left, right) => right[1] - left[1]).slice(0, SHOWN_TAGS)
+    .map(([tag, count]) => chip("tag", tag, count));
+  document.getElementById("chips").innerHTML = statuses.join("") + (tags.length ? '<span class="divider" aria-hidden="true"></span>' + tags.join("") : "");
+}
+
 function draw() {
-  const counts = { open: 0, pending: 0, closed: 0 };
-  for (const question of state.questions) counts[question.state]++;
+  const standing = state.decisions.filter(decision => !decision.superseded_by);
+  const counts = { unreviewed: 0, accepted: 0, rejected: 0 };
+  for (const decision of standing) counts[decision.review]++;
   for (const key of Object.keys(counts)) document.getElementById(`count-${key}`).textContent = counts[key] || "";
-  const blocking = state.questions.filter(question => question.state === "open" && question.priority === "blocking").length;
-  document.getElementById("summary").textContent = counts.open
-    ? `${counts.open} ${counts.open === 1 ? "question waits" : "questions wait"} on you${blocking ? `, ${blocking} blocking work` : ""}.`
-    : "Nothing waits on you.";
+  const todos = standing.filter(decision => decision.review === "unreviewed" && decision.status === "todo").length;
+  const rework = standing.filter(decision => decision.review === "rejected" && decision.status === "done").length;
+  const said = [];
+  if (counts.unreviewed) said.push(`${counts.unreviewed} ${counts.unreviewed === 1 ? "decision waits" : "decisions wait"} on your review${todos ? `, ${todos} of them ${todos === 1 ? "a todo" : "todos"}` : ""}`);
+  if (rework) said.push(`${rework} rejected, to be reworked`);
+  document.getElementById("summary").textContent = said.length ? `${said.join(". ")}.` : "Nothing waits on you.";
   for (const tab of document.querySelectorAll("[data-tab]")) tab.setAttribute("aria-selected", String(tab.dataset.tab === state.tab));
-  for (const chip of document.querySelectorAll(".chip")) {
-    const priority = chip.dataset.priority;
-    const count = state.questions.filter(question => question.state === state.tab && question.priority === priority).length;
-    chip.querySelector(".count").textContent = count;
-    chip.disabled = count === 0 && !state.priorities.has(priority);
-    chip.setAttribute("aria-pressed", String(state.priorities.has(priority)));
-  }
   for (const button of document.querySelectorAll("[data-sort]")) button.setAttribute("aria-pressed", String(button.dataset.sort === state.sort));
+  drawChips();
   const shown = visible();
-  document.getElementById("list").innerHTML = shown.length ? shown.map(question => {
-    const open = state.expanded.has(question.number);
-    return `<article class="question ${open ? "open" : ""} ${question.state === "open" && question.priority === "blocking" ? "blocking" : ""}">
-      <button type="button" class="row" data-toggle="${question.number}" aria-expanded="${open}">
-        <span class="number">${question.number}</span>
-        <span class="title">${escape(question.title)}</span>
-        <span class="side">${badges(question)}${time(moment(question))}${CHEVRON}</span>
+  const filtered = state.search.trim() || state.statuses.size || state.tags.size;
+  document.getElementById("list").innerHTML = shown.length ? shown.map(decision => {
+    const open = state.expanded.has(decision.number);
+    return `<article class="decision ${open ? "open" : ""} ${decision.superseded_by ? "superseded" : ""}">
+      <button type="button" class="row" data-toggle="${decision.number}" aria-expanded="${open}">
+        <span class="number">${decision.number}</span>
+        <span class="title">${escape(decision.title)}</span>
+        <span class="side">${badges(decision)}${time(moment(decision))}${CHEVRON}</span>
       </button>
-      ${open ? body(question) : ""}
+      ${open ? body(decision) : ""}
     </article>`;
-  }).join("") : `<div class="empty">${state.search.trim() || state.priorities.size ? EMPTY_SEARCH : EMPTY[state.tab]}</div>`;
+  }).join("") : `<div class="empty">${filtered ? EMPTY_SEARCH : EMPTY[state.tab]}</div>`;
+  for (const field of document.querySelectorAll("textarea")) showSave(Number(field.dataset.number));
   grow();
 }
 
-// Browsers without `field-sizing` grow the comment by hand.
+// Browsers without `field-sizing` grow the note by hand.
 function grow(element) {
   if (CSS.supports("field-sizing", "content")) return;
   for (const field of element ? [element] : document.querySelectorAll("textarea")) {
@@ -556,7 +547,14 @@ function grow(element) {
   }
 }
 
-// A refresh keeps the comment being typed where it was: its text is in `drafts`, its focus here.
+// A reviewed decision offers to save its note once the note has changed.
+function showSave(number) {
+  const decision = find(number);
+  const button = document.querySelector(`[data-action="note"][data-number="${number}"]`);
+  if (decision && button) button.hidden = (note(decision).trim() || null) === (decision.note || null);
+}
+
+// A refresh keeps the note being typed where it was: its text is in `notes`, its focus here.
 function render() {
   const active = document.activeElement;
   const typing = active && active.tagName === "TEXTAREA" ? { id: active.id, start: active.selectionStart, end: active.selectionEnd } : null;
@@ -567,18 +565,23 @@ function render() {
 
 async function load() {
   try {
-    const response = await fetch("/questions");
+    const response = await fetch("/decisions");
     const text = await response.text();
     if (text === state.seen) return;
     state.seen = text;
-    state.questions = JSON.parse(text).questions;
-    if (!state.expanded.size) {
+    const data = JSON.parse(text);
+    state.decisions = data.decisions;
+    state.tags_in_use = data.tags;
+    // `#7` opens decision 7; otherwise the first in the tab opens.
+    const linked = !state.expanded.size && find(Number(location.hash.slice(1)));
+    if (linked) { state.tab = linked.review; state.expanded.add(linked.number); state.active = linked.number; }
+    else if (!state.expanded.size) {
       const first = visible()[0];
       if (first) { state.expanded.add(first.number); state.active = first.number; }
     }
     render();
   } catch (error) {
-    document.getElementById("summary").textContent = "Lost touch with nock — is `nock questions page` still running?";
+    document.getElementById("summary").textContent = "Lost touch with nock — is `nock web` still running?";
   }
 }
 
@@ -591,8 +594,8 @@ function toast(message) {
   toastTimer = setTimeout(() => element.classList.remove("shown"), 2600);
 }
 
-async function send(number, owner, message) {
-  const response = await fetch(`/questions/${number}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(owner) });
+async function send(number, word, message, close) {
+  const response = await fetch(`/decisions/${number}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(word) });
   const result = await response.json();
   if (!response.ok) {
     const hint = document.getElementById(`hint-${number}`);
@@ -600,41 +603,30 @@ async function send(number, owner, message) {
     else toast(result.error);
     return;
   }
-  state.drafts.delete(number);
-  state.expanded.delete(number);
+  state.notes.delete(number);
+  if (close) state.expanded.delete(number);
   state.seen = "";
   toast(message);
   await load();
 }
 
-function submit(number, elaborate) {
-  const question = find(number);
-  if (!question || question.state !== "open") return;
-  const current = draft(question);
-  const comment = current.comment.trim() || null;
-  if (elaborate) {
-    send(number, { choice: null, comment, elaborate: true }, `An agent is looking into question ${number}.`);
-    return;
-  }
-  if (!current.choice && !comment) {
-    const hint = document.getElementById(`hint-${number}`);
-    hint.textContent = question.options.length ? "Choose an option or write a comment first." : "Write your answer first.";
-    hint.className = "hint error";
-    return;
-  }
-  send(number, { choice: current.choice || null, comment, elaborate: false }, `Answered question ${number}.`);
+function act(number, action) {
+  const decision = find(number);
+  if (!decision || decision.superseded_by || decision.elaborating) return;
+  const written = note(decision).trim() || null;
+  const word = written !== (decision.note || null) ? { note: written } : {};
+  if (action === "note") send(number, word, `Saved your note on decision ${number}.`, false);
+  else if (action === "elaborate") send(number, { ...word, elaborate: true }, `An agent is looking into decision ${number}.`, false);
+  else send(number, { ...word, review: action }, `Decision ${number} ${action}.`, true);
 }
 
 document.addEventListener("click", event => {
   const tab = event.target.closest("[data-tab]");
   if (tab) { state.tab = tab.dataset.tab; render(); return; }
-  const chip = event.target.closest("[data-priority]");
-  if (chip) {
-    const priority = chip.dataset.priority;
-    state.priorities.has(priority) ? state.priorities.delete(priority) : state.priorities.add(priority);
-    render();
-    return;
-  }
+  const status = event.target.closest("[data-status]");
+  if (status) { const value = status.dataset.status; state.statuses.has(value) ? state.statuses.delete(value) : state.statuses.add(value); render(); return; }
+  const tag = event.target.closest("[data-tag]");
+  if (tag) { const value = tag.dataset.tag; state.tags.has(value) ? state.tags.delete(value) : state.tags.add(value); render(); return; }
   const sort = event.target.closest("[data-sort]");
   if (sort) { state.sort = sort.dataset.sort; render(); return; }
   const toggle = event.target.closest("[data-toggle]");
@@ -649,9 +641,10 @@ document.addEventListener("click", event => {
   if (reference) {
     const target = find(Number(reference.dataset.open));
     if (target) {
-      state.tab = target.state;
+      state.tab = target.review;
       state.search = "";
-      state.priorities.clear();
+      state.statuses.clear();
+      state.tags.clear();
       document.getElementById("search").value = "";
       state.expanded.add(target.number);
       render();
@@ -661,45 +654,32 @@ document.addEventListener("click", event => {
   }
   const action = event.target.closest("[data-action]");
   if (!action) {
-    const card = event.target.closest(".question .body");
+    const card = event.target.closest(".decision .body");
     if (card) state.active = Number(card.parentElement.querySelector("[data-toggle]").dataset.toggle);
     return;
   }
   const number = Number(action.dataset.number);
   state.active = number;
-  if (action.dataset.action === "withdraw") send(number, { choice: null, comment: null, elaborate: false }, `Question ${number} is back with you.`);
-  else submit(number, action.dataset.action === "elaborate");
-});
-document.addEventListener("change", event => {
-  if (event.target.type !== "radio") return;
-  const number = Number(event.target.name.slice(1));
-  draft(find(number)).choice = Number(event.target.value);
-  state.active = number;
+  act(number, action.dataset.action);
 });
 document.addEventListener("input", event => {
   if (event.target.id === "search") { state.search = event.target.value; draw(); return; }
   if (event.target.tagName !== "TEXTAREA") return;
   grow(event.target);
   const number = Number(event.target.dataset.number);
-  draft(find(number)).comment = event.target.value;
+  state.notes.set(number, event.target.value);
   state.active = number;
+  showSave(number);
 });
-// `/` searches; digits choose an option of the question in hand (not while typing); ⌘/Ctrl-Enter answers it.
+// `/` searches; ⌘/Ctrl-Enter accepts the decision in hand.
 document.addEventListener("keydown", event => {
   const search = document.getElementById("search");
   if (event.key === "/" && !["TEXTAREA", "INPUT"].includes(event.target.tagName)) { event.preventDefault(); search.focus(); return; }
   if (event.key === "Escape" && event.target === search) { search.value = ""; state.search = ""; draw(); search.blur(); return; }
   const number = state.active;
-  const question = number !== null && find(number);
-  if (!question || question.state !== "open" || !state.expanded.has(number) || state.tab !== "open") return;
-  if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) { event.preventDefault(); submit(number, false); return; }
-  const typing = ["TEXTAREA", "INPUT"].includes(event.target.tagName) && event.target.type !== "radio";
-  if (typing || event.metaKey || event.ctrlKey || event.altKey || !/^[1-9]$/.test(event.key)) return;
-  const choice = Number(event.key);
-  if (choice > question.options.length) return;
-  event.preventDefault();
-  draft(question).choice = choice;
-  render();
+  const decision = number !== null && find(number);
+  if (!decision || decision.review !== "unreviewed" || !state.expanded.has(number)) return;
+  if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) { event.preventDefault(); act(number, "accepted"); }
 });
 
 load();

@@ -13,23 +13,34 @@ from typing import Annotated, Any, NotRequired, TypedDict
 
 from nock.checks import Checks
 from nock.commands import Option
-from nock.consolidate import Consolidation
 from nock.consult import Consultant, Consultation
+from nock.decisions import TAGS, Change, Decisions, Draft, Filter, row
 from nock.errors import Error, ExitCode, Failed, UsageError
 from nock.fixtures import Shell
 from nock.generators import Catalogs, Generators
 from nock.git import Git
 from nock.processes import Output
 from nock.project import Project
-from nock.questions import Draft, Lesson, Questions, Server, State, said
 from nock.reflect import Record, Reflection, tool_rows
 from nock.render import Problem
 from nock.schema import check_schema
 from nock.sessions import Sessions
 from nock.setup import Installer, Upgrader, wired_events
+from nock.share import Request as ShareRequest
+from nock.share import Sharing
+from nock.status import Standing
 from nock.telemetry import UNRECORDED_VARIABLE
 from nock.templates import SYNTAX, Library
 from nock.tools import NATIVE_EVENTS, check, command
+from nock.web import Server
+
+
+class WebOptions(TypedDict):
+    port: NotRequired[int]
+    """0 picks a free one."""
+    open: NotRequired[bool]
+    """Open it in the browser."""
+
 
 BRIEFS = Path(__file__).resolve().parent / "briefs"
 EXAMPLE_DEADLINE = 300
@@ -162,7 +173,7 @@ def stats(
 @command
 def query(project: Project, sql: str) -> list[dict[str, Any]]:
     """Read the telemetry with SQL (read-only). Tables: calls, runs, sessions,
-    prompts, events — `.nock/nock reflect material` explains them."""
+    prompts, events — a round's material explains them."""
     return project.store.query(sql)
 
 
@@ -193,127 +204,99 @@ def sessions(project: Project, *, limit: int = 15) -> list[dict[str, Any]]:
     ]
 
 
-# --- reflection ---------------------------------------------------------------------
-
-
-@command(name="due", group="reflect")
-def reflect_due(project: Project) -> str | bool:
-    """Whether a reflection round is due; exit 1 when it is not."""
-    return Reflection(project).due() or False
-
-
-@command(name="material", group="reflect")
-def reflect_material(project: Project) -> str:
-    """What a round reads: the work, the telemetry, the last round's expectations."""
-    return Reflection(project).material()
-
-
-@command(name="record", group="reflect")
-def reflect_record(project: Project, record: Record) -> str:
-    """Record the round, at its end (the `/reflect` skill): what changed, why,
-    and what each change should do by the next round. Commit it with the work."""
-    path = Reflection(project).record(record)
-    return f"recorded {path.relative_to(project.here)}"
-
-
-# --- questions ---------------------------------------------------------------------
+# --- where things stand ------------------------------------------------------------
 
 
 @command
-def ask(project: Project, question: Draft) -> list[str]:
-    """Ask the owner what the code, the documents and earlier answers cannot
-    settle — a decision that is theirs to make. Meanwhile take the option you
-    recommend, say so in your work, and keep going; the owner answers on
-    `.nock/nock questions page`, and the answer reaches this session."""
-    number, problem = Questions(project).ask(question)
-    return [f"asked question {number}", *([problem] if problem else [])]
+def status(project: Project) -> dict[str, Any]:
+    """Where the project stands with nock: whether a reflection round is due,
+    the decisions by status and review, the rejected ones to rework, and a
+    round summary not yet shared."""
+    return Standing(project).collect()
 
 
-@command(name="list", group="questions")
-def questions_list(
+@command
+def web(
     project: Project,
-    *,
-    state: Annotated[
-        State | None, Option(help="Only questions in this state; the default is all but closed.")
-    ] = None,
-) -> list[dict[str, Any]]:
-    """The questions, and where each stands: open waits on the owner, pending
-    on an agent."""
-    return [
-        {
-            "number": question["number"],
-            "state": question["state"],
-            "priority": question["priority"],
-            "title": question["title"],
-            "owner": said(question) if question["state"] == State.PENDING else None,
-        }
-        for question in Questions(project).all()
-        if (question["state"] == state if state else question["state"] != State.CLOSED)
-    ]
-
-
-@command(name="show", group="questions")
-def questions_show(project: Project, number: int) -> dict[str, Any]:
-    """One question in full: its context, options, and the owner's input or the answer."""
-    return Questions(project).get(number)
-
-
-@command(name="answer", group="questions")
-def questions_answer(
-    project: Project,
-    number: int,
-    answer: str,
-    *,
-    touches: Annotated[
-        list[str] | None, Option(help="A file the decision governs, as a path or glob (repeats).")
-    ] = None,
-    supersedes: Annotated[
-        list[int] | None, Option(help="A decided question this one overturns (repeats).")
-    ] = None,
-) -> list[str]:
-    """Close a question: ANSWER is the decision in its own words, the owner's
-    comment folded in, so that it reads on its own later. Name the files it
-    governs, so that an edit to one shows it, and what it overturns. Then act
-    on it, and commit what it changed with the work."""
-    problem = Questions(project).answer(number, answer, touches, supersedes)
-    return [f"answered question {number}", *([problem] if problem else [])]
-
-
-@command(name="record", group="questions")
-def questions_record(project: Project, lesson: Lesson) -> list[str]:
-    """Record a lesson: what the work taught, as a question decided at once,
-    so that the map can cite it. Part of a consolidation round."""
-    number, problem = Questions(project).record(lesson)
-    return [f"recorded lesson {number}", *([problem] if problem else [])]
-
-
-@command(name="rewrite", group="questions")
-def questions_rewrite(project: Project, number: int, question: Draft) -> list[str]:
-    """Say a question again, with what the owner found missing: its context,
-    options and recommendation rewritten. It is open again."""
-    problem = Questions(project).rewrite(number, question)
-    return [f"rewrote question {number}", *([problem] if problem else [])]
-
-
-@command(name="elaborate", group="questions")
-def questions_elaborate(project: Project, number: int) -> dict[str, Any]:
-    """Have an agent elaborate on a question, as the owner asked: it reads the
-    project and rewrites the question. The page runs this itself."""
-    outcome = Questions(project).elaborate(number)
-    if not outcome["elaborated"]:
-        raise Failed(f"question {number} was not elaborated", outcome)
-    return outcome
-
-
-@command(name="page", group="questions")
-def questions_page(
-    project: Project,
-    *,
-    port: Annotated[int, Option(help="0 picks a free one.")] = 8765,
-    open_page: Annotated[bool, Option("--open", help="Open it in the browser.")] = False,
+    options: WebOptions = {},  # noqa: B006
 ) -> None:
-    """Serve the owner's page, where questions are answered, until stopped."""
-    Server(Questions(project), port).run(open_page)
+    """Serve the owner's page, where decisions are reviewed, until stopped
+    (port 8765 unless OPTIONS say otherwise)."""
+    Server(Decisions(project), options.get("port", 8765)).run(options.get("open", False))
+
+
+# --- decisions ---------------------------------------------------------------------
+
+
+@command
+def decide(project: Project, decision: Draft) -> dict[str, Any]:
+    """Record a decision as you make it — a non-trivial choice between ways
+    that could each work, a deliberate simplification, a reading of something
+    ambiguous — or, as a todo, something that should be done and is not yet
+    (tag a possible improvement `improvement`). Not what has one obvious
+    right way. Write it for someone who knows what the system does, not how
+    it is built; give only alternatives you really weighed. The owner reviews
+    it later; keep going meanwhile."""
+    recorded, problem = Decisions(project).decide(decision)
+    return recorded_result(project, recorded, problem)
+
+
+def recorded_result(
+    project: Project, decision: dict[str, Any], problem: str | None
+) -> dict[str, Any]:
+    """The number, and the tags in use — so a near-duplicate tag is fixed while it is cheap."""
+    tags = Decisions(project).tags()
+    result: dict[str, Any] = {
+        "number": decision["number"],
+        "new_tags": [tag for tag in decision["tags"] if tags.get(tag) == 1 and tag not in TAGS],
+        "tags_in_use": list(tags),
+    }
+    if problem:
+        result["not_committed"] = problem
+    return result
+
+
+@command(name="list", group="decisions")
+def decisions_list(project: Project, filter: Filter = {}) -> dict[str, Any]:  # noqa: B006
+    """The standing decisions — those matching FILTER — and how many there are
+    of each status and review."""
+    decisions = Decisions(project)
+    return {
+        "counts": decisions.counts(),
+        "decisions": [row(item) for item in decisions.matching(filter)],
+    }
+
+
+@command(name="show", group="decisions")
+def decisions_show(project: Project, number: int) -> dict[str, Any]:
+    """One decision in full."""
+    return Decisions(project).get(number)
+
+
+@command(name="edit", group="decisions")
+def decisions_edit(project: Project, change: Change) -> dict[str, Any]:
+    """Change a decision: rework one the owner rejected, or mark a todo done
+    and say what was done. A change to what it says asks for a fresh review.
+    `review` (accepted, rejected), `note` and `elaborate` are the owner's
+    word: set them only when the owner says so."""
+    decisions = Decisions(project)
+    decision, problem = decisions.edit(change)
+    if change.get("elaborate"):
+        decisions.elaborate_in_background(decision["number"])
+    result = {key: decision[key] for key in ("number", "title", "status", "review", "note")}
+    if problem:
+        result["not_committed"] = problem
+    return result
+
+
+@command(name="elaborate", group="decisions")
+def decisions_elaborate(project: Project, number: int) -> dict[str, Any]:
+    """Have an agent elaborate on a decision, as the owner asked: it reads the
+    project and deepens the reasoning. The page and `edit` run this themselves."""
+    outcome = Decisions(project).elaborate(number)
+    if not outcome["elaborated"]:
+        raise Failed(f"decision {number} was not elaborated", outcome)
+    return outcome
 
 
 # --- consulting -----------------------------------------------------------------------
@@ -329,28 +312,31 @@ def consult(project: Project, consultation: Consultation) -> str:
     return Consultant(project).consult(consultation)
 
 
-# --- consolidation ------------------------------------------------------------------
+# --- reflection ---------------------------------------------------------------------
 
 
-@command(name="record", group="consolidate")
-def consolidate_record(project: Project) -> str:
-    """Record the round, at its end (the `/consolidate` skill): the decisions it
-    covered, and when — the next round starts from there. Commit it with the map."""
-    path = Consolidation(project).finish()
-    return f"recorded {path.relative_to(project.root)}"
+@command(name="start", group="reflect")
+def reflect_start(project: Project) -> dict[str, Any]:
+    """Start a reflection round (the `/nock-reflect` skill), or pick up the one
+    under way: writes what its three parts read, and says where the report
+    and the shareable summary go."""
+    return Reflection(project).start()
 
 
-@command(name="due", group="consolidate")
-def consolidate_due(project: Project) -> str | bool:
-    """Whether a consolidation round is due; exit 1 when it is not."""
-    return Consolidation(project).due() or False
+@command(name="finish", group="reflect")
+def reflect_finish(project: Project, record: Record) -> dict[str, Any]:
+    """Finish the round: requires its report and summary, nock's checks to
+    pass, then records what the toolbox part changed and what each change
+    should do by the next round, and commits `.nock/`."""
+    return Reflection(project).finish(record)
 
 
-@command(name="material", group="consolidate")
-def consolidate_material(project: Project) -> str:
-    """What a round reads: the decisions since the last one, every standing
-    decision, and the map."""
-    return Consolidation(project).material()
+@command
+def share(project: Project, request: ShareRequest) -> dict[str, Any]:
+    """A round's shareable summary, and where it would go; with `send`, send
+    it — privately to nock's makers, or publicly to nock.dev. Send only when
+    the owner says so."""
+    return Sharing(project).share(request)
 
 
 # --- generators -----------------------------------------------------------------------
@@ -522,12 +508,21 @@ def generated_files_in_step(project: Project, root: Path) -> list[str]:
 
 @check(name="nock-map")
 def decisions_hold(project: Project, root: Path) -> list[Problem]:
-    """Every question the map cites is a standing decision, and every file a
-    decision touches still exists."""
-    questions = Questions(project)
+    """Every decision the map cites stands, and every file a done decision
+    touches still exists."""
+    decisions = Decisions(project)
     listed = Git(root)("ls-files", "--cached", "--others", "--exclude-standard").splitlines()
     files = [file for file in listed if (root / file).exists()]
-    return questions.citation_problems() + questions.stale_touches(files)
+    return decisions.citation_problems() + decisions.stale_touches(files)
+
+
+@check(name="nock-share")
+def summary_names_nothing(project: Project) -> list[Problem]:
+    """The round's shareable summary names nothing of the project: no paths,
+    file names, the project's or its people's names, addresses or links."""
+    rounds = Reflection(project).rounds
+    name = rounds.current() or ((rounds.last() or {}).get("round"))
+    return Sharing(project).problems(name) if name else []
 
 
 @check(name="nock-wiring")

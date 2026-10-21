@@ -34,11 +34,10 @@ DEFAULTS: dict[str, Any] = {
         "concurrency": 2,
     },
     "reflect": {
-        # A round is due after this many sessions since the last one, or after
-        # `days` days with at least `minimum` sessions.
+        # A round is due after this many sessions since the last one, or this
+        # many days — whichever comes first, given a session to look at.
         "sessions": 15,
         "days": 7,
-        "minimum": 3,
     },
     "agent": {
         # The headless agent nock dispatches (elaborate, consult) and its model
@@ -52,12 +51,9 @@ DEFAULTS: dict[str, Any] = {
         # The longest a consultation may take, in seconds: the caller waits.
         "deadline": 600,
     },
-    "consolidate": {
-        # A round is due after this many decisions since the last one, or after
-        # `days` days with at least `minimum` decisions.
-        "questions": 5,
-        "days": 7,
-        "minimum": 1,
+    "share": {
+        # Where `nock share` sends a round's summary, when the owner says so.
+        "endpoint": "https://nock.dev/api/reflections",
     },
     # Dollars per million tokens, by model-name prefix: {input, output, cache_read, cache_write}.
     "pricing": {},
