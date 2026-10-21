@@ -18,9 +18,11 @@ that keeps nothing, and with one that keeps prose and skills?
    `validate` requires every verifier to fail after the setup and pass after
    the fix. The builder is sent back until it does.
 3. **The run.** Each arm works through the month. Every report is a fresh
-   checkout of its week, set up, and a real session given the message. When
-   a session's last message asks the owner something, a scripted owner
-   answers from what it knows, and the session is resumed once. Now and
+   checkout of its week, with the week's earlier sessions replayed on it —
+   their trouble and their fixes, as commits, as if merged — then set up,
+   and a real session given the message. After it, a scripted owner reads
+   its last message and, when it asks something or waits on an OK, answers
+   from what it knows; the session is resumed once. Now and
    then — after half the sessions, at random but seeded — the owner gets
    round to the decisions waiting on review, and accepts or rejects them
    with notes, judging each from what it knows of its report. The verifier

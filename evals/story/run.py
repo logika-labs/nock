@@ -65,9 +65,9 @@ The engineer's last message:
 
 {final}
 
-If the message asks you something or waits on you, answer as the owner
-would, in a few sentences, as a chat reply. If it does not, reply with
-nothing at all."""
+If the message asks you something or waits on you — a question, a request
+for your OK, "say yes and I'll do it" — answer as the owner would, in a few
+sentences, as a chat reply. If it does not, reply with exactly NOTHING."""
 REVIEW = """You are the owner of a small software company. Your engineers record the
 decisions they make as they work, and you review them when you get round to
 it. You know the business, not the code: judge what each decision means for
@@ -267,6 +267,49 @@ class Arm:
             git(self.repo, "add", "-A")
             git(self.repo, "commit", "-qm", "Team tooling", "--no-verify")
 
+    # What happened in a session — the setup's commits (the trouble) and the
+    # engineer's changes (the fix) — carries through the rest of its week, as
+    # commits; the next week's tag holds the team's own version.
+    WORK_EXCLUDES = (
+        ":(exclude).nock",
+        ":(exclude).claude",
+        ":(exclude)CLAUDE.md",
+        ":(exclude)ANSWER.md",
+    )
+
+    def apply_work(self, week: int) -> int:
+        """Replay the week's earlier sessions, each as the commits it left; one
+        that no longer applies is left out. How many applied."""
+        applied = 0
+        for patch in sorted((self.directory / "work" / f"week-{week}").glob("*.mbox")):
+            replayed = subprocess.run(
+                ["git", "am", "-q", "--3way", "--committer-date-is-author-date", str(patch)],
+                cwd=self.repo, capture_output=True,
+            )  # fmt: skip
+            if replayed.returncode != 0:
+                subprocess.run(["git", "am", "--abort"], cwd=self.repo, capture_output=True)
+                continue
+            applied += 1
+        return applied
+
+    def save_work(self, week: int, start: str) -> bool:
+        """Keep what the session left since `start` — the setup's commits, then
+        the engineer's changes as one commit — for the rest of its week."""
+        git(self.repo, "add", "-A", "--", ".", *self.WORK_EXCLUDES)
+        if subprocess.run(["git", "diff", "--cached", "--quiet"], cwd=self.repo).returncode != 0:
+            git(self.repo, "commit", "-qm", "Fixes", "--no-verify")
+        git(self.repo, "reset", "-q")
+        patch = subprocess.run(
+            ["git", "format-patch", "--stdout", "--binary", f"{start}..HEAD", "--", ".", *self.WORK_EXCLUDES],
+            cwd=self.repo, capture_output=True, check=True,
+        ).stdout  # fmt: skip
+        if not patch.strip():
+            return False
+        directory = self.directory / "work" / f"week-{week}"
+        directory.mkdir(parents=True, exist_ok=True)
+        (directory / f"{len(list(directory.glob('*.mbox'))) + 1:02d}.mbox").write_bytes(patch)
+        return True
+
     def keep(self) -> None:
         """Copy what the arm keeps out of the repository, telemetry left in place."""
         shutil.rmtree(self.carried, ignore_errors=True)
@@ -280,7 +323,15 @@ class Arm:
 
     def session(self, report: dict[str, Any], repeat: int, learning: bool) -> dict[str, Any]:
         self.checkout(report["week"])
+        carried = self.apply_work(report["week"])
+        start = git(self.repo, "rev-parse", "HEAD")
         setup = run_script(self.world.file(report, "setup.py"), self.repo)
+        if setup.returncode != 0 and carried:
+            # This report's trouble does not happen on top of the week's work: start it clean.
+            self.checkout(report["week"])
+            carried = 0
+            start = git(self.repo, "rev-parse", "HEAD")
+            setup = run_script(self.world.file(report, "setup.py"), self.repo)
         if setup.returncode != 0:
             raise SystemExit(f"{report['id']}: setup.py failed: {setup.stderr[-600:]}")
         identity = str(uuid.uuid4())
@@ -292,6 +343,7 @@ class Arm:
         verdict = run_script(self.world.file(report, "verify.py"), self.repo)
         checks = [json.loads(line) for line in verdict.stdout.splitlines() if line.startswith("{")]
         recorded = self.decisions(identity)
+        changed = self.save_work(report["week"], start)
         self.sessions[identity] = report
         reviewed = self.review() if learning and self.chance.random() < REVIEW_CHANCE else 0
         if learning:
@@ -302,6 +354,8 @@ class Arm:
             "family": report.get("family"), "session": identity,
             "passed": verdict.returncode == 0,
             "checks": sum(1 for check in checks if check.get("ok")), "of": len(checks),
+            "failed": [check.get("check") for check in checks if not check.get("ok")],
+            "work_carried": carried, "work_kept": changed,
             "cost": sum(float(record.get("total_cost_usd") or 0) for record in records),
             "turns": sum(int(record.get("num_turns") or 0) for record in records),
             "seconds": sum(record["seconds"] for record in records),
@@ -324,8 +378,6 @@ class Arm:
     def owner(self, report: dict[str, Any], record: dict[str, Any]) -> str:
         """The scripted owner's reply, when the session's last message waits on them."""
         final = str(record.get("result") or "")
-        if "?" not in final[-800:]:
-            return ""
         prompt = OWNER.format(
             message=self.world.file(report, "message.md").read_text(),
             owner=self.world.file(report, "owner.md").read_text(),
@@ -333,7 +385,8 @@ class Arm:
         )
         with tempfile.TemporaryDirectory() as scratch:
             answer = claude(prompt, Path(scratch), OWNER_MODEL, str(uuid.uuid4()))
-        return str(answer.get("result") or "").strip()
+        reply = str(answer.get("result") or "").strip()
+        return "" if reply.upper().startswith("NOTHING") else reply
 
     def review(self) -> int:
         """The owner gets round to the decisions waiting on them: each judged
