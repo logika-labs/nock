@@ -14,8 +14,9 @@ A scripted owner answers what the agents ask. `report` compares the arms.
 
 Arms: `bare` keeps nothing between sessions; `skills` keeps `CLAUDE.md` and
 `.claude/`, which a reflection session rewrites each week; `nock` has nock
-installed and keeps `.nock/` (toolbox, questions, map) and its skills,
-running `/reflect` and `/consolidate` each week.
+installed and keeps `.nock/` (toolbox, decisions, map) and its skills,
+running `/nock-reflect` each week. The owner reviews the nock arm's
+decisions now and then, as a real owner would.
 """
 
 from __future__ import annotations
@@ -23,6 +24,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import random
 import shutil
 import statistics
 import subprocess
@@ -59,20 +61,29 @@ business, not the code, and you never guess at causes:
 
 {owner}
 
-The engineer's questions to you, filed in the team's question tracker
-(each with its options, numbered from 1):
-
-{questions}
-
 The engineer's last message:
 
 {final}
 
-Answer as the owner would. Reply with JSON only:
-{{"answers": [{{"number": N, "choice": K or null, "comment": "…" or null}}],
-  "reply": "what you say back to the engineer, or an empty string"}}
-Answer every tracked question. Say something in `reply` only when the last
-message asks you something or waits on you; otherwise leave it empty."""
+If the message asks you something or waits on you, answer as the owner
+would, in a few sentences, as a chat reply. If it does not, reply with
+nothing at all."""
+REVIEW = """You are the owner of a small software company. Your engineers record the
+decisions they make as they work, and you review them when you get round to
+it. You know the business, not the code: judge what each decision means for
+the business, from what you know about the report it came from; leave
+alone what you cannot judge.
+
+{decisions}
+
+Reply with JSON only: a list of
+{{"number": N, "review": "accepted" or "rejected" or null, "note": "…" or null}}
+for each decision — null to leave it unreviewed. Reject a decision when it
+goes against what you know, and say why in the note; accept it when it fits.
+Add a note when there is something the engineers should know."""
+# How often the owner gets round to reviewing, after a session (seeded, so runs repeat).
+REVIEW_CHANCE = 0.5
+OWNER_MODEL = "claude-sonnet-5-5"
 
 
 def environment() -> dict[str, str]:
@@ -207,6 +218,9 @@ class Arm:
         self.out, self.world, self.name, self.model = out, world, name, model
         self.directory = out / "arms" / (label or name)
         self.carried = self.directory / "carried"
+        # Which report each session worked on, so the owner knows what a decision was about.
+        self.sessions: dict[str, dict[str, Any]] = {}
+        self.chance = random.Random(name)
 
     @property
     def repo(self) -> Path:
@@ -272,12 +286,14 @@ class Arm:
         identity = str(uuid.uuid4())
         message = self.world.file(report, "message.md").read_text()
         records = [claude(message + INSTRUCTIONS, self.repo, self.model, identity)]
-        asked = self.questions(identity)
-        reply = self.owner(report, records[-1], asked)
+        reply = self.owner(report, records[-1])
         if reply:
             records.append(claude(reply, self.repo, self.model, identity, resume=True))
         verdict = run_script(self.world.file(report, "verify.py"), self.repo)
         checks = [json.loads(line) for line in verdict.stdout.splitlines() if line.startswith("{")]
+        recorded = self.decisions(identity)
+        self.sessions[identity] = report
+        reviewed = self.review() if learning and self.chance.random() < REVIEW_CHANCE else 0
         if learning:
             self.keep()
         usage = [record.get("usage") or {} for record in records]
@@ -291,65 +307,84 @@ class Arm:
             "seconds": sum(record["seconds"] for record in records),
             "input_tokens": sum(int(item.get("input_tokens") or 0) for item in usage),
             "output_tokens": sum(int(item.get("output_tokens") or 0) for item in usage),
-            "questions": len(asked), "owner_replied": bool(reply),
+            "decisions": len(recorded), "reviewed": reviewed, "owner_replied": bool(reply),
             "final": str(records[-1].get("result") or "")[-600:],
         }  # fmt: skip
 
-    def questions(self, identity: str) -> list[dict[str, Any]]:
-        directory = self.repo / ".nock" / "questions"
+    def decisions(self, identity: str | None = None) -> list[dict[str, Any]]:
+        """The arm's decisions — those a session recorded, when it is named."""
+        directory = self.repo / ".nock" / "decisions"
         if not directory.is_dir():
             return []
         found = [json.loads(path.read_text()) for path in sorted(directory.glob("[0-9]*.json"))]
-        return [
-            question
-            for question in found
-            if question["state"] == "open" and question["asked"].get("session") == identity
-        ]
+        if identity is None:
+            return found
+        return [decision for decision in found if decision["recorded"].get("session") == identity]
 
-    def owner(
-        self, report: dict[str, Any], record: dict[str, Any], asked: list[dict[str, Any]]
-    ) -> str:
-        """The scripted owner: answers the session's tracked questions on the
-        page's behalf, and replies when its last message waits on the owner."""
+    def owner(self, report: dict[str, Any], record: dict[str, Any]) -> str:
+        """The scripted owner's reply, when the session's last message waits on them."""
         final = str(record.get("result") or "")
-        if not asked and "?" not in final[-800:]:
+        if "?" not in final[-800:]:
             return ""
-        shown = [
-            {key: question[key] for key in ("number", "title", "context", "options", "recommended")}
-            for question in asked
-        ]
         prompt = OWNER.format(
             message=self.world.file(report, "message.md").read_text(),
             owner=self.world.file(report, "owner.md").read_text(),
-            questions=json.dumps(shown, indent=2) if shown else "(none)",
             final=final[-3000:],
         )
         with tempfile.TemporaryDirectory() as scratch:
-            answer = claude(prompt, Path(scratch), "claude-sonnet-5-5", str(uuid.uuid4()))
+            answer = claude(prompt, Path(scratch), OWNER_MODEL, str(uuid.uuid4()))
+        return str(answer.get("result") or "").strip()
+
+    def review(self) -> int:
+        """The owner gets round to the decisions waiting on them: each judged
+        from what they know of the report it came from. How many they reviewed."""
+        waiting = [
+            decision
+            for decision in self.decisions()
+            if decision["review"] == "unreviewed" and not decision.get("superseded_by")
+        ]
+        if not waiting:
+            return 0
+        blocks = []
+        for decision in waiting:
+            report = self.sessions.get(decision["recorded"].get("session") or "")
+            known = (
+                self.world.file(report, "owner.md").read_text()
+                if report
+                else "(a decision from a reflection round, not a report — judge it on its face)"
+            )
+            shown = {key: decision[key] for key in ("number", "title", "status", "summary", "evidence", "alternatives", "tags")}  # fmt: skip
+            blocks.append(
+                f"## Decision {decision['number']}\n\nWhat you know about its report:\n\n{known}\n\n```json\n{json.dumps(shown, indent=2)}\n```"
+            )
+        with tempfile.TemporaryDirectory() as scratch:
+            answer = claude(
+                REVIEW.format(decisions="\n\n".join(blocks)),
+                Path(scratch),
+                OWNER_MODEL,
+                str(uuid.uuid4()),
+            )
         text = str(answer.get("result") or "").strip().removeprefix("```json").removesuffix("```")
         try:
-            decided = json.loads(text)
+            verdicts = json.loads(text)
         except json.JSONDecodeError:
-            return ""
-        answered = 0
-        for item in decided.get("answers", []):
-            path = self.repo / ".nock" / "questions" / f"{int(item['number']):04d}.json"
-            if not path.is_file():
+            return 0
+        reviewed = 0
+        for verdict in verdicts if isinstance(verdicts, list) else []:
+            change = {"number": int(verdict["number"])}
+            if verdict.get("review") in ("accepted", "rejected"):
+                change["review"] = verdict["review"]
+            if verdict.get("note"):
+                change["note"] = verdict["note"]
+            if len(change) == 1:
                 continue
-            question = json.loads(path.read_text())
-            question["owner"] = {
-                "choice": item.get("choice"),
-                "comment": item.get("comment"),
-                "elaborate": False,
-            }
-            question["state"] = "pending"
-            question["updated"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-            path.write_text(json.dumps(question, indent=2) + "\n")
-            answered += 1
-        reply = str(decided.get("reply") or "").strip()
-        if answered and not reply:
-            reply = "I answered your question(s) in the tracker."
-        return reply
+            subprocess.run(
+                [str(self.repo / ".nock" / "nock"), "decisions", "edit", json.dumps(change)],
+                cwd=self.repo, capture_output=True, text=True, env=environment(),
+            )  # fmt: skip
+            reviewed += 1
+        log(self.out, {"arm": self.name, "owner_review": reviewed, "waiting": len(waiting), "cost": answer.get("total_cost_usd")})  # fmt: skip
+        return reviewed
 
     def reflect(self, week: int, identities: list[str]) -> None:
         """The week's reflection, as the arm does it; what it changed is kept."""
@@ -367,7 +402,7 @@ class Arm:
             ]
             prompts = [(HERE / "reflect-skills.md").read_text().replace("{{ transcripts }}", "\n".join(f"- {path}" for path in transcripts))]  # fmt: skip
         else:
-            prompts = ["/reflect", "/consolidate"]
+            prompts = ["/nock-reflect"]
         for prompt in prompts:
             record = claude(prompt, self.repo, self.model, str(uuid.uuid4()))
             log(self.out, {"arm": self.name, "week": week, "reflection": prompt[:20], "cost": record.get("total_cost_usd"), "seconds": record["seconds"]})  # fmt: skip
@@ -380,9 +415,14 @@ def log(out: Path, entry: dict[str, Any]) -> None:
     print(json.dumps({key: entry[key] for key in entry if key != "final"}), flush=True)
 
 
-def run(out: Path, arms: list[str], repeats: int, model: str) -> None:
+def run(out: Path, arms: list[str], repeats: int, model: str, weeks: int | None) -> None:
+    """Each arm learns through the first weeks, then the last week is run
+    `repeats` times, frozen. With `weeks`, only that many learning weeks, and
+    no test week unless that is all of them."""
     world = World(out / "world")
     *training, test = world.weeks
+    complete = weeks is None or weeks >= len(training)
+    training = training if weeks is None else training[:weeks]
 
     def learn(name: str) -> None:
         arm = Arm(out, world, name, model)
@@ -402,6 +442,9 @@ def run(out: Path, arms: list[str], repeats: int, model: str) -> None:
 
     with ThreadPoolExecutor(max_workers=len(arms)) as pool:
         list(pool.map(learn, arms))
+    if not complete:
+        report(out)
+        return
     jobs = [(name, repeat) for name in arms for repeat in range(1, repeats + 1)]
     with ThreadPoolExecutor(max_workers=len(jobs)) as pool:
         list(pool.map(examine, jobs))
@@ -414,10 +457,10 @@ def run(out: Path, arms: list[str], repeats: int, model: str) -> None:
 def report(out: Path) -> None:
     entries = [json.loads(line) for line in (out / "outcomes.jsonl").read_text().splitlines()]
     sessions = [entry for entry in entries if "report" in entry]
-    test = max(entry["week"] for entry in sessions)
+    test = World(out / "world").weeks[-1]
     lines = ["# The story eval", ""]
     for title, chosen in (("Weeks 1–3 (learning)", [e for e in sessions if e["week"] < test]), (f"Week {test} (frozen, every repeat)", [e for e in sessions if e["week"] == test])):  # fmt: skip
-        lines += [f"## {title}", "", "| arm | sessions | resolved | checks | cost | turns | minutes | questions |", "|---|---|---|---|---|---|---|---|"]  # fmt: skip
+        lines += [f"## {title}", "", "| arm | sessions | resolved | checks | cost | turns | minutes | decisions |", "|---|---|---|---|---|---|---|---|"]  # fmt: skip
         by_arm: dict[str, list[dict[str, Any]]] = defaultdict(list)
         for entry in chosen:
             by_arm[entry["arm"]].append(entry)
@@ -426,7 +469,7 @@ def report(out: Path) -> None:
             lines.append(
                 f"| {arm} | {len(rows)} | {sum(row['passed'] for row in rows) / len(rows):.0%} | {checks:.0%} "
                 f"| ${statistics.mean(row['cost'] for row in rows):.2f} | {statistics.mean(row['turns'] for row in rows):.0f} "
-                f"| {statistics.mean(row['seconds'] for row in rows) / 60:.1f} | {sum(row['questions'] for row in rows)} |"
+                f"| {statistics.mean(row['seconds'] for row in rows) / 60:.1f} | {sum(row.get('decisions', row.get('questions', 0)) for row in rows)} |"
             )
         lines.append("")
     lines += [f"## Week {test}, per report: resolved in how many repeats", "", "| report | family | " + " | ".join(sorted({e['arm'] for e in sessions})) + " |", "|---|---|" + "---|" * len({e['arm'] for e in sessions})]  # fmt: skip
@@ -458,6 +501,11 @@ def main() -> None:
         if name == "run":
             command.add_argument("--arms", default="bare,skills,nock")
             command.add_argument("--repeats", type=int, default=3)
+            command.add_argument(
+                "--weeks",
+                type=int,
+                help="learning weeks to run; the test week only after all of them",
+            )
     commands.add_parser("validate").add_argument("world", type=Path)
     arguments = parser.parse_args()
     if arguments.command == "story":
@@ -469,7 +517,13 @@ def main() -> None:
         print("\n".join(problems) or "the world validates")
         sys.exit(1 if problems else 0)
     elif arguments.command == "run":
-        run(arguments.out, arguments.arms.split(","), arguments.repeats, arguments.model)
+        run(
+            arguments.out,
+            arguments.arms.split(","),
+            arguments.repeats,
+            arguments.model,
+            arguments.weeks,
+        )
     else:
         report(arguments.out)
 

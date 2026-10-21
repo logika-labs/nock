@@ -18,18 +18,22 @@ that keeps nothing, and with one that keeps prose and skills?
    `validate` requires every verifier to fail after the setup and pass after
    the fix. The builder is sent back until it does.
 3. **The run.** Each arm works through the month. Every report is a fresh
-   checkout of its week, set up, and a real session given the message. A
-   scripted owner answers what the session asks: questions filed with
-   `nock ask`, or a question in its last message. The session is then
-   resumed once. The verifier decides.
+   checkout of its week, set up, and a real session given the message. When
+   a session's last message asks the owner something, a scripted owner
+   answers from what it knows, and the session is resumed once. Now and
+   then — after half the sessions, at random but seeded — the owner gets
+   round to the decisions waiting on review, and accepts or rejects them
+   with notes, judging each from what it knows of its report. The verifier
+   decides.
    - **bare** keeps nothing between sessions;
    - **skills** keeps `CLAUDE.md` and `.claude/`, rewritten each week by a
      reflection session over the week's transcripts (`reflect-skills.md`);
-   - **nock** has nock installed, keeps `.nock/` (toolbox, questions, map)
-     and runs `/reflect` and `/consolidate` each week.
+   - **nock** has nock installed, keeps `.nock/` (toolbox, decisions, map)
+     and runs `/nock-reflect` each week.
 
    Weeks 1–3 are for learning. Then what each arm keeps is frozen, and week 4
-   runs `--repeats` times in parallel.
+   runs `--repeats` times in parallel. `--weeks N` stops after N learning
+   weeks, to look before going on.
 4. **The report.** `report.md` shows, per arm, how many reports were
    resolved, the share of checks passed, cost, turns, time and questions
    asked. A per-report table for week 4 follows.
