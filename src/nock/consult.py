@@ -7,6 +7,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING, TypedDict
 
+from nock.decisions import Decisions
 from nock.dispatch import Dispatcher
 from nock.errors import Failed
 from nock.templates import Library
@@ -30,8 +31,11 @@ class Consultant:
         self.project = project
 
     def consult(self, consultation: Consultation) -> str:
+        path = Decisions(self.project).map
         brief = Library(self.project.code_path("briefs"), BRIEFS).render(
-            "consult.md", **consultation
+            "consult.md",
+            **consultation,
+            map=path.read_text().strip() if path.is_file() else "",
         )
         session = Dispatcher(self.project).launch(
             ROLE,

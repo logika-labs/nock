@@ -6,14 +6,19 @@ decisions and tools that bear on its work. It waits for your answer.
 
 **What it knows:** {{ context }}
 
+!if map:
+    # The map of decisions
+
+    When each of the project's decisions matters:
+
+    {{ map }}
+
 # Where to look
 
-    cat .nock/decisions/map.md                               # when each decision matters
     .nock/nock decisions list '{"path": "src/billing.py"}'   # decisions governing a file
     .nock/nock decisions list '{"tag": "payments"}'
     .nock/nock decisions show 7
-    .nock/nock                                               # the project's tools
-    .nock/nock NAME --help
+    .nock/nock NAME --help                                   # a tool the session start listed
 
 An accepted decision is the owner's; an unreviewed one is an agent's call so
 far; a rejected one says what not to do, and its note says why.

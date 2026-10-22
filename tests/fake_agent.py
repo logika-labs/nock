@@ -59,6 +59,7 @@ def main() -> int:
         return elaborate(session, prompt)
     if os.environ.get("NOCK_ROLE") == "consultant":
         assert "**What it is about to do:**" in prompt
+        assert "When each of the project's decisions matters:" in prompt
         write_transcript(session, prompt)
         print(
             json.dumps({"type": "result", "result": "**Decisions**: none.\n\n**Tools**: none."}),

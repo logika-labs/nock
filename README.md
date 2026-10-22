@@ -351,8 +351,8 @@ reflection round is due.
 ### The map
 
 `.nock/decisions/map.md` says what the decisions mean for the work: when
-each matters, and how they bear on each other. The consultant reads it
-first. A reflection round keeps it, within three rules:
+each matters, and how they bear on each other. A consultant is given it
+with its brief. A reflection round keeps it, within three rules:
 
 - triggers, not facts: "if you touch X, then Y, because Z [D7]";
 - a rejected option comes with what would make it viable again;
@@ -371,8 +371,8 @@ While an agent works out how to do something, it consults:
 $ .nock/nock consult '{"intent": "Move orders to Postgres.", "context": "SQLite locks under load."}'
 ```
 
-A fresh headless agent searches the map, the decisions and the project's
-tools. It changes nothing, and answers within `consult.deadline` seconds with
+A fresh headless agent is given the map, and searches the decisions and the
+project's tools. It changes nothing, and answers within `consult.deadline` seconds with
 the decisions that bear on the work and the tools that help; the calling
 agent waits for it. The primer tells agents to consult while they work out
 how to do something, unless the task is really straightforward and
