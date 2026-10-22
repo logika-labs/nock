@@ -262,6 +262,12 @@ class Arm:
         git(self.repo, "fetch", "-q", "--no-tags", str(self.world.repo), f"refs/tags/week-{week}")
         git(self.repo, "checkout", "-q", "-B", "main", "FETCH_HEAD^{commit}")
         (self.repo / ".git" / "FETCH_HEAD").unlink()
+        # Branches a session made go with it; what it did carries as `work/`.
+        for branch in git(
+            self.repo, "for-each-ref", "--format=%(refname:short)", "refs/heads"
+        ).split():
+            if branch != "main":
+                git(self.repo, "branch", "-q", "-D", branch)
         if any(self.carried.iterdir()):
             shutil.copytree(self.carried, self.repo, dirs_exist_ok=True)
             git(self.repo, "add", "-A")
@@ -440,10 +446,12 @@ class Arm:
         return reviewed
 
     def reflect(self, week: int, identities: list[str]) -> None:
-        """The week's reflection, as the arm does it; what it changed is kept."""
+        """The week's reflection, as the arm does it, on the week's work; what
+        it changed is kept."""
         if self.name == "bare":
             return
         self.checkout(week)
+        self.apply_work(week)
         if self.name == "skills":
             projects = (
                 Path(os.environ.get("CLAUDE_CONFIG_DIR", Path.home() / ".claude")) / "projects"
