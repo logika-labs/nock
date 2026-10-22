@@ -1,46 +1,29 @@
-An agent working on this project is about to do something serious, or is
-stuck, and asked for a second view before it goes on. You are a fresh session
-with no stake in its plan: your job is to tell it what it would otherwise
-miss. It waits for your answer, so be quick and be right.
+An agent on this project is working out how to do something and asked what
+it doesn't know. Look through the repository, change nothing, and tell it the
+decisions and tools that bear on its work. It waits for your answer.
 
-# What it said
+**What it is about to do:** {{ intent }}
 
-**What it is about to do, or is stuck on:**
+**What it knows:** {{ context }}
 
-{{ intent }}
+# Where to look
 
-**What it knows already:**
+    cat .nock/decisions/map.md                               # when each decision matters
+    .nock/nock decisions list '{"path": "src/billing.py"}'   # decisions governing a file
+    .nock/nock decisions list '{"tag": "payments"}'
+    .nock/nock decisions show 7
+    .nock/nock                                               # the project's tools
+    .nock/nock NAME --help
 
-{{ context }}
+An accepted decision is the owner's; an unreviewed one is an agent's call so
+far; a rejected one says what not to do, and its note says why.
 
-# What to do
+# Answer
 
-1. Read `.nock/decisions/map.md`, if there is one: it says when each of the
-   project's decisions matters. Follow it to the decisions that bear on
-   this (`.nock/nock decisions show N`; `.nock/nock decisions list` lists
-   them all, `'{"path": …}'` those governing a file), and to the documents,
-   code and history they point to. An accepted decision is the owner's; an
-   unreviewed one an agent's call so far; a rejected one says what not to
-   do. Read what the project says about itself (README, docs, CLAUDE.md)
-   where it bears on the work, and what its tools do (`.nock/nock` lists
-   them).
-2. Change nothing: read and run, but leave the repository as you found it.
-3. Answer in this shape, in under 400 words:
+In under 300 words, only what it doesn't already know:
 
-   **The task, reframed** — what it is really asking, in this project's
-   terms; say so plainly when the agent has it right.
+**Decisions**: each `[Dn]` that bears on the work, and what it means here.
 
-   **Decisions that bear on it** — each `[Dn]` with what it requires here.
-   None is a fine answer.
+**Tools**: each `.nock/nock` command that helps, and what for.
 
-   **What could go wrong** — what the plan misses, contradicts or risks,
-   with the file or decision that shows it.
-
-   **Tools that help** — the project's `.nock/nock` commands the work
-   will want, each with what it is for here. None is a fine answer.
-
-   **Decide on the way** — the choices the work will meet that no decision
-   or document settles: the agent will make them, and should record each
-   as a decision.
-
-Your last message is the answer the agent reads: put nothing else in it.
+"None" is a fine answer to either. Your last message is what the agent reads.

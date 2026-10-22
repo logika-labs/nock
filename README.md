@@ -244,7 +244,7 @@ of them has drifted.
 ## What agents see
 
 Every session starts with the project's tools listed, through Claude Code's
-SessionStart hook. CLAUDE.md imports a short primer: why the project uses nock, when to consult, recording decisions, and `nock run`. What the session start says comes with a word on what to do with it: take into account what bears on the request, and mention the rest to the human only when relevant or once the work is done. `.nock/nock` with no
+SessionStart hook. CLAUDE.md imports a short primer: why the project uses nock (to stay coherent across sessions), when to consult, recording decisions, and `nock run`. What the session start says comes with a word on what to do with it: take into account what bears on the request, and mention the rest to the human only when relevant or once the work is done. `.nock/nock` with no
 arguments lists the toolbox. A mistake gets an answer:
 
 ```sh
@@ -326,7 +326,8 @@ decisions it overturns, which stay as history.
   which lists the decisions to review, accepted and rejected, searchable and
   filtered by status and tag; `#7` in its address opens decision 7. Or in a
   session, with `/nock-triage`, which goes through them one at a time. Each
-  can be accepted, rejected, noted, or sent to an agent to elaborate.
+  can be accepted, rejected or noted; asked for more, the session looks into
+  it itself.
 - **The session that recorded it hears.** When the owner next types there,
   the prompt hook tells it what they said, once.
 - **Work changes the record.** `nock decisions edit` reworks a rejected
@@ -350,8 +351,8 @@ reflection round is due.
 ### The map
 
 `.nock/decisions/map.md` says what the decisions mean for the work: when
-each matters, and how they bear on each other. Agents read it before
-starting anything serious. A reflection round keeps it, within three rules:
+each matters, and how they bear on each other. The consultant reads it
+first. A reflection round keeps it, within three rules:
 
 - triggers, not facts: "if you touch X, then Y, because Z [D7]";
 - a rejected option comes with what would make it viable again;
@@ -364,22 +365,18 @@ at; and `decide` says at once when `touches` names a file that doesn't exist.
 
 ### Consulting
 
-Before something serious, such as a feature, a migration, a redesign, a
-change of course, or being stuck, an agent consults:
+While an agent works out how to do something, it consults:
 
 ```sh
 $ .nock/nock consult '{"intent": "Move orders to Postgres.", "context": "SQLite locks under load."}'
 ```
 
-A fresh headless agent reads the map, the decisions it points to, the
-project's documents and its tools. It changes nothing, and answers within
-`consult.deadline` seconds: the task reframed, the decisions that bear on
-it, what could go wrong, the project's tools the work will want, and the
-choices the work will meet that nothing settles yet, to be recorded as
-decisions. The calling agent waits for that
-answer. The primer tells agents to consult as part of working out how to
-do something non-trivial, not as a step after they decided, unless the task
-is really straightforward and unambiguous.
+A fresh headless agent searches the map, the decisions and the project's
+tools. It changes nothing, and answers within `consult.deadline` seconds with
+the decisions that bear on the work and the tools that help; the calling
+agent waits for it. The primer tells agents to consult while they work out
+how to do something, unless the task is really straightforward and
+unambiguous.
 
 ## Reflection
 
@@ -436,7 +433,7 @@ published on nock.dev (`public`). Nothing is sent otherwise.
 | `nock decide JSON` | record a decision |
 | `nock decisions list [JSON]`, `show N`, `edit JSON`, `elaborate N` | the decisions: filtered, in full, changed or reviewed, elaborated |
 | `nock web [JSON]` | the owner's page |
-| `nock consult JSON` | a fresh agent reframes a serious task, and the caller waits |
+| `nock consult JSON` | a fresh agent finds the decisions and tools that bear on a task, and the caller waits |
 | `nock reflect start`, `finish JSON` | a reflection round; the round is the `/nock-reflect` skill |
 | `nock share JSON` | a round's summary, and sending it |
 | `nock gen write`, `new`, `add`, `set`, `rm`, `show`, `bind`, `unbind` | generators |

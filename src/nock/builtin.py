@@ -314,11 +314,8 @@ def decisions_elaborate(project: Project, number: int) -> dict[str, Any]:
 
 @command
 def consult(project: Project, consultation: Consultation) -> str:
-    """Before something serious — a feature, a migration, a redesign, a change
-    of course, or when stuck — have a fresh agent read the project's
-    decisions and documents and reframe the task: what it really asks, the
-    decisions that bear on it, what could go wrong. Waits for the answer, a
-    few minutes; not for routine edits."""
+    """While working out how to do something, have a fresh agent search the
+    project for the decisions and tools that bear on it; waits for the answer."""
     return Consultant(project).consult(consultation)
 
 

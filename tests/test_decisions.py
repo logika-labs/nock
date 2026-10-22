@@ -261,10 +261,10 @@ def test_the_edit_hook_is_wired_for_edits_only(project: Project) -> None:
     assert entry["matcher"] == "Edit|MultiEdit|Write|NotebookEdit"
 
 
-def test_a_consultation_waits_for_the_reframed_task(project: Project) -> None:
+def test_a_consultation_waits_for_the_decisions_and_tools(project: Project) -> None:
     consultation = {"intent": "Move orders to Postgres.", "context": "SQLite is slow."}
     result = nock(project.root, "consult", json.dumps(consultation))
     assert result.returncode == 0, result.stdout + result.stderr
-    assert result.stdout.startswith("**The task, reframed**")
+    assert result.stdout.startswith("**Decisions**")
     roles = [row["role"] for row in project.store.rows("SELECT role FROM sessions")]
     assert roles == ["consultant"]

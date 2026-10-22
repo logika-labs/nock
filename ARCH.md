@@ -53,7 +53,7 @@ src/nock/
   web.html           the page
   status.py          Standing: a round due, decisions waiting, rejected ones to rework, an unshared summary
   share.py           Sharing: a round's summary, held to naming nothing, sent on the owner's word
-  consult.py         Consultant: a fresh agent reframes a serious task
+  consult.py         Consultant: a fresh agent finds the decisions and tools that bear on a task
   dispatch.py        Dispatcher: launch a headless `claude -p` session and ingest it
   hooks.py           `nock hook EVENT`: nock's own handlers, then the project's
   briefs/

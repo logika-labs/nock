@@ -1,36 +1,25 @@
 ---
 name: nock-triage
-description: Go through the decisions nock's agents recorded with the owner, here in the conversation — one at a time, accepting, rejecting, noting or elaborating as they say. Use when the owner wants to review decisions, or says /nock-triage.
+description: Go through the decisions nock's agents recorded with the owner, one at a time, here in the conversation, recording their accept, reject or note. Use when the owner wants to review decisions, or says /nock-triage.
 ---
 
 # Going through the decisions
 
-The agents working on this project record their decisions as they make them,
-and the owner reviews them. You are going through them with the owner now,
-in this conversation. Their word is what you record; yours is the summary.
+Go through the decisions waiting on the owner, with them, one at a time.
+Their word is what you record.
 
-1. `.nock/nock decisions list '{"review": "unreviewed"}'` lists what waits on
-   the owner. Take the done ones first — they are in the code already — then
-   the todos; within each, the ones tagged `important` first, then the
-   oldest. If the owner named a tag, a file or a number, start there instead
-   (`'{"tag": …}'`, `'{"path": …}'`).
-2. For each, `.nock/nock decisions show N`, and put it to the owner in a few
-   lines: what was decided (or should be done), what it means for what the
-   system does, and the alternatives that lost and why — only the evidence
-   that bears on whether it is right. Then ask: accept, reject, a note, or
-   more? Do not argue for it; if you think it is wrong, say so plainly once.
-3. Record their word:
+    .nock/nock decisions list '{"review": "unreviewed"}'   # or '{"tag": …}', '{"path": …}'
+    .nock/nock decisions show 7
+    .nock/nock decisions edit '{"number": 7, "review": "accepted"}'
+    .nock/nock decisions edit '{"number": 7, "review": "rejected", "note": "what they said"}'
+    .nock/nock decisions edit '{"number": 7, "note": "what they said"}'
 
-       .nock/nock decisions edit '{"number": N, "review": "accepted"}'
-       .nock/nock decisions edit '{"number": N, "review": "rejected", "note": "what they said"}'
+Start where the owner says; otherwise done decisions first (they are in the
+code), then todos, `important` first, then the oldest. Put each in a few
+lines: what was decided, what it means for the system, the alternatives that
+lost. Ask: accept, reject, a note, or more? For more, look into it yourself
+and answer; edit the decision if it should say so too. Don't argue for it;
+if you think it is wrong, say so once.
 
-   A note on its own needs no review. When they want more, find it — read
-   the code, the history — and answer them here; if the decision should say
-   it too, edit its `summary`, `evidence` or `alternatives`. When they would
-   rather an agent looked into it while you move on,
-   `'{"number": N, "elaborate": true, "note": "their question"}'`. When they
-   want to skip one, skip it.
-4. Stop when they say so, or when nothing waits. Then say in a line or two
-   what was accepted and rejected. A rejected done decision is to be
-   reworked: offer to do it now, and when it is done, edit the decision to
-   say what was done instead.
+At the end, say what was accepted and rejected, and offer to rework the
+rejected done ones; edit each to say what was done.

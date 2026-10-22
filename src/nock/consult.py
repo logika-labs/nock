@@ -1,6 +1,6 @@
-"""Consulting: before something serious, an agent asks a fresh one — which
-reads the project's decisions, their map and its documents — to reframe the
-task, and waits for the answer."""
+"""Consulting: while working out how to do something, an agent asks a fresh
+one, which searches the project's decisions, their map and its tools, and
+waits for the ones that bear on the work."""
 
 from __future__ import annotations
 
@@ -20,9 +20,9 @@ BRIEFS = Path(__file__).resolve().parent / "briefs"
 
 class Consultation(TypedDict):
     intent: str
-    """What you are about to do, or are stuck on, in a few sentences."""
+    """What you are about to do, in a few sentences."""
     context: str
-    """What you know already: the request, what you read and tried, what worries you."""
+    """What you know already: the request, what you read and tried."""
 
 
 class Consultant:

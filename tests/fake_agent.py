@@ -58,15 +58,15 @@ def main() -> int:
     if os.environ.get("NOCK_ROLE") == "elaborator":
         return elaborate(session, prompt)
     if os.environ.get("NOCK_ROLE") == "consultant":
-        assert "# What it said" in prompt
+        assert "**What it is about to do:**" in prompt
         write_transcript(session, prompt)
         print(
-            json.dumps({"type": "result", "result": "**The task, reframed** — as asked."}),
+            json.dumps({"type": "result", "result": "**Decisions**: none.\n\n**Tools**: none."}),
             flush=True,
         )
         return 0
     if os.environ.get("NOCK_ROLE") == "sharer":
-        assert "# The summary" in prompt
+        assert "NOTHING TO SHARE:" in prompt
         write_transcript(session, prompt)
         text = os.environ.get("FAKE_SHARE", "Early days, vetted.")
         print(json.dumps({"type": "result", "result": text}), flush=True)
