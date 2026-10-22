@@ -244,7 +244,7 @@ of them has drifted.
 ## What agents see
 
 Every session starts with the project's tools listed, through Claude Code's
-SessionStart hook. CLAUDE.md imports a short primer. `.nock/nock` with no
+SessionStart hook. CLAUDE.md imports a short primer: why the project uses nock, and when to consult, decide and reach for a tool. `.nock/nock` with no
 arguments lists the toolbox. A mistake gets an answer:
 
 ```sh
@@ -376,8 +376,8 @@ project's documents. It changes nothing, and answers within
 `consult.deadline` seconds: the task reframed, the decisions that bear on
 it, what could go wrong, and the choices the work will meet that nothing
 settles yet, to be recorded as decisions. The calling agent waits for that
-answer. The primer tells agents to consult at strategic moments, never for
-routine edits.
+answer. The primer tells agents to consult while they work out how to do
+something non-trivial, as part of deciding, never for routine edits.
 
 ## Reflection
 

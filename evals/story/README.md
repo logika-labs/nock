@@ -18,8 +18,10 @@ that keeps nothing, and with one that keeps prose and skills?
    `validate` requires every verifier to fail after the setup and pass after
    the fix. The builder is sent back until it does.
 3. **The run.** Each arm works through the month. Every report is a fresh
-   checkout of its week, with the week's earlier sessions replayed on it —
-   their trouble and their fixes, as commits, as if merged — then set up,
+   checkout of its week, with every earlier session replayed on it — its
+   trouble and its fix, as commits, as if merged; where an earlier week's
+   commits clash with the team's own work in the week's tag, the team's
+   wins — then set up,
    and a real session given the message. After it, a scripted owner reads
    its last message and, when it asks something or waits on an OK, answers
    from what it knows; the session is resumed once. Now and
@@ -37,7 +39,7 @@ that keeps nothing, and with one that keeps prose and skills?
    runs `--repeats` times in parallel. `--weeks N` stops after N learning
    weeks, to look before going on.
 4. **The report.** `report.md` shows, per arm, how many reports were
-   resolved, the share of checks passed, cost, turns, time and questions
+   resolved, the share of checks passed, cost, turns, time and decisions
    asked. A per-report table for week 4 follows.
 
 ```sh

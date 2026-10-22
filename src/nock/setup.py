@@ -63,44 +63,50 @@ GITIGNORE = "local/\n"
 PRIMER = """\
 ## nock
 
-`.nock/nock` is this project's toolbox: a CLI whose commands are the
-project's own code, in `.nock/tools/`, written by agents for agents.
-`.nock/nock` lists them, and every session starts with the project's tools
-listed. Reach for a tool before doing the same work by hand.
+This project uses nock. You start each session knowing nothing of the ones
+before it, and the owner is not always there to ask; nock is how this
+project remembers for you. It keeps the decisions earlier sessions made and
+what the owner said about them, and the tools agents built for the chores
+they kept repeating. It also records your session, so the next one can learn
+from it.
 
-- A call prints only what the next step needs — nothing when the exit code
-  says it all. Exit codes: 0 yes; 1 no, the subject failed (fix the code);
-  40–49 change the request (42: fix the machine or the state, not the code);
-  50–56 retry or escalate. `--json` gives JSON, `--full` uncapped output; long
-  output is cut, and the rest saved to a file whose path is printed.
-- `.nock/nock check` runs the project's checks. `.nock/nock run -- COMMAND`
-  runs anything noisy or long, supervised, with its output condensed.
-- Record decisions as you make them:
-  `.nock/nock decide '{"title": …, "status": "done", "summary": …, "evidence": […], "alternatives": [{"option": …, "why_not": …}], "tags": […], "touches": […]}'`
-  (`--help` has the fields). A decision is a non-trivial choice between
-  ways that could each work, a deliberate simplification, or a reading of
-  something ambiguous; with `"status": "todo"`, it is something that should
-  be done and is not yet (tag a possible improvement `improvement`). What
-  has one obvious right way is not a decision, and an alternative you never
-  weighed is not one either. Write for someone who knows what the system
-  does but not how it is built. The owner reviews decisions later — accepts,
-  rejects, notes — so keep going; set `review` or `note` only on their word.
-- `.nock/decisions/map.md` says when each decision matters: read it before
-  starting anything serious. An edit to a file a decision `touches` shows
-  it; a rejected done decision is to be reworked — edit it to say what you
-  did. When you do a todo, edit it to `"status": "done"` and say what was done.
-- Before something serious — a feature, a migration, a redesign, a change of
-  course, or when stuck — consult:
-  `.nock/nock consult '{"intent": …, "context": …}'`. A fresh agent reads the
-  decisions and documents and reframes the task; it takes a few minutes, so
-  never for routine edits.
-- Every call and every session is recorded. `.nock/nock status` says where
-  things stand; when a session starts by saying a reflection round is due,
-  offer the human `/nock-reflect`, and `/nock-triage` to go through
-  decisions together.
-- When a chore repeats, make it a tool — `.nock/nock guide` says how, in a
-  page; it is live on the next call. When a rule can be checked mechanically,
-  make it a check, not a note: a check beats a hook beats prose.
+**Before you settle on how to do something non-trivial** (a feature, a
+migration, repairing money or data that is already wrong, a change of
+course) or when you are stuck, consult. Run
+`.nock/nock consult '{"intent": …, "context": …}'` with what you are about to
+do and what you know. A fresh agent goes through the project's decisions and
+documents and tells you what you would otherwise miss: a constraint the
+owner already set, a reading of the request you did not consider, what to
+check or ask before acting. It takes a few minutes. Make it part of working
+out what to do, not a step after you have decided. Routine edits don't need
+it.
+
+**As you work, record the decisions you make** with `.nock/nock decide`
+(`--help` has the fields). The owner reviews them later, accepting,
+rejecting and leaving notes, so you don't wait for an answer: decide, record
+it and keep going. A decision is a choice between ways that could each work,
+a deliberate simplification, or your reading of something ambiguous. Give
+the alternatives you actually weighed and why you didn't take them, written
+for someone who knows what the system does but not how it is built.
+Something that should be done but that you are leaving is a decision too, as
+a todo. When you do a todo, or rework a decision the owner rejected, edit it
+to say what you did.
+
+**Listen to what nock tells you.** The start of a session lists what the
+owner accepted and is waiting for, what they rejected and what they noted.
+An edit to a file shows the decisions that govern it: follow them, or record
+why you depart from one.
+
+**Use the project's tools before doing the work by hand.** `.nock/nock` lists
+them; `.nock/nock check` runs the project's checks, and
+`.nock/nock run -- COMMAND` runs anything noisy or long and condenses its
+output. When you catch yourself repeating a chore, make it a tool:
+`.nock/nock guide` says how. A call's exit code says what to do next: 1
+means fix the code, 42 means fix the machine or the state, 50 and up mean
+retry or escalate.
+
+When the session start says a reflection round is due, offer the human
+`/nock-reflect`.
 """
 
 MAP_STUB = """\

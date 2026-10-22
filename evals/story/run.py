@@ -239,6 +239,8 @@ class Arm:
         git(self.repo, "config", "user.email", "engineer@example.com")
         if carried_from is not None:
             shutil.copytree(carried_from, self.carried)
+            if (carried_from.parent / "work").is_dir():
+                shutil.copytree(carried_from.parent / "work", self.directory / "work")
             return
         self.carried.mkdir()
         if self.name == "nock":
@@ -274,8 +276,9 @@ class Arm:
             git(self.repo, "commit", "-qm", "Team tooling", "--no-verify")
 
     # What happened in a session — the setup's commits (the trouble) and the
-    # engineer's changes (the fix) — carries through the rest of its week, as
-    # commits; the next week's tag holds the team's own version.
+    # engineer's changes (the fix) — carries through the rest of the story, as
+    # commits replayed on each later checkout. A later week's tag holds the
+    # team's own work too; where the two clash, the team's wins.
     WORK_EXCLUDES = (
         ":(exclude).nock",
         ":(exclude).claude",
@@ -284,23 +287,32 @@ class Arm:
     )
 
     def apply_work(self, week: int) -> int:
-        """Replay the week's earlier sessions, each as the commits it left; one
-        that no longer applies is left out. How many applied."""
+        """Replay the earlier sessions, this week's and before, each as the
+        commits it left; a commit that no longer applies is left out. How many
+        sessions came through, whole or in part."""
         applied = 0
-        for patch in sorted((self.directory / "work" / f"week-{week}").glob("*.mbox")):
+        patches = [
+            patch
+            for earlier in self.world.weeks
+            if earlier <= week
+            for patch in sorted((self.directory / "work" / f"week-{earlier}").glob("*.mbox"))
+        ]
+        for patch in patches:
+            before = git(self.repo, "rev-parse", "HEAD")
             replayed = subprocess.run(
                 ["git", "am", "-q", "--3way", "--committer-date-is-author-date", str(patch)],
                 cwd=self.repo, capture_output=True,
             )  # fmt: skip
-            if replayed.returncode != 0:
-                subprocess.run(["git", "am", "--abort"], cwd=self.repo, capture_output=True)
-                continue
-            applied += 1
+            # A commit that clashes is skipped, the session's others kept.
+            while replayed.returncode != 0 and (self.repo / ".git" / "rebase-apply").is_dir():
+                replayed = subprocess.run(["git", "am", "-q", "--skip"], cwd=self.repo, capture_output=True)  # fmt: skip
+            if git(self.repo, "rev-parse", "HEAD") != before:
+                applied += 1
         return applied
 
     def save_work(self, week: int, start: str) -> bool:
         """Keep what the session left since `start` — the setup's commits, then
-        the engineer's changes as one commit — for the rest of its week."""
+        the engineer's changes as one commit — for the rest of the story."""
         git(self.repo, "add", "-A", "--", ".", *self.WORK_EXCLUDES)
         if subprocess.run(["git", "diff", "--cached", "--quiet"], cwd=self.repo).returncode != 0:
             git(self.repo, "commit", "-qm", "Fixes", "--no-verify")
@@ -333,7 +345,7 @@ class Arm:
         start = git(self.repo, "rev-parse", "HEAD")
         setup = run_script(self.world.file(report, "setup.py"), self.repo)
         if setup.returncode != 0 and carried:
-            # This report's trouble does not happen on top of the week's work: start it clean.
+            # This report's trouble does not happen on top of the earlier work: start it clean.
             self.checkout(report["week"])
             carried = 0
             start = git(self.repo, "rev-parse", "HEAD")
@@ -446,7 +458,7 @@ class Arm:
         return reviewed
 
     def reflect(self, week: int, identities: list[str]) -> None:
-        """The week's reflection, as the arm does it, on the week's work; what
+        """The week's reflection, as the arm does it, on the work so far; what
         it changed is kept."""
         if self.name == "bare":
             return
