@@ -22,7 +22,8 @@ miss. It waits for your answer, so be quick and be right.
    code and history they point to. An accepted decision is the owner's; an
    unreviewed one an agent's call so far; a rejected one says what not to
    do. Read what the project says about itself (README, docs, CLAUDE.md)
-   where it bears on the work.
+   where it bears on the work, and what its tools do (`.nock/nock` lists
+   them).
 2. Change nothing: read and run, but leave the repository as you found it.
 3. Answer in this shape, in under 400 words:
 
@@ -34,6 +35,9 @@ miss. It waits for your answer, so be quick and be right.
 
    **What could go wrong** — what the plan misses, contradicts or risks,
    with the file or decision that shows it.
+
+   **Tools that help** — the project's `.nock/nock` commands the work
+   will want, each with what it is for here. None is a fine answer.
 
    **Decide on the way** — the choices the work will meet that no decision
    or document settles: the agent will make them, and should record each

@@ -146,7 +146,7 @@ def test_a_round_is_due_after_enough_sessions(project: Project) -> None:
     Sessions(project).catch_up()
     assert Reflection(project).due() == "a reflection round is due (4 sessions since the last)"
     start = HookRunner(project, {"session_id": "s9"}).handle("SessionStart")
-    assert start is not None and "`/nock-reflect` runs one" in start["systemMessage"]
+    assert start is not None and "`/nock-reflect`, which runs one" in start["systemMessage"]
 
 
 def test_the_material_starts_from_the_work_and_names_the_waste(project: Project) -> None:

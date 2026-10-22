@@ -74,39 +74,29 @@ from it.
 migration, repairing money or data that is already wrong, a change of
 course) or when you are stuck, consult. Run
 `.nock/nock consult '{"intent": …, "context": …}'` with what you are about to
-do and what you know. A fresh agent goes through the project's decisions and
-documents and tells you what you would otherwise miss: a constraint the
-owner already set, a reading of the request you did not consider, what to
-check or ask before acting. It takes a few minutes. Make it part of working
-out what to do, not a step after you have decided. Routine edits don't need
-it.
+do and what you know. A fresh agent goes through the project's decisions,
+documents and tools and tells you what you would otherwise miss: a
+constraint the owner already set, a reading of the request you did not
+consider, what to check or ask before acting, and the tools that help. Make
+it part of working out what to do, not a step after you decided, unless
+your task is really straightforward and unambiguous.
 
-**As you work, record the decisions you make** with `.nock/nock decide`
-(`--help` has the fields). The owner reviews them later, accepting,
-rejecting and leaving notes, so you don't wait for an answer: decide, record
-it and keep going. A decision is a choice between ways that could each work,
-a deliberate simplification, or your reading of something ambiguous. Give
-the alternatives you actually weighed and why you didn't take them, written
-for someone who knows what the system does but not how it is built.
-Something that should be done but that you are leaving is a decision too, as
-a todo. When you do a todo, or rework a decision the owner rejected, edit it
-to say what you did.
+**Record decisions as you make them,** with `.nock/nock decide` (`--help`
+has the fields). The owner reviews them later, accepting, rejecting and
+leaving notes, so you don't wait for an answer: record it and keep going. A
+decision is a choice between ways that could each work, a deliberate
+simplification, or your reading of something ambiguous. Give the
+alternatives you actually weighed and why you didn't take them, written for
+someone who knows what the system does but not how it is built. Something
+that should be done but that you are leaving is a decision too, as a todo.
+When you do a todo, or rework a decision the owner rejected, edit it to say
+what you did.
 
-**Listen to what nock tells you.** The start of a session lists what the
-owner accepted and is waiting for, what they rejected and what they noted.
-An edit to a file shows the decisions that govern it: follow them, or record
-why you depart from one.
-
-**Use the project's tools before doing the work by hand.** `.nock/nock` lists
-them; `.nock/nock check` runs the project's checks, and
-`.nock/nock run -- COMMAND` runs anything noisy or long and condenses its
-output. When you catch yourself repeating a chore, make it a tool:
-`.nock/nock guide` says how. A call's exit code says what to do next: 1
-means fix the code, 42 means fix the machine or the state, 50 and up mean
-retry or escalate.
-
-When the session start says a reflection round is due, offer the human
-`/nock-reflect`.
+**Run anything noisy or long through `.nock/nock run -- COMMAND`:** it
+supervises the command and condenses its output. Before you finish, run
+`.nock/nock check`, the project's checks. A call's exit code says what to do
+next: 1 means fix the code, 42 means fix the machine or the state, 50 and up
+mean retry or escalate.
 """
 
 MAP_STUB = """\

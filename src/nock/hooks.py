@@ -27,6 +27,12 @@ EVENTS = {native: event for event, native in NATIVE_EVENTS.items()}
 BUILT_IN_EVENTS = (Event.SESSION_START, Event.PROMPT, Event.AFTER_TOOL, Event.SESSION_END)
 # The tools whose use is an edit, as a Claude Code matcher: the after-tool handler's.
 EDIT_TOOLS = "Edit|MultiEdit|Write|NotebookEdit"
+# What the standing a session starts with is, and what to do with it.
+STANDING_PREFACE = (
+    "Where the project stands with nock, as this session starts. It is not your task: work"
+    " on what the human asks. Take into account what bears on it, and mention the rest to"
+    " the human only when it is relevant to the request, or once your work is done."
+)
 
 
 class Block(Exception):
@@ -103,7 +109,8 @@ class HookRunner:
             elif unshared:
                 self.project.store.insert("nudged", {"round": unshared})
             said = standing.lines(collected)
-            lines += said
+            if said:
+                lines += [STANDING_PREFACE, *said]
             # The human hears what calls for them; the backlog and their own notes, they know.
             self.notices += [
                 line for line in said if line.startswith("nock:") and "the owner" not in line

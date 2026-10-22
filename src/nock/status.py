@@ -62,7 +62,7 @@ class Standing:
         lines = []
         due = standing["reflection"]["due"]
         if due:
-            lines.append(f"nock: {due} — `/nock-reflect` runs one.")
+            lines.append(f"nock: {due} — offer the human `/nock-reflect`, which runs one.")
         counts = standing["decisions"]
         waiting = [
             f"{counts[Status.TODO][Review.UNREVIEWED]} todo(s)",

@@ -247,6 +247,7 @@ def test_a_session_starts_with_the_owner_s_backlog_and_notes(project: Project) -
     edit(project.root, {"number": done["number"], "review": "accepted", "note": "Check the sums."})
     begun = start(project, "s1")
     context = begun["hookSpecificOutput"]["additionalContext"]
+    assert "It is not your task" in context
     assert (
         f"- [D{todo['number']}] Remind before keys expire — the owner: Do it this week." in context
     )
