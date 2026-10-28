@@ -42,7 +42,7 @@ wheels = [
 ]
 
 [[package]]
-name = "nock-cli"
+name = "nock"
 version = "0.3.0"
 source = { editable = "." }
 

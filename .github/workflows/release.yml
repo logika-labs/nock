@@ -1,5 +1,5 @@
 # The only workflow: a pushed tag `vX.Y.Z` is tested, then published to PyPI
-# as nock-cli through trusted publishing (environment `pypi`). Nothing runs on
+# as nock through trusted publishing (environment `pypi`). Nothing runs on
 # ordinary pushes.
 name: release
 

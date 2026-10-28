@@ -55,7 +55,7 @@ DEFAULTS: dict[str, Any] = {
         # Whether a session the human starts says when a newer nock is out
         # (PyPI is asked at most once a day), and where releases are looked up.
         "check": True,
-        "index": "https://pypi.org/pypi/nock-cli",
+        "index": "https://pypi.org/pypi/nock",
     },
     "share": {
         # Where `nock share` sends a round's summary, when the owner says so.

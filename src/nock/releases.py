@@ -1,4 +1,4 @@
-"""nock's releases, published on PyPI as `nock-cli`: this one's version, the
+"""nock's releases, published on PyPI as `nock`: this one's version, the
 latest one — looked up at most once a day, so a session the human starts can
 say when there is a newer one — and a release's files, which `nock upgrade`
 merges into the vendored core."""
@@ -23,7 +23,7 @@ if TYPE_CHECKING:
     from nock.project import Project
 
 VERSION = "0.3.0"
-NAME = "nock-cli"
+NAME = "nock"
 # The source an install or upgrade names to mean PyPI, rather than a git URL or a checkout.
 PYPI = "pypi"
 INDEX = f"https://pypi.org/pypi/{NAME}"

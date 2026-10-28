@@ -422,7 +422,7 @@ silent on any failure.
 
 `.github/workflows/release.yml` is the only workflow: a pushed tag `vX.Y.Z`
 that matches the package's version is tested, built and published to PyPI
-as `nock-cli`, through trusted publishing. Nothing runs on other pushes.
+as `nock`, through trusted publishing. Nothing runs on other pushes.
 
 ## Tests and evals
 

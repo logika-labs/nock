@@ -131,7 +131,7 @@ class Index:
         self.url = f"http://127.0.0.1:{self.server.server_address[1]}"
 
     def release(self, version: str) -> dict[str, object]:
-        wheel = f"{self.url}/files/nock_cli-{version}-py3-none-any.whl"
+        wheel = f"{self.url}/files/nock-{version}-py3-none-any.whl"
         return {
             "info": {"version": version},
             "urls": [{"packagetype": "bdist_wheel", "url": wheel}],
@@ -142,7 +142,7 @@ class Index:
         with zipfile.ZipFile(buffer, "w") as archive:
             for name, content in self.releases[version].items():
                 archive.writestr(f"nock/{name}", content)
-            archive.writestr(f"nock_cli-{version}.dist-info/METADATA", "Name: nock-cli\n")
+            archive.writestr(f"nock-{version}.dist-info/METADATA", "Name: nock\n")
         return buffer.getvalue()
 
 

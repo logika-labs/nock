@@ -85,10 +85,10 @@ fix it if it must.
 Inside the repository you want it in:
 
 ```sh
-uvx nock-cli init
+uvx nock init
 ```
 
-(Or `pipx run nock-cli init`; from a checkout of nock, `uv run --project
+(Or `pipx run nock init`; from a checkout of nock, `uv run --project
 ~/path/to/nock nock init`.)
 
 `nock init`:
@@ -486,7 +486,7 @@ one machine.
 | `reflect.sessions`, `reflect.days` | 15, 7 | when a round is due, whichever comes first |
 | `agent.command`, `agent.model`, `agent.deadline` | `claude`, —, 1800 | the headless agent nock dispatches (elaborate, consult) |
 | `consult.deadline` | 600 | seconds a consultation may take |
-| `upgrade.check`, `upgrade.index` | true, PyPI's `nock-cli` | whether a session start says a newer nock is out, and where releases are looked up |
+| `upgrade.check`, `upgrade.index` | true, PyPI's `nock` | whether a session start says a newer nock is out, and where releases are looked up |
 | `share.endpoint` | `https://api.nock.dev/reflections` | where `nock share` sends a summary |
 | `pricing` | — | per-model prices, to cost sessions |
 
