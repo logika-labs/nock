@@ -48,3 +48,9 @@ What it does not show:
 - **The test tasks are the same kinds as the training tasks.** This is by
   design, since recurring work is what tools are for. It measures reuse, not
   generality.
+
+**Permissions.** Every session runs in `dontAsk` with the allowlist in
+`permissions.py`: read anything, edit inside the copy, run Python, git,
+SQLite and nock; anything else is refused. The scripted owner in the story
+eval has no tools at all. Run the evals on a machine you're happy for
+those to run on: Python is any code.

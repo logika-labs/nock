@@ -1,9 +1,11 @@
 """A stand-in for `claude -p` in the seats nock dispatches: a real process that
 does what a scripted session would — through nock's own CLI, in the directory
-it was started in — and writes a transcript where Claude Code would. As the
-elaborator it deepens the decision it was given, unless FAKE_ELABORATE is
-`silent`; as the consultant it answers at once; as the sharer it hands back
-the vetted summary (FAKE_SHARE, or a stock one)."""
+it was started in — and writes a transcript where Claude Code would. It will
+not start with its permissions bypassed, and, like Claude Code in `dontAsk`,
+refuses and reports a call no allow rule covers (FAKE_TRY is one more call to
+attempt). As the elaborator it deepens the decision it was given, unless
+FAKE_ELABORATE is `silent`; as the consultant it answers at once; as the
+sharer it hands back the vetted summary (FAKE_SHARE, or a stock one)."""
 
 from __future__ import annotations
 
@@ -15,9 +17,49 @@ import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
+BYPASS = (
+    "--dangerously-skip-permissions",
+    "--allow-dangerously-skip-permissions",
+    "bypassPermissions",
+)
+# What Claude Code refused this session, as its `result` line reports it.
+DENIED: list[dict[str, object]] = []
+ALLOWED: list[str] = []
+
+
+def flags(arguments: list[str]) -> list[str]:
+    """The seat's allow rules, refusing a session that could bypass them;
+    the command line goes to FAKE_ARGUMENTS for a test to read."""
+    assert not any(argument in BYPASS for argument in arguments), arguments
+    assert arguments[arguments.index("--permission-mode") + 1] == "dontAsk", arguments
+    if os.environ.get("FAKE_ARGUMENTS"):
+        Path(os.environ["FAKE_ARGUMENTS"]).write_text(json.dumps(arguments))
+    start = arguments.index("--allowedTools") + 1
+    end = next(index for index in range(start, len(arguments)) if arguments[index].startswith("--"))
+    return arguments[start:end]
+
+
+def allows(command: str) -> bool:
+    """Claude Code's prefix rules, as far as the fake needs them."""
+    for rule in ALLOWED:
+        if rule.startswith("Bash(") and rule.endswith(":*)"):
+            prefix = rule[len("Bash(") : -len(":*)")]
+            if command == prefix or command.startswith(prefix + " "):
+                return True
+    return False
+
 
 def run(*arguments: str) -> subprocess.CompletedProcess[str]:
+    """A Bash call: run when a rule allows it, refused (and reported) when not."""
+    shown = " ".join(arguments)
+    if not allows(shown):
+        DENIED.append({"tool_name": "Bash", "tool_input": {"command": shown}})
+        return subprocess.CompletedProcess(list(arguments), 1, "", "Permission denied")
     return subprocess.run(list(arguments), capture_output=True, text=True)
+
+
+def finish(text: str) -> None:
+    print(json.dumps({"type": "result", "result": text, "permission_denials": DENIED}), flush=True)
 
 
 def write_transcript(session: str, prompt: str) -> None:
@@ -53,8 +95,11 @@ def write_transcript(session: str, prompt: str) -> None:
 
 def main() -> int:
     arguments = sys.argv[1:]
+    ALLOWED.extend(flags(arguments))
     session = arguments[arguments.index("--session-id") + 1]
     prompt = arguments[-1]
+    if os.environ.get("FAKE_TRY"):
+        run(*json.loads(os.environ["FAKE_TRY"]))
     if os.environ.get("NOCK_ROLE") == "elaborator":
         return elaborate(session, prompt)
     if os.environ.get("NOCK_ROLE") == "consultant":
@@ -63,7 +108,7 @@ def main() -> int:
         assert "NOTHING TO SHARE:" in prompt
         write_transcript(session, prompt)
         text = os.environ.get("FAKE_SHARE", "Early days, vetted.")
-        print(json.dumps({"type": "result", "result": text}), flush=True)
+        finish(text)
         return 0
     raise SystemExit(f"no seat for role {os.environ.get('NOCK_ROLE')!r}")
 
@@ -71,12 +116,15 @@ def main() -> int:
 def consult(session: str, prompt: str) -> int:
     """Advise through `nock advise` (FAKE_ADVICE, else a stock answer), and
     once more, fixed, when the first is refused; FAKE_ADVICE=`silent` only
-    answers in its last message."""
+    answers in its last message, and `nothing` gives no answer at all."""
     assert "<intent>" in prompt and "When each of the project's decisions matters:" in prompt
     write_transcript(session, prompt)
     given = os.environ.get("FAKE_ADVICE", "")
+    if given == "nothing":
+        finish("")
+        return 0
     if given == "silent":
-        print(json.dumps({"type": "result", "result": "Nothing bears on it."}), flush=True)
+        finish("Nothing bears on it.")
         return 0
     advice = json.loads(given) if given else {"advice": "Nothing in nock bears on it."}
     result = run(".nock/nock", "advise", json.dumps(advice))
@@ -85,7 +133,7 @@ def consult(session: str, prompt: str) -> int:
         fixed = {key: value for key, value in advice.items() if key in ("advice", "feedback")}
         result = run(".nock/nock", "advise", json.dumps(fixed))
         print(json.dumps({"type": "system", "message": result.stdout + result.stderr}), flush=True)
-    print(json.dumps({"type": "result", "result": "submitted"}), flush=True)
+    finish("submitted")
     return 0
 
 
@@ -101,7 +149,7 @@ def elaborate(session: str, prompt: str) -> int:
         result = run(".nock/nock", "decisions", "edit", json.dumps(change))
         print(json.dumps({"type": "system", "message": result.stdout + result.stderr}), flush=True)
     write_transcript(session, prompt)
-    print(json.dumps({"type": "result", "result": "elaborated"}), flush=True)
+    finish("elaborated")
     return 0
 
 

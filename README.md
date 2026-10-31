@@ -98,8 +98,11 @@ uvx nock init
 - writes `.nock/config.toml` and an empty `.nock/tools/`;
 - writes the primer `.nock/context.md`, and imports it into CLAUDE.md;
 - wires Claude Code's hooks;
-- allows `.nock/nock` in Claude Code's permissions, except the commands that
-  need the owner's word, which Claude Code asks about.
+- allows each `.nock/nock` command in Claude Code's permissions, one rule
+  per command, except `run` (it runs any command, so Claude Code treats it
+  as that command) and the commands that need the owner's word, which Claude
+  Code asks about (see [What nock's agents may do](#what-nocks-agents-may-do));
+- installs the skills, and the subagents a round's parts run as.
 
 Commit the result. From then on, every agent session in the repository starts
 with the project's tools listed, and is recorded when it ends. nock speaks up
@@ -228,9 +231,10 @@ everything.
 **The owner's word.** `@nock.command(confirm=True)` is for a command only
 the owner may set off: a deploy, a release, a payment. `nock init` adds a
 Claude Code `ask` rule for it, so an agent's call waits for the owner to
-approve it although `.nock/nock` is otherwise allowed, and the toolbox
-lists it as asking the owner. The `nock-wiring` check fails while the rule
-is missing.
+approve it although the toolbox's other commands are allowed, and the
+toolbox lists it as asking the owner. The `nock-wiring` check fails while
+the rule is missing. A new tool is asked about until `nock init` allows it
+(`nock-wiring` says so), and `nock init` itself asks the owner.
 
 **Caching.** With `cache="src/**"`, a call with the same arguments replays the
 last result as long as those files and the tool's own code are unchanged.
@@ -600,6 +604,61 @@ status` always says.
 Logika rounds are kept apart from nock's own, so neither moves the other's
 window.
 
+## What nock's agents may do
+
+nock never bypasses Claude Code's permission checks: no code path passes
+`--dangerously-skip-permissions` or `--permission-mode bypassPermissions`,
+and nock refuses an `agent.command` that does (or that sets the permission
+flags nock sets itself). A test holds the package, the evals and the
+scripts to it.
+
+**In your sessions,** the rules `nock init` writes into
+`.claude/settings.json` are all there is, one per command, nothing that
+runs arbitrary shell:
+
+- `allow`: `.nock/nock` (it lists the tools) and each of the toolbox's
+  commands, nock's and the project's, which read, record in `.nock/`, or
+  run the project's own committed tools and checks;
+- `ask`: every `confirm=True` command, the project's and nock's own:
+  `init` (it rewrites these rules), `upgrade` (it fetches and merges code)
+  and `share` (it sends a summary out);
+- no rule for `run`, which runs any command: Claude Code asks about it as
+  it would about the command itself.
+
+Re-running `nock init` replaces nock's own rules and keeps everyone else's;
+it removes the blanket `Bash(.nock/nock:*)` earlier versions wrote, which
+`nock-wiring` flags until then.
+
+**The agents nock dispatches** (`claude -p`, no human in the session) run
+in `dontAsk`: each has the Claude Code tools and allow rules its brief
+needs and nothing else, and anything else is refused, never prompted, so
+a run cannot hang on a question. The project's and the checkout's own
+Claude Code settings are not loaded (`--setting-sources user`), so the
+project's allow rules never widen a seat (nor are the project's CLAUDE.md,
+skills, hooks or MCP servers: the brief carries what the seat needs).
+Reading files in the directory it runs in needs no rule.
+
+| seat | tools | may run |
+|---|---|---|
+| consultant | Read, Grep, Glob, Bash | `.nock/nock decisions list`, `decisions show`, `docs`, `advise` |
+| elaborator | Read, Grep, Glob, Bash | `.nock/nock decisions list`, `decisions show`, `docs`, `decisions edit`; `git log`, `git show` |
+| sharer | Read, Grep, Glob, Bash | `git log` |
+
+None can edit a file, reach the network, or run any other command. What
+Claude Code refused comes back with the session: in the consultation's
+record and its failure, in the elaboration's result, and in the run's log.
+The owner's user-level Claude Code settings still apply to these sessions:
+they are the owner's.
+
+**A round's parts** are subagents of the session running the round, so
+the session's permissions apply, narrowed by the subagent types nock
+installs in `.claude/agents/`: the toolbox part (`nock-reflect-toolbox`)
+reads, edits and runs commands, and its brief keeps it to `.nock/`; the map
+part (`nock-reflect-map`) reads and edits the map; the nock part
+(`nock-reflect-nock`) and the logika round's parts (`nock-logika-rules`,
+`nock-logika-analytics`) only read and run commands, with no tool that
+edits a file. A refused call is reported, not worked around.
+
 ## What nock shares
 
 nock tells its makers how it is used, so they can improve it. `share` in
@@ -654,7 +713,7 @@ A round's summary is sent only with `nock share` and the owner's yes (see
 |---|---|
 | `nock` | the toolbox: the project's tools first, then nock's |
 | `nock check [NAME…] [--fix]` | run the checks (all, or the checks and chains named), side by side; prints nothing when all pass |
-| `nock run -- COMMAND` | run anything supervised and condensed |
+| `nock run -- COMMAND` | run anything supervised and condensed (Claude Code asks, as for the command itself) |
 | `nock docs [TERM…]` | nock's documentation for agents, a short article per term: with no term, the terms |
 | `nock calls`, `stats`, `sessions`, `query SQL` | the telemetry |
 | `nock status` | a round due, decisions waiting, rejected ones to rework, answered questions, an unshared summary, a logika round to offer |
@@ -665,9 +724,9 @@ A round's summary is sent only with `nock share` and the owner's yes (see
 | `nock advise JSON` | the consultant's advice, submitted; only a consultant nock dispatched runs it |
 | `nock usage` | what nock shares with its makers, and exactly what the next report carries |
 | `nock reflect [KIND]`, `nock reflect [KIND] finish JSON` | a reflection round: nock's own (`/nock-reflect`), or another kind, `logika` (`/nock-reflect-logika`) |
-| `nock share [JSON]` | a round's summary as it would be sent, and sending it |
+| `nock share [JSON]` | a round's summary as it would be sent, and sending it (asks the owner) |
 | `nock gen write`, `new`, `add`, `set`, `rm`, `show`, `bind`, `unbind` | generators |
-| `nock init`, `nock upgrade` | install (or re-wire), and upgrade the vendored core to the latest release, with a three-way merge |
+| `nock init`, `nock upgrade` | install (or re-wire), and upgrade the vendored core to the latest release, with a three-way merge (each asks the owner) |
 
 Every command takes `--json` and `--full`, and every cached command also takes
 `--fresh`.
@@ -708,7 +767,7 @@ one machine.
 | `checks.concurrency` | 2 | checks run at once, machine-wide |
 | `reflect.sessions`, `reflect.days` | 15, 7 | when a round is due, whichever comes first |
 | `reflect.logika.days` | 30 | in a Logika project, days after a logika round before the next is offered (once the ledger has changed) |
-| `agent.command`, `agent.model`, `agent.deadline` | `claude`, —, 1800 | the headless agent nock dispatches (elaborate, consult) |
+| `agent.command`, `agent.model`, `agent.deadline` | `claude`, —, 1800 | the headless agent nock dispatches (elaborate, consult, share); it may not bypass or set permissions (see [What nock's agents may do](#what-nocks-agents-may-do)) |
 | `consult.enabled`, `consult.deadline` | true, 600 | whether the consultant runs and the primer asks for it; seconds a consultation may take |
 | `upgrade.check`, `upgrade.index` | true, PyPI's `nock` | whether a session start says a newer nock is out, and where releases are looked up |
 | `share` | true | whether nock sends its makers the anonymous usage report (false sends nothing, summaries included; see [What nock shares](#what-nock-shares)) |

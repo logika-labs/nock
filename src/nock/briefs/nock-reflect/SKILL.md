@@ -10,15 +10,16 @@ material, not from memory.
 
 1. `.nock/nock reflect` prints the round's window, its three material
    files and the two files you write.
-2. Dispatch three subagents in one message. Give each its brief (beside this
-   file), its material and the window; each answers with a report. None
-   commits.
+2. Dispatch three subagents in one message, each of its type (nock installs
+   them in `.claude/agents/`, each with only the tools its part needs). Give
+   each its brief (beside this file), its material and the window; each
+   answers with a report. None commits.
 
-   | part | brief | material | may change |
-   |---|---|---|---|
-   | toolbox | `process.md` | `process` | `.nock/`, not the decisions |
-   | map | `knowledge.md` | `knowledge` | `.nock/decisions/map.md`, tags |
-   | nock | `nock.md` | `nock` | nothing |
+   | part | subagent type | brief | material | may change |
+   |---|---|---|---|---|
+   | toolbox | `nock-reflect-toolbox` | `process.md` | `process` | `.nock/`, not the decisions |
+   | map | `nock-reflect-map` | `knowledge.md` | `knowledge` | `.nock/decisions/map.md`, tags |
+   | nock | `nock-reflect-nock` | `nock.md` | `nock` | nothing (it has no editing tool) |
 
    If one fails, say so in the report; don't do its part yourself.
 3. Write `report.md` for the owner: what needs them (decisions to review,
@@ -32,7 +33,8 @@ material, not from memory.
    `nock share` vets it before anything is sent.
 5. Finish with the toolbox part's changes and verdicts. It runs nock's checks
    and refuses while one fails: fix it, or have the part fix it, and finish
-   again. It commits `.nock/`; commit a generated file outside it yourself.
+   again. A command the part added fails `nock-wiring` until
+   `.nock/nock init` allows it; Claude Code asks the owner for that. It commits `.nock/`; commit a generated file outside it yourself.
 
        .nock/nock reflect finish '{"summary": "the round in a sentence or two",
          "changes": [{"kind": "add", "target": "failures", "why": "…", "expect": "…"}],

@@ -204,6 +204,9 @@ def test_the_version_is_the_package_s() -> None:
     assert pyproject["project"]["version"] == VERSION and pyproject["project"]["name"] == NAME
 
 
+# nock's own commands that need the owner's word: re-wiring the permissions,
+# fetching code, sending a summary out.
+OWN_ASKED = ["Bash(.nock/nock share:*)", "Bash(.nock/nock init:*)", "Bash(.nock/nock upgrade:*)"]
 OWNER_TOOLS = '''\
 import nock
 
@@ -230,15 +233,19 @@ def test_a_command_that_needs_the_owner_s_word_is_asked_for_in_claude_code(
     assert "`deploy` needs the owner's word" in unwired.stdout
     assert nock(project.root, "init").returncode == 0
     permissions = json.loads(settings.read_text())["permissions"]
-    assert permissions["ask"] == ["Bash(.nock/nock deploy:*)", "Bash(.nock/nock release publish:*)"]
-    assert "Bash(.nock/nock:*)" in permissions["allow"]
+    assert permissions["ask"] == [
+        *OWN_ASKED,
+        "Bash(.nock/nock deploy:*)",
+        "Bash(.nock/nock release publish:*)",
+    ]
+    assert not {*permissions["ask"]} & {*permissions["allow"]}
     assert nock(project.root, "check", "nock-wiring").returncode == 0
     listed = nock(project.root).stdout
     assert "deploy HOST — Deploy to a live box (asks the owner)" in listed
     assert nock(project.root, "deploy", "box-1").stdout == "deployed to box-1\n"
     (project.root / ".nock" / "tools" / "owner.py").unlink()
     assert nock(project.root, "init").returncode == 0
-    assert "ask" not in json.loads(settings.read_text())["permissions"]
+    assert json.loads(settings.read_text())["permissions"]["ask"] == OWN_ASKED
 
 
 def test_init_in_a_worktree_installs_there_and_leaves_the_main_checkout_alone(

@@ -93,19 +93,48 @@ SKILLS = ("nock-triage",)
 # Skills earlier versions installed, removed on install.
 RETIRED_SKILLS = ("reflect", "consolidate")
 HOOK_COMMAND = '"$CLAUDE_PROJECT_DIR"/.nock/nock hook {event}'
-PERMISSION = "Bash(.nock/nock:*)"
-# A command that needs the owner's word is asked for, whatever `allow` says.
-ASK_PERMISSION = "Bash(.nock/nock {path}:*)"
+# The rules nock writes into `.claude/settings.json`, and no others: one per
+# command, so the file says exactly what an agent runs unasked.
+# - `allow`: the bare `.nock/nock` (it lists the tools), and every command but
+#   those below — each reads, records in `.nock/`, or runs the project's own
+#   committed toolbox and checks.
+# - `ask`: each `confirm=True` command, nock's own (`init` rewrites these
+#   rules, `upgrade` fetches and merges code, `share` sends a summary out) and
+#   the project's. Claude Code puts `ask` before `allow`.
+# - no rule for `run`, which runs any command: Claude Code treats it as it
+#   would the command itself.
+PERMISSION = "Bash(.nock/nock {path}:*)"
+LISTING = ("Bash(.nock/nock)", "Bash(.nock/nock --help)")
+UNLISTED = ("run",)
+# Rules earlier versions wrote: the blanket allow let `run` take any command unasked.
+RETIRED_PERMISSIONS = ("Bash(.nock/nock:*)",)
 
 
-def asked_permissions(root: Path) -> set[str]:
-    """The commands this checkout's Claude Code asks the owner about."""
+def permission_rules(root: Path, kind: str) -> set[str]:
+    """This checkout's Claude Code rules of a kind (`allow`, `ask`)."""
     settings_path = root / ".claude" / "settings.json"
     try:
         settings = read_json(settings_path) if settings_path.is_file() else {}
     except PreconditionError:
         return set()
-    return {str(rule) for rule in settings.get("permissions", {}).get("ask", [])}
+    return {str(rule) for rule in settings.get("permissions", {}).get(kind, [])}
+
+
+def wanted_permissions(project: Project) -> tuple[list[str], list[str]]:
+    """The allow and ask rules nock wants for this toolbox."""
+    tools = project.registry.tools
+    allowed = [*LISTING]
+    allowed += [
+        PERMISSION.format(path=tool.command.path)
+        for tool in tools
+        if not tool.confirm and tool.command.path not in UNLISTED
+    ]
+    asked = [PERMISSION.format(path=tool.command.path) for tool in tools if tool.confirm]
+    return allowed, asked
+
+
+def ours(rule: object) -> bool:
+    return str(rule) == "Bash(.nock/nock)" or str(rule).startswith("Bash(.nock/nock ")
 
 
 def wired_events(root: Path) -> set[str]:
@@ -194,8 +223,9 @@ class Installer:
 
     def install_skills(self) -> None:
         """`/nock-triage` and each kind of round's skill where it is wanted
-        (`/nock-reflect`; `/nock-reflect-logika` in a Logika project), kept in
-        step with the core like the primer."""
+        (`/nock-reflect`; `/nock-reflect-logika` in a Logika project), with
+        the subagents its parts run as, kept in step with the core like the
+        primer."""
         briefs = PACKAGE / "briefs"
         library = Library(briefs)
         rounds = tuple(kind.skill for kind in KINDS.values() if kind.wanted(self.root))
@@ -203,6 +233,11 @@ class Installer:
             for source in sorted((briefs / name).glob("*.md")):
                 relative = f".claude/skills/{name}/{source.name}"
                 write_atomic(self.root / relative, library.render(f"{name}/{source.name}"))
+                self.report.written.append(relative)
+            # The round's parts as Claude Code subagents, each with only the tools its part needs.
+            for source in sorted((briefs / name / "agents").glob("*.md")):
+                relative = f".claude/agents/{source.name}"
+                write_atomic(self.root / relative, library.render(f"{name}/agents/{source.name}"))
                 self.report.written.append(relative)
         for name in RETIRED_SKILLS:
             skill = self.root / ".claude" / "skills" / name / "SKILL.md"
@@ -279,23 +314,17 @@ class Installer:
             ]
             entries.append(entry)
         permissions = settings.setdefault("permissions", {})
-        allowed = permissions.setdefault("allow", [])
-        if PERMISSION not in allowed:
-            allowed.append(PERMISSION)
-        asked = [
-            rule
-            for rule in permissions.get("ask", [])
-            if not str(rule).startswith("Bash(.nock/nock ")
-        ]
-        asked += [
-            ASK_PERMISSION.format(path=tool.command.path)
-            for tool in Project(self.root).registry.project_tools()
-            if tool.confirm
-        ]
-        if asked:
-            permissions["ask"] = asked
-        else:
-            permissions.pop("ask", None)
+        allow, ask = wanted_permissions(Project(self.root))
+        for kind, wanted in (("allow", allow), ("ask", ask)):
+            kept = [
+                rule
+                for rule in permissions.get(kind, [])
+                if not ours(rule) and rule not in RETIRED_PERMISSIONS
+            ]
+            if kept + wanted:
+                permissions[kind] = kept + wanted
+            else:
+                permissions.pop(kind, None)
         write_json(settings_path, settings)
         self.report.written.append(".claude/settings.json")
 

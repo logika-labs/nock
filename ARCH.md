@@ -100,7 +100,7 @@ src/nock/
 
 tests/               real git repositories and processes; no mocks
   conftest.py        a fresh repository with nock installed, per test; the `nock()` runner
-  fake_agent.py      the scripted stand-in for the dispatched agents (elaborator, consultant)
+  fake_agent.py      the scripted stand-in for the dispatched agents (elaborator, consultant, sharer)
 scripts/release.py   cut a release: checks, asks, then tags vVERSION and pushes it (standard library)
 evals/               does reflection pay? real sessions, with and without a toolbox
 web/                 nock.dev, never vendored or packaged: site/ (the pages), build.py (docs/
@@ -313,11 +313,17 @@ ingest, the usage send and the project's own hooks go on.
    A broken toolbox must never block the tool call that would fix it.
 
 `setup.wired_events` wires the built-in events plus any event a project hook
-listens to. Beside the blanket `Bash(.nock/nock:*)` allow, every
-`confirm=True` command gets an `ask` rule (`Bash(.nock/nock PATH:*)`), which
-Claude Code puts before `allow`, so an agent's call waits on the owner. The
+listens to. `setup.wanted_permissions` makes the rules, one per command
+(`Bash(.nock/nock PATH:*)`): every `confirm=True` command, nock's `init`,
+`upgrade` and `share` among them, gets an `ask` rule, which Claude Code puts
+before `allow`, so an agent's call waits on the owner; every other command
+an `allow` rule, except `run` (`setup.UNLISTED`), which runs any command
+and so gets none; and `.nock/nock` bare is allowed, for the listing.
+`wire_claude` replaces nock's own rules (any `Bash(.nock/nock …)`) and the
+retired blanket `Bash(.nock/nock:*)`, and keeps the rest. The
 `nock-wiring` check fails when a hook exists for an event that isn't wired,
-or a `confirm` command has no ask rule.
+a `confirm` command has no ask rule, a command has no allow rule yet, or
+the blanket is still there.
 
 ### Decisions
 
@@ -373,10 +379,24 @@ listed in `TABS`, and a fragment whose script calls
 ### Dispatch
 
 `dispatch.Dispatcher.launch` runs `claude -p --output-format stream-json
---session-id … --permission-mode bypassPermissions` (`agent.command`,
-`agent.model`) for the sessions no human sits in: the elaborator and the
-consultant and the sharer. (A reflection round's three parts are the
-lead's own subagents, not dispatched.) It:
+--session-id …` (`agent.command`, `agent.model`) for the sessions no human
+sits in: the elaborator and the consultant and the sharer. (A reflection
+round's parts are the lead's own subagents, not dispatched: the types in
+`briefs/KIND/agents/`, which `nock init` installs in `.claude/agents/`, each
+with only the tools its part needs.) It:
+
+- gives the role its seat from `dispatch.SEATS`, and nothing else:
+  `--permission-mode dontAsk` (anything no rule allows is refused, never
+  prompted), `--setting-sources user` (the project's and the checkout's
+  Claude Code settings, whose allow rules would widen the seat, are not
+  loaded), `--strict-mcp-config`, `--tools` (the seat's tools) and
+  `--allowedTools` (its rules; a long brief's file adds a `Read` of that
+  file). A role with no seat is refused, and so is an `agent.command` with a
+  bypass flag (`dispatch.BYPASS`) or one of these flags of its own;
+- reads what Claude Code refused from the result's `permission_denials`
+  into `Session.denied`, and appends it to the run's log; the consultant
+  keeps it in the consultation's record and its failure, the elaborator in
+  its result;
 
 - runs under a Supervisor, with `agent.deadline` (or the caller's) and
   `agent.silence`;
@@ -542,10 +562,11 @@ worktree's install is that branch's change, never the main checkout's):
 - records the version, the source (`pypi` unless told otherwise) and, from a
   checkout, its commit in `.nock/core/VERSION.json`;
 - imports `@.nock/context.md` into CLAUDE.md;
-- wires `.claude/settings.json`: the hooks, the `Bash(.nock/nock:*)`
-  permission and an `ask` rule per `confirm=True` command;
+- wires `.claude/settings.json`: the hooks, an `allow` rule per command but
+  `run`, and an `ask` rule per `confirm=True` command;
 - writes the `/nock-reflect` and `/nock-triage` skills, and in a Logika
-  project (`logika.json` at the root) `/nock-reflect-logika`.
+  project (`logika.json` at the root) `/nock-reflect-logika`, with their
+  parts' subagent types in `.claude/agents/`.
 
 It is idempotent, so running it again re-wires.
 
@@ -583,7 +604,10 @@ a GitHub release.
   with real git and real processes. The dispatched agents are
   `tests/fake_agent.py`, configured as `agent.command`: it edits a
   decision as the elaborator (or stays silent) and answers as the
-  consultant. There are no mocks.
+  consultant. It will not start with permissions bypassed, keeps its
+  command line for a test to read, and refuses and reports a call its
+  seat's rules don't allow, as Claude Code does in `dontAsk`. There are no
+  mocks.
 - `evals/run.py` measures the whole loop with real Claude Code sessions:
   1. training tasks on a seeded shop project;
   2. one real `/nock-reflect` round, in a headless session;
@@ -591,7 +615,9 @@ a GitHub release.
      toolbox, each in a fresh clone.
 
   It reports the pass rate, cost, turns, time, tokens and tool use per kind.
-  See `evals/README.md`.
+  Its sessions run in `dontAsk` with the allowlist in `evals/permissions.py`
+  (read, edit inside the copy, Python, git, SQLite, nock). See
+  `evals/README.md`.
 
 The gates are `uv run pytest -n 4`, `uv run ruff check`,
 `uv run ruff format` and `uv run basedpyright`. The conventions are in

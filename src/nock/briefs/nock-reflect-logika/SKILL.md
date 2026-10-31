@@ -20,17 +20,19 @@ captures. Set aside whatever this session was doing.
      question to done and say what you did;
    - the last round's rules that raised false alarms: fix them or take them
      out (see `logika show`).
-3. Dispatch the two parts as subagents, in one message. Give each its brief
+3. Dispatch the two parts as subagents, in one message, each of its type
+   (in `.claude/agents/`: they read and run commands, and have no tool that
+   edits a file). Give each its brief
    (beside this file), its material and the round's window. Neither can ask
    the owner anything, so each comes back to you with candidates, each with
    its evidence and how it was checked, with questions for the owner, and
    with the instrumentation it would suggest. Neither edits `logika.json`
    or commits.
 
-   | part | brief | material | proposes |
-   |---|---|---|---|
-   | rules | `rules.md` | `rules` | validate, paths, timeouts, rules, invariants, error marking |
-   | analytics | `analytics.md` | `analytics` | identities, dimensions, funnels, milestones, views |
+   | part | subagent type | brief | material | proposes |
+   |---|---|---|---|---|
+   | rules | `nock-logika-rules` | `rules.md` | `rules` | validate, paths, timeouts, rules, invariants, error marking |
+   | analytics | `nock-logika-analytics` | `analytics.md` | `analytics` | identities, dimensions, funnels, milestones, views |
 
    For a large project, the rules part may take one component at a time.
    If a part fails, say so in the report; don't do its part yourself.

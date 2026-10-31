@@ -26,7 +26,15 @@ from nock.reflect import Record, Reflection, Round, tool_rows
 from nock.render import Problem
 from nock.schema import check_schema
 from nock.sessions import Sessions
-from nock.setup import ASK_PERMISSION, Installer, Upgrader, asked_permissions, wired_events
+from nock.setup import (
+    PERMISSION,
+    RETIRED_PERMISSIONS,
+    Installer,
+    Upgrader,
+    permission_rules,
+    wanted_permissions,
+    wired_events,
+)
 from nock.share import Request as ShareRequest
 from nock.share import Sharing
 from nock.status import Standing
@@ -401,7 +409,7 @@ for _kind in KINDS.values():
         kind_commands(_kind)
 
 
-@command
+@command(confirm=True)
 def share(
     project: Project,
     request: ShareRequest = {},  # noqa: B006
@@ -510,7 +518,7 @@ def relative(project: Project, paths: list[Path]) -> list[str]:
 # --- setup ------------------------------------------------------------------------------
 
 
-@command
+@command(confirm=True)
 def init(
     *, source: Annotated[str | None, Option(help="Where upgrades come from.")] = None
 ) -> list[str]:
@@ -520,7 +528,7 @@ def init(
     return report.lines()
 
 
-@command
+@command(confirm=True)
 def upgrade(
     project: Project,
     *,
@@ -625,16 +633,32 @@ def summary_names_nothing(project: Project) -> list[Problem]:
 
 @check(name="nock-wiring")
 def hooks_wired(project: Project) -> list[str]:
-    """Every event a hook listens to is wired into Claude Code, and Claude
-    Code asks the owner before an agent runs a command that needs their word."""
+    """Every event a hook listens to is wired into Claude Code; Claude Code
+    asks the owner before an agent runs a command that needs their word,
+    allows each of the toolbox's other commands, and allows nothing broader."""
     wired = wired_events(project.here)
-    asked = asked_permissions(project.here)
-    return [
-        f"a hook listens to {entry.event} ({entry.source}) but Claude Code does not send it — `.nock/nock init` wires it"
-        for entry in project.registry.hooks
-        if NATIVE_EVENTS[entry.event] not in wired
-    ] + [
-        f"`{tool.command.path}` needs the owner's word ({tool.source}) but Claude Code would run it unasked — `.nock/nock init` wires it"
-        for tool in project.registry.project_tools()
-        if tool.confirm and ASK_PERMISSION.format(path=tool.command.path) not in asked
-    ]
+    asked = permission_rules(project.here, "ask")
+    allowed = permission_rules(project.here, "allow")
+    wanted, _ = wanted_permissions(project)
+    return (
+        [
+            f"a hook listens to {entry.event} ({entry.source}) but Claude Code does not send it — `.nock/nock init` wires it"
+            for entry in project.registry.hooks
+            if NATIVE_EVENTS[entry.event] not in wired
+        ]
+        + [
+            f"`{tool.command.path}` needs the owner's word ({tool.source}) but Claude Code would run it unasked — `.nock/nock init` wires it"
+            for tool in project.registry.tools
+            if tool.confirm and PERMISSION.format(path=tool.command.path) not in asked
+        ]
+        + [
+            f"Claude Code allows `{rule}`, which lets `.nock/nock run` take any command unasked — `.nock/nock init` narrows it"
+            for rule in RETIRED_PERMISSIONS
+            if rule in allowed
+        ]
+        + [
+            f"`{rule.removeprefix('Bash(').removesuffix(':*)')}` is not allowed yet, so Claude Code asks before each call — `.nock/nock init` allows it (it asks the owner)"
+            for rule in wanted
+            if rule not in allowed
+        ]
+    )

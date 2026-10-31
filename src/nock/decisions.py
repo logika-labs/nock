@@ -457,8 +457,13 @@ class Decisions:
                 "elaborated": False,
                 "session": session.id,
                 "problem": f"the session ended (exit {session.exit_code}) without editing the decision: {(session.result or '')[:400]}",
+                **({"refused": session.denied} if session.denied else {}),
             }
-        return {"elaborated": True, "session": session.id}
+        return {
+            "elaborated": True,
+            "session": session.id,
+            **({"refused": session.denied} if session.denied else {}),
+        }
 
     def elaborate_in_background(self, number: int) -> None:
         subprocess.Popen(

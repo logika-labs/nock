@@ -39,6 +39,10 @@ from typing import Any
 
 HERE = Path(__file__).resolve().parent
 NOCK = HERE.parent.parent
+sys.path.insert(0, str(HERE.parent))
+
+from permissions import ANSWERING, ENGINEER  # noqa: E402
+
 CARRIED = {
     "bare": [],
     "skills": ["CLAUDE.md", ".claude"],
@@ -97,10 +101,15 @@ def git(directory: Path, *arguments: str) -> str:
 
 
 def claude(
-    prompt: str, directory: Path, model: str, session: str, resume: bool = False
+    prompt: str,
+    directory: Path,
+    model: str,
+    session: str,
+    resume: bool = False,
+    permissions: list[str] = ENGINEER,
 ) -> dict[str, Any]:
     """One headless turn; its result record (cost, turns, usage, the final message)."""
-    command = ["claude", "-p", "--output-format", "json", "--permission-mode", "bypassPermissions"]
+    command = ["claude", "-p", "--output-format", "json", *permissions]
     command += ["--model", model] if model else []
     command += ["--resume", session] if resume else ["--session-id", session]
     started = time.monotonic()
@@ -402,7 +411,9 @@ class Arm:
             final=final[-3000:],
         )
         with tempfile.TemporaryDirectory() as scratch:
-            answer = claude(prompt, Path(scratch), OWNER_MODEL, str(uuid.uuid4()))
+            answer = claude(
+                prompt, Path(scratch), OWNER_MODEL, str(uuid.uuid4()), permissions=ANSWERING
+            )
         reply = str(answer.get("result") or "").strip()
         return "" if reply.upper().startswith("NOTHING") else reply
 
@@ -434,6 +445,7 @@ class Arm:
                 Path(scratch),
                 OWNER_MODEL,
                 str(uuid.uuid4()),
+                permissions=ANSWERING,
             )
         text = str(answer.get("result") or "").strip().removeprefix("```json").removesuffix("```")
         try:

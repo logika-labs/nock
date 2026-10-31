@@ -95,7 +95,8 @@ class Consultant:
             # A project's own brief may still answer in its last message.
             if session.exit_code != 0 or not session.result:
                 raise Failed(
-                    f"the consultant gave no advice (exit {session.exit_code}; log: {session.log})"
+                    f"the consultant gave no advice (exit {session.exit_code}; log: {session.log})",
+                    [f"refused: {line}" for line in session.denied],
                 )
             answer = session.result.strip()
         else:
@@ -108,6 +109,7 @@ class Consultant:
                 "caller": self.project.current_session(),
                 "session": session.id,
                 "submitted": submitted,
+                "denied": session.denied,
             },
         )
         return answer

@@ -1,0 +1,219 @@
+"""What nock's agents may do: each dispatched seat's exact permissions, the
+refusal of anything else, reported rather than hung on; no code path that
+bypasses Claude Code's permission checks; and the rules `nock init` writes
+into a project."""
+
+from __future__ import annotations
+
+import json
+import re
+from pathlib import Path
+
+import pytest
+
+from nock.consult import ROLE as CONSULTANT
+from nock.decisions import ROLE as ELABORATOR
+from nock.dispatch import ARGUMENT_LIMIT, BYPASS, SEATS, Dispatcher
+from nock.project import Project
+from nock.share import ROLE as SHARER
+
+from .conftest import FAKE_AGENT, nock, write_tool
+from .test_decisions import decide, edit
+
+ROOT = Path(__file__).resolve().parents[1]
+READING = "Read,Grep,Glob,Bash"
+EXPECTED = {
+    CONSULTANT: [
+        "Bash(.nock/nock decisions list:*)",
+        "Bash(.nock/nock decisions show:*)",
+        "Bash(.nock/nock docs:*)",
+        "Bash(.nock/nock advise:*)",
+    ],
+    ELABORATOR: [
+        "Bash(.nock/nock decisions list:*)",
+        "Bash(.nock/nock decisions show:*)",
+        "Bash(.nock/nock docs:*)",
+        "Bash(.nock/nock decisions edit:*)",
+        "Bash(git log:*)",
+        "Bash(git show:*)",
+    ],
+    SHARER: ["Bash(git log:*)"],
+}
+
+
+def seat_flags(role: str, allowed: list[str]) -> list[str]:
+    return [
+        "-p",
+        "--output-format",
+        "stream-json",
+        "--verbose",
+        "--permission-mode",
+        "dontAsk",
+        "--setting-sources",
+        "user",
+        "--strict-mcp-config",
+        "--tools",
+        READING,
+        "--allowedTools",
+        *allowed,
+    ]
+
+
+def launched(path: Path) -> list[str]:
+    """The command line the fake agent was started with, after the agent itself."""
+    arguments = json.loads(path.read_text())
+    return arguments[: arguments.index("--session-id")]
+
+
+def test_every_seat_is_one_nock_knows() -> None:
+    assert set(SEATS) == set(EXPECTED)
+
+
+@pytest.mark.parametrize("role", sorted(EXPECTED))
+def test_each_seat_gets_exactly_its_tools_and_rules(
+    project: Project, role: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    arguments = tmp_path / "arguments.json"
+    monkeypatch.setenv("FAKE_ARGUMENTS", str(arguments))
+    monkeypatch.setenv("NOCK_DECISION", "1")
+    brief = "NOTHING TO SHARE: decision 1 <intent> When each of the project's decisions matters:"
+    session = Dispatcher(project).launch(role, brief, project.root)
+    assert session.exit_code == 0 and session.denied == []
+    assert launched(arguments) == seat_flags(role, EXPECTED[role])
+
+
+def test_the_consultant_runs_with_its_rules_and_a_refusal_is_kept(
+    project: Project, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    arguments = tmp_path / "arguments.json"
+    monkeypatch.setenv("FAKE_ARGUMENTS", str(arguments))
+    monkeypatch.setenv("FAKE_TRY", json.dumps(["rm", "-rf", "src"]))
+    consultation = {"intent": "Move orders to Postgres.", "context": "SQLite is slow."}
+    result = nock(project.root, "consult", json.dumps(consultation))
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "Nothing in nock bears on it." in result.stdout
+    assert launched(arguments)[-len(EXPECTED[CONSULTANT]) :] == EXPECTED[CONSULTANT]
+    [kept] = (project.root / ".nock" / "local" / "consultations").glob("*.json")
+    assert json.loads(kept.read_text())["denied"] == ["Bash: rm -rf src"]
+    [log] = (project.root / ".nock" / "local" / "logs").glob("run-*.log")
+    assert "nock: Claude Code refused Bash: rm -rf src" in log.read_text()
+
+
+def test_a_consultant_refused_its_only_way_to_answer_says_what_was_refused(
+    project: Project, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("FAKE_ADVICE", "nothing")
+    monkeypatch.setenv("FAKE_TRY", json.dumps([".nock/nock", "decide", "{}"]))
+    consultation = {"intent": "Move orders to Postgres.", "context": "SQLite is slow."}
+    result = nock(project.root, "consult", json.dumps(consultation))
+    assert "refused: Bash: .nock/nock decide {}" in result.stdout + result.stderr
+
+
+def test_an_elaborator_that_tried_more_than_its_seat_allows_says_so(
+    project: Project, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    number = decide(project.root)["number"]
+    edit(project.root, {"number": number, "elaborate": True})
+    monkeypatch.setenv("FAKE_TRY", json.dumps([".nock/nock", "run", "--", "curl", "example.com"]))
+    result = nock(project.root, "decisions", "elaborate", str(number), "--json")
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert json.loads(result.stdout)["refused"] == ["Bash: .nock/nock run -- curl example.com"]
+
+
+def test_a_long_brief_is_readable_and_nothing_else_outside(project: Project) -> None:
+    prompt, allowed = Dispatcher(project).carried("s1", "x" * (ARGUMENT_LIMIT + 1))
+    path = project.local / "briefs" / "s1.md"
+    assert str(path) in prompt and allowed == (f"Read(/{path.resolve()})",)
+    assert Dispatcher(project).carried("s2", "short") == ("short", ())
+
+
+@pytest.mark.parametrize(
+    "flag", ["--dangerously-skip-permissions", "--permission-mode=bypassPermissions", "--tools"]
+)
+def test_an_agent_command_that_sets_permissions_itself_is_refused(
+    project: Project, flag: str
+) -> None:
+    local = project.root / ".nock" / "local" / "config.toml"
+    local.write_text(local.read_text().replace(f'"{FAKE_AGENT}"]', f'"{FAKE_AGENT}", "{flag}"]', 1))
+    consultation = {"intent": "Move orders to Postgres.", "context": "SQLite is slow."}
+    result = nock(project.root, "consult", json.dumps(consultation))
+    assert result.returncode != 0
+    assert "never bypasses them" in result.stdout + result.stderr
+    assert project.store.rows("SELECT id FROM sessions") == []
+
+
+def test_nothing_nock_ships_or_runs_passes_a_bypass_flag() -> None:
+    """Only the refusal in dispatch.py names them."""
+    pattern = re.compile("|".join(re.escape(flag) for flag in BYPASS))
+    definition = (ROOT / "src" / "nock" / "dispatch.py").read_text()
+    start = definition.index("BYPASS = (")
+    end = definition.index(")", start)
+    found = []
+    for directory in ("src", "evals", "scripts", ".github"):
+        for path in sorted((ROOT / directory).rglob("*")):
+            if not path.is_file() or path.suffix not in (".py", ".md", ".toml", ".json", ".yml"):
+                continue
+            text = path.read_text()
+            if path.name == "dispatch.py" and path.parent.name == "nock":
+                text = text[:start] + text[end:]
+            found += [f"{path.relative_to(ROOT)}: {match}" for match in pattern.findall(text)]
+    assert found == []
+
+
+def test_init_allows_each_command_but_run_and_asks_for_the_owner_s(project: Project) -> None:
+    permissions = json.loads((project.root / ".claude" / "settings.json").read_text())[
+        "permissions"
+    ]
+    allowed = permissions["allow"]
+    assert "Bash(.nock/nock:*)" not in allowed
+    assert not [rule for rule in allowed if "nock run" in rule]
+    assert {"Bash(.nock/nock)", "Bash(.nock/nock check:*)", "Bash(.nock/nock decide:*)"} <= {
+        *allowed
+    }
+    assert all(rule.startswith("Bash(.nock/nock") for rule in allowed)
+    assert permissions["ask"] == [
+        "Bash(.nock/nock share:*)",
+        "Bash(.nock/nock init:*)",
+        "Bash(.nock/nock upgrade:*)",
+    ]
+    assert nock(project.root, "check", "nock-wiring").returncode == 0
+
+
+def test_the_blanket_rule_earlier_versions_wrote_is_flagged_and_taken_out(
+    project: Project,
+) -> None:
+    settings = project.root / ".claude" / "settings.json"
+    written = json.loads(settings.read_text())
+    written["permissions"]["allow"] += ["Bash(.nock/nock:*)", "Bash(npm test:*)"]
+    settings.write_text(json.dumps(written))
+    stale = nock(project.root, "check", "nock-wiring")
+    assert stale.returncode == 1 and "`.nock/nock run` take any command" in stale.stdout
+    assert nock(project.root, "init").returncode == 0
+    allowed = json.loads(settings.read_text())["permissions"]["allow"]
+    assert "Bash(.nock/nock:*)" not in allowed and "Bash(npm test:*)" in allowed
+    assert nock(project.root, "check", "nock-wiring").returncode == 0
+
+
+def test_a_new_tool_asks_until_init_allows_it(project: Project) -> None:
+    write_tool(project, "work", "import nock\n\n@nock.command\ndef ship():\n    '''Ship it.'''\n")
+    unwired = nock(project.root, "check", "nock-wiring")
+    assert unwired.returncode == 1 and "`.nock/nock ship` is not allowed yet" in unwired.stdout
+    assert nock(project.root, "init").returncode == 0
+    settings = json.loads((project.root / ".claude" / "settings.json").read_text())
+    assert "Bash(.nock/nock ship:*)" in settings["permissions"]["allow"]
+    assert nock(project.root, "check", "nock-wiring").returncode == 0
+
+
+def test_a_round_s_parts_are_subagents_with_only_the_tools_they_need(project: Project) -> None:
+    agents = project.root / ".claude" / "agents"
+    tools = {
+        path.stem: re.search(r"^tools: (.*)$", path.read_text(), re.MULTILINE)
+        for path in agents.glob("*.md")
+    }
+    assert {name: found and found.group(1) for name, found in tools.items()} == {
+        "nock-reflect-toolbox": "Read, Grep, Glob, Edit, Write, Bash",
+        "nock-reflect-map": "Read, Grep, Glob, Edit, Bash",
+        "nock-reflect-nock": "Read, Grep, Glob, Bash",
+    }
+    skill = (project.root / ".claude" / "skills" / "nock-reflect" / "SKILL.md").read_text()
+    assert all(f"`{name}`" in skill for name in tools)

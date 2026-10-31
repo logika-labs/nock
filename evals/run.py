@@ -26,8 +26,10 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE / "scenario"))
+sys.path.insert(0, str(HERE))
 
 from build import build  # noqa: E402
+from permissions import ENGINEER  # noqa: E402
 from tasks import TEST, TRAINING, Task  # noqa: E402
 
 SOURCE = HERE.parent / "src"
@@ -122,8 +124,7 @@ def session(directory: Path, task: Task, model: str, arm: str, repeat: int) -> O
         "--verbose",
         "--session-id",
         identity,
-        "--permission-mode",
-        "bypassPermissions",
+        *ENGINEER,
     ]
     if model:
         command += ["--model", model]
@@ -196,7 +197,7 @@ def train(project: Path, base: str, model: str, log: Path) -> None:
 def reflect(project: Path, reflect_model: str, out: Path) -> str | None:
     """One round: the `/nock-reflect` skill in a headless session. Its toolbox
     counts only when it finished the round and the checks pass."""
-    command = ["claude", "-p", "--permission-mode", "bypassPermissions", "--output-format", "json"]
+    command = ["claude", "-p", *ENGINEER, "--output-format", "json"]
     if reflect_model:
         command += ["--model", reflect_model]
     started = time.monotonic()
