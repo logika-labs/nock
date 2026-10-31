@@ -46,12 +46,6 @@ def flattened(events: Any, prefix: str = "") -> list[tuple[str, dict[str, Any]]]
     return found
 
 
-def since_option(since: str | None) -> list[str]:
-    """`--since` for git, as a raw timestamp: git reads an ISO moment's `Z` as local time."""
-    moment = parse_moment(since)
-    return [f"--since=@{int(moment.timestamp())}"] if moment else []
-
-
 def event_of(reference: Any) -> str:
     """The event an `event.param` reference names: `checkout.captured.order_id` → `checkout.captured`."""
     return str(reference).rsplit(".", 1)[0]
@@ -162,7 +156,7 @@ class LogikaRound:
                 "log",
                 "--format=%ad %s",
                 "--date=short",
-                *since_option(since),
+                *([f"--since={since}"] if since else []),
                 f"--max-count={SECTION_ROWS}",
                 "HEAD",
                 "--",
@@ -309,7 +303,7 @@ class Material:
                 Git(self.logika.project.here)(
                     "rev-list",
                     "--count",
-                    *since_option(self.since),
+                    *([f"--since={self.since}"] if self.since else []),
                     "HEAD",
                     "--",
                     *paths,

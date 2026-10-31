@@ -8,6 +8,7 @@ import json
 import os
 import subprocess
 import threading
+from datetime import datetime, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -314,3 +315,21 @@ def test_init_installs_the_skills_and_retires_the_old_ones(project: Project) -> 
     old.write_text("---\nname: consolidate\n---\n")
     assert nock(project.root, "init").returncode == 0
     assert not old.parent.exists()
+
+
+def test_a_round_s_window_opens_at_its_moment_whatever_the_machine_s_time_zone(
+    project: Project, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    started = Reflection(project).start()
+    for path in started["write"]:
+        (project.root / path).write_text("Early days; little to say.\n")
+    assert finish(project, RECORD).returncode == 0
+    (finished,) = (record["finished"] for record in Rounds(project).all())
+    # Nine hours east of UTC: the window's `Z` moment must not be read as local
+    # time, which would count this commit from an hour before the round.
+    monkeypatch.setenv("TZ", "Asia/Tokyo")
+    before = datetime.fromisoformat(finished.replace("Z", "+00:00")) - timedelta(hours=1)
+    monkeypatch.setenv("GIT_COMMITTER_DATE", before.isoformat())
+    git(project.root, "commit", "--allow-empty", "-qm", "Before the round")
+    reflection = Reflection(project)
+    assert reflection.metrics(reflection.window())["commits"] == 0
