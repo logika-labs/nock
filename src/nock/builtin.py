@@ -18,9 +18,10 @@ from nock.decisions import TAGS, Change, Decisions, Draft, Filter, row
 from nock.errors import Error, ExitCode, Failed, UsageError
 from nock.fixtures import Shell
 from nock.generators import Catalogs, Generators
+from nock.logika import LogikaRound
 from nock.processes import Output
 from nock.project import Project
-from nock.reflect import Record, Reflection, tool_rows
+from nock.reflect import Record, Reflection, Topic, tool_rows
 from nock.render import Problem
 from nock.schema import check_schema
 from nock.sessions import Sessions
@@ -324,19 +325,37 @@ def consult(project: Project, consultation: Consultation) -> str:
 # --- reflection ---------------------------------------------------------------------
 
 
+TOPIC_HELP = "logika: the round on a Logika project's ledger rules (`/nock-reflect-logika`)."
+
+
 @command(name="start", group="reflect")
-def reflect_start(project: Project) -> dict[str, Any]:
+def reflect_start(
+    project: Project, *, topic: Annotated[Topic | None, Option(help=TOPIC_HELP)] = None
+) -> dict[str, Any]:
     """Start a reflection round (the `/nock-reflect` skill), or pick up the one
     under way: writes what its three parts read, and says where the report
-    and the shareable summary go."""
+    and the shareable summary go. With `--topic logika`, a logika round
+    instead: what it reads, and where its report goes."""
+    if topic is Topic.LOGIKA:
+        return LogikaRound(project).start()
     return Reflection(project).start()
 
 
 @command(name="finish", group="reflect")
-def reflect_finish(project: Project, record: Record) -> dict[str, Any]:
+def reflect_finish(
+    project: Project,
+    record: Record,
+    *,
+    topic: Annotated[Topic | None, Option(help=TOPIC_HELP)] = None,
+) -> dict[str, Any]:
     """Finish the round: requires its report and summary, nock's checks to
     pass, then records what the toolbox part changed and what each change
-    should do by the next round, and commits `.nock/`."""
+    should do by the next round, and commits `.nock/`. With `--topic logika`,
+    the logika round: requires its report and a ledger that parses, records
+    the rules it changed and how each was tested, and commits `.nock/` and
+    `logika.json`."""
+    if topic is Topic.LOGIKA:
+        return LogikaRound(project).finish(record)
     return Reflection(project).finish(record)
 
 

@@ -89,3 +89,11 @@ files and the tool's own code are unchanged; `--fresh` runs it anyway.
 Tools are standard-library Python, run by the vendored nock on `python3`.
 `.nock/nock calls --tool NAME` shows how a tool has been called and how it
 ended.
+
+**In a Logika project** (a `logika.json` at the root), Logika owns the
+events the code emits, the rules they are judged by, and the local capture
+(`logika docs`). A tool may wrap a `logika show query` that agents keep
+rewriting, but it doesn't redo what `logika test` or `logika check` do, and a
+check doesn't repeat a ledger rule. The ledger's rules come from the logika
+round (`/nock-reflect-logika`, run when the owner asks), not from the
+toolbox.

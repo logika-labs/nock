@@ -1,6 +1,7 @@
 """Where the project stands with nock, in one place: whether a reflection round
 is due, the decisions by status and review, those rejected and waiting to be
-redone, the questions the owner answered, and a round summary not yet shared. `nock status` prints it; a
+redone, the questions the owner answered, a round summary not yet shared,
+and — in a Logika project — whether a logika round is worth offering. `nock status` prints it; a
 session the human starts begins with it."""
 
 from __future__ import annotations
@@ -8,6 +9,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from nock.decisions import Decisions, Review, Status
+from nock.logika import SKILL, LogikaRound
 from nock.reflect import Reflection
 from nock.share import Sharing
 
@@ -64,6 +66,7 @@ class Standing:
                 and decision["updated"] > (window.since or "")
             ],
             "unshared": Sharing(self.project).unshared(),
+            "logika": LogikaRound(self.project).standing(),
         }
 
     def lines(self, standing: dict[str, Any]) -> list[str]:
@@ -109,5 +112,12 @@ class Standing:
             lines.append(
                 f"nock: the {standing['unshared']} round's summary is not shared yet — "
                 "`.nock/nock share` shows it; sharing it helps nock's makers improve nock."
+            )
+        logika = standing["logika"]
+        if logika and logika["due"]:
+            install = "" if logika["skill"] else " (`.nock/nock init` installs the skill)"
+            lines.append(
+                f"nock: {logika['due']} — when the human wants one, `/{SKILL}`{install} turns the "
+                "ledger and its captured data into rules, with them; never start it unasked."
             )
         return lines

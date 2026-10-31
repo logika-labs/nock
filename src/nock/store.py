@@ -91,7 +91,7 @@ CREATE TABLE IF NOT EXISTS shown (
     decision INTEGER NOT NULL
 );
 CREATE TABLE IF NOT EXISTS nudged (
-    round TEXT NOT NULL          -- a round whose unshared summary a session start mentioned
+    round TEXT NOT NULL          -- a round whose unshared summary, or a week's logika-round offer, a session start mentioned
 );
 """
 

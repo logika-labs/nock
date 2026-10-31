@@ -48,6 +48,8 @@ src/nock/
   # the loop
   reflect.py         Reflection (due, start, finish, metrics), Rounds, and what each part reads:
                      Material (the toolbox), Knowledge (the map), Evidence (nock itself)
+  logika.py          the `logika` topic: Ledger (logika.json read and counted), LogikaRound
+                     (due, start, finish) and its Material
   decisions.py       Decisions (decide, edit, review, elaborate, what governs a file, the map's problems)
   web.py             the owner's page (`nock web`), a local server
   web.html           the page
@@ -60,6 +62,8 @@ src/nock/
   briefs/
     nock-reflect/    the `/nock-reflect` skill: SKILL.md (the lead) and its three parts'
                      briefs — process.md (includes _framework.md), knowledge.md, nock.md
+    nock-reflect-logika/  the `/nock-reflect-logika` skill, installed in Logika projects only:
+                     SKILL.md (the round, with the owner) and rules.md (from data to rules)
     nock-triage/     the `/nock-triage` skill: going through decisions with the owner
     elaborate.md     the brief of the agent that elaborates on a decision
     consult.md       the consultant's brief
@@ -337,6 +341,22 @@ the latest one's `finished`.
 after `reflect.sessions` sessions or `reflect.days` days since the last
 round, whichever comes first, given at least one session.
 
+**The logika topic.** `reflect.Topic` names the rounds other than nock's
+own; `Rounds(project, Topic.LOGIKA)` keeps them in
+`.nock/reflections/logika/` (and `.nock/local/reflections/logika/`), where
+nock's `*/record.json` never sees them. `logika.LogikaRound` is offered only
+when `logika.json` is in the working tree and `logika` on PATH. Its `due`
+— never run while the ledger declares events, or `reflect.logika.days`
+after the last with commits to `logika.json` since — goes into
+`status.Standing`, and the session start says it at most once a week
+(`nudged` keys `logika:LAST:WEEK`). `start` writes `logika.md` from the
+ledger, git and the decisions tagged `logika`; `finish` takes the same
+`Record` (its `Change` kinds include validate, path, timeout, rule and
+invariant, and `tested`), requires `report.md` and a parsing ledger, and
+commits `.nock/` and `logika.json` through `reflect.commit`. The round
+itself reads Logika's docs through the `logika` CLI rather than copying
+them.
+
 `share.Sharing` reads a round's `share.md`. Its `problems` — the
 `nock-share` check — flag every line naming the repository's directory or
 remotes, a tracked path or a file name (common ones aside), an author's
@@ -362,7 +382,7 @@ Everything a project adds lives in `.nock/` and is committed:
 | generated file | `.nock/tools/*.py` | `@nock.generator(path)` | `generators.Generators` |
 | catalog | `.nock/generators/NAME/` | `nock gen new` | `generators.Catalog` |
 | brief | `.nock/briefs/NAME.md` (elaborate, consult) | the file's presence | `templates.Library`, before the packaged briefs |
-| skill | `.claude/skills/nock-reflect/`, `.claude/skills/nock-triage/` | `nock init` | Claude Code; `nock init` rewrites them, and removes the retired `reflect` and `consolidate` |
+| skill | `.claude/skills/nock-reflect/`, `.claude/skills/nock-triage/`, `.claude/skills/nock-reflect-logika/` (Logika projects) | `nock init` | Claude Code; `nock init` rewrites them, and removes the retired `reflect` and `consolidate` |
 | settings | `.nock/config.toml`, `.nock/local/config.toml` | — | `configuration.Configuration` |
 | the core itself | `.nock/core/nock/` | edit it | kept by `nock upgrade`'s three-way merge |
 
@@ -400,7 +420,8 @@ Notes:
 - imports `@.nock/context.md` into CLAUDE.md;
 - wires `.claude/settings.json`: the hooks and the `Bash(.nock/nock:*)`
   permission;
-- writes the `/nock-reflect` and `/nock-triage` skills.
+- writes the `/nock-reflect` and `/nock-triage` skills, and in a Logika
+  project (`logika.json` at the root) `/nock-reflect-logika`.
 
 It is idempotent, so running it again re-wires.
 

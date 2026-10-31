@@ -15,6 +15,8 @@ from nock.decisions import MAP
 from nock.errors import ConflictError, PreconditionError
 from nock.git import Git, GitError
 from nock.hooks import BUILT_IN_EVENTS, EDIT_TOOLS
+from nock.logika import LEDGER
+from nock.logika import SKILL as LOGIKA_SKILL
 from nock.project import NOCK_DIRECTORY, Project
 from nock.templates import Library
 from nock.tools import NATIVE_EVENTS, Event
@@ -184,10 +186,12 @@ class Installer:
         return self.report
 
     def install_skills(self) -> None:
-        """The `/nock-reflect` and `/nock-triage` skills, kept in step with the core like the primer."""
+        """The `/nock-reflect` and `/nock-triage` skills — and, in a Logika
+        project, `/nock-reflect-logika` — kept in step with the core like the primer."""
         briefs = PACKAGE / "briefs"
         library = Library(briefs)
-        for name in SKILLS:
+        logika = (LOGIKA_SKILL,) if (self.root / LEDGER).is_file() else ()
+        for name in (*SKILLS, *logika):
             for source in sorted((briefs / name).glob("*.md")):
                 relative = f".claude/skills/{name}/{source.name}"
                 write_atomic(self.root / relative, library.render(f"{name}/{source.name}"))
