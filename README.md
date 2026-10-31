@@ -619,11 +619,12 @@ on or off:
   generators the toolbox has and how many failed to load; and how many
   rounds have run. Never code, paths, file or tool names, prompts, command
   arguments, what decisions say, or anything else written in the project.
-  It also carries the project's anonymous id: a random UUID, made the first
-  time a report is built (`nock usage` included) and committed in
-  `.nock/project.json`, so every clone of the project sends the same one. It
-  is derived from nothing — not the path, the remote or any name — and lets
-  nock's makers count projects without knowing which. Nothing is published.
+  It also carries the project's anonymous id: a random UUID, committed in
+  `.nock/project.json` so every clone of the project sends the same one. It
+  is made only as the first report is sent, after the owner was told (until
+  then `nock usage` shows "(created when the first report is sent)" in its
+  place), is derived from nothing — not the path, the remote or any name —
+  and lets nock's makers count projects without knowing which. Nothing is published.
 - **`share = false`**: nothing is ever sent — no report, no id is made, and
   `nock share` won't send a summary either.
 

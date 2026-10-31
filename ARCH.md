@@ -466,10 +466,11 @@ edit`), and the reports sent. `report` is the next one, built from
 `Reflection.metrics` over the window since the last report (or the
 disclosure), nock's own commands' calls and failures, the toolbox's counts,
 versions and switches, and the project's anonymous id. `identity` reads it
-from the main checkout's committed `.nock/project.json`, or — the first time
-a report needs it — makes a random UUID4 under a lock, writes it there and
-commits that file alone (left uncommitted if git refuses), so every clone
-and worktree reports the same id. `send` posts the report to
+from the main checkout's committed `.nock/project.json`, or — as the first
+report is sent, which is after the disclosure — makes a random UUID4 under a
+lock, writes it there and commits that file alone (left uncommitted if git
+refuses), so every clone and worktree reports the same id. A report built
+only to be shown (`nock usage`) never makes it: it shows `UNMADE` instead. `send` posts the report to
 `endpoints.usage` when the owner was told, `share` is true and a week has
 passed (a day after a failed try), with a three-second timeout. `nock usage`
 shows it all. `sharing` reads an earlier nock's `[share]` table too:

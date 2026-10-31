@@ -89,7 +89,7 @@ REPORT: dict[str, Any] = {
 
 def test_the_report_nock_builds_is_kept(project: Project, api: Api) -> None:
     end_session(project, "s1")
-    built = Usage(project).report()
+    built = Usage(project).report(sending=True)
     status, answer = api.post("/usage", built)
     assert (status, answer) == (201, {"id": 1})
     (row,) = api.rows("usage")

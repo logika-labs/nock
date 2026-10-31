@@ -40,6 +40,9 @@ TIMEOUT = 3
 STATE = "usage.json"
 # The project's anonymous id, committed so that every clone shares it.
 IDENTITY = "project.json"
+# What a report shown before the first send says in place of the id, which is
+# made only then, after the owner was told.
+UNMADE = "(created when the first report is sent)"
 
 
 class Moment(StrEnum):
@@ -109,8 +112,9 @@ class Usage:
         return DISCLOSURE
 
     def identity(self) -> str:
-        """The project's anonymous id: random, made the first time a report
-        needs it and committed in the main checkout, so every clone shares it."""
+        """The project's anonymous id: random, made as the first report is sent
+        (after the owner was told) and committed in the main checkout, so every
+        clone shares it."""
         with self.project.lock("identity"):
             known = self.known_identity()
             if known:
@@ -149,8 +153,9 @@ class Usage:
         disclosed = state.get("disclosed")
         return disclosed["at"] if disclosed else None
 
-    def report(self) -> dict[str, Any]:
-        """Exactly what the next send carries."""
+    def report(self, sending: bool = False) -> dict[str, Any]:
+        """Exactly what the next send carries. Only a send makes the project's
+        id; until then a report shows `UNMADE` in its place."""
         project = self.project
         since = self.since()
         if since is None:
@@ -171,7 +176,7 @@ class Usage:
         ]
         return {
             "schema": SCHEMA,
-            "project": self.identity(),
+            "project": self.identity() if sending else self.known_identity() or UNMADE,
             "nock": VERSION,
             "python": f"{sys.version_info.major}.{sys.version_info.minor}",
             "platform": sys.platform,
@@ -212,7 +217,7 @@ class Usage:
         """Send the report when one is due; whether it went. Silent on any failure."""
         if not self.due():
             return False
-        report = self.report()
+        report = self.report(sending=True)
         endpoint = str(self.project.configuration.get("endpoints.usage"))
         state = self.state()
         state["tried"] = now()

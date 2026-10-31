@@ -16,7 +16,7 @@ import pytest
 
 from nock.hooks import HookRunner
 from nock.project import Project
-from nock.usage import DISCLOSURE, IDENTITY, Moment, Usage
+from nock.usage import DISCLOSURE, IDENTITY, UNMADE, Moment, Usage
 
 from .conftest import git, nock, write_tool
 from .test_decisions import decide, edit
@@ -107,6 +107,9 @@ def test_nothing_is_sent_before_the_owner_is_told_and_then_weekly_counts_only(
     nock(project.root, "acme-payroll")
     end_session(project, "s1")
     assert receiver == [] and not Usage(project).due()
+    before = json.loads(nock(project.root, "usage", "--json").stdout)
+    assert before["disclosed"] is None and before["would_send"]["project"] == UNMADE
+    assert not (project.root / ".nock" / IDENTITY).exists()
 
     started = json.loads(nock(project.root, "reflect", "--json").stdout)
     assert started["tell_the_owner"] == DISCLOSURE
@@ -120,9 +123,15 @@ def test_nothing_is_sent_before_the_owner_is_told_and_then_weekly_counts_only(
     a_week_ago(project)
     nock(project.root, "acme-payroll")
     shown = json.loads(nock(project.root, "usage", "--json").stdout)
+    assert shown["would_send"]["project"] == UNMADE
+    assert not (project.root / ".nock" / IDENTITY).exists()
     end_session(project, "s3")
     (report,) = receiver
-    assert report == {**shown["would_send"], "metrics": report["metrics"]}
+    assert report == {
+        **shown["would_send"],
+        "metrics": report["metrics"],
+        "project": report["project"],
+    }
     assert report["toolbox"]["tools"] == 1 and "tools" not in report
     identity = json.loads((project.root / ".nock" / IDENTITY).read_text())["id"]
     assert report["project"] == identity and uuid.UUID(identity).version == 4
@@ -134,6 +143,8 @@ def test_nothing_is_sent_before_the_owner_is_told_and_then_weekly_counts_only(
     sent = json.dumps(report)
     for private in ("acme", "payroll", "login", "pytest", "Orders", project.root.name, "README"):
         assert private not in sent
+    shown = json.loads(nock(project.root, "usage", "--json").stdout)
+    assert shown["would_send"]["project"] == identity
     end_session(project, "s4")
     assert len(receiver) == 1
     assert git(project.root, "status", "--porcelain") == ""
@@ -154,12 +165,12 @@ def test_with_share_false_nothing_is_told_made_or_sent(
 
 
 def test_every_clone_reports_the_same_id(project: Project, tmp_path: Path) -> None:
-    made = Usage(project).report()["project"]
+    made = Usage(project).identity()
     clone = tmp_path / "clone"
     git(tmp_path, "clone", "--quiet", str(project.root), str(clone))
     (clone / ".nock" / "local").mkdir(exist_ok=True)
     assert Usage(Project.discover(clone)).report()["project"] == made
-    assert Usage(project).report()["project"] == made
+    assert Usage(project).report(sending=True)["project"] == made
 
 
 @pytest.mark.parametrize(
