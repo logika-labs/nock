@@ -137,7 +137,7 @@ def test_the_session_hooks_list_the_tools_and_read_the_transcript(project: Proje
 
 def test_a_round_is_due_after_enough_sessions(project: Project) -> None:
     local = project.root / ".nock" / "local" / "config.toml"
-    local.write_text(local.read_text() + "[reflect]\nsessions = 4\ndays = 30\n")
+    local.write_text(local.read_text() + "[reflect]\nsessions = 4\ndays = 3650\n")
     for index in range(3):
         transcript(project, f"s{index}", ["work"], [])
     Sessions(project).catch_up()
