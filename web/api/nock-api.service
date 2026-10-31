@@ -1,6 +1,6 @@
 # /etc/systemd/system/nock-api.service: api.nock.dev (source: web/api in github.com/logika-labs/nock)
 [Unit]
-Description=api.nock.dev: shared reflection summaries
+Description=api.nock.dev: shared reflection summaries and usage reports
 After=network.target
 
 [Service]

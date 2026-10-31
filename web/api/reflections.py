@@ -1,7 +1,9 @@
-"""api.nock.dev: where `nock share` sends a reflection round's summary. One
-endpoint, `POST /reflections`, keeps what it is sent in SQLite — the summary,
-its visibility and the round's date, nothing about the sender — and answers
-with the id. Nothing is shown anywhere yet. Standard library only.
+"""api.nock.dev: what nock sends its makers. `POST /reflections` keeps a
+reflection round's summary that `nock share` sends on the owner's word;
+`POST /usage` keeps a weekly anonymous usage report. Both are kept in SQLite
+with the moment they arrived and nothing about the sender, and answer with
+the id. A body with a field it should not have is refused whole. Nothing is
+shown anywhere yet. Standard library only.
 
     python3 reflections.py --database /srv/nock-api/reflections.db --port 8610
 """
@@ -10,7 +12,10 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
+import re
 import sqlite3
+import uuid
 from datetime import UTC, datetime
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -21,14 +26,136 @@ SCHEMA = """
 CREATE TABLE IF NOT EXISTS reflections (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     received TEXT NOT NULL,
-    visibility TEXT NOT NULL CHECK (visibility IN ('private', 'public')),
     round TEXT,
     summary TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS usage (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    received TEXT NOT NULL,
+    project TEXT NOT NULL,
+    schema INTEGER NOT NULL,
+    report TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS usage_by_project ON usage (project);
 """
 # The longest summary kept; the round asks for a few hundred words.
 LONGEST = 20_000
-VISIBILITIES = ("private", "public")
+# The largest usage report read, in bytes; a real one is about two thousand.
+LARGEST_REPORT = 32_000
+# The usage report's shape this server reads (nock's `usage.SCHEMA`).
+REPORT_SCHEMA = 2
+NAME = re.compile(r"[a-z][a-z0-9_-]{0,39}")
+COMMAND = re.compile(r"[a-z][a-z0-9-]*( [a-z][a-z0-9-]*){0,3}")
+VERSION = re.compile(r"\d{1,4}(\.\d{1,4}){1,3}([a-z0-9.+-]{0,20})")
+PYTHON = re.compile(r"\d\.\d{1,3}")
+PLATFORM = re.compile(r"[a-z][a-z0-9]{0,19}")
+SETTINGS = ("reminders", "consult", "logika")
+TOOLBOX = ("tools", "checks", "hooks", "generators", "load_failures")
+COUNT = ("calls", "failures")
+
+
+class Refused(ValueError):
+    """The body is not what the endpoint keeps."""
+
+
+def fields(
+    value: Any, where: str, required: tuple[str, ...], optional: tuple[str, ...] = ()
+) -> dict[str, Any]:
+    """An object with exactly these fields (the optional ones aside)."""
+    if not isinstance(value, dict):
+        raise Refused(f"`{where}` is an object")
+    unexpected = sorted(set(value) - set(required) - set(optional))
+    if unexpected:
+        raise Refused(f"`{where}` has unexpected fields: {', '.join(unexpected)}")
+    missing = [name for name in required if name not in value]
+    if missing:
+        raise Refused(f"`{where}` lacks {', '.join(missing)}")
+    return value
+
+
+def count(value: Any, where: str) -> None:
+    if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value < 10**12:
+        raise Refused(f"`{where}` is a whole number of at least 0")
+
+
+def number(value: Any, where: str) -> None:
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, int | float)
+        or not math.isfinite(value)
+        or not 0 <= value < 10**12
+    ):
+        raise Refused(f"`{where}` is a number of at least 0")
+
+
+def text(value: Any, where: str, pattern: re.Pattern[str]) -> None:
+    if not isinstance(value, str) or not pattern.fullmatch(value):
+        raise Refused(f"`{where}` is not what it should be")
+
+
+def names(value: Any, where: str, pattern: re.Pattern[str], most: int) -> dict[str, Any]:
+    """An object keyed by nock's own names, never more than `most` of them."""
+    if not isinstance(value, dict) or len(value) > most:
+        raise Refused(f"`{where}` is an object of at most {most} entries")
+    for key in value:
+        text(key, f"{where}: {key[:40]}", pattern)
+    return value
+
+
+def report(sent: Any) -> dict[str, Any]:
+    """A usage report as nock builds it (`usage.Usage.report`), or `Refused`."""
+    body = fields(
+        sent,
+        "report",
+        (
+            "schema",
+            "project",
+            "nock",
+            "python",
+            "platform",
+            "settings",
+            "metrics",
+            "commands",
+            "toolbox",
+            "rounds",
+        ),
+    )
+    if body["schema"] != REPORT_SCHEMA or isinstance(body["schema"], bool):
+        raise Refused(f"`schema` is {REPORT_SCHEMA}: this server reads no other")
+    project = body["project"]
+    try:
+        canonical = isinstance(project, str) and str(uuid.UUID(project, version=4)) == project
+    except ValueError:
+        canonical = False
+    if not canonical:
+        raise Refused("`project` is a random UUID, version 4, in lower case")
+    text(body["nock"], "nock", VERSION)
+    text(body["python"], "python", PYTHON)
+    text(body["platform"], "platform", PLATFORM)
+    for name, value in fields(body["settings"], "settings", SETTINGS).items():
+        if not isinstance(value, bool):
+            raise Refused(f"`settings.{name}` is true or false")
+    for name, value in names(body["metrics"], "metrics", NAME, 64).items():
+        number(value, f"metrics.{name}")
+    for name, counts in names(body["commands"], "commands", COMMAND, 120).items():
+        for field, value in fields(counts, f"commands.{name}", COUNT).items():
+            count(value, f"commands.{name}.{field}")
+    for name, value in fields(body["toolbox"], "toolbox", TOOLBOX).items():
+        count(value, f"toolbox.{name}")
+    for name, value in names(body["rounds"], "rounds", NAME, 20).items():
+        count(value, f"rounds.{name}")
+    return body
+
+
+def reflection(sent: Any) -> tuple[str, str | None]:
+    """A summary and its round's date, or `Refused`."""
+    body = fields(sent, "body", ("summary",), ("round",))
+    summary, round = body["summary"], body.get("round")
+    if not isinstance(summary, str) or not summary.strip() or len(summary) > LONGEST:
+        raise Refused(f"`summary` is text of at most {LONGEST} characters")
+    if round is not None and (not isinstance(round, str) or len(round) > 40):
+        raise Refused("`round` is the round's date")
+    return summary.strip(), round
 
 
 class Server(ThreadingHTTPServer):
@@ -38,12 +165,10 @@ class Server(ThreadingHTTPServer):
         with sqlite3.connect(database) as connection:
             connection.executescript(SCHEMA)
 
-    def keep(self, visibility: str, round: str | None, summary: str) -> int:
+    def keep(self, statement: str, values: tuple[Any, ...]) -> int:
+        received = datetime.now(UTC).isoformat(timespec="seconds")
         with sqlite3.connect(self.database) as connection:
-            cursor = connection.execute(
-                "INSERT INTO reflections (received, visibility, round, summary) VALUES (?, ?, ?, ?)",
-                (datetime.now(UTC).isoformat(timespec="seconds"), visibility, round, summary),
-            )
+            cursor = connection.execute(statement, (received, *values))
             return int(cursor.lastrowid or 0)
 
 
@@ -63,27 +188,35 @@ class Handler(BaseHTTPRequestHandler):
             self.answer(HTTPStatus.NOT_FOUND, {"error": "nothing here"})
 
     def do_POST(self) -> None:
-        if self.path.rstrip("/") != "/reflections":
+        path = self.path.rstrip("/")
+        largest = {"/reflections": LONGEST * 4, "/usage": LARGEST_REPORT}.get(path)
+        if largest is None:
             self.answer(HTTPStatus.NOT_FOUND, {"error": "nothing here"})
             return
         try:
             length = int(self.headers.get("Content-Length", 0))
-            if length > LONGEST * 4:
-                raise ValueError("too long")
+            if length > largest:
+                self.answer(
+                    HTTPStatus.REQUEST_ENTITY_TOO_LARGE, {"error": f"at most {largest} bytes"}
+                )
+                return
             sent = json.loads(self.rfile.read(length))
-            summary, visibility = sent["summary"], sent["visibility"]
-            round = sent.get("round")
-            if not isinstance(summary, str) or not summary.strip() or len(summary) > LONGEST:
-                raise ValueError(f"`summary` is text of at most {LONGEST} characters")
-            if visibility not in VISIBILITIES:
-                raise ValueError(f"`visibility` is one of {', '.join(VISIBILITIES)}")
-            if round is not None and (not isinstance(round, str) or len(round) > 40):
-                raise ValueError("`round` is the round's date")
-        except (ValueError, KeyError, TypeError) as error:
+            if path == "/usage":
+                body = report(sent)
+                identity = self.store.keep(
+                    "INSERT INTO usage (received, project, schema, report) VALUES (?, ?, ?, ?)",
+                    (body["project"], body["schema"], json.dumps(body, sort_keys=True)),
+                )
+            else:
+                summary, round = reflection(sent)
+                identity = self.store.keep(
+                    "INSERT INTO reflections (received, round, summary) VALUES (?, ?, ?)",
+                    (round, summary),
+                )
+        except (ValueError, TypeError) as error:
             self.answer(HTTPStatus.BAD_REQUEST, {"error": str(error)})
             return
-        identity = self.store.keep(visibility, round, summary.strip())
-        self.answer(HTTPStatus.CREATED, {"id": identity, "visibility": visibility})
+        self.answer(HTTPStatus.CREATED, {"id": identity})
 
     def answer(self, status: HTTPStatus, value: Any) -> None:
         body = json.dumps(value).encode()
