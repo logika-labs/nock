@@ -8,6 +8,7 @@ import json
 import os
 import subprocess
 import threading
+from datetime import UTC, datetime, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -31,9 +32,11 @@ def transcript(
     directory.mkdir(parents=True, exist_ok=True)
     records: list[dict[str, object]] = []
     second = 0
+    # An hour ago, so a round's window in days holds it whatever today is.
+    start = datetime.now(UTC).replace(microsecond=0) - timedelta(hours=1)
 
     def moment() -> str:
-        return f"2026-10-01T10:00:{second:02d}.000Z"
+        return (start + timedelta(seconds=second)).strftime("%Y-%m-%dT%H:%M:%S.000Z")
 
     for prompt in prompts:
         records.append(
