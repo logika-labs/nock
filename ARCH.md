@@ -63,8 +63,8 @@ src/nock/
   status.py          Standing: a round due, decisions waiting, rejected ones to rework, answered
                      questions, an unshared summary
   share.py           Sharing: a round's summary, held to naming nothing, sent on the owner's word
-  usage.py           Usage: the statistics shared with nock's makers (`share.level`), the
-                     disclosure that comes first, the weekly send
+  usage.py           Usage: the anonymous report shared with nock's makers (`share`), the
+                     project's random id, the disclosure that comes first, the weekly send
   consult.py         Consultant: a fresh agent advises on a task, submitting through `nock advise`
   dispatch.py        Dispatcher: launch a headless `claude -p` session and ingest it
   hooks.py           `nock hook EVENT`: nock's own handlers, then the project's
@@ -465,10 +465,15 @@ page shows it under the title — and the owner's first review or note through `
 edit`), and the reports sent. `report` is the next one, built from
 `Reflection.metrics` over the window since the last report (or the
 disclosure), nock's own commands' calls and failures, the toolbox's counts,
-versions and switches; at `public` it adds the project's tool names with
-their counts. `send` posts it to `share.usage_endpoint` when the owner was
-told, the level isn't `none` and a week has passed (a day after a failed
-try), with a three-second timeout. `nock usage` shows it all.
+versions and switches, and the project's anonymous id. `identity` reads it
+from the main checkout's committed `.nock/project.json`, or — the first time
+a report needs it — makes a random UUID4 under a lock, writes it there and
+commits that file alone (left uncommitted if git refuses), so every clone
+and worktree reports the same id. `send` posts the report to
+`endpoints.usage` when the owner was told, `share` is true and a week has
+passed (a day after a failed try), with a three-second timeout. `nock usage`
+shows it all. `sharing` reads an earlier nock's `[share]` table too:
+`level = "none"` as false, anything else as true, with a note.
 
 `share.Sharing` reads a round's `share.md`. Its `problems` — the
 `nock-share` check — flag every line naming the repository's directory or
@@ -476,10 +481,10 @@ remotes, a tracked path or a file name (common ones aside), an author's
 name or address, an email address or a link off nock.dev. `share`
 dispatches the sharer (`briefs/share.md`) to vet the summary, scrubs its
 answer the same way, and keeps it in the round's scratch directory, keyed
-by the summary and the visibility, so a preview and the send that follows
-vet once. It returns the text and where it would go; with `send`, it posts
-it to `share.endpoint`, records `shared` in the round's record, and
-commits; it refuses to send when `share.level` is `none`.
+by the summary, so a preview and the send that follows vet once. It
+returns the text and where it would go; with `send`, it posts it to
+`endpoints.reflections`, records `shared` in the round's record, and
+commits; it refuses to send, before vetting, when `share` is false.
 
 ## Extension points
 

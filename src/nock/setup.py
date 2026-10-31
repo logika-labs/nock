@@ -46,6 +46,11 @@ branch = "main"
 # reviews, the decisions behind an edited file. false: silent unless asked.
 reminders = true
 
+# Whether nock shares an anonymous usage report with its makers, weekly: counts
+# and categories, and a random id for the project, never code, paths, names or
+# text. false sends nothing at all. `.nock/nock usage` shows exactly what would be sent.
+share = true
+
 # Checks `.nock/nock check` runs besides the @nock.check functions in
 # .nock/tools/. Exit 0 passes, 1 fails (the code is wrong), anything else
 # means the machine is.
@@ -68,13 +73,6 @@ model = ""
 [consult]
 # Whether agents are asked to consult nock's consultant before changing code.
 enabled = true
-
-[share]
-# What nock sends its makers: "anonymous" usage statistics (counts and
-# categories, never code, paths, names or text), "public" (those and the
-# toolbox's tool names, published on nock.dev), or "none" (nothing at all).
-# `.nock/nock usage` shows exactly what would be sent.
-level = "anonymous"
 """
 
 GITIGNORE = "local/\n"

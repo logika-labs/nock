@@ -1,8 +1,7 @@
 """Sharing a round's summary with nock's makers: the abstract one the round
 wrote (`share.md`), vetted by a fresh agent that reads the project to learn
 what would identify it and rewrites whatever does, then held to a mechanical
-scrub — and sent only when the owner says so: privately (only nock's makers
-read it) or publicly (on nock.dev)."""
+scrub — and sent only when the owner says so, to nock's makers alone."""
 
 from __future__ import annotations
 
@@ -11,7 +10,6 @@ import json
 import re
 import urllib.error
 import urllib.request
-from enum import StrEnum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, NotRequired, TypedDict
 
@@ -21,7 +19,7 @@ from nock.git import GitError
 from nock.reflect import SHARE, Reflection, commit
 from nock.render import Problem
 from nock.templates import Library
-from nock.usage import Level, level_of
+from nock.usage import shares
 from nock.utils import now, read_json, write_json
 
 if TYPE_CHECKING:
@@ -41,15 +39,7 @@ COMMON_FILES = {
 }  # fmt: skip
 
 
-class Visibility(StrEnum):
-    PRIVATE = "private"
-    """Only nock's makers read it."""
-    PUBLIC = "public"
-    """Published on nock.dev, for other nock users to read and discuss."""
-
-
 class Request(TypedDict):
-    visibility: Visibility
     round: NotRequired[str]
     """The round's date, as its directory is named; the default is the latest."""
     send: NotRequired[bool]
@@ -74,18 +64,15 @@ class Sharing:
     def text(self, name: str) -> str:
         return (self.reflection.rounds.directory / name / SHARE).read_text().strip()
 
-    def vetted(self, name: str, visibility: Visibility, again: bool) -> str:
+    def vetted(self, name: str, again: bool) -> str:
         """The summary as it would be sent: vetted by an agent — again only
-        when the summary or the visibility changed, or when asked — and
-        scrubbed."""
+        when the summary changed, or when asked — and scrubbed."""
         text = self.text(name)
-        fingerprint = hashlib.sha256(f"{visibility}\n{text}".encode()).hexdigest()
+        fingerprint = hashlib.sha256(text.encode()).hexdigest()
         kept = self.reflection.rounds.scratch / name / "outgoing.json"
         if not again and kept.is_file() and read_json(kept).get("fingerprint") == fingerprint:
             return read_json(kept)["text"]
-        brief = Library(self.project.code_path("briefs"), BRIEFS).render(
-            "share.md", text=text, visibility=str(visibility)
-        )
+        brief = Library(self.project.code_path("briefs"), BRIEFS).render("share.md", text=text)
         session = Dispatcher(self.project).launch(ROLE, brief, self.project.here)
         result = (session.result or "").strip()
         if session.exit_code != 0 or not result:
@@ -103,25 +90,18 @@ class Sharing:
         return result
 
     def share(self, request: Request) -> dict[str, Any]:
+        if request.get("send") and not shares(self.project):
+            raise PolicyError(
+                "`share` is false here, so nock sends nothing — set `share = true` in"
+                " .nock/config.toml to send the summary"
+            )
         record = self.round(request.get("round"))
         name = record["round"]
-        visibility = Visibility(request["visibility"])
-        text = self.vetted(name, visibility, bool(request.get("again")))
-        endpoint = str(self.project.configuration.get("share.endpoint"))
-        if request.get("send") and level_of(self.project) is Level.NONE:
-            raise PolicyError(
-                '`share.level` is "none" here, so nock sends nothing — set it to "anonymous" or'
-                ' "public" in .nock/config.toml to send the summary'
-            )
+        text = self.vetted(name, bool(request.get("again")))
+        endpoint = str(self.project.configuration.get("endpoints.reflections"))
         if not request.get("send"):
-            return {
-                "round": name,
-                "to": endpoint,
-                "visibility": str(visibility),
-                "shared": record.get("shared"),
-                "text": text,
-            }
-        body = json.dumps({"summary": text, "visibility": str(visibility), "round": name}).encode()
+            return {"round": name, "to": endpoint, "shared": record.get("shared"), "text": text}
+        body = json.dumps({"summary": text, "round": name}).encode()
         post = urllib.request.Request(
             endpoint, data=body, headers={"Content-Type": "application/json"}, method="POST"
         )
@@ -130,9 +110,9 @@ class Sharing:
                 answer = json.loads(response.read() or b"{}")
         except (urllib.error.URLError, TimeoutError, ValueError) as error:
             raise ExternalError(f"could not reach {endpoint}: {error}") from error
-        shared = {"moment": now(), "visibility": str(visibility), "id": answer.get("id")}
+        shared = {"moment": now(), "id": answer.get("id")}
         self.reflection.record_shared(name, shared)
-        commit(self.project, f"Reflection round {name}: shared, {visibility}")
+        commit(self.project, f"Reflection round {name}: shared")
         return {"round": name, **shared}
 
     # --- what the summary may not say -------------------------------------------

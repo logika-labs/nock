@@ -262,7 +262,8 @@ def test_a_summary_is_vetted_and_shared_only_when_sent(
     threading.Thread(target=server.serve_forever, daemon=True).start()
     local = project.root / ".nock" / "local" / "config.toml"
     local.write_text(
-        local.read_text() + f'[share]\nendpoint = "http://127.0.0.1:{server.server_address[1]}/"\n'
+        local.read_text()
+        + f'[endpoints]\nreflections = "http://127.0.0.1:{server.server_address[1]}/"\n'
     )
     started = Reflection(project).start()
     for path, text in zip(
@@ -279,20 +280,18 @@ def test_a_summary_is_vetted_and_shared_only_when_sent(
     def vetted() -> int:
         return len(project.store.rows("SELECT id FROM sessions WHERE role = 'sharer'"))
 
-    shown = json.loads(nock(project.root, "share", '{"visibility": "private"}', "--json").stdout)
+    shown = json.loads(nock(project.root, "share", "--json").stdout)
     assert shown["text"] == "Early days, vetted." and received == [] and vetted() == 1
-    nock(project.root, "share", '{"visibility": "private"}')
+    nock(project.root, "share")
     assert vetted() == 1
     monkeypatch.setenv("FAKE_SHARE", "Early days, says test@example.com.")
-    named = nock(project.root, "share", '{"visibility": "private", "again": true}')
+    named = nock(project.root, "share", '{"again": true}')
     assert named.returncode == 1 and "names `test@example.com`" in named.stdout
     monkeypatch.delenv("FAKE_SHARE")
-    sent = nock(project.root, "share", '{"visibility": "public", "send": true}', "--json")
+    sent = nock(project.root, "share", '{"send": true}', "--json")
     assert sent.returncode == 0, sent.stderr
-    assert json.loads(sent.stdout)["id"] == 1 and vetted() == 3
-    assert received == [
-        {"summary": "Early days, vetted.", "visibility": "public", "round": started["round"]}
-    ]
+    assert json.loads(sent.stdout)["id"] == 1 and vetted() == 2
+    assert received == [{"summary": "Early days, vetted.", "round": started["round"]}]
     assert Sharing(project).unshared() is None
     assert git(project.root, "status", "--porcelain") == ""
     server.shutdown()

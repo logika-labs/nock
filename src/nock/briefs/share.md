@@ -1,4 +1,4 @@
-The owner wants to share this reflection summary with nock's makers{{ ", publicly on nock.dev" if visibility == "public" else ", privately" }}.
+The owner wants to share this reflection summary with nock's makers, privately.
 Make sure nothing in it tells which project, company or people it comes from,
 and hand back the text to send. Change nothing in the repository.
 

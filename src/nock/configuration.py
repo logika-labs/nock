@@ -81,16 +81,16 @@ DEFAULTS: dict[str, Any] = {
         "check": True,
         "index": "https://pypi.org/pypi/nock",
     },
-    "share": {
-        # What nock sends its makers: "anonymous" usage statistics (counts and
-        # categories), "public" (those and the toolbox's tool names, published on
-        # nock.dev), or "none" (nothing at all, summaries included). Nothing is
-        # sent before this machine has shown the owner what is shared.
-        "level": "anonymous",
+    # Whether nock shares an anonymous usage report with its makers (counts and
+    # categories, and a random id for the project), weekly; false sends nothing at
+    # all, summaries included. Nothing is sent before this machine has shown the
+    # owner what is shared.
+    "share": True,
+    "endpoints": {
         # Where `nock share` sends a round's summary, when the owner says so.
-        "endpoint": "https://api.nock.dev/reflections",
-        # Where the usage statistics go, once a week at most.
-        "usage_endpoint": "https://api.nock.dev/usage",
+        "reflections": "https://api.nock.dev/reflections",
+        # Where the usage reports go, once a week at most.
+        "usage": "https://api.nock.dev/usage",
     },
     # Dollars per million tokens, by model-name prefix: {input, output, cache_read, cache_write}.
     "pricing": {},

@@ -1,8 +1,9 @@
-"""The usage statistics nock shares with its makers, to improve nock: counts
-and categories only, never the project's code, paths, names or text. The
+"""The usage report nock shares with its makers, to improve nock: counts and
+categories, and a random id for the project so they can count projects
+without knowing which, never the project's code, paths, names or text. The
 owner is told what is shared, once per machine, the first time they engage
 with nock (a reflection round, the page, their word on a decision); nothing
-is sent before that, nor at all when `share.level` is `none`."""
+is sent before that, nor at all when `share` is false."""
 
 from __future__ import annotations
 
@@ -10,12 +11,14 @@ import json
 import sys
 import urllib.error
 import urllib.request
+import uuid
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from typing import TYPE_CHECKING, Any
 
 from nock.checks import Checks
 from nock.errors import PreconditionError
+from nock.git import Git, GitError
 from nock.kinds import kinds
 from nock.logika import LEDGER
 from nock.reflect import Reflection, Window, tool_rows
@@ -28,23 +31,15 @@ if TYPE_CHECKING:
     from nock.project import Project
 
 # The shape of a report, so a reader can tell versions apart.
-SCHEMA = 1
+SCHEMA = 2
 # Days between reports, and between attempts after one failed.
 INTERVAL = 7
 RETRY = 1
 # Seconds a send may take: it runs as a session ends.
 TIMEOUT = 3
 STATE = "usage.json"
-
-
-class Level(StrEnum):
-    NONE = "none"
-    """Nothing is ever sent: no statistics, no summaries."""
-    ANONYMOUS = "anonymous"
-    """Counts and categories, kept by nock's makers."""
-    PUBLIC = "public"
-    """The anonymous statistics and the toolbox's tool names with their
-    counts, published on nock.dev."""
+# The project's anonymous id, committed so that every clone shares it.
+IDENTITY = "project.json"
 
 
 class Moment(StrEnum):
@@ -55,41 +50,47 @@ class Moment(StrEnum):
     REVIEW = "review"
 
 
-ANONYMOUS_DISCLOSURE = (
-    "nock shares anonymous usage statistics with its makers, to improve nock: counts and"
+DISCLOSURE = (
+    "nock shares an anonymous usage report with its makers, to improve nock: counts and"
     " categories only (sessions, calls to nock's own commands and how they ended, how many"
-    " tools, checks and decisions there are, the versions of nock and Python), never code,"
-    " paths, names, prompts, arguments or what decisions say. Nothing has been sent yet: the"
-    " first report goes in a week, then at most weekly. `.nock/nock usage` shows exactly what"
-    " would be sent. To change it, set `share.level` in .nock/config.toml (or"
-    ' .nock/local/config.toml, for this machine only): "none" sends nothing at all, "public"'
-    " adds this project's tool names with their counts and publishes the statistics on nock.dev."
-)
-PUBLIC_DISCLOSURE = (
-    "nock shares usage statistics publicly, on nock.dev, to improve nock: counts and"
-    " categories (sessions, calls to nock's own commands and how they ended, how many tools,"
-    " checks and decisions there are, the versions of nock and Python) and this project's tool"
-    " names with their counts, never code, paths, prompts, arguments or what decisions say."
-    " Nothing has been sent yet: the first report goes in a week, then at most weekly."
-    " `.nock/nock usage` shows exactly what would be sent. To change it, set `share.level` in"
-    ' .nock/config.toml (or .nock/local/config.toml, for this machine only): "anonymous" sends'
-    ' no names and publishes nothing, "none" sends nothing at all.'
+    " tools, checks and decisions there are, the versions of nock and Python) and a random id"
+    " for this project, committed in .nock/project.json so its clones share it, which lets"
+    " nock's makers count projects without knowing which; never code, paths, names, prompts,"
+    " arguments or what decisions say. Nothing has been sent yet: the first report goes in a"
+    " week, then at most weekly. `.nock/nock usage` shows exactly what would be sent. To send"
+    " nothing at all, set `share = false` in .nock/config.toml (or .nock/local/config.toml,"
+    " for this machine only)."
 )
 
 
-def level_of(project: Project) -> Level:
-    value = project.configuration.get("share.level")
-    try:
-        return Level(value)
-    except ValueError as error:
-        choices = ", ".join(f'"{level}"' for level in Level)
-        raise PreconditionError(f"`share.level` is {value!r}: it is one of {choices}") from error
+def sharing(project: Project) -> tuple[bool, str | None]:
+    """Whether nock shares, and a note when the setting is an earlier nock's
+    `[share]` table: `level = "none"` reads as false, anything else as true,
+    which now shares only the anonymous report."""
+    value = project.configuration.get("share")
+    if isinstance(value, bool):
+        return value, None
+    if not isinstance(value, dict):
+        raise PreconditionError(f"`share` is {value!r}: it is true or false")
+    shared = value.get("level") != "none"
+    said = f"`share.level = {json.dumps(value['level'])}`" if "level" in value else "`[share]`"
+    return shared, (
+        f"{said} is an earlier nock's setting and reads as `share = {str(shared).lower()}`;"
+        " write `share = true` or `share = false` at the top of .nock/config.toml instead"
+        " (the endpoints are now under [endpoints])."
+    )
+
+
+def shares(project: Project) -> bool:
+    return sharing(project)[0]
 
 
 class Usage:
     def __init__(self, project: Project) -> None:
         self.project = project
         self.path = project.local / STATE
+        # In the main checkout, like the decisions, so a worktree never makes a second id.
+        self.identity_path = project.root / ".nock" / IDENTITY
 
     def state(self) -> dict[str, Any]:
         try:
@@ -99,14 +100,44 @@ class Usage:
 
     def disclose(self, moment: Moment) -> str | None:
         """What to tell the owner, the first time on this machine they engage
-        with nock while something is shared; nothing after that, or at `none`."""
-        level = level_of(self.project)
+        with nock while it shares; nothing after that, or when it does not."""
         state = self.state()
-        if level is Level.NONE or state.get("disclosed"):
+        if not shares(self.project) or state.get("disclosed"):
             return None
-        state["disclosed"] = {"moment": str(moment), "at": now(), "level": str(level)}
+        state["disclosed"] = {"moment": str(moment), "at": now()}
         write_json(self.path, state)
-        return PUBLIC_DISCLOSURE if level is Level.PUBLIC else ANONYMOUS_DISCLOSURE
+        return DISCLOSURE
+
+    def identity(self) -> str:
+        """The project's anonymous id: random, made the first time a report
+        needs it and committed in the main checkout, so every clone shares it."""
+        with self.project.lock("identity"):
+            known = self.known_identity()
+            if known:
+                return known
+            made = str(uuid.uuid4())
+            write_json(self.identity_path, {"id": made})
+        relative = f".nock/{IDENTITY}"
+        try:
+            git = Git(self.project.root)
+            git("add", "--", relative)
+            git(
+                "commit", "--quiet", "--no-verify", "--only", "-m",
+                "nock: the project's anonymous id, for its usage reports", "--", relative,
+            )  # fmt: skip
+        except GitError:
+            pass  # left for the owner to commit with the rest; the id is kept either way
+        return made
+
+    def known_identity(self) -> str | None:
+        try:
+            value = read_json(self.identity_path).get("id")
+        except (FileNotFoundError, PreconditionError, AttributeError):
+            return None
+        try:
+            return str(uuid.UUID(value, version=4)) if isinstance(value, str) else None
+        except ValueError:
+            return None
 
     def since(self) -> str | None:
         """Where the next report starts: the last one's end, else the
@@ -121,17 +152,15 @@ class Usage:
     def report(self) -> dict[str, Any]:
         """Exactly what the next send carries."""
         project = self.project
-        level = level_of(project)
         since = self.since()
         if since is None:
             moment = datetime.now(UTC) - timedelta(days=INTERVAL)
             since = moment.replace(microsecond=0).isoformat().replace("+00:00", "Z")
         window = Window(since, Sessions(project).since(since))
         registry = project.registry
-        rows = tool_rows(project, since)
         commands = {
             row["tool"]: {"calls": row["calls"], "failures": row["failures"]}
-            for row in rows
+            for row in tool_rows(project, since)
             if row["source"] == BUILT_IN_SOURCE and row["calls"]
         }
         own_checks = [
@@ -140,9 +169,9 @@ class Usage:
         command_checks = [
             name for name in Checks(project).available() if name not in registry.checks
         ]
-        report: dict[str, Any] = {
+        return {
             "schema": SCHEMA,
-            "level": str(level),
+            "project": self.identity(),
             "nock": VERSION,
             "python": f"{sys.version_info.major}.{sys.version_info.minor}",
             "platform": sys.platform,
@@ -164,17 +193,10 @@ class Usage:
             },
             "rounds": {kind.kind: len(kind.rounds.all()) for kind in kinds(project)},
         }
-        if level is Level.PUBLIC:
-            report["tools"] = [
-                {"tool": row["tool"], "calls": row["calls"], "failures": row["failures"]}
-                for row in rows
-                if row["source"] != BUILT_IN_SOURCE
-            ]
-        return report
 
     def due(self) -> bool:
         """Shared, told, and a week since the last report (a day since a failed try)."""
-        if level_of(self.project) is Level.NONE:
+        if not shares(self.project):
             return False
         state = self.state()
         start = parse_moment(self.since())
@@ -191,7 +213,7 @@ class Usage:
         if not self.due():
             return False
         report = self.report()
-        endpoint = str(self.project.configuration.get("share.usage_endpoint"))
+        endpoint = str(self.project.configuration.get("endpoints.usage"))
         state = self.state()
         state["tried"] = now()
         post = urllib.request.Request(
@@ -208,16 +230,16 @@ class Usage:
             return False
         sent = [
             *(state.get("sent") or []),
-            {"at": now(), "since": self.since(), "until": state["tried"], "level": report["level"]},
+            {"at": now(), "since": self.since(), "until": state["tried"]},
         ]
         state["sent"] = sent[-20:]
         write_json(self.path, state)
         return True
 
     def standing(self) -> dict[str, Any]:
-        """The level, whether this machine has told the owner, when reports
-        went and when the next goes, and the next one exactly."""
-        level = level_of(self.project)
+        """Whether nock shares, whether this machine has told the owner, when
+        reports went and when the next goes, and the next one exactly."""
+        shared, note = sharing(self.project)
         state = self.state()
         start = parse_moment(self.since())
         due = (
@@ -225,16 +247,17 @@ class Usage:
             .replace(microsecond=0)
             .isoformat()
             .replace("+00:00", "Z")
-            if start and level is not Level.NONE and state.get("disclosed")
+            if start and shared and state.get("disclosed")
             else None
         )
-        return {
-            "level": str(level),
+        standing: dict[str, Any] = {
+            "share": shared,
             "disclosed": state.get("disclosed"),
             "sent": state.get("sent") or [],
             "next": due,
-            "to": str(self.project.configuration.get("share.usage_endpoint"))
-            if level is not Level.NONE
-            else None,
-            "would_send": self.report() if level is not Level.NONE else None,
+            "to": str(self.project.configuration.get("endpoints.usage")) if shared else None,
+            "would_send": self.report() if shared else None,
         }
+        if note:
+            standing["note"] = note
+        return standing

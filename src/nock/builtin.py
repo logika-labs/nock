@@ -402,17 +402,20 @@ for _kind in KINDS.values():
 
 
 @command
-def share(project: Project, request: ShareRequest) -> dict[str, Any]:
+def share(
+    project: Project,
+    request: ShareRequest = {},  # noqa: B006
+) -> dict[str, Any]:
     """A round's summary as it would be shared, and where it would go: a fresh
     agent vets it first, rewriting whatever would identify the project. With
-    `send`, send it — privately to nock's makers, or publicly to nock.dev.
-    Send only when the owner says so."""
+    `send`, send it to nock's makers, who alone read it. Send only when the
+    owner says so."""
     return Sharing(project).share(request)
 
 
 @command
 def usage(project: Project) -> dict[str, Any]:
-    """What nock shares with its makers (`share.level`): whether this machine
+    """What nock shares with its makers (`share`): whether this machine
     has told the owner, the reports sent, when the next goes, and exactly what
     it would carry."""
     return Usage(project).standing()

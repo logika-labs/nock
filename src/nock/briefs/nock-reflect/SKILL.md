@@ -42,8 +42,7 @@ material, not from memory.
 6. Tell the owner in a few lines what changed, what waits on them and where
    the report is. Say the summary is ready to share, which is how nock's
    makers learn how nock does in real projects:
-   `.nock/nock share '{"visibility": "private"}'` shows what would be sent
-   (private goes to nock's makers only; public is published on nock.dev).
-   Send it (`"send": true`) only on their yes. If `reflect` gave
+   `.nock/nock share` shows what would be sent (only nock's makers read it;
+   nothing is published). Send it (`'{"send": true}'`) only on their yes. If `reflect` gave
    `tell_the_owner`, tell them that too, in its words: it is what nock
    shares with its makers, said once.

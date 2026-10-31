@@ -1,20 +1,22 @@
 """nock on someone else's machine: `reminders = false` keeps it silent unless
 asked while it still records; usage statistics are shared only once the
-owner was told, as `share.level` says, and never at `none`."""
+owner was told, with the project's anonymous id, and never when `share` is false."""
 
 from __future__ import annotations
 
 import json
 import threading
+import uuid
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 
 import pytest
 
 from nock.hooks import HookRunner
 from nock.project import Project
-from nock.usage import ANONYMOUS_DISCLOSURE, Moment, Usage
+from nock.usage import DISCLOSURE, IDENTITY, Moment, Usage
 
 from .conftest import git, nock, write_tool
 from .test_decisions import decide, edit
@@ -29,8 +31,8 @@ def configure(project: Project, old: str, new: str) -> Project:
     return Project.discover(project.root)
 
 
-def level(project: Project, value: str) -> Project:
-    return configure(project, 'level = "anonymous"', f'level = "{value}"')
+def shared(project: Project, value: str) -> Project:
+    return configure(project, "share = true", f"share = {value}")
 
 
 def test_with_reminders_off_nock_says_nothing_unasked_and_still_records(
@@ -75,8 +77,7 @@ def receiver(project: Project) -> Iterator[list[dict[str, object]]]:
     threading.Thread(target=server.serve_forever, daemon=True).start()
     local = project.root / ".nock" / "local" / "config.toml"
     local.write_text(
-        local.read_text()
-        + f'[share]\nusage_endpoint = "http://127.0.0.1:{server.server_address[1]}/"\n'
+        local.read_text() + f'[endpoints]\nusage = "http://127.0.0.1:{server.server_address[1]}/"\n'
     )
     yield received
     server.shutdown()
@@ -108,7 +109,7 @@ def test_nothing_is_sent_before_the_owner_is_told_and_then_weekly_counts_only(
     assert receiver == [] and not Usage(project).due()
 
     started = json.loads(nock(project.root, "reflect", "--json").stdout)
-    assert started["tell_the_owner"] == ANONYMOUS_DISCLOSURE
+    assert started["tell_the_owner"] == DISCLOSURE
     again = json.loads(nock(project.root, "reflect", "--json").stdout)
     assert "tell_the_owner" not in again
     number = decide(project.root)["number"]
@@ -122,7 +123,12 @@ def test_nothing_is_sent_before_the_owner_is_told_and_then_weekly_counts_only(
     end_session(project, "s3")
     (report,) = receiver
     assert report == {**shown["would_send"], "metrics": report["metrics"]}
-    assert report["level"] == "anonymous" and report["toolbox"]["tools"] == 1
+    assert report["toolbox"]["tools"] == 1 and "tools" not in report
+    identity = json.loads((project.root / ".nock" / IDENTITY).read_text())["id"]
+    assert report["project"] == identity and uuid.UUID(identity).version == 4
+    assert git(project.root, "log", "-1", "--format=%s", "--", f".nock/{IDENTITY}").startswith(
+        "nock: the project's anonymous id"
+    )
     assert report["commands"]["decide"] == {"calls": 1, "failures": 0}
     assert report["metrics"]["sessions"] >= 1
     sent = json.dumps(report)
@@ -133,31 +139,48 @@ def test_nothing_is_sent_before_the_owner_is_told_and_then_weekly_counts_only(
     assert git(project.root, "status", "--porcelain") == ""
 
 
-def test_public_adds_the_tool_names_and_none_sends_nothing_at_all(
+def test_with_share_false_nothing_is_told_made_or_sent(
     project: Project, receiver: list[dict[str, object]]
 ) -> None:
-    write_tool(project, "work", "import nock\n\n@nock.command\ndef deploy():\n    '''Ship it.'''\n")
-    public = level(project, "public")
-    told = edit(public.root, {"number": decide(public.root)["number"], "note": "fine"})
-    assert "publicly, on nock.dev" in told["tell_the_owner"]
-    nock(public.root, "deploy")
-    a_week_ago(public)
-    end_session(public, "s1")
-    assert receiver[0]["tools"] == [{"tool": "deploy", "calls": 1, "failures": 0}]
-
-    silent = configure(public, 'level = "public"', 'level = "none"')
-    (silent.root / ".nock" / "local" / "usage.json").unlink()
+    silent = shared(project, "false")
     assert "tell_the_owner" not in json.loads(nock(silent.root, "reflect", "--json").stdout)
-    assert json.loads(nock(silent.root, "usage", "--json").stdout)["would_send"] is None
-    end_session(silent, "s2")
-    assert len(receiver) == 1
-    refused = nock(silent.root, "share", '{"visibility": "private", "send": true}')
-    assert refused.returncode != 0
+    shown = json.loads(nock(silent.root, "usage", "--json").stdout)
+    assert shown["share"] is False and shown["would_send"] is None and shown["to"] is None
+    end_session(silent, "s1")
+    assert receiver == []
+    assert not (silent.root / ".nock" / IDENTITY).exists()
+    refused = nock(silent.root, "share", '{"send": true}')
+    assert refused.returncode != 0 and "`share` is false" in refused.stderr
+
+
+def test_every_clone_reports_the_same_id(project: Project, tmp_path: Path) -> None:
+    made = Usage(project).report()["project"]
+    clone = tmp_path / "clone"
+    git(tmp_path, "clone", "--quiet", str(project.root), str(clone))
+    (clone / ".nock" / "local").mkdir(exist_ok=True)
+    assert Usage(Project.discover(clone)).report()["project"] == made
+    assert Usage(project).report()["project"] == made
+
+
+@pytest.mark.parametrize(
+    ("setting", "shares"),
+    [('level = "none"', False), ('level = "anonymous"', True), ('level = "public"', True)],
+)
+def test_an_earlier_share_level_still_reads_sensibly_with_a_note(
+    project: Project, setting: str, shares: bool
+) -> None:
+    old = configure(project, "share = true", f"[share]\n{setting}")
+    shown = json.loads(nock(old.root, "usage", "--json").stdout)
+    assert shown["share"] is shares and "earlier nock" in shown["note"]
+    assert (shown["would_send"] is None) is not shares
+    if shares:
+        assert set(shown["would_send"]) >= {"project", "commands"}
+        assert "tools" not in shown["would_send"] and "level" not in shown["would_send"]
 
 
 def test_opening_the_page_tells_the_owner_once(project: Project) -> None:
     usage = Usage(project)
-    assert usage.disclose(Moment.STUDIO) == ANONYMOUS_DISCLOSURE
+    assert usage.disclose(Moment.STUDIO) == DISCLOSURE
     assert usage.disclose(Moment.STUDIO) is None
     assert (
         json.loads((project.root / ".nock" / "local" / "usage.json").read_text())["disclosed"][
@@ -167,10 +190,10 @@ def test_opening_the_page_tells_the_owner_once(project: Project) -> None:
     )
 
 
-def test_an_unknown_level_is_refused_plainly(project: Project) -> None:
-    level(project, "everything")
+def test_a_share_that_is_not_true_or_false_is_refused_plainly(project: Project) -> None:
+    shared(project, '"everything"')
     result = nock(project.root, "usage")
-    assert result.returncode == 42 and '"none", "anonymous", "public"' in result.stderr
+    assert result.returncode == 42 and "it is true or false" in result.stderr
 
 
 def test_the_primer_follows_the_committed_settings_not_the_machine_s(project: Project) -> None:

@@ -104,7 +104,7 @@ uvx nock init
 Commit the result. From then on, every agent session in the repository starts
 with the project's tools listed, and is recorded when it ends. nock speaks up
 unasked only a little, and `reminders = false` silences it (see [What agents
-see](#what-agents-see)); it shares anonymous usage statistics once you have
+see](#what-agents-see)); it shares an anonymous usage report once you have
 been told (see [What nock shares](#what-nock-shares)).
 
 To upgrade, `.nock/nock upgrade`. It merges the latest release from PyPI into
@@ -540,13 +540,13 @@ first.
    round, verdicts on the last round's, the window's numbers and each tool's.
    It commits `.nock/`.
 
-The round ends by asking the owner whether to share the summary. `nock share
-'{"visibility": "private"}'` has a fresh agent vet it — it reads the project
+The round ends by asking the owner whether to share the summary. `nock share`
+has a fresh agent vet it — it reads the project
 to learn its names, people, partners and customers, and rewrites whatever
 would identify it — scrubs the result again, and shows exactly what would be
-sent. With `"send": true` it goes to nock's makers (`private`), or is
-published on nock.dev (`public`). Nothing is sent otherwise, and nothing at
-all when `share.level` is `none`.
+sent. With `'{"send": true}'` it goes to nock's makers, who alone read it;
+nothing is published. Nothing is sent otherwise, and nothing at all when
+`share` is false.
 
 ### The logika round
 
@@ -602,14 +602,14 @@ window.
 
 ## What nock shares
 
-nock tells its makers how it is used, so they can improve it. What it
-sends is set by `share.level` in `.nock/config.toml` (or, for one machine,
-`.nock/local/config.toml`):
+nock tells its makers how it is used, so they can improve it. `share` in
+`.nock/config.toml` (or, for one machine, `.nock/local/config.toml`) turns it
+on or off:
 
-- **`anonymous`** (the default): usage statistics, counts and categories
-  only. Each report carries nock's version, Python's (`3.12`) and the
-  platform (`darwin`, `linux`); whether reminders and the consultant are on
-  and whether it is a Logika project; the window's numbers that a
+- **`share = true`** (the default): a weekly anonymous usage report, counts
+  and categories only. Each report carries nock's version, Python's (`3.12`)
+  and the platform (`darwin`, `linux`); whether reminders and the consultant
+  are on and whether it is a Logika project; the window's numbers that a
   reflection round also keeps (how many days, sessions, requests,
   interrupts, compactions, tool calls and failed ones, tokens, cost,
   commits, nock calls by how they ended, consultations, decisions by status
@@ -619,19 +619,27 @@ sends is set by `share.level` in `.nock/config.toml` (or, for one machine,
   generators the toolbox has and how many failed to load; and how many
   rounds have run. Never code, paths, file or tool names, prompts, command
   arguments, what decisions say, or anything else written in the project.
-- **`public`**: the same, plus the names of the project's own tools with
-  their calls and failures, and the report may be published on nock.dev.
-- **`none`**: nothing is ever sent — no statistics, and `nock share` won't
-  send a summary either.
+  It also carries the project's anonymous id: a random UUID, made the first
+  time a report is built (`nock usage` included) and committed in
+  `.nock/project.json`, so every clone of the project sends the same one. It
+  is derived from nothing — not the path, the remote or any name — and lets
+  nock's makers count projects without knowing which. Nothing is published.
+- **`share = false`**: nothing is ever sent — no report, no id is made, and
+  `nock share` won't send a summary either.
+
+An earlier nock's `[share]` table with `level` still reads: `"none"` as
+`share = false`, any other level as `share = true` (which now sends only the
+anonymous report, never tool names); `nock usage` notes it until the table
+is replaced.
 
 Nothing is sent from a machine until the owner has been told, once, the
 first time they engage with nock there: the first reflection round, opening
 the studio (`nock studio`), or their first review or note on a decision. The
 page shows it at the top; the round and `/nock-triage` say it in the
 session. Counting starts then. The first report goes a week later, as a
-session ends, then at most weekly, to `share.usage_endpoint`, with a
+session ends, then at most weekly, to `endpoints.usage`, with a
 three-second timeout; a failure is silent and tried again a day later.
-`.nock/nock usage` shows the level, when the owner was told, the reports
+`.nock/nock usage` shows whether nock shares, when the owner was told, the reports
 sent and exactly what the next would carry.
 
 A round's summary is sent only with `nock share` and the owner's yes (see
@@ -656,7 +664,7 @@ A round's summary is sent only with `nock share` and the owner's yes (see
 | `nock advise JSON` | the consultant's advice, submitted; only a consultant nock dispatched runs it |
 | `nock usage` | what nock shares with its makers, and exactly what the next report carries |
 | `nock reflect [KIND]`, `nock reflect [KIND] finish JSON` | a reflection round: nock's own (`/nock-reflect`), or another kind, `logika` (`/nock-reflect-logika`) |
-| `nock share JSON` | a round's summary, and sending it |
+| `nock share [JSON]` | a round's summary as it would be sent, and sending it |
 | `nock gen write`, `new`, `add`, `set`, `rm`, `show`, `bind`, `unbind` | generators |
 | `nock init`, `nock upgrade` | install (or re-wire), and upgrade the vendored core to the latest release, with a three-way merge |
 
@@ -702,8 +710,8 @@ one machine.
 | `agent.command`, `agent.model`, `agent.deadline` | `claude`, —, 1800 | the headless agent nock dispatches (elaborate, consult) |
 | `consult.enabled`, `consult.deadline` | true, 600 | whether the consultant runs and the primer asks for it; seconds a consultation may take |
 | `upgrade.check`, `upgrade.index` | true, PyPI's `nock` | whether a session start says a newer nock is out, and where releases are looked up |
-| `share.level` | `anonymous` | what nock sends its makers: `anonymous`, `public` or `none` (see [What nock shares](#what-nock-shares)) |
-| `share.endpoint`, `share.usage_endpoint` | `https://api.nock.dev/reflections`, `https://api.nock.dev/usage` | where `nock share` sends a summary, and where the usage statistics go |
+| `share` | true | whether nock sends its makers the anonymous usage report (false sends nothing, summaries included; see [What nock shares](#what-nock-shares)) |
+| `endpoints.reflections`, `endpoints.usage` | `https://api.nock.dev/reflections`, `https://api.nock.dev/usage` | where `nock share` sends a summary, and where the usage reports go |
 | `environment.python`, `setup`, `path`, `dotenv` | —, —, `[]`, — | what tools run in: the project's interpreter and how to make it, PATH entries, a dotenv file |
 | `pricing` | — | per-model prices, to cost sessions |
 
