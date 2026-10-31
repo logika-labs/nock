@@ -299,9 +299,18 @@ class Generators:
         return text if text.endswith("\n") or not text else text + "\n"
 
     def write(self) -> list[Path]:
-        """Write every generated file that differs; returns what changed."""
+        """Write every generated file that differs, each before the next is
+        generated, so a generator may read a file an earlier one writes;
+        returns what changed."""
         written = []
-        for path, content in self.outputs().items():
+        root = self.project.here
+        for catalog in Catalogs(self.project).all():
+            for path, text in catalog.rendered(root).items():
+                if not holds(path, text):
+                    write_atomic(path, text)
+                    written.append(path)
+        for entry in self.project.registry.generators:
+            path, content = root / entry.path, self.generate(entry)
             if not holds(path, content):
                 write_atomic(path, content)
                 written.append(path)

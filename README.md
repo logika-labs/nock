@@ -309,8 +309,10 @@ Hooks run on every event of every session, so prefer a check.
   `nock gen add flags '{"key": "dark_mode", …}'` adds an entry and rewrites all of those
   files in one call.
 
-`nock gen write` writes the generated files, and `nock check` fails when one
-of them has drifted.
+`nock gen write` writes the generated files, in the order they are
+defined and each before the next is generated, so one may read a file an
+earlier one writes (types from a schema it generates). `nock check` fails
+when one of them has drifted.
 
 ## What agents see
 
