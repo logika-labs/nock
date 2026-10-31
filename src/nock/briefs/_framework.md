@@ -18,7 +18,9 @@ typed as a TypedDict or a dataclass is one JSON argument (inline, a path to a
 JSON file, or stdin), checked against the type; give it a default to make it
 optional. The docstring's first line is
 the tool's summary everywhere it is listed; the rest is its `--help`.
-`group="db"` makes it `.nock/nock db NAME`.
+`group="db"` makes it `.nock/nock db NAME`. An option's help, or its own flag,
+is `Annotated[str, nock.Option("--from", help="…")]`; `rest="words"` gives
+the parameter `words: list[str]` every word after `--`, verbatim.
 
 **Ask for what you need by name**, as pytest fixtures are asked for:
 `project`; `root` (the working tree, a Path); `git` (`git("log", "-1")`

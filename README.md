@@ -173,7 +173,9 @@ is the whole framework on one page, written for agents. In short:
   misspelled key gets a "did you mean". With a default, left out is the
   default.
 - The docstring is the help, and `group="db"` makes the tool
-  `.nock/nock db NAME`.
+  `.nock/nock db NAME`. `Annotated[str, nock.Option("--from", help="…")]`
+  gives an option its help or its own flag, and `rest="words"` hands
+  `words` every word after `--`, verbatim, for a tool that passes them on.
 
 **Fixtures, as in pytest.** A tool asks for what it needs by naming a
 parameter after it:

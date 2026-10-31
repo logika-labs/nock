@@ -224,3 +224,20 @@ def test_rendering_by_shape() -> None:
     )
     text, cut = capped("\n".join(["header,x", *(f"{index},y" for index in range(10))]), 8000, 3)
     assert cut and text.endswith("… 7 more rows")
+
+
+def test_an_option_s_help_and_flag_and_the_words_passed_on(project: Project) -> None:
+    write_tool(
+        project,
+        "wrap",
+        "from typing import Annotated\n\nimport nock\n\n"
+        "@nock.command(rest='words')\n"
+        "def wrap(words: list[str], *, source: Annotated[str, nock.Option('--from', help='Where from.')] = 'here') -> str:\n"
+        "    '''Pass the words on.'''\n"
+        "    return f'{source}: {words}'\n",
+    )
+    assert (
+        nock(project.root, "wrap", "--from", "there", "--", "-k", "x").stdout
+        == "there: ['-k', 'x']\n"
+    )
+    assert "Where from." in nock(project.root, "wrap", "--help").stdout

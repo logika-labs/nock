@@ -27,6 +27,7 @@ import sys
 if sys.version_info < (3, 12):  # noqa: UP036 — vendored, it runs on whatever python3 there is
     sys.exit("nock needs Python 3.12 or newer; set NOCK_PYTHON to one")
 
+from nock.commands import Option
 from nock.errors import (
     ConflictError,
     Error,
@@ -49,6 +50,7 @@ __all__ = [
     "Exit",
     "Failed",
     "NotFoundError",
+    "Option",
     "Output",
     "PreconditionError",
     "Problem",
