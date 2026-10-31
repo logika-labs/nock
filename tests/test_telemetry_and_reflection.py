@@ -140,7 +140,7 @@ def test_the_session_hooks_list_the_tools_and_read_the_transcript(project: Proje
 
 def test_a_round_is_due_after_enough_sessions(project: Project) -> None:
     local = project.root / ".nock" / "local" / "config.toml"
-    local.write_text(local.read_text() + "[reflect]\nsessions = 4\ndays = 30\n")
+    local.write_text(local.read_text() + "[reflect]\nsessions = 4\ndays = 3650\n")
     for index in range(3):
         transcript(project, f"s{index}", ["work"], [])
     Sessions(project).catch_up()
@@ -317,3 +317,21 @@ def test_init_installs_the_skills_and_retires_the_old_ones(project: Project) -> 
     old.write_text("---\nname: consolidate\n---\n")
     assert nock(project.root, "init").returncode == 0
     assert not old.parent.exists()
+
+
+def test_a_round_s_window_opens_at_its_moment_whatever_the_machine_s_time_zone(
+    project: Project, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    started = Reflection(project).start()
+    for path in started["write"]:
+        (project.root / path).write_text("Early days; little to say.\n")
+    assert finish(project, RECORD).returncode == 0
+    (finished,) = (record["finished"] for record in Rounds(project).all())
+    # Nine hours east of UTC: the window's `Z` moment must not be read as local
+    # time, which would count this commit from an hour before the round.
+    monkeypatch.setenv("TZ", "Asia/Tokyo")
+    before = datetime.fromisoformat(finished.replace("Z", "+00:00")) - timedelta(hours=1)
+    monkeypatch.setenv("GIT_COMMITTER_DATE", before.isoformat())
+    git(project.root, "commit", "--allow-empty", "-qm", "Before the round")
+    reflection = Reflection(project)
+    assert reflection.metrics(reflection.window())["commits"] == 0

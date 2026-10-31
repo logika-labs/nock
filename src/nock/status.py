@@ -1,6 +1,8 @@
 """Where the project stands with nock, in one place: whether a reflection round
 is due, the decisions by status and review, those rejected and waiting to be
-redone, a round summary not yet shared, and a newer nock. `nock status` prints it; a
+redone, the questions the owner answered, a round summary not yet shared, a
+newer nock, and — in a Logika project — whether a logika round is worth
+offering. `nock status` prints it; a
 session the human starts begins with it."""
 
 from __future__ import annotations
@@ -8,6 +10,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from nock.decisions import Decisions, Review, Status
+from nock.logika import SKILL, LogikaRound
 from nock.reflect import Reflection
 from nock.releases import Updates
 from nock.share import Sharing
@@ -18,6 +21,10 @@ if TYPE_CHECKING:
 
 def brief(decision: dict[str, Any]) -> dict[str, Any]:
     return {"number": decision["number"], "title": decision["title"], "note": decision["note"]}
+
+
+# What the owner's review of a question means.
+ANSWERS = {Review.ACCEPTED: "yes", Review.REJECTED: "no", Review.UNREVIEWED: "answered in a note"}
 
 
 def said(decision: dict[str, Any]) -> str:
@@ -48,15 +55,21 @@ class Standing:
                     {"status": Status.TODO, "review": Review.ACCEPTED}
                 )
             ],
+            "answered": [
+                {**brief(decision), "answer": decision["review"]}
+                for decision in decisions.answered()
+            ],
             "notes": [
                 brief(decision)
                 for decision in decisions.matching({})
                 if decision["note"]
                 and decision["review"] != Review.REJECTED
+                and decision["status"] != Status.QUESTION
                 and decision["updated"] > (window.since or "")
             ],
             "unshared": Sharing(self.project).unshared(),
             "newer_nock": Updates(self.project).newer(),
+            "logika": LogikaRound(self.project).standing(),
         }
 
     def lines(self, standing: dict[str, Any]) -> list[str]:
@@ -67,6 +80,7 @@ class Standing:
             lines.append(f"nock: {due} — offer the human `/nock-reflect`, which runs one.")
         counts = standing["decisions"]
         waiting = [
+            f"{counts[Status.QUESTION][Review.UNREVIEWED]} question(s)",
             f"{counts[Status.TODO][Review.UNREVIEWED]} todo(s)",
             f"{counts[Status.DONE][Review.UNREVIEWED]} done unreviewed",
             f"{counts[Status.DONE][Review.REJECTED]} rejected to rework",
@@ -78,6 +92,14 @@ class Standing:
             )
         for decision in standing["to_rework"]:
             lines.append(f"- rework [D{decision['number']}] {decision['title']}{said(decision)}")
+        if standing["answered"]:
+            lines.append(
+                "nock: questions the owner answered — act on each, then edit it to done saying what you did:"
+            )
+            lines += [
+                f"- [D{item['number']}] {item['title']} — {ANSWERS[item['answer']]}{said(item)}"
+                for item in standing["answered"]
+            ]
         if standing["backlog"]:
             lines.append("nock: the owner's backlog — todos they accepted, not done yet:")
             lines += [
@@ -98,5 +120,12 @@ class Standing:
             lines.append(
                 f"nock: the {standing['unshared']} round's summary is not shared yet — "
                 "`.nock/nock share` shows it; sharing it helps nock's makers improve nock."
+            )
+        logika = standing["logika"]
+        if logika and logika["due"]:
+            install = "" if logika["skill"] else " (`.nock/nock init` installs the skill)"
+            lines.append(
+                f"nock: {logika['due']} — when the human wants one, `/{SKILL}`{install} turns the "
+                "ledger and its captured data into rules, with them; never start it unasked."
             )
         return lines

@@ -18,9 +18,10 @@ from nock.decisions import TAGS, Change, Decisions, Draft, Filter, row
 from nock.errors import Error, ExitCode, Failed, UsageError
 from nock.fixtures import Shell
 from nock.generators import Catalogs, Generators
+from nock.logika import LogikaRound
 from nock.processes import Output
 from nock.project import Project
-from nock.reflect import Record, Reflection, tool_rows
+from nock.reflect import Record, Reflection, Topic, tool_rows
 from nock.render import Problem
 from nock.schema import check_schema
 from nock.sessions import Sessions
@@ -209,8 +210,9 @@ def sessions(project: Project, *, limit: int = 15) -> list[dict[str, Any]]:
 @command
 def status(project: Project) -> dict[str, Any]:
     """Where the project stands with nock: whether a reflection round is due,
-    the decisions by status and review, the rejected ones to rework, a round
-    summary not yet shared, and whether a newer nock is out."""
+    the decisions by status and review, the rejected ones to rework, the
+    questions the owner answered, a round summary not yet shared, and whether
+    a newer nock is out."""
     return Standing(project).collect()
 
 
@@ -232,10 +234,12 @@ def decide(project: Project, decision: Draft) -> dict[str, Any]:
     """Record a decision as you make it — a non-trivial choice between ways
     that could each work, a deliberate simplification, a reading of something
     ambiguous — or, as a todo, something that should be done and is not yet
-    (tag a possible improvement `improvement`). Not what has one obvious
-    right way. Write it for someone who knows what the system does, not how
-    it is built; give only alternatives you really weighed. The owner reviews
-    it later; keep going meanwhile."""
+    (tag a possible improvement `improvement`), or, as a question, what only
+    the owner can settle when they are not there to ask: the answer you
+    propose as the title, the other answers as alternatives. Not what has one
+    obvious right way. Write it for someone who knows what the system does,
+    not how it is built; give only alternatives you really weighed. The owner
+    reviews it later; keep going meanwhile."""
     recorded, problem = Decisions(project).decide(decision)
     return recorded_result(project, recorded, problem)
 
@@ -282,8 +286,8 @@ def decisions_show(project: Project, number: int) -> dict[str, Any]:
 
 @command(name="edit", group="decisions")
 def decisions_edit(project: Project, change: Change) -> dict[str, Any]:
-    """Change a decision: rework one the owner rejected, or mark a todo done
-    and say what was done. A change to what it says asks for a fresh review.
+    """Change a decision: rework one the owner rejected, or mark a todo or an
+    answered question done and say what was done. A change to what it says asks for a fresh review.
     `review` (accepted, rejected), `note` and `elaborate` are the owner's
     word: set them only when the owner says so."""
     decisions = Decisions(project)
@@ -322,19 +326,37 @@ def consult(project: Project, consultation: Consultation) -> str:
 # --- reflection ---------------------------------------------------------------------
 
 
+TOPIC_HELP = "logika: the round on a Logika project's ledger rules (`/nock-reflect-logika`)."
+
+
 @command(name="start", group="reflect")
-def reflect_start(project: Project) -> dict[str, Any]:
+def reflect_start(
+    project: Project, *, topic: Annotated[Topic | None, Option(help=TOPIC_HELP)] = None
+) -> dict[str, Any]:
     """Start a reflection round (the `/nock-reflect` skill), or pick up the one
     under way: writes what its three parts read, and says where the report
-    and the shareable summary go."""
+    and the shareable summary go. With `--topic logika`, a logika round
+    instead: what it reads, and where its report goes."""
+    if topic is Topic.LOGIKA:
+        return LogikaRound(project).start()
     return Reflection(project).start()
 
 
 @command(name="finish", group="reflect")
-def reflect_finish(project: Project, record: Record) -> dict[str, Any]:
+def reflect_finish(
+    project: Project,
+    record: Record,
+    *,
+    topic: Annotated[Topic | None, Option(help=TOPIC_HELP)] = None,
+) -> dict[str, Any]:
     """Finish the round: requires its report and summary, nock's checks to
     pass, then records what the toolbox part changed and what each change
-    should do by the next round, and commits `.nock/`."""
+    should do by the next round, and commits `.nock/`. With `--topic logika`,
+    the logika round: requires its report and a ledger that parses, records
+    the rules it changed and how each was tested, and commits `.nock/` and
+    `logika.json`."""
+    if topic is Topic.LOGIKA:
+        return LogikaRound(project).finish(record)
     return Reflection(project).finish(record)
 
 

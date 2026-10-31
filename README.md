@@ -314,8 +314,11 @@ deliberate simplification, or a reading of something ambiguous. What has one
 obvious right way is not a decision, and an alternative nobody weighed is
 not an alternative. With `"status": "todo"` it is something that should be
 done and is not yet; a possible improvement is a todo tagged `improvement`.
-The summary is written for someone who knows what the system does, but not
-how it is built.
+With `"status": "question"` it asks the owner what only they can settle,
+when they are not there to ask: the title is the answer the agent proposes
+("Refunds never exceed the charge"), the alternatives the other answers it
+sees. The summary is written for someone who knows what the system does,
+but not how it is built.
 
 Each decision is a file, `.nock/decisions/0007.json`, written and committed in
 the main checkout whichever worktree recorded it. Its tags are `important`,
@@ -328,6 +331,11 @@ decisions it overturns, which stay as history.
 |---|---|---|---|
 | **done** | done; please check | it stands | rework it |
 | **todo** | worth doing later? | on the backlog | do not do it |
+| **question** | asks you | yes, as proposed | no: the note says what holds |
+
+A note alone answers a question in words. Until an agent acts on the answer
+— and edits the question to done, saying what it did — every session the
+human starts lists it.
 
 - **The owner reviews.** On the page, `nock web` (or with `{"open": true}`),
   which lists the decisions to review, accepted and rejected, searchable and
@@ -349,8 +357,8 @@ decisions it overturns, which stay as history.
   the summary, evidence and alternatives, answering the owner's note
   (`nock decisions elaborate N`).
 
-Any session the human starts says how many todos and done decisions wait on
-review, which rejected ones wait to be reworked, the owner's backlog (todos
+Any session the human starts says how many questions, todos and done
+decisions wait on review, the questions answered and not yet acted on, which rejected ones wait to be reworked, the owner's backlog (todos
 they accepted), and what they said about decisions since the last round —
 a note often asks for something. `nock status` says the same, and whether a
 reflection round is due.
@@ -425,6 +433,47 @@ would identify it — scrubs the result again, and shows exactly what would be
 sent. With `"send": true` it goes to nock's makers (`private`), or is
 published on nock.dev (`public`). Nothing is sent otherwise.
 
+### The logika round
+
+In a [Logika](https://logika.host) project (a `logika.json` ledger at the
+root, the `logika` CLI on PATH) there is a second kind of round: the
+`/nock-reflect-logika` skill, which `nock init` installs only there. It
+turns the instrumented code and the data it captures into the ledger's
+rules (validations, paths, timeouts, rules and invariants) for how the
+system is expected to behave, so that Logika wakes an agent when it
+doesn't.
+
+It is never automatic. It runs only when the owner asks. When one is due,
+the session start offers it at most once a week: when no logika round has
+run yet and the ledger declares events, or `reflect.logika.days` (30)
+after the last one, once `logika.json` has changed since then. `nock
+status` always says.
+
+1. **`nock reflect start --topic logika`** writes its material: what the
+   ledger already says per event and per component (with the commits that
+   touched each component since the last round), the ledger's history,
+   the last logika round's changes and expectations, and the questions
+   and suggestions tagged `logika`.
+2. **The session works through it with the owner.** It learns the forms
+   from Logika's own docs (`logika docs …`) instead of a copy, explores real
+   captures with `logika show query`, and agrees with the owner what must
+   hold. It lands a rule only once it has seen the rule stay quiet on a
+   real capture (`logika test`) and fire on a replay (`logika test
+   --replay`). False positives are the cost it guards against first.
+3. **What only the owner knows** is asked in the session. A question for
+   later becomes a question decision tagged `logika`, and the next round
+   acts on the answer. A rule that needs state the code doesn't record
+   becomes a todo tagged `logika` and `instrumentation`, not a weaker rule.
+4. **`nock reflect finish --topic logika JSON`** requires the round's
+   `report.md` and a `logika.json` that parses. It records the rules
+   changed, how each was tested, and the ledger's numbers before and after
+   in `.nock/reflections/logika/DATE/record.json`, and commits `.nock/` and
+   `logika.json`. Deploying the ledger (`logika sync`) is left to the
+   owner's word.
+
+Logika rounds are kept apart from nock's own, so neither moves the other's
+window.
+
 ## Reference
 
 ### Commands
@@ -436,12 +485,12 @@ published on nock.dev (`public`). Nothing is sent otherwise.
 | `nock run -- COMMAND` | run anything supervised and condensed |
 | `nock guide` | how to write a tool, check, hook or generator |
 | `nock calls`, `stats`, `sessions`, `query SQL` | the telemetry |
-| `nock status` | a round due, decisions waiting, rejected ones to rework, an unshared summary |
+| `nock status` | a round due, decisions waiting, rejected ones to rework, answered questions, an unshared summary, a logika round to offer |
 | `nock decide JSON` | record a decision |
 | `nock decisions list [JSON]`, `show N`, `edit JSON`, `elaborate N` | the decisions: filtered, in full, changed or reviewed, elaborated |
 | `nock web [JSON]` | the owner's page |
 | `nock consult JSON` | a fresh agent finds the decisions and tools that bear on a task, and the caller waits |
-| `nock reflect start`, `finish JSON` | a reflection round; the round is the `/nock-reflect` skill |
+| `nock reflect start`, `finish JSON` | a reflection round; the round is the `/nock-reflect` skill; `--topic logika` for a logika round (`/nock-reflect-logika`) |
 | `nock share JSON` | a round's summary, and sending it |
 | `nock gen write`, `new`, `add`, `set`, `rm`, `show`, `bind`, `unbind` | generators |
 | `nock init`, `nock upgrade` | install (or re-wire), and upgrade the vendored core to the latest release, with a three-way merge |
@@ -483,6 +532,7 @@ one machine.
 | `checks.NAME.command` | — | a command that is a check |
 | `checks.concurrency` | 2 | checks run at once, machine-wide |
 | `reflect.sessions`, `reflect.days` | 15, 7 | when a round is due, whichever comes first |
+| `reflect.logika.days` | 30 | in a Logika project, days after a logika round before the next is offered (once the ledger has changed) |
 | `agent.command`, `agent.model`, `agent.deadline` | `claude`, —, 1800 | the headless agent nock dispatches (elaborate, consult) |
 | `consult.deadline` | 600 | seconds a consultation may take |
 | `upgrade.check`, `upgrade.index` | true, PyPI's `nock` | whether a session start says a newer nock is out, and where releases are looked up |

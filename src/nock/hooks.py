@@ -1,7 +1,8 @@
 """Claude Code's hook events, handled: `nock hook EVENT` reads the payload on
 stdin and answers in Claude Code's hook format. nock's own: a session starts
 knowing the toolbox and — when the human started it — where things stand
-(a reflection round due, decisions waiting on review or rework); a prompt
+(a reflection round due, decisions waiting on review or rework, a logika
+round worth offering); a prompt
 brings the owner's reviews of the decisions the session recorded; an edit to
 a file shows the decisions that govern it; and the transcript is read into
 telemetry when the session ends. What calls for the owner is also said to
@@ -12,6 +13,7 @@ from __future__ import annotations
 
 import json
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -108,6 +110,14 @@ class HookRunner:
                 collected["unshared"] = None
             elif unshared:
                 self.project.store.insert("nudged", {"round": unshared})
+            if collected["logika"] and collected["logika"]["due"]:
+                # A logika round is offered gently: at most once a week while it is due.
+                year, week, _ = datetime.now(UTC).isocalendar()
+                key = f"logika:{collected['logika']['last'] or 'never'}:{year}-{week}"
+                if self.project.store.rows("SELECT round FROM nudged WHERE round = ?", (key,)):
+                    collected["logika"] = None
+                else:
+                    self.project.store.insert("nudged", {"round": key})
             said = standing.lines(collected)
             if said:
                 lines += [STANDING_PREFACE, *said]
@@ -162,7 +172,7 @@ class HookRunner:
             [
                 "nock: the owner reviewed decision(s) you recorded:",
                 *lines,
-                "Rework what was rejected, and edit the decision to say what you did: "
+                "Rework what was rejected, act on what they answered, and edit the decision to say what you did: "
                 "`.nock/nock decisions edit '{\"number\": N, …}'`.",
             ]
         )

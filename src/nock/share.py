@@ -18,7 +18,7 @@ from typing import TYPE_CHECKING, Any, NotRequired, TypedDict
 from nock.dispatch import Dispatcher
 from nock.errors import ExternalError, Failed, NotFoundError
 from nock.git import GitError
-from nock.reflect import SHARE, Reflection
+from nock.reflect import SHARE, Reflection, commit
 from nock.render import Problem
 from nock.templates import Library
 from nock.utils import now, read_json, write_json
@@ -126,7 +126,7 @@ class Sharing:
             raise ExternalError(f"could not reach {endpoint}: {error}") from error
         shared = {"moment": now(), "visibility": str(visibility), "id": answer.get("id")}
         self.reflection.record_shared(name, shared)
-        self.reflection.commit(f"Reflection round {name}: shared, {visibility}")
+        commit(self.project, f"Reflection round {name}: shared, {visibility}")
         return {"round": name, **shared}
 
     # --- what the summary may not say -------------------------------------------

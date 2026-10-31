@@ -15,6 +15,8 @@ from nock.decisions import MAP
 from nock.errors import ConflictError, NotFoundError, PreconditionError
 from nock.git import Git, GitError
 from nock.hooks import BUILT_IN_EVENTS, EDIT_TOOLS
+from nock.logika import LEDGER
+from nock.logika import SKILL as LOGIKA_SKILL
 from nock.project import NOCK_DIRECTORY, Project
 from nock.releases import PYPI, VERSION, Releases
 from nock.templates import Library
@@ -75,11 +77,12 @@ the tools agents built.
   the project and tells you the decisions and tools that bear on your work.
 - **Record decisions as you make them:** `.nock/nock decide` (`--help` has
   the fields). A decision is a choice between ways that could each work, a
-  deliberate simplification, your reading of something ambiguous, or a todo
-  you are leaving; give the alternatives you weighed, for someone who knows
+  deliberate simplification, your reading of something ambiguous, a todo
+  you are leaving, or a question only the owner can settle when they are
+  not there to ask; give the alternatives you weighed, for someone who knows
   what the system does but not how it is built. The owner reviews them
-  later, so don't wait. When you do a todo or rework a rejected decision,
-  edit it to say what you did.
+  later, so don't wait. When you do a todo, act on an answer or rework a
+  rejected decision, edit it to say what you did.
 - **Run noisy or long commands through `.nock/nock run -- COMMAND`,** and
   `.nock/nock check` before you finish. Exit codes: 1 fix the code, 42 fix
   the machine or the state, 50 and up retry or escalate.
@@ -184,10 +187,12 @@ class Installer:
         return self.report
 
     def install_skills(self) -> None:
-        """The `/nock-reflect` and `/nock-triage` skills, kept in step with the core like the primer."""
+        """The `/nock-reflect` and `/nock-triage` skills — and, in a Logika
+        project, `/nock-reflect-logika` — kept in step with the core like the primer."""
         briefs = PACKAGE / "briefs"
         library = Library(briefs)
-        for name in SKILLS:
+        logika = (LOGIKA_SKILL,) if (self.root / LEDGER).is_file() else ()
+        for name in (*SKILLS, *logika):
             for source in sorted((briefs / name).glob("*.md")):
                 relative = f".claude/skills/{name}/{source.name}"
                 write_atomic(self.root / relative, library.render(f"{name}/{source.name}"))

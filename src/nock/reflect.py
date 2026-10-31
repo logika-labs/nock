@@ -18,6 +18,7 @@ import statistics
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from enum import StrEnum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, NotRequired, TypedDict
 
@@ -48,14 +49,29 @@ SHARE = "share.md"
 ROUND_CHECKS = ["nock-tools", "nock-generators", "nock-map", "nock-share"]
 
 
+class Topic(StrEnum):
+    """A round other than nock's own, on a subject of its own."""
+
+    LOGIKA = "logika"
+    """The rules of a Logika project's ledger (`nock.logika`)."""
+
+
 class Change(TypedDict):
-    kind: Literal["add", "change", "retire", "check", "generator", "other"]
+    kind: Literal[
+        "add", "change", "retire", "check", "generator",
+        "validate", "path", "timeout", "rule", "invariant", "other",
+    ]  # fmt: skip
+    """add, change, retire, check, generator — the toolbox; validate, path,
+    timeout, rule, invariant — a logika round's ledger; other."""
     target: str
-    """The tool, check or file: `failures`, `.nock/tools/db.py`."""
+    """The tool, check or file: `failures`, `.nock/tools/db.py`; in a logika
+    round, the event or rule: `checkout`, `receipt_continuity`."""
     why: str
     """The evidence: what in the material called for it."""
     expect: str
     """What should be measurably different by the next round, and how to tell."""
+    tested: NotRequired[str]
+    """A logika round's: the capture it stayed silent on, and the replay it fired on."""
 
 
 class Verdict(TypedDict):
@@ -124,16 +140,18 @@ class Rounds:
     summary, committed — and, while it runs, what it reads, in
     `.nock/local/reflections/DATE/`."""
 
-    def __init__(self, project: Project) -> None:
+    def __init__(self, project: Project, topic: Topic | None = None) -> None:
         self.project = project
+        # A topic's rounds are a directory of their own, so they never move nock's window.
+        self.place = [str(topic)] if topic else []
 
     @property
     def directory(self) -> Path:
-        return self.project.code_path("reflections")
+        return self.project.code_path("reflections", *self.place)
 
     @property
     def scratch(self) -> Path:
-        return self.project.local / "reflections"
+        return self.project.local.joinpath("reflections", *self.place)
 
     def all(self) -> list[dict[str, Any]]:
         """Every finished round, oldest first (rounds from before rounds had
@@ -180,6 +198,19 @@ class Rounds:
 
 def schema() -> dict[str, Any]:
     return schema_of(Record)
+
+
+def commit(project: Project, message: str, also: tuple[str, ...] = ()) -> None:
+    """Commit a round: `.nock/` (and `also`) in the working tree, and the main
+    checkout's decisions when the round ran in a worktree; nothing else in either."""
+    places = [(project.here, [".nock", *also])]
+    if project.root != project.here:
+        places.append((project.root, [".nock/decisions"]))
+    for root, paths in places:
+        git = Git(root)
+        git("add", "--all", "--", *paths)
+        if git("diff", "--cached", "--name-only", "--", *paths):
+            git("commit", "--quiet", "--no-verify", "--only", "-m", message, "--", *paths)
 
 
 class Reflection:
@@ -283,20 +314,8 @@ class Reflection:
                 "shared": None,
             },
         )
-        self.commit(f"Reflection round {name}: {record['summary']}")
+        commit(self.project, f"Reflection round {name}: {record['summary']}")
         return {"round": name, "share": str((directory / SHARE).relative_to(self.project.here))}
-
-    def commit(self, message: str) -> None:
-        """Commit `.nock/`, and the main checkout's decisions when the round ran
-        in a worktree; nothing else in either."""
-        places = [(self.project.here, ".nock")]
-        if self.project.root != self.project.here:
-            places.append((self.project.root, ".nock/decisions"))
-        for root, path in places:
-            git = Git(root)
-            git("add", "--all", "--", path)
-            if git("diff", "--cached", "--name-only", "--", path):
-                git("commit", "--quiet", "--no-verify", "--only", "-m", message, "--", path)
 
     def record_shared(self, name: str, shared: dict[str, Any]) -> None:
         path = self.rounds.directory / name / "record.json"
@@ -366,6 +385,7 @@ class Reflection:
             "nock_broke": sum(n for code, n in codes.items() if code and code >= 50),
             "decisions_recorded": len(recorded),
             "decisions_todo": sum(1 for d in recorded if d["status"] == "todo"),
+            "decisions_question": sum(1 for d in recorded if d["status"] == "question"),
             "decisions_reviewed": len(reviewed),
             "decisions_accepted": sum(1 for d in reviewed if d["review"] == "accepted"),
             "decisions_rejected": sum(1 for d in reviewed if d["review"] == "rejected"),
@@ -884,7 +904,8 @@ What they count: sessions the human started in the window (`days` long) and
 what they asked (`requests`), interrupted and compacted; every tool call
 they made and how many failed; tokens and dollars; commits. `nock_*`: calls
 to nock, and how many said no (exit 1), were called wrong (40s) or broke
-(50s). `decisions_*`: recorded in the window (and how many as todos),
+(50s). `decisions_*`: recorded in the window (and how many as todos and
+questions),
 reviewed by the owner in it (accepted, rejected), and every standing one
 still unreviewed. `tools`: the project's own commands, how many were used,
 and how often. `map_*`: the map's length and the decisions it cites."""

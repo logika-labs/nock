@@ -38,6 +38,9 @@ DEFAULTS: dict[str, Any] = {
         # many days — whichever comes first, given a session to look at.
         "sessions": 15,
         "days": 7,
+        # In a Logika project, a logika round is offered this many days after
+        # the last one, once the ledger has changed since.
+        "logika": {"days": 30},
     },
     "agent": {
         # The headless agent nock dispatches (elaborate, consult) and its model

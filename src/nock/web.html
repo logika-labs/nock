@@ -322,8 +322,8 @@ kbd {
 <script>
 const CHEVRON = '<svg class="chevron" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M6 3.5 10.5 8 6 12.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 const MAC = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
-// The chips: done/todo, then the tags in use, the fixed ones first.
-const STATUSES = ["done", "todo"];
+// The chips: done/todo/question, then the tags in use, the fixed ones first.
+const STATUSES = ["done", "todo", "question"];
 const SHOWN_TAGS = 6;
 const state = { search: "", statuses: new Set(), tags: new Set(), sort: "oldest", tab: "unreviewed", decisions: [], tags_in_use: {}, expanded: new Set(), notes: new Map(), active: null, seen: "" };
 
@@ -412,6 +412,7 @@ function moment(decision) { return decision.reviewed ? decision.reviewed.moment 
 function badges(decision) {
   const found = [];
   if (decision.status === "todo") found.push('<span class="badge info">todo</span>');
+  if (decision.status === "question") found.push('<span class="badge warning">question</span>');
   if (decision.tags.includes("important")) found.push('<span class="badge warning">important</span>');
   if (decision.elaborating) found.push('<span class="badge info">elaborating</span>');
   if (decision.superseded_by) found.push(`<span class="badge">superseded by ${decision.superseded_by}</span>`);
@@ -424,27 +425,31 @@ function section(label, items) {
 }
 
 const VERDICT = { accepted: "accepted", rejected: "rejected" };
+// A question's title is the answer the agent proposes: accepting it is yes.
+const ANSWER = { accepted: "answered yes", rejected: "answered no" };
 const AFTER = {
   done: { accepted: "It stands.", rejected: "An agent reworks it: the next session that touches what it governs is told." },
   todo: { accepted: "It is on the backlog.", rejected: "It will not be done." },
+  question: { accepted: "An agent goes ahead as it proposed.", rejected: "An agent goes ahead with what your note says holds." },
 };
 
 function body(decision) {
   const parts = [`<div class="context">${markdown(decision.summary)}</div>`];
   parts.push(section("evidence", decision.evidence.map(line => `<li>${inline(line)}</li>`)));
-  parts.push(section("considered instead", decision.alternatives.map(item =>
+  parts.push(section(decision.status === "question" ? "other answers" : "considered instead", decision.alternatives.map(item =>
     `<li class="alternative"><span class="option">${inline(item.option)}</span> — <span class="why">${inline(item.why_not)}</span></li>`)));
   if (decision.elaborating) {
     parts.push(`<div class="panel agent"><span class="label"><span class="spinner" aria-hidden="true"></span>an agent is looking into it</span>${decision.note ? `<div>${inline(decision.note)}</div>` : ""}</div>`);
   } else if (decision.review !== "unreviewed") {
-    const heading = `${VERDICT[decision.review]} ${decision.reviewed ? time(decision.reviewed.moment) : ""}`;
+    const heading = `${(decision.status === "question" ? ANSWER : VERDICT)[decision.review]} ${decision.reviewed ? time(decision.reviewed.moment) : ""}`;
     parts.push(`<div class="panel ${decision.review === "accepted" ? "ok" : "rejected"}"><span class="label">${heading}</span><div>${AFTER[decision.status][decision.review]}</div></div>`);
   }
   if (!decision.superseded_by) {
-    const keys = `<kbd>${MAC ? "⌘" : "Ctrl"}</kbd> <kbd>↵</kbd> to accept`;
+    const asked = decision.status === "question";
+    const keys = `<kbd>${MAC ? "⌘" : "Ctrl"}</kbd> <kbd>↵</kbd> to ${asked ? "answer yes" : "accept"}`;
     const disabled = decision.elaborating ? "disabled" : "";
     const verdicts = ["rejected", "accepted"].filter(review => review !== decision.review).map(review =>
-      `<button type="button" class="button ${review === "accepted" ? "primary" : "secondary"}" data-action="${review}" data-number="${decision.number}" ${disabled}>${review === "accepted" ? "accept" : "reject"}</button>`).join("");
+      `<button type="button" class="button ${review === "accepted" ? "primary" : "secondary"}" data-action="${review}" data-number="${decision.number}" ${disabled}>${review === "accepted" ? (asked ? "yes" : "accept") : (asked ? "no" : "reject")}</button>`).join("");
     const saving = decision.review !== "unreviewed" ? `<button type="button" class="button ghost" data-action="note" data-number="${decision.number}" ${disabled} hidden>save note</button>` : "";
     parts.push(`<textarea id="note-${decision.number}" data-number="${decision.number}" rows="1" aria-label="Note" placeholder="Add a note" ${disabled}>${escape(note(decision))}</textarea>`);
     parts.push(`<div class="actions">
@@ -513,9 +518,11 @@ function draw() {
   for (const decision of standing) counts[decision.review]++;
   for (const key of Object.keys(counts)) document.getElementById(`count-${key}`).textContent = counts[key] || "";
   const todos = standing.filter(decision => decision.review === "unreviewed" && decision.status === "todo").length;
+  const questions = standing.filter(decision => decision.review === "unreviewed" && decision.status === "question").length;
   const rework = standing.filter(decision => decision.review === "rejected" && decision.status === "done").length;
   const said = [];
-  if (counts.unreviewed) said.push(`${counts.unreviewed} ${counts.unreviewed === 1 ? "decision waits" : "decisions wait"} on your review${todos ? `, ${todos} of them ${todos === 1 ? "a todo" : "todos"}` : ""}`);
+  const kinds = [todos ? `${todos} of them ${todos === 1 ? "a todo" : "todos"}` : "", questions ? `${questions} ${todos ? "" : "of them "}${questions === 1 ? "a question" : "questions"}` : ""].filter(Boolean);
+  if (counts.unreviewed) said.push(`${counts.unreviewed} ${counts.unreviewed === 1 ? "decision waits" : "decisions wait"} on your review${kinds.map(kind => `, ${kind}`).join("")}`);
   if (rework) said.push(`${rework} rejected, to be reworked`);
   document.getElementById("summary").textContent = said.length ? `${said.join(". ")}.` : "Nothing waits on you.";
   for (const tab of document.querySelectorAll("[data-tab]")) tab.setAttribute("aria-selected", String(tab.dataset.tab === state.tab));
