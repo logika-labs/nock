@@ -289,7 +289,9 @@ Hooks run on every event of every session, so prefer a check.
 
 **Generators** keep derived files in step with their source:
 
-- `@nock.generator("src/version.py")` returns the text of one file.
+- `@nock.generator("src/version.py")` returns the text of one file, given
+  a final newline; or its bytes, written exactly (a binary golden, a file
+  that must not end in a newline).
 - A **catalog** (`nock gen new`) is a list that code is generated from, such
   as error codes, feature flags or strings. Its entries are checked against a
   schema and rendered through templates into every file that lists them.

@@ -1,8 +1,8 @@
 """Generators: files the project derives rather than writes — and so can never
 drift from their source. Two kinds:
 
-- a `@nock.generator(path)` function returns the text of one file, from
-  whatever it reads (a schema, a spec, the code itself);
+- a `@nock.generator(path)` function returns the text of one file (or its
+  exact bytes), from whatever it reads (a schema, a spec, the code itself);
 - a catalog is a central ledger the code is generated from — error codes,
   feature flags, UI strings: a directory under `.nock/generators/` holding the
   schema of one entry, the entries, and templates (`nock.templates`) bound to
@@ -267,17 +267,19 @@ class Generators:
     def __init__(self, project: Project) -> None:
         self.project = project
 
-    def outputs(self, root: Path | None = None) -> dict[Path, str]:
-        """Each generated file's path and the text it should hold."""
+    def outputs(self, root: Path | None = None) -> dict[Path, str | bytes]:
+        """Each generated file's path and what it should hold: text, or the
+        exact bytes a generator returned."""
         root = root or self.project.here
-        outputs: dict[Path, str] = {}
+        outputs: dict[Path, str | bytes] = {}
         for catalog in Catalogs(self.project).all():
             outputs.update(catalog.rendered(root))
         for entry in self.project.registry.generators:
             outputs[root / entry.path] = self.generate(entry)
         return outputs
 
-    def generate(self, entry: Generator) -> str:
+    def generate(self, entry: Generator) -> str | bytes:
+        """Text ends with a newline; bytes are the file as they are."""
         values = {"project": self.project, "call": Call(None, f"generate {entry.name}")}
         try:
             with Scope(self.project.registry, values) as scope:
@@ -288,24 +290,34 @@ class Generators:
             raise PreconditionError(
                 f"generator {entry.name} ({entry.source}) failed: {type(error).__name__}: {error}"
             ) from error
+        if isinstance(text, bytes):
+            return text
         if not isinstance(text, str):
             raise PreconditionError(
-                f"generator {entry.name} ({entry.source}) returned {type(text).__name__}, not the file's text"
+                f"generator {entry.name} ({entry.source}) returned {type(text).__name__}, not the file's text or bytes"
             )
         return text if text.endswith("\n") or not text else text + "\n"
 
     def write(self) -> list[Path]:
         """Write every generated file that differs; returns what changed."""
         written = []
-        for path, text in self.outputs().items():
-            if not path.is_file() or path.read_text() != text:
-                write_atomic(path, text)
+        for path, content in self.outputs().items():
+            if not holds(path, content):
+                write_atomic(path, content)
                 written.append(path)
         return written
 
     def drifted(self, root: Path) -> list[str]:
         return [
             str(path.relative_to(root))
-            for path, text in self.outputs(root).items()
-            if not path.is_file() or path.read_text() != text
+            for path, content in self.outputs(root).items()
+            if not holds(path, content)
         ]
+
+
+def holds(path: Path, content: str | bytes) -> bool:
+    if not path.is_file():
+        return False
+    return (
+        path.read_bytes() == content if isinstance(content, bytes) else path.read_text() == content
+    )

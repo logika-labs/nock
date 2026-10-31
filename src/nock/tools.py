@@ -203,7 +203,8 @@ def fixture(function: Callable[..., Any] | None = None, *, name: str | None = No
 
 def generator(path: str) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
     """Make a function generate a file: `path` (relative to the repository)
-    holds whatever text it returns. `nock gen` writes it; `nock check` fails
+    holds whatever text it returns (bytes are written as they are, for a
+    binary file or one that must not end in a newline). `nock gen` writes it; `nock check` fails
     when the file has drifted from it. It asks for fixtures by name."""
 
     def decorate(function: Callable[..., Any]) -> Callable[..., Any]:

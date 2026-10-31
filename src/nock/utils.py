@@ -34,11 +34,14 @@ def slug(text: str, limit: int = 48) -> str:
     return SLUG_CHARACTER.sub("-", text.lower()).strip("-")[:limit].strip("-") or "untitled"
 
 
-def write_atomic(path: Path, text: str) -> None:
+def write_atomic(path: Path, text: str | bytes) -> None:
     """Replace `path` so that a reader never sees half a file."""
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
-    temporary.write_text(text)
+    if isinstance(text, bytes):
+        temporary.write_bytes(text)
+    else:
+        temporary.write_text(text)
     temporary.replace(path)
 
 

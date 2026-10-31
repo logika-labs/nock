@@ -79,7 +79,8 @@ reads; `raise nock.Block("why")` at `stop` refuses the stop. A hook runs on
 every such event of every session — keep it fast, and prefer a check.
 
 **Generators** keep derived files in step with their source:
-`@nock.generator("src/errors.py")` returns the file's text; `.nock/nock gen`
+`@nock.generator("src/errors.py")` returns the file's text (or its exact
+bytes); `.nock/nock gen`
 writes it, and `.nock/nock check` fails when the file drifts. For a list the
 code is generated from (error codes, flags, strings), see
 `.nock/nock gen new --help`.

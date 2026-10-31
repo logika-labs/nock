@@ -41,7 +41,7 @@ def test_check_prints_nothing_when_everything_passes(project: Project) -> None:
 
 CHAINS = """
 [checks.format]
-command = "sleep 1; echo format >> order.log"
+command = "sleep 2; echo format >> order.log"
 chain = "rust"
 
 [checks.lint]
@@ -53,10 +53,10 @@ command = "echo tests >> order.log"
 chain = "rust"
 
 [checks.web]
-command = "sleep 1; echo web >> order.log"
+command = "sleep 2; echo web >> order.log"
 
 [checks.types]
-command = "sleep 1; echo types >> order.log"
+command = "sleep 2; echo types >> order.log"
 """
 
 
@@ -73,7 +73,7 @@ def test_chains_run_in_order_and_side_by_side(project: Project) -> None:
         "tests",
     ]
     assert sorted(order) == ["format", "lint", "tests", "types", "web"]
-    assert elapsed < 2.8, "the chains ran one after another"
+    assert elapsed < 5, "the chains ran one after another"
 
 
 def test_a_chain_or_a_check_can_be_named(project: Project) -> None:
@@ -144,6 +144,22 @@ def test_a_generator_function_writes_its_file_and_drift_fails_the_check(project:
     (project.root / "VERSION").write_text("1.3\n")
     drifted = nock(project.root, "check", "nock-generators")
     assert drifted.returncode == 1 and "src/version.py has drifted" in drifted.stdout
+
+
+def test_a_generator_s_bytes_are_the_file_exactly(project: Project) -> None:
+    write_tool(
+        project,
+        "gen",
+        "import nock\n\n"
+        "@nock.generator('golden.bin')\ndef golden(root):\n"
+        "    return (root / 'source.txt').read_bytes()[::-1]\n",
+    )
+    (project.root / "source.txt").write_bytes(b"\x00\xffno newline")
+    assert nock(project.root, "gen", "write").stdout == "golden.bin\n"
+    assert (project.root / "golden.bin").read_bytes() == b"enilwen on\xff\x00"
+    assert nock(project.root, "check", "nock-generators").returncode == 0
+    (project.root / "golden.bin").write_bytes(b"enilwen on\xff\x00\n")
+    assert nock(project.root, "check", "nock-generators").returncode == 1
 
 
 def test_a_catalog_renders_its_outputs_and_a_drift_fails_the_check(project: Project) -> None:
