@@ -241,3 +241,32 @@ def test_an_option_s_help_and_flag_and_the_words_passed_on(project: Project) -> 
         == "there: ['-k', 'x']\n"
     )
     assert "Where from." in nock(project.root, "wrap", "--help").stdout
+
+
+BROKEN_SIGNATURE = '''\
+from __future__ import annotations
+
+import nock
+
+
+@nock.command
+def broken(*, size: Missing = 1) -> str:
+    """Never loads."""
+    return "x"
+
+
+@nock.command
+def fine() -> str:
+    """Loads."""
+    return "ok"
+'''
+
+
+def test_a_tool_whose_signature_cannot_be_read_is_a_load_failure_not_a_crash(
+    project: Project,
+) -> None:
+    write_tool(project, "broken", BROKEN_SIGNATURE)
+    listed = nock(project.root)
+    assert listed.returncode == 0, listed.stderr
+    assert "`broken`'s signature cannot be read: NameError" in listed.stderr
+    assert nock(project.root, "fine").stdout == "ok\n"

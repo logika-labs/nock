@@ -248,6 +248,14 @@ class Registry:
 
     def adopt(self, pending: Pending) -> None:
         for tool in pending.tools:
+            try:
+                tool.command.parameters()
+            except Exception as error:
+                # Annotations are evaluated lazily (3.14): a bad one surfaces here, not at import.
+                self.failures.append(
+                    f"{tool.source}: `{tool.command.path}`'s signature cannot be read: {type(error).__name__}: {error}"
+                )
+                continue
             clash = self.tool(tool.command.path)
             if clash is not None:
                 self.failures.append(
