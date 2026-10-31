@@ -12,17 +12,18 @@ from pathlib import Path
 from typing import Any
 
 from nock.decisions import MAP
-from nock.errors import ConflictError, PreconditionError
+from nock.errors import ConflictError, NotFoundError, PreconditionError
 from nock.git import Git, GitError
 from nock.hooks import BUILT_IN_EVENTS, EDIT_TOOLS
 from nock.project import NOCK_DIRECTORY, Project
+from nock.releases import PYPI, VERSION, Releases
 from nock.templates import Library
 from nock.tools import NATIVE_EVENTS, Event
 from nock.utils import read_json, write_atomic, write_json
 
 PACKAGE = Path(__file__).resolve().parent
-VERSION = "0.2.0"
-DEFAULT_SOURCE = "https://github.com/dan-gittik/nock"
+# Where upgrades come from unless a project says otherwise: PyPI.
+DEFAULT_SOURCE = PYPI
 
 SHIM = """\
 #!/bin/sh
@@ -284,6 +285,8 @@ class Upgrader:
     def upgrade(self, source: str | None = None, force: bool = False) -> Report:
         version = read_json(self.version_file) if self.version_file.is_file() else {}
         source = str(source or version.get("source") or DEFAULT_SOURCE)
+        if source == PYPI:
+            return self.from_pypi(version, force)
         report = Report()
         with tempfile.TemporaryDirectory() as scratch:
             upstream = self.fetch(source, Path(scratch))
@@ -294,35 +297,65 @@ class Upgrader:
                     "cannot find the version this core was vendored from upstream, so local edits "
                     "cannot be merged safely — `--force` replaces the core, losing them"
                 )
-            ours = core_files(self.core)
-            names: set[str] = {*theirs, *ours, *(base or {})}
-            for relative in sorted(names):
-                merged = self.merge(
-                    relative,
-                    ours.get(relative),
-                    (base or {}).get(relative),
-                    theirs.get(relative),
-                    force,
-                )
-                path = self.core / relative
-                if merged is None:
-                    if path.exists():
-                        path.unlink()
-                        report.written.append(relative)
-                    continue
-                content, conflicted = merged
-                if ours.get(relative) != content:
-                    path.parent.mkdir(parents=True, exist_ok=True)
-                    path.write_bytes(content)
-                    report.written.append(relative)
-                if conflicted:
-                    report.conflicts.append(relative)
+            self.merge_all(report, theirs, base, force)
             commit = Git(upstream).head() if Git(upstream).succeeds("rev-parse", "HEAD") else None
             upstream_version = self.upstream_version(upstream)
         write_json(
             self.version_file, {"version": upstream_version, "source": source, "commit": commit}
         )
         return report
+
+    def from_pypi(self, version: dict[str, Any], force: bool) -> Report:
+        """The latest release on PyPI merged in, the vendored release's own
+        files the base."""
+        releases = Releases(str(self.project.configuration.get("upgrade.index")))
+        latest = releases.latest()
+        report = Report()
+        theirs = releases.files(latest)
+        try:
+            base = releases.files(str(version["version"])) if version.get("version") else None
+        except NotFoundError:
+            base = None
+        if base is None and not force:
+            raise PreconditionError(
+                f"the vendored version ({version.get('version')}) is not on PyPI, so local edits "
+                "cannot be merged safely — `--force` replaces the core, losing them"
+            )
+        self.merge_all(
+            report,
+            {name: content for name, content in theirs.items() if "__pycache__" not in name},
+            base,
+            force,
+        )
+        write_json(self.version_file, {"version": latest, "source": PYPI, "commit": None})
+        return report
+
+    def merge_all(
+        self, report: Report, theirs: dict[str, bytes], base: dict[str, bytes] | None, force: bool
+    ) -> None:
+        ours = core_files(self.core)
+        names: set[str] = {*theirs, *ours, *(base or {})}
+        for relative in sorted(names):
+            merged = self.merge(
+                relative,
+                ours.get(relative),
+                (base or {}).get(relative),
+                theirs.get(relative),
+                force,
+            )
+            path = self.core / relative
+            if merged is None:
+                if path.exists():
+                    path.unlink()
+                    report.written.append(relative)
+                continue
+            content, conflicted = merged
+            if ours.get(relative) != content:
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(content)
+                report.written.append(relative)
+            if conflicted:
+                report.conflicts.append(relative)
 
     def fetch(self, source: str, scratch: Path) -> Path:
         if Path(source).is_dir():

@@ -51,6 +51,12 @@ DEFAULTS: dict[str, Any] = {
         # The longest a consultation may take, in seconds: the caller waits.
         "deadline": 600,
     },
+    "upgrade": {
+        # Whether a session the human starts says when a newer nock is out
+        # (PyPI is asked at most once a day), and where releases are looked up.
+        "check": True,
+        "index": "https://pypi.org/pypi/nock",
+    },
     "share": {
         # Where `nock share` sends a round's summary, when the owner says so.
         "endpoint": "https://api.nock.dev/reflections",

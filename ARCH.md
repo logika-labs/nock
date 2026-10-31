@@ -77,6 +77,7 @@ src/nock/
   configuration.py   defaults ⊕ .nock/config.toml ⊕ .nock/local/config.toml
   git.py             Git: one wrapper, typed errors
   setup.py           Installer (nock init) and Upgrader (three-way merge of the core)
+  releases.py        the version, and releases on PyPI: their files, and the daily look for a newer one
   utils.py           time, atomic writes, JSON, slugs
 
 tests/               real git repositories and processes; no mocks
@@ -392,7 +393,8 @@ Notes:
 
 - copies the core and writes the shim, `.gitignore` (`local/`),
   `config.toml`, `context.md` and `tools/`;
-- records the source and commit in `.nock/core/VERSION.json`;
+- records the version, the source (`pypi` unless told otherwise) and, from a
+  checkout, its commit in `.nock/core/VERSION.json`;
 - imports `@.nock/context.md` into CLAUDE.md;
 - wires `.claude/settings.json`: the hooks and the `Bash(.nock/nock:*)`
   permission;
@@ -400,15 +402,27 @@ Notes:
 
 It is idempotent, so running it again re-wires.
 
-`setup.Upgrader.upgrade` fetches the source (a local checkout or a git URL)
-and does a per-file three-way merge with `git merge-file`:
+`setup.Upgrader.upgrade` fetches the source — the latest release on PyPI
+(`releases.Releases`, which reads the wheel), or a git URL or a local
+checkout — and does a per-file three-way merge with `git merge-file`:
 
-- the base is the vendored commit's files;
+- the base is the vendored release's files (or, from git, the vendored
+  commit's);
 - ours is the project's `.nock/core`;
 - theirs is upstream.
 
 Conflicts are left marked and reported. Without a findable base, it refuses
-unless `--force` is given.
+unless `--force` is given. `nock upgrade` then runs the upgraded core's
+`nock init`, which rewrites the primer and the skills and re-wires the hooks.
+
+`releases.Updates.newer` is what the session start and `nock status` say
+about a newer release: it asks `upgrade.index` at most once a day, with a
+two-second timeout, keeps the answer in `.nock/local/latest.json`, and is
+silent on any failure.
+
+`.github/workflows/release.yml` is the only workflow: a pushed tag `vX.Y.Z`
+that matches the package's version is tested, built and published to PyPI
+as `nock`, through trusted publishing. Nothing runs on other pushes.
 
 ## Tests and evals
 

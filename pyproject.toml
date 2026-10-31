@@ -1,13 +1,18 @@
 [project]
 name = "nock"
-version = "0.2.0"
-description = "A toolbox your coding agents build for themselves: an agent-friendly CLI framework, telemetry of every call and session, and reflection rounds that turn it into better tools."
+version = "0.3.0"
+description = "A toolbox your coding agents build for themselves: an agent-friendly CLI framework, telemetry of every call and session, decisions you review, and reflection rounds that turn it all into better tools."
 readme = "README.md"
 requires-python = ">=3.12"
 license = "MIT"
 license-files = ["LICENSE"]
 authors = [{ name = "Dan Gittik" }]
 dependencies = []
+
+[project.urls]
+Homepage = "https://nock.dev"
+Documentation = "https://nock.dev/docs/"
+Repository = "https://github.com/logika-labs/nock"
 
 [project.scripts]
 nock = "nock.cli:main"

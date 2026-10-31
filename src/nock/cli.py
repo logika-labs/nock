@@ -19,11 +19,11 @@ from nock.errors import Error, Exit, ExitCode, UsageError
 from nock.fixtures import Call, Scope
 from nock.processes import Output
 from nock.project import Project
+from nock.releases import VERSION
 from nock.render import PACKAGE_INTERNAL, as_json, capped, crash, plain, render
 from nock.telemetry import UNRECORDED_VARIABLE, Cache, Calls, digest, tree_state
 from nock.tools import BUILT_IN_SOURCE, Registry, Tool
 
-VERSION = "0.2.0"
 # Commands that work without a project.
 PROJECTLESS = ("init",)
 FOOTER = (

@@ -1,6 +1,6 @@
 """Where the project stands with nock, in one place: whether a reflection round
 is due, the decisions by status and review, those rejected and waiting to be
-redone, and a round summary not yet shared. `nock status` prints it; a
+redone, a round summary not yet shared, and a newer nock. `nock status` prints it; a
 session the human starts begins with it."""
 
 from __future__ import annotations
@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Any
 
 from nock.decisions import Decisions, Review, Status
 from nock.reflect import Reflection
+from nock.releases import Updates
 from nock.share import Sharing
 
 if TYPE_CHECKING:
@@ -55,6 +56,7 @@ class Standing:
                 and decision["updated"] > (window.since or "")
             ],
             "unshared": Sharing(self.project).unshared(),
+            "newer_nock": Updates(self.project).newer(),
         }
 
     def lines(self, standing: dict[str, Any]) -> list[str]:
@@ -87,6 +89,11 @@ class Standing:
                 "nock: what the owner said about decisions lately — some may ask for something:"
             )
             lines += [f"- [D{item['number']}] {item['title']}{said(item)}" for item in notes]
+        if standing["newer_nock"]:
+            lines.append(
+                f"nock: nock {standing['newer_nock']} is out (this project has "
+                f"{Updates(self.project).installed()}) — `.nock/nock upgrade` upgrades it."
+            )
         if standing["unshared"]:
             lines.append(
                 f"nock: the {standing['unshared']} round's summary is not shared yet — "
