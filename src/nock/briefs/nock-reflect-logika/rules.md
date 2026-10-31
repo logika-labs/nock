@@ -25,7 +25,8 @@ permissions, ownership, status lifecycles, and effects outside the system
 says must be true: guards and raises, assertions, database constraints and
 unique indexes, enum transitions, retries and their limits, the timeouts the
 code sets, what the tests assert, comments and docs, and the decisions
-recorded in nock and in `logika.json`.
+recorded in nock (`.nock/nock decisions list '{"tag": "logika"}'` has the
+ones behind earlier rules).
 
 ## 2. Explore what really happens
 
@@ -73,8 +74,10 @@ Leave out:
 
 Set every time bound above the legitimate worst case: the observed maximum
 with a wide margin, never the mean. When a rule depends on a reason that
-isn't obvious (why 10 minutes, why a zero amount is allowed), record it with
-`logika decide`, so it stays with the ledger.
+isn't obvious (why 10 minutes, why a zero amount is allowed), record it as a
+nock decision tagged `logika` (`.nock/nock decide`), naming the rule in the
+title and `logika.json` in `touches`. When the reason fits in one sentence
+and the rule is an invariant, its `description` can say it instead.
 
 ## 4. Prove each rule both ways
 
@@ -117,7 +120,7 @@ possible. The rule itself waits for a later round.
 ## What you change
 
 Only `logika.json`: params, events (`validate`, `span.timeout`,
-`span.paths`, whether a param is optional), `rules` and `invariants`, plus
-the decisions `logika decide` writes into it. Change nothing else, not the
-code and not `.nock/`, except by recording questions and todos. Commit
+`span.paths`, whether a param is optional), `rules` and `invariants`.
+Change nothing else, not the code and not `.nock/`, except by recording
+decisions, questions and todos. Commit
 nothing: `.nock/nock reflect finish --topic logika` commits.
