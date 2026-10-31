@@ -1,6 +1,6 @@
 """Where the project stands with nock, in one place: whether a reflection round
 is due, the decisions by status and review, those rejected and waiting to be
-redone, and a round summary not yet shared. `nock status` prints it; a
+redone, the questions the owner answered, and a round summary not yet shared. `nock status` prints it; a
 session the human starts begins with it."""
 
 from __future__ import annotations
@@ -17,6 +17,10 @@ if TYPE_CHECKING:
 
 def brief(decision: dict[str, Any]) -> dict[str, Any]:
     return {"number": decision["number"], "title": decision["title"], "note": decision["note"]}
+
+
+# What the owner's review of a question means.
+ANSWERS = {Review.ACCEPTED: "yes", Review.REJECTED: "no", Review.UNREVIEWED: "answered in a note"}
 
 
 def said(decision: dict[str, Any]) -> str:
@@ -47,11 +51,16 @@ class Standing:
                     {"status": Status.TODO, "review": Review.ACCEPTED}
                 )
             ],
+            "answered": [
+                {**brief(decision), "answer": decision["review"]}
+                for decision in decisions.answered()
+            ],
             "notes": [
                 brief(decision)
                 for decision in decisions.matching({})
                 if decision["note"]
                 and decision["review"] != Review.REJECTED
+                and decision["status"] != Status.QUESTION
                 and decision["updated"] > (window.since or "")
             ],
             "unshared": Sharing(self.project).unshared(),
@@ -65,6 +74,7 @@ class Standing:
             lines.append(f"nock: {due} — offer the human `/nock-reflect`, which runs one.")
         counts = standing["decisions"]
         waiting = [
+            f"{counts[Status.QUESTION][Review.UNREVIEWED]} question(s)",
             f"{counts[Status.TODO][Review.UNREVIEWED]} todo(s)",
             f"{counts[Status.DONE][Review.UNREVIEWED]} done unreviewed",
             f"{counts[Status.DONE][Review.REJECTED]} rejected to rework",
@@ -76,6 +86,14 @@ class Standing:
             )
         for decision in standing["to_rework"]:
             lines.append(f"- rework [D{decision['number']}] {decision['title']}{said(decision)}")
+        if standing["answered"]:
+            lines.append(
+                "nock: questions the owner answered — act on each, then edit it to done saying what you did:"
+            )
+            lines += [
+                f"- [D{item['number']}] {item['title']} — {ANSWERS[item['answer']]}{said(item)}"
+                for item in standing["answered"]
+            ]
         if standing["backlog"]:
             lines.append("nock: the owner's backlog — todos they accepted, not done yet:")
             lines += [

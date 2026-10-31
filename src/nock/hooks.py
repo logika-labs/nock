@@ -162,7 +162,7 @@ class HookRunner:
             [
                 "nock: the owner reviewed decision(s) you recorded:",
                 *lines,
-                "Rework what was rejected, and edit the decision to say what you did: "
+                "Rework what was rejected, act on what they answered, and edit the decision to say what you did: "
                 "`.nock/nock decisions edit '{\"number\": N, …}'`.",
             ]
         )

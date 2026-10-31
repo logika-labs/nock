@@ -209,8 +209,8 @@ def sessions(project: Project, *, limit: int = 15) -> list[dict[str, Any]]:
 @command
 def status(project: Project) -> dict[str, Any]:
     """Where the project stands with nock: whether a reflection round is due,
-    the decisions by status and review, the rejected ones to rework, and a
-    round summary not yet shared."""
+    the decisions by status and review, the rejected ones to rework, the
+    questions the owner answered, and a round summary not yet shared."""
     return Standing(project).collect()
 
 
@@ -232,10 +232,12 @@ def decide(project: Project, decision: Draft) -> dict[str, Any]:
     """Record a decision as you make it — a non-trivial choice between ways
     that could each work, a deliberate simplification, a reading of something
     ambiguous — or, as a todo, something that should be done and is not yet
-    (tag a possible improvement `improvement`). Not what has one obvious
-    right way. Write it for someone who knows what the system does, not how
-    it is built; give only alternatives you really weighed. The owner reviews
-    it later; keep going meanwhile."""
+    (tag a possible improvement `improvement`), or, as a question, what only
+    the owner can settle when they are not there to ask: the answer you
+    propose as the title, the other answers as alternatives. Not what has one
+    obvious right way. Write it for someone who knows what the system does,
+    not how it is built; give only alternatives you really weighed. The owner
+    reviews it later; keep going meanwhile."""
     recorded, problem = Decisions(project).decide(decision)
     return recorded_result(project, recorded, problem)
 
@@ -282,8 +284,8 @@ def decisions_show(project: Project, number: int) -> dict[str, Any]:
 
 @command(name="edit", group="decisions")
 def decisions_edit(project: Project, change: Change) -> dict[str, Any]:
-    """Change a decision: rework one the owner rejected, or mark a todo done
-    and say what was done. A change to what it says asks for a fresh review.
+    """Change a decision: rework one the owner rejected, or mark a todo or an
+    answered question done and say what was done. A change to what it says asks for a fresh review.
     `review` (accepted, rejected), `note` and `elaborate` are the owner's
     word: set them only when the owner says so."""
     decisions = Decisions(project)

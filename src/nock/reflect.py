@@ -366,6 +366,7 @@ class Reflection:
             "nock_broke": sum(n for code, n in codes.items() if code and code >= 50),
             "decisions_recorded": len(recorded),
             "decisions_todo": sum(1 for d in recorded if d["status"] == "todo"),
+            "decisions_question": sum(1 for d in recorded if d["status"] == "question"),
             "decisions_reviewed": len(reviewed),
             "decisions_accepted": sum(1 for d in reviewed if d["review"] == "accepted"),
             "decisions_rejected": sum(1 for d in reviewed if d["review"] == "rejected"),
@@ -884,7 +885,8 @@ What they count: sessions the human started in the window (`days` long) and
 what they asked (`requests`), interrupted and compacted; every tool call
 they made and how many failed; tokens and dollars; commits. `nock_*`: calls
 to nock, and how many said no (exit 1), were called wrong (40s) or broke
-(50s). `decisions_*`: recorded in the window (and how many as todos),
+(50s). `decisions_*`: recorded in the window (and how many as todos and
+questions),
 reviewed by the owner in it (accepted, rejected), and every standing one
 still unreviewed. `tools`: the project's own commands, how many were used,
 and how often. `map_*`: the map's length and the decisions it cites."""

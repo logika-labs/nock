@@ -255,6 +255,40 @@ def test_a_session_starts_with_the_owner_s_backlog_and_notes(project: Project) -
     assert "backlog" not in begun.get("systemMessage", "")
 
 
+def test_a_question_waits_on_the_owner_and_its_answer_waits_on_an_agent(
+    project: Project, page: str
+) -> None:
+    asked = decide(
+        project.root,
+        {
+            "title": "Refunds never exceed the charge",
+            "status": "question",
+            "summary": "A rule would flag every refund larger than its charge.",
+            "alternatives": [{"option": "Goodwill refunds may", "why_not": "none in the data"}],
+            "tags": ["logika"],
+        },
+    )
+    begun = start(project, "s1")
+    assert "1 question(s)" in begun["systemMessage"]
+    status, _ = post(page, asked["number"], {"review": "rejected", "note": "Up to 110%."})
+    assert status == 200
+    context = start(project, "s2")["hookSpecificOutput"]["additionalContext"]
+    assert "questions the owner answered — act on each" in context
+    assert (
+        f"- [D{asked['number']}] Refunds never exceed the charge — no — the owner: Up to 110%."
+        in context
+    )
+    assert "what the owner said about decisions lately" not in context
+    standing = json.loads(nock(project.root, "status", "--json").stdout)
+    assert standing["answered"][0]["answer"] == "rejected"
+    acted = edit(
+        project.root,
+        {"number": asked["number"], "status": "done", "summary": "The rule allows 110%."},
+    )
+    assert acted["status"] == "done" and acted["review"] == "unreviewed"
+    assert json.loads(nock(project.root, "status", "--json").stdout)["answered"] == []
+
+
 def test_the_edit_hook_is_wired_for_edits_only(project: Project) -> None:
     settings = json.loads((project.root / ".claude" / "settings.json").read_text())
     (entry,) = settings["hooks"]["PostToolUse"]

@@ -3,8 +3,9 @@
 A toolbox coding agents build for themselves: an agent-friendly CLI framework
 (`commands.py`, `fixtures.py`, `render.py`, woven together in `cli.py`),
 telemetry of every call and session (`store.py`, `telemetry.py`,
-`sessions.py`), the decisions agents record and the owner reviews
-(`decisions.py`, the page in `web.py`), consultation (`consult.py`), and
+`sessions.py`), the decisions agents record — and the questions they ask —
+and the owner reviews (`decisions.py`, the page in `web.py`), consultation
+(`consult.py`), and
 reflection rounds that turn it all into better tools, a map of the
 decisions and an account of how nock is doing (`reflect.py`, `share.py`,
 the `/nock-reflect` skill in `briefs/nock-reflect/`). It is vendored into

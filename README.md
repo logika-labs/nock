@@ -307,8 +307,11 @@ deliberate simplification, or a reading of something ambiguous. What has one
 obvious right way is not a decision, and an alternative nobody weighed is
 not an alternative. With `"status": "todo"` it is something that should be
 done and is not yet; a possible improvement is a todo tagged `improvement`.
-The summary is written for someone who knows what the system does, but not
-how it is built.
+With `"status": "question"` it asks the owner what only they can settle,
+when they are not there to ask: the title is the answer the agent proposes
+("Refunds never exceed the charge"), the alternatives the other answers it
+sees. The summary is written for someone who knows what the system does,
+but not how it is built.
 
 Each decision is a file, `.nock/decisions/0007.json`, written and committed in
 the main checkout whichever worktree recorded it. Its tags are `important`,
@@ -321,6 +324,11 @@ decisions it overturns, which stay as history.
 |---|---|---|---|
 | **done** | done; please check | it stands | rework it |
 | **todo** | worth doing later? | on the backlog | do not do it |
+| **question** | asks you | yes, as proposed | no: the note says what holds |
+
+A note alone answers a question in words. Until an agent acts on the answer
+— and edits the question to done, saying what it did — every session the
+human starts lists it.
 
 - **The owner reviews.** On the page, `nock web` (or with `{"open": true}`),
   which lists the decisions to review, accepted and rejected, searchable and
@@ -342,8 +350,8 @@ decisions it overturns, which stay as history.
   the summary, evidence and alternatives, answering the owner's note
   (`nock decisions elaborate N`).
 
-Any session the human starts says how many todos and done decisions wait on
-review, which rejected ones wait to be reworked, the owner's backlog (todos
+Any session the human starts says how many questions, todos and done
+decisions wait on review, the questions answered and not yet acted on, which rejected ones wait to be reworked, the owner's backlog (todos
 they accepted), and what they said about decisions since the last round —
 a note often asks for something. `nock status` says the same, and whether a
 reflection round is due.
@@ -429,7 +437,7 @@ published on nock.dev (`public`). Nothing is sent otherwise.
 | `nock run -- COMMAND` | run anything supervised and condensed |
 | `nock guide` | how to write a tool, check, hook or generator |
 | `nock calls`, `stats`, `sessions`, `query SQL` | the telemetry |
-| `nock status` | a round due, decisions waiting, rejected ones to rework, an unshared summary |
+| `nock status` | a round due, decisions waiting, rejected ones to rework, answered questions, an unshared summary |
 | `nock decide JSON` | record a decision |
 | `nock decisions list [JSON]`, `show N`, `edit JSON`, `elaborate N` | the decisions: filtered, in full, changed or reviewed, elaborated |
 | `nock web [JSON]` | the owner's page |

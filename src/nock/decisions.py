@@ -1,5 +1,6 @@
-"""Decisions: what agents decided while they worked, and what they think should
-be done later — one committed file per decision in the main checkout's
+"""Decisions: what agents decided while they worked, what they think should
+be done later, and what they ask the owner — one committed file per decision
+in the main checkout's
 `.nock/decisions/`, each with its reasoning, the alternatives that lost, the
 files it governs (`touches`) and the decisions it overturns (`supersedes`).
 The owner reviews them, on the page (`nock web`) or in a session: accepts,
@@ -48,13 +49,16 @@ class Status(StrEnum):
     """Decided and carried out."""
     TODO = "todo"
     """Should be done, and is not yet."""
+    QUESTION = "question"
+    """Asks the owner: the title is the answer the agent proposes, the
+    alternatives the other answers it sees; the review is the owner's answer."""
 
 
 class Review(StrEnum):
     UNREVIEWED = "unreviewed"
     ACCEPTED = "accepted"
     REJECTED = "rejected"
-    """Done: rework it. Todo: do not do it."""
+    """Done: rework it. Todo: do not do it. Question: no — the note says what holds."""
 
 
 class Alternative(TypedDict):
@@ -64,14 +68,16 @@ class Alternative(TypedDict):
 
 class Draft(TypedDict):
     title: str
-    """What was decided, as a statement: "The sweep requeues dead charges only"."""
+    """What was decided, as a statement: "The sweep requeues dead charges only";
+    for a question, the answer you propose: "Refunds never exceed the charge"."""
     status: Status
     summary: str
     """Markdown, for someone who knows what the system does but not how it is built."""
     evidence: NotRequired[list[str]]
     """What you read, measured or found that bears on it, a line each."""
     alternatives: NotRequired[list[Alternative]]
-    """What you seriously considered instead, and why not; none is a fine answer."""
+    """What you seriously considered instead, and why not (for a question, the
+    other answers); none is a fine answer."""
     tags: NotRequired[list[str]]
     """important, technical, product, improvement, and your own (a component, a subject)."""
     touches: NotRequired[list[str]]
@@ -316,6 +322,15 @@ class Decisions:
     def to_rework(self) -> list[dict[str, Any]]:
         """Done, and rejected: the owner wants it redone."""
         return self.matching({"status": Status.DONE, "review": Review.REJECTED})
+
+    def answered(self) -> list[dict[str, Any]]:
+        """Questions the owner answered — yes, no, or in a note — that no agent
+        has acted on yet (acting on one edits it to done)."""
+        return [
+            decision
+            for decision in self.matching({"status": Status.QUESTION})
+            if decision["review"] != Review.UNREVIEWED or decision["note"]
+        ]
 
     def tags(self) -> dict[str, int]:
         """Every tag in use, the most used first; the fixed ones always."""

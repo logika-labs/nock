@@ -51,7 +51,8 @@ src/nock/
   decisions.py       Decisions (decide, edit, review, elaborate, what governs a file, the map's problems)
   web.py             the owner's page (`nock web`), a local server
   web.html           the page
-  status.py          Standing: a round due, decisions waiting, rejected ones to rework, an unshared summary
+  status.py          Standing: a round due, decisions waiting, rejected ones to rework, answered
+                     questions, an unshared summary
   share.py           Sharing: a round's summary, held to naming nothing, sent on the owner's word
   consult.py         Consultant: a fresh agent finds the decisions and tools that bear on a task
   dispatch.py        Dispatcher: launch a headless `claude -p` session and ingest it
@@ -264,7 +265,10 @@ once. It skips the commit, and says so, when the main checkout is mid-merge
 or mid-rebase. `decide` and `edit` take the `Draft` and `Change` records;
 `edit` is also the owner's review (`review`, `note`, `elaborate`), from the
 page (`web.Server`, which accepts only those three) or from a session. A
-change to a field in `SUBSTANCE` resets the review. "Elaborate" starts
+change to a field in `SUBSTANCE` resets the review. A question
+(`status: question`) is a decision whose review is the owner's answer;
+`answered` lists those answered and not yet edited to done, for
+`status.Standing`. "Elaborate" starts
 `nock decisions elaborate N` as a detached process, which dispatches the
 elaborator; the decision's `elaborating` flag holds until an edit changes
 it, or the elaborator ends without one.

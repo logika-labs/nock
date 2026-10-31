@@ -1,6 +1,6 @@
 ---
 name: nock-triage
-description: Go through the decisions nock's agents recorded with the owner, one at a time, here in the conversation, recording their accept, reject or note. Use when the owner wants to review decisions, or says /nock-triage.
+description: Go through the decisions nock's agents recorded with the owner, one at a time, here in the conversation, recording their accept, reject or note, and their answers to the agents' questions. Use when the owner wants to review decisions, or says /nock-triage.
 ---
 
 # Going through the decisions
@@ -14,12 +14,15 @@ Their word is what you record.
     .nock/nock decisions edit '{"number": 7, "review": "rejected", "note": "what they said"}'
     .nock/nock decisions edit '{"number": 7, "note": "what they said"}'
 
-Start where the owner says; otherwise done decisions first (they are in the
-code), then todos, `important` first, then the oldest. Put each in a few
-lines: what was decided, what it means for the system, the alternatives that
-lost. Ask: accept, reject, a note, or more? For more, look into it yourself
-and answer; edit the decision if it should say so too. Don't argue for it;
-if you think it is wrong, say so once.
+Start where the owner says; otherwise questions first (an agent waits on
+the answer), then done decisions (they are in the code), then todos,
+`important` first, then the oldest. Put each in a few lines: what was
+decided, what it means for the system, the alternatives that lost. Ask:
+accept, reject, a note, or more? A question's title is the answer the agent
+proposes: accepted is yes, rejected is no with a note saying what holds, and
+a note alone answers in words. For more, look into it yourself and answer;
+edit the decision if it should say so too. Don't argue for it; if you think
+it is wrong, say so once.
 
 At the end, say what was accepted and rejected, and offer to rework the
 rejected done ones; edit each to say what was done.
