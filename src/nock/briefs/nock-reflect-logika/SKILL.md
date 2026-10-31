@@ -10,7 +10,7 @@ The owner asked for this round, and is here. Its job is to write down in
 agent when it doesn't, and never when it does. Set aside whatever this
 session was doing.
 
-1. `.nock/nock reflect start --topic logika` prints the round's material and
+1. `.nock/nock reflect logika` prints the round's material and
    the report you write. The material shows what the ledger already says, per
    component and per event, what changed since the last round, and the
    questions and suggestions earlier rounds left.
@@ -50,17 +50,21 @@ session was doing.
    - the instrumentation you suggest.
 8. Finish:
 
-       .nock/nock reflect finish --topic logika '{"summary": "the round in a sentence or two",
+       .nock/nock reflect logika finish '{"summary": "the round in a sentence or two",
          "changes": [{"kind": "validate", "target": "refund", "why": "the evidence",
                       "expect": "what it should catch, and that it stays quiet otherwise",
                       "tested": "silent on <capture>; fired on <replay>"}],
          "verdicts": [{"expectation": "…", "held": true, "evidence": "…"}],
          "notes": "what the next round should look at"}'
 
-   The kinds are validate, path, timeout, rule, invariant and other. The
-   verdicts cover the last round's expectations. Finishing commits `.nock/`
-   and `logika.json`.
+   The kinds are validate, path, timeout, rule, invariant and other; each
+   rule says how it was `tested`, or finishing refuses. The verdicts cover
+   the last round's expectations. Finishing requires `logika.json` to parse
+   and commits `.nock/` and `logika.json`. A session that started the round
+   cannot end its turn with it open: nock says what it still needs, once
+   (`.nock/nock docs reflection.kinds`).
 9. Tell the owner in a few lines what changed, what is waiting on them, and
-   where the report is. Production data is judged against the new rules
+   where the report is. If `reflect logika` gave `tell_the_owner`, tell them
+   that too, in its words: it is what nock shares with its makers, said once. Production data is judged against the new rules
    only after `logika sync` deploys the ledger. Run it only when the owner
    says so.

@@ -81,23 +81,23 @@ def write_ledger(project: Project, ledger: dict[str, Any]) -> None:
 
 
 def start(project: Project) -> dict[str, Any]:
-    result = nock(project.root, "reflect", "start", "--topic", "logika", "--json")
+    result = nock(project.root, "reflect", "logika", "--json")
     assert result.returncode == 0, result.stderr
     return json.loads(result.stdout)
 
 
 def finish(project: Project, record: dict[str, Any]) -> subprocess.CompletedProcess[str]:
-    return nock(project.root, "reflect", "finish", "--topic", "logika", json.dumps(record))
+    return nock(project.root, "reflect", "logika", "finish", json.dumps(record))
 
 
 def test_a_logika_round_needs_a_ledger_and_the_logika_cli(project: Project, on_path: Path) -> None:
-    refused = nock(project.root, "reflect", "start", "--topic", "logika")
+    refused = nock(project.root, "reflect", "logika")
     assert refused.returncode == 42 and "not a Logika project" in refused.stderr
     assert not (project.root / ".claude" / "skills" / "nock-reflect-logika").exists()
-    assert json.loads(nock(project.root, "status", "--json").stdout)["logika"] is None
+    assert json.loads(nock(project.root, "status", "--json").stdout)["rounds"] == {}
     write_ledger(project, LEDGER)
     on_path.unlink()
-    refused = nock(project.root, "reflect", "start", "--topic", "logika")
+    refused = nock(project.root, "reflect", "logika")
     assert refused.returncode == 42 and "`logika` is not on PATH" in refused.stderr
 
 
@@ -105,7 +105,7 @@ def test_init_installs_the_logika_skill_in_a_logika_project(logika: Project) -> 
     skill = logika.root / ".claude" / "skills" / "nock-reflect-logika"
     lead = (skill / "SKILL.md").read_text()
     assert lead.startswith("---\nname: nock-reflect-logika\n")
-    assert "`.nock/nock reflect start --topic logika`" in lead
+    assert "`.nock/nock reflect logika` prints" in lead
     assert "## 4. Prove each rule both ways" in (skill / "rules.md").read_text()
 
 
@@ -150,7 +150,11 @@ def test_a_logika_round_finishes_and_commits_the_ledger_apart_from_nock_s_rounds
     (logika.root / started["write"][0]).write_text("# The round\n\nRefunds are positive.\n")
     (logika.root / "logika.json").write_text("{ not json")
     broken = finish(logika, RECORD)
-    assert broken.returncode == 1 and "logika.json does not parse" in broken.stderr
+    assert broken.returncode == 1 and "logika.json does not parse" in broken.stdout
+    untested = copy.deepcopy(RECORD)
+    del untested["changes"][0]["tested"]
+    refused = finish(logika, untested)
+    assert refused.returncode == 1 and "does not say how it was tested" in refused.stdout
     ledger = copy.deepcopy(LEDGER)
     ledger["events"][1]["validate"] = "amount > 0"
     write_ledger(logika, ledger)
@@ -184,7 +188,7 @@ def test_a_logika_round_is_offered_once_a_week_never_run(
     assert "no logika round has run, and the ledger declares 3 events" in first
     assert "`/nock-reflect-logika`" in first and "never start it unasked" in first
     assert "logika" not in said("s2")
-    standing = json.loads(nock(logika.root, "status", "--json").stdout)["logika"]
+    standing = json.loads(nock(logika.root, "status", "--json").stdout)["rounds"]["logika"]
     assert standing["due"].startswith("no logika round has run") and standing["skill"]
 
     started = start(logika)

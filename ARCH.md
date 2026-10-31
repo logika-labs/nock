@@ -50,10 +50,12 @@ src/nock/
   sessions.py        Claude Code transcripts → sessions, prompts and events
 
   # the loop
-  reflect.py         Reflection (due, start, finish, metrics), Rounds, and what each part reads:
-                     Material (the toolbox), Knowledge (the map), Evidence (nock itself)
-  logika.py          the `logika` topic: Ledger (logika.json read and counted), LogikaRound
-                     (due, start, finish) and its Material
+  reflect.py         Round (a kind of round: start, finish, its checks, a round left open),
+                     Rounds; Reflection, nock's own kind (due, metrics), and what each part
+                     reads: Material (the toolbox), Knowledge (the map), Evidence (nock itself)
+  logika.py          the `logika` kind: Ledger (logika.json read and counted), LogikaRound
+                     and its Material
+  kinds.py           KINDS: the kinds of round, the default first; adding one is an entry here
   decisions.py       Decisions (decide, edit, review, elaborate, what governs a file, the map's problems)
   studio.py          the owner's page (`nock studio`): a local server, a Tab per tab
   pages/             studio.html, the shell (band, tab links, routing by `#NAME/ROUTE`);
@@ -382,11 +384,29 @@ lead's own subagents, not dispatched.) It:
 
 ### Reflection
 
-A round is the `/nock-reflect` skill in an ordinary session. `nock init`
+Rounds come in kinds: `kinds.KINDS` maps each name to a `reflect.Round`
+subclass, which says its skill, whether its skill is installed in a
+repository (`wanted`), where it can run (`unavailable`) and when it is due,
+what its lead reads (`begin`), the files the lead writes, the nock checks
+its end runs (`checks`, and the `quick` ones for a round left open) and its
+record's own (`problems`), what the record keeps (`kept`), and what is
+committed beside `.nock/` (`also`). `Round.start` and `Round.finish` do the
+rest the same for every kind: name the round by date, keep `round.json`
+(with the sessions that started it), require the files, run the checks,
+write `record.json`, commit. `builtin` makes the commands from the
+registry: `reflect` (the default kind) and `reflect finish`, and for each
+other kind `reflect KIND` and `reflect KIND finish` — a command named like
+its group is the group's default (`commands.Group.default`), and `finish`
+is reserved. The Stop hook refuses, once (never when `stop_hook_active`),
+the end of a turn of a session that started a round still open, with
+`Round.left_open`: the files unwritten, else what the quick checks find,
+and the finish to run.
+
+nock's own kind is the `/nock-reflect` skill in an ordinary session. `nock init`
 renders `briefs/nock-reflect/` into `.claude/skills/nock-reflect/`; the
 toolbox brief names the `nock docs` terms the part reads before writing.
 
-1. **Start.** `nock reflect start` catches up on transcripts
+1. **Start.** `nock reflect` catches up on transcripts
    (`Sessions.catch_up`), names the round by date (`Rounds.new_name`, or the
    unfinished `Rounds.current`), computes `Reflection.metrics` for the
    window, and writes `round.json` and three material files in
@@ -419,24 +439,23 @@ the latest one's `finished`.
 after `reflect.sessions` sessions or `reflect.days` days since the last
 round, whichever comes first, given at least one session.
 
-**The logika topic.** `reflect.Topic` names the rounds other than nock's
-own; `Rounds(project, Topic.LOGIKA)` keeps them in
+**The logika kind.** `logika.LogikaRound` keeps its rounds in
 `.nock/reflections/logika/` (and `.nock/local/reflections/logika/`), where
-nock's `*/record.json` never sees them. `logika.LogikaRound` is offered only
-when `logika.json` is in the working tree and `logika` on PATH. Its `due`
-— never run while the ledger declares events, or `reflect.logika.days`
-after the last with commits to `logika.json` since — goes into
-`status.Standing`, and the session start says it at most once a week
-(`nudged` keys `logika:LAST:WEEK`). `start` writes `logika.md` from the
-ledger, git and the decisions tagged `logika`; `finish` takes the same
-`Record` (its `Change` kinds include validate, path, timeout, rule and
-invariant, and `tested`), requires `report.md` and a parsing ledger, and
-commits `.nock/` and `logika.json` through `reflect.commit`. The round
-itself reads Logika's docs through the `logika` CLI rather than copying
-them.
+nock's `*/record.json` never sees them. It can run only when `logika.json`
+is in the working tree and `logika` on PATH, and its skill is installed
+only where `logika.json` is. Its `due` — never run while the ledger
+declares events, or `reflect.logika.days` after the last with commits to
+`logika.json` since — goes into `status.Standing` as an offer (`rounds`),
+and the session start says it at most once a week (`nudged` keys
+`KIND:LAST:WEEK`), as for any kind other than the default. `begin` writes
+`logika.md` from the ledger, git and the decisions tagged `logika`; its end
+requires `report.md`, a parsing ledger and a `tested` on every rule
+changed (validate, path, timeout, rule, invariant), and commits
+`logika.json` too. The round itself reads Logika's docs through the
+`logika` CLI rather than copying them.
 
 `usage.Usage` keeps `.nock/local/usage.json`: when this machine told the
-owner what is shared (`disclose`, called by `reflect start`, `studio` — the
+owner what is shared (`disclose`, called by a round's start, `studio` — the
 page shows it under the title — and the owner's first review or note through `decisions
 edit`), and the reports sent. `report` is the next one, built from
 `Reflection.metrics` over the window since the last report (or the

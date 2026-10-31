@@ -107,9 +107,9 @@ def test_nothing_is_sent_before_the_owner_is_told_and_then_weekly_counts_only(
     end_session(project, "s1")
     assert receiver == [] and not Usage(project).due()
 
-    started = json.loads(nock(project.root, "reflect", "start", "--json").stdout)
+    started = json.loads(nock(project.root, "reflect", "--json").stdout)
     assert started["tell_the_owner"] == ANONYMOUS_DISCLOSURE
-    again = json.loads(nock(project.root, "reflect", "start", "--json").stdout)
+    again = json.loads(nock(project.root, "reflect", "--json").stdout)
     assert "tell_the_owner" not in again
     number = decide(project.root)["number"]
     assert "tell_the_owner" not in edit(project.root, {"number": number, "review": "accepted"})
@@ -147,9 +147,7 @@ def test_public_adds_the_tool_names_and_none_sends_nothing_at_all(
 
     silent = configure(public, 'level = "public"', 'level = "none"')
     (silent.root / ".nock" / "local" / "usage.json").unlink()
-    assert "tell_the_owner" not in json.loads(
-        nock(silent.root, "reflect", "start", "--json").stdout
-    )
+    assert "tell_the_owner" not in json.loads(nock(silent.root, "reflect", "--json").stdout)
     assert json.loads(nock(silent.root, "usage", "--json").stdout)["would_send"] is None
     end_session(silent, "s2")
     assert len(receiver) == 1

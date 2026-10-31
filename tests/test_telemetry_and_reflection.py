@@ -205,7 +205,7 @@ def test_a_round_finishes_with_its_report_its_summary_and_its_numbers(project: P
     for _ in range(2):
         nock(project.root, "calls", "--limit", "1")
     assert finish(project, RECORD).returncode == 42
-    started = json.loads(nock(project.root, "reflect", "start", "--json").stdout)
+    started = json.loads(nock(project.root, "reflect", "--json").stdout)
     material = {
         part: (project.root / path).read_text() for part, path in started["material"].items()
     }
@@ -302,7 +302,7 @@ def test_a_summary_is_vetted_and_shared_only_when_sent(
 def test_init_installs_the_skills_and_retires_the_old_ones(project: Project) -> None:
     skills = project.root / ".claude" / "skills"
     lead = (skills / "nock-reflect" / "SKILL.md").read_text()
-    assert lead.startswith("---\nname: nock-reflect\n") and "`.nock/nock reflect start`" in lead
+    assert lead.startswith("---\nname: nock-reflect\n") and "`.nock/nock reflect` prints" in lead
     process = (skills / "nock-reflect" / "process.md").read_text()
     assert ".nock/nock docs --full tools tools.signature" in process
     assert {path.name for path in (skills / "nock-reflect").iterdir()} == {
@@ -335,3 +335,42 @@ def test_a_round_s_window_opens_at_its_moment_whatever_the_machine_s_time_zone(
     git(project.root, "commit", "--allow-empty", "-qm", "Before the round")
     reflection = Reflection(project)
     assert reflection.metrics(reflection.window())["commits"] == 0
+
+
+def test_a_session_cannot_end_its_turn_with_the_round_it_started_open(
+    project: Project, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def stop(session: str, active: bool = False) -> dict[str, object] | None:
+        payload = {"session_id": session, "stop_hook_active": active}
+        return HookRunner(project, payload).handle("Stop")
+
+    assert stop("s1") is None
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "s1")
+    started = json.loads(nock(project.root, "reflect", "--json").stdout)
+    assert started["finish"] == ".nock/nock reflect finish JSON"
+    refused = stop("s1")
+    assert refused is not None and refused["decision"] == "block"
+    reason = str(refused["reason"])
+    assert f"the reflection round {started['round']} is under way and not finished" in reason
+    assert "write report.md" in reason and "write share.md" in reason
+    assert "`.nock/nock reflect finish JSON` records it" in reason
+    assert stop("s1", active=True) is None
+    assert stop("s2") is None
+    for path, text in zip(started["write"], ("# Report\n", "Early days.\n"), strict=True):
+        (project.root / path).write_text(text)
+    (project.root / ".nock" / "decisions" / "map.md").write_text("- [D9] holds.\n")
+    reason = str((stop("s1") or {})["reason"])
+    assert "report.md" not in reason and "[D9] is no decision" in reason
+    (project.root / ".nock" / "decisions" / "map.md").write_text("# The map\n")
+    assert finish(project, RECORD).returncode == 0
+    assert stop("s1") is None
+
+
+def test_reflect_starts_the_default_kind_and_names_the_others(project: Project) -> None:
+    unknown = nock(project.root, "reflect", "lgika")
+    assert unknown.returncode == 40 and "did you mean `reflect logika`" in unknown.stderr
+    assert nock(project.root, "reflect", "start").returncode == 40
+    assert nock(project.root, "reflect", "--topic", "logika").returncode == 40
+    listed = nock(project.root).stdout
+    assert "reflect —" in listed and "reflect logika —" in listed
+    assert "reflect logika finish JSON —" in listed

@@ -16,8 +16,9 @@ from typing import TYPE_CHECKING, Any
 
 from nock.checks import Checks
 from nock.errors import PreconditionError
+from nock.kinds import kinds
 from nock.logika import LEDGER
-from nock.reflect import Reflection, Rounds, Topic, Window, tool_rows
+from nock.reflect import Reflection, Window, tool_rows
 from nock.releases import VERSION
 from nock.sessions import Sessions
 from nock.tools import BUILT_IN_SOURCE
@@ -161,10 +162,7 @@ class Usage:
                 ),
                 "load_failures": len(registry.failures),
             },
-            "rounds": {
-                "nock": len(Rounds(project).all()),
-                "logika": len(Rounds(project, Topic.LOGIKA).all()),
-            },
+            "rounds": {kind.kind: len(kind.rounds.all()) for kind in kinds(project)},
         }
         if level is Level.PUBLIC:
             report["tools"] = [

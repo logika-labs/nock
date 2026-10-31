@@ -2,11 +2,13 @@
 stdin and answers in Claude Code's hook format. nock's own: a session starts
 knowing the toolbox and — when the human started it, once a day or when
 something new calls — where things stand, in a few lines (a reflection round
-due, decisions waiting on review or rework, a logika round worth offering); a
+due, decisions waiting on review or rework, another kind of round worth
+offering); a
 prompt brings the owner's reviews of the decisions the session recorded; an
 edit to a file shows the decisions that govern it; and when the session ends
 its transcript is read into telemetry and, when due, the usage statistics
-are shared. What calls for the owner is also said to the human. With
+are shared. A turn that would end with a round this session started still
+open is refused once, saying what the round still needs. What calls for the owner is also said to the human. With
 `reminders = false` nock says nothing unasked, and still records. The
 project's `@nock.hook`s run after. Every handler fails open — a nock that
 cannot load must never block the tool call that would fix it."""
@@ -22,6 +24,7 @@ from typing import Any
 
 from nock.decisions import Decisions
 from nock.fixtures import Call, Scope
+from nock.kinds import kinds
 from nock.primer import refresh
 from nock.project import NOCK_DIRECTORY, Project
 from nock.sessions import Sessions
@@ -31,7 +34,13 @@ from nock.usage import Usage
 
 EVENTS = {native: event for event, native in NATIVE_EVENTS.items()}
 # The events nock itself always listens to.
-BUILT_IN_EVENTS = (Event.SESSION_START, Event.PROMPT, Event.AFTER_TOOL, Event.SESSION_END)
+BUILT_IN_EVENTS = (
+    Event.SESSION_START,
+    Event.PROMPT,
+    Event.AFTER_TOOL,
+    Event.STOP,
+    Event.SESSION_END,
+)
 # The tools whose use is an edit, as a Claude Code matcher: the after-tool handler's.
 EDIT_TOOLS = "Edit|MultiEdit|Write|NotebookEdit"
 # What the standing a session starts with is, and what to do with it.
@@ -71,6 +80,8 @@ class HookRunner:
         elif event is Event.SESSION_END:
             self.session_end()
         blocks: list[str] = []
+        if event is Event.STOP:
+            blocks += self.rounds_left_open()
         for entry in self.project.registry.hooks_for(event):
             values = {
                 "project": self.project,
@@ -138,14 +149,14 @@ class HookRunner:
 
         standing = Standing(self.project)
         collected = standing.collect()
-        logika_due = bool(collected["logika"] and collected["logika"]["due"])
+        offers = sorted(kind for kind, offer in collected["rounds"].items() if offer.get("due"))
         news = [
             bool(collected["reflection"]["due"]),
             sorted(item["number"] for item in collected["to_rework"]),
             sorted(item["number"] for item in collected["answered"]),
             collected["unshared"],
             collected["newer_nock"],
-            logika_due,
+            offers,
         ]
         if not standing.lines(collected):
             return []
@@ -155,11 +166,12 @@ class HookRunner:
         # An unshared summary is mentioned once per round.
         if collected["unshared"] and seen(collected["unshared"]):
             collected["unshared"] = None
-        if logika_due:
-            # A logika round is offered gently: at most once a week while it is due.
-            year, week, _ = datetime.now(UTC).isocalendar()
-            if seen(f"logika:{collected['logika']['last'] or 'never'}:{year}-{week}"):
-                collected["logika"] = None
+        # Another kind of round is offered gently: at most once a week while it is due.
+        year, week, _ = datetime.now(UTC).isocalendar()
+        for kind in offers:
+            offer = collected["rounds"][kind]
+            if seen(f"{kind}:{offer['last'] or 'never'}:{year}-{week}"):
+                del collected["rounds"][kind]
         return standing.lines(collected)
 
     def decisions(self) -> str:
@@ -211,6 +223,13 @@ class HookRunner:
                 "`.nock/nock decisions edit '{\"number\": N, …}'`.",
             ]
         )
+
+    def rounds_left_open(self) -> list[str]:
+        """Every round this session started and has not finished, with what it still needs."""
+        session = self.payload.get("session_id")
+        if not isinstance(session, str) or self.payload.get("stop_hook_active") is True:
+            return []
+        return [said for kind in kinds(self.project) if (said := kind.left_open(session))]
 
     def session_end(self) -> None:
         transcript = self.payload.get("transcript_path")

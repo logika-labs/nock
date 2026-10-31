@@ -8,7 +8,7 @@ description: Run a nock reflection round. Three subagents improve the toolbox, k
 Set aside whatever this session was doing: the round works from its
 material, not from memory.
 
-1. `.nock/nock reflect start` prints the round's window, its three material
+1. `.nock/nock reflect` prints the round's window, its three material
    files and the two files you write.
 2. Dispatch three subagents in one message. Give each its brief (beside this
    file), its material and the window; each answers with a report. None
@@ -44,6 +44,6 @@ material, not from memory.
    makers learn how nock does in real projects:
    `.nock/nock share '{"visibility": "private"}'` shows what would be sent
    (private goes to nock's makers only; public is published on nock.dev).
-   Send it (`"send": true`) only on their yes. If `reflect start` gave
+   Send it (`"send": true`) only on their yes. If `reflect` gave
    `tell_the_owner`, tell them that too, in its words: it is what nock
    shares with its makers, said once.

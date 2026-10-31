@@ -499,12 +499,22 @@ dispatches nothing.
 
 ## Reflection
 
-A round is the `/nock-reflect` skill, which `nock init` installs, run in a
+Rounds come in kinds. nock's own is the default: `nock reflect` starts it,
+and `nock reflect finish JSON` ends it. Another kind is named:
+`nock reflect logika`, then `nock reflect logika finish JSON` (see [The
+logika round](#the-logika-round)). Each kind has its skill, the files its
+lead writes and the checks its end must pass, and keeps its rounds apart.
+A session that started a round cannot end its turn while the round is
+open: nock refuses the stop once, naming the kind and what is still
+missing (the files to write, what the checks find, the `finish` to run),
+and lets the next stop through.
+
+nock's round is the `/nock-reflect` skill, which `nock init` installs, run in a
 session like any other. When one is due, the session start says so, to the
 agent and to you: by default after 15 sessions or 7 days, whichever comes
 first.
 
-1. **`nock reflect start`** starts the round, named by its date, and writes
+1. **`nock reflect`** starts the round, named by its date, and writes
    what its parts read into `.nock/local/reflections/DATE/`.
 2. **Three subagents**, at once:
    - **the toolbox** reads the work and the telemetry — what the human asked
@@ -522,7 +532,7 @@ first.
    what changed in the toolbox and the map, and how nock is doing here.
 4. **The summary to share**, `share.md` beside it: the same, abstractly
    enough that nobody could tell which project it is.
-5. **`nock reflect finish`** requires both, runs nock's checks — the tools
+5. **`nock reflect finish JSON`** requires both, runs nock's checks — the tools
    load and their examples run, the map's citations hold, the summary names
    nothing of the project (no paths, file names, the project's or its
    authors' names, addresses or links) — and records the round in
@@ -554,7 +564,7 @@ run yet and the ledger declares events, or `reflect.logika.days` (30)
 after the last one, once `logika.json` has changed since then. `nock
 status` always says.
 
-1. **`nock reflect start --topic logika`** writes its material: what the
+1. **`nock reflect logika`** writes its material: what the
    ledger already says per event and per component (with the commits that
    touched each component since the last round), the ledger's history,
    the last logika round's changes and expectations, and the questions
@@ -569,8 +579,9 @@ status` always says.
    later becomes a question decision tagged `logika`, and the next round
    acts on the answer. A rule that needs state the code doesn't record
    becomes a todo tagged `logika` and `instrumentation`, not a weaker rule.
-4. **`nock reflect finish --topic logika JSON`** requires the round's
-   `report.md` and a `logika.json` that parses. It records the rules
+4. **`nock reflect logika finish JSON`** requires the round's
+   `report.md`, a `logika.json` that parses, and every rule changed to say
+   how it was `tested`. It records the rules
    changed, how each was tested, and the ledger's numbers before and after
    in `.nock/reflections/logika/DATE/record.json`, and commits `.nock/` and
    `logika.json`. Deploying the ledger (`logika sync`) is left to the
@@ -634,7 +645,7 @@ A round's summary is sent only with `nock share` and the owner's yes (see
 | `nock consult JSON` | a fresh agent advises on a task: the decisions, tools, checks and docs that bear on it; the caller waits |
 | `nock advise JSON` | the consultant's advice, submitted; only a consultant nock dispatched runs it |
 | `nock usage` | what nock shares with its makers, and exactly what the next report carries |
-| `nock reflect start`, `finish JSON` | a reflection round; the round is the `/nock-reflect` skill; `--topic logika` for a logika round (`/nock-reflect-logika`) |
+| `nock reflect [KIND]`, `nock reflect [KIND] finish JSON` | a reflection round: nock's own (`/nock-reflect`), or another kind, `logika` (`/nock-reflect-logika`) |
 | `nock share JSON` | a round's summary, and sending it |
 | `nock gen write`, `new`, `add`, `set`, `rm`, `show`, `bind`, `unbind` | generators |
 | `nock init`, `nock upgrade` | install (or re-wire), and upgrade the vendored core to the latest release, with a three-way merge |

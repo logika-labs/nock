@@ -15,8 +15,7 @@ from nock.decisions import MAP
 from nock.errors import ConflictError, NotFoundError, PreconditionError
 from nock.git import Git, GitError
 from nock.hooks import BUILT_IN_EVENTS, EDIT_TOOLS
-from nock.logika import LEDGER
-from nock.logika import SKILL as LOGIKA_SKILL
+from nock.kinds import KINDS
 from nock.primer import PRIMER, refresh
 from nock.project import NOCK_DIRECTORY, Project
 from nock.releases import PYPI, VERSION, Releases
@@ -90,8 +89,9 @@ decision governs shows it.
 """
 
 IMPORT_LINE = "@.nock/context.md"
-# Claude Code skills, from `briefs/NAME/` (a SKILL.md and what it reads).
-SKILLS = ("nock-reflect", "nock-triage")
+# Claude Code skills, from `briefs/NAME/` (a SKILL.md and what it reads), besides
+# each kind of round's where it is wanted.
+SKILLS = ("nock-triage",)
 # Skills earlier versions installed, removed on install.
 RETIRED_SKILLS = ("reflect", "consolidate")
 HOOK_COMMAND = '"$CLAUDE_PROJECT_DIR"/.nock/nock hook {event}'
@@ -195,12 +195,13 @@ class Installer:
         return self.report
 
     def install_skills(self) -> None:
-        """The `/nock-reflect` and `/nock-triage` skills — and, in a Logika
-        project, `/nock-reflect-logika` — kept in step with the core like the primer."""
+        """`/nock-triage` and each kind of round's skill where it is wanted
+        (`/nock-reflect`; `/nock-reflect-logika` in a Logika project), kept in
+        step with the core like the primer."""
         briefs = PACKAGE / "briefs"
         library = Library(briefs)
-        logika = (LOGIKA_SKILL,) if (self.root / LEDGER).is_file() else ()
-        for name in (*SKILLS, *logika):
+        rounds = tuple(kind.skill for kind in KINDS.values() if kind.wanted(self.root))
+        for name in (*rounds, *SKILLS):
             for source in sorted((briefs / name).glob("*.md")):
                 relative = f".claude/skills/{name}/{source.name}"
                 write_atomic(self.root / relative, library.render(f"{name}/{source.name}"))

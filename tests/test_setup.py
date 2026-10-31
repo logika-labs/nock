@@ -32,7 +32,7 @@ def test_init_is_idempotent_and_keeps_the_project_s_settings(repository: Path) -
     wired = json.loads(settings.read_text())
     assert wired["model"] == "x"
     commands = [hook["command"] for entry in wired["hooks"]["Stop"] for hook in entry["hooks"]]
-    assert commands == ["mine"]
+    assert commands == ["mine", '"$CLAUDE_PROJECT_DIR"/.nock/nock hook Stop']
     started = [
         hook["command"] for entry in wired["hooks"]["SessionStart"] for hook in entry["hooks"]
     ]

@@ -1,13 +1,14 @@
-"""The `logika` reflection topic. In a Logika project — a `logika.json` ledger,
-and the `logika` CLI on PATH — the owner runs a round with the
-`/nock-reflect-logika` skill: it turns the instrumented code and the data it
-captures into the ledger's rules (validations, paths, timeouts, rules,
-invariants), each shown silent on real captures and firing on a replay, asks
-the owner what only they know, and suggests the instrumentation a rule would
-need. `nock reflect start --topic logika` writes what it reads, and
-`nock reflect finish --topic logika` records it and commits `.nock/` and
-`logika.json`. Its rounds are kept apart from nock's own, so neither moves
-the other's window."""
+"""The `logika` kind of reflection round. In a Logika project — a
+`logika.json` ledger, and the `logika` CLI on PATH — the owner runs a round
+with the `/nock-reflect-logika` skill: it turns the instrumented code and the
+data it captures into the ledger's rules (validations, paths, timeouts,
+rules, invariants), each shown silent on real captures and firing on a
+replay, asks the owner what only they know, and suggests the instrumentation
+a rule would need. `nock reflect logika` writes what it reads, and `nock
+reflect logika finish` requires the ledger to parse and every rule changed
+to say how it was tested, records it and commits `.nock/` and `logika.json`.
+Its rounds are kept apart from nock's own, so neither moves the other's
+window."""
 
 from __future__ import annotations
 
@@ -20,9 +21,8 @@ from typing import TYPE_CHECKING, Any
 from nock.decisions import Decisions, Status
 from nock.errors import Failed, PreconditionError
 from nock.git import Git, GitError
-from nock.reflect import REPORT, Record, Rounds, Topic, commit, schema
-from nock.schema import validate
-from nock.utils import now, parse_moment, read_json, write_json
+from nock.reflect import Record, Round
+from nock.utils import parse_moment, read_json
 
 if TYPE_CHECKING:
     from nock.project import Project
@@ -32,6 +32,8 @@ PROGRAM = "logika"
 SKILL = "nock-reflect-logika"
 # What a round asks about, and suggests, is tagged so the next round finds it.
 TAG = "logika"
+# The changes that are rules, each of which must say how it was tested.
+RULE_KINDS = ("validate", "path", "timeout", "rule", "invariant")
 SECTION_ROWS = 40
 
 
@@ -98,11 +100,24 @@ class Ledger:
         }
 
 
-class LogikaRound:
+class LogikaRound(Round):
+    """The ledger's rules, from the instrumented code and its captures, with the owner."""
+
+    kind = "logika"
+    title = "logika round"
+    skill = SKILL
+    also = (LEDGER,)
+
     def __init__(self, project: Project) -> None:
-        self.project = project
+        super().__init__(project)
         self.ledger = Ledger(project)
-        self.rounds = Rounds(project, Topic.LOGIKA)
+
+    @classmethod
+    def wanted(cls, root: Path) -> bool:
+        return (root / LEDGER).is_file()
+
+    def unavailable(self) -> str:
+        return self.ledger.unavailable()
 
     # --- when -------------------------------------------------------------------------
 
@@ -138,17 +153,6 @@ class LogikaRound:
             else ""
         )
 
-    def standing(self) -> dict[str, Any] | None:
-        """For `nock status` and the session start; nothing outside a Logika project."""
-        if self.ledger.unavailable():
-            return None
-        last = self.rounds.last()
-        return {
-            "due": self.due() or None,
-            "last": last.get("finished") if last else None,
-            "skill": (self.project.here / ".claude" / "skills" / SKILL / "SKILL.md").is_file(),
-        }
-
     def changes(self, since: str | None) -> list[str]:
         """The commits that changed the ledger since `since`, newest first."""
         try:
@@ -168,64 +172,37 @@ class LogikaRound:
 
     # --- a round ------------------------------------------------------------------------
 
-    def start(self) -> dict[str, Any]:
-        """Start a logika round, or pick up the one under way, and write what it reads."""
-        problem = self.ledger.unavailable()
-        if problem:
-            raise PreconditionError(problem)
+    def begin(self, name: str, scratch: Path) -> dict[str, Any]:
+        """What the ledger already says, the commits since, what earlier rounds left."""
         ledger = self.ledger.read()
-        name = self.rounds.current() or self.rounds.new_name()
-        scratch = self.rounds.scratch / name
-        scratch.mkdir(parents=True, exist_ok=True)
         last = self.rounds.last()
-        since = last.get("finished") if last else None
-        write_json(
-            scratch / "round.json",
-            {
-                "round": name,
-                "since": since,
-                "started": now(),
-                "ledger": self.ledger.counts(ledger),
-            },
-        )
         material = scratch / f"{TAG}.md"
         material.write_text(Material(self, ledger, last).render())
-        (self.rounds.directory / name).mkdir(parents=True, exist_ok=True)
         return {
-            "round": name,
-            "since": since,
+            "since": last.get("finished") if last else None,
             "material": {TAG: str(material)},
-            "write": [str((self.rounds.directory / name / REPORT).relative_to(self.project.here))],
+            "kept": {"ledger": self.ledger.counts(ledger)},
         }
 
-    def finish(self, record: Record) -> dict[str, Any]:
-        """Check the round and commit it: the report written, the ledger still
-        parsing, the record kept with the ledger's numbers before and after."""
-        name = self.rounds.current()
-        if name is None:
-            raise PreconditionError(
-                "no logika round is under way — `.nock/nock reflect start --topic logika` starts one"
-            )
-        validate(record, schema())
-        report = self.rounds.directory / name / REPORT
-        if not report.is_file() or not report.read_text().strip():
-            raise PreconditionError(f"write {REPORT} in {report.parent} first")
-        ledger = self.ledger.read()
-        started = read_json(self.rounds.scratch / name / "round.json")
-        write_json(
-            self.rounds.directory / name / "record.json",
-            {
-                **record,
-                "round": name,
-                "since": started["since"],
-                "started": started["started"],
-                "finished": now(),
-                "ledger_before": started["ledger"],
-                "ledger": self.ledger.counts(ledger),
-            },
-        )
-        commit(self.project, f"Logika round {name}: {record['summary']}", (LEDGER,))
-        return {"round": name, "report": str(report.relative_to(self.project.here))}
+    def problems(self, record: Record | None) -> list[str]:
+        """The ledger parses, and every rule the round changed says how it was tested."""
+        problems = []
+        try:
+            self.ledger.read()
+        except Failed as error:
+            problems.append(f"{error}: {error.value}" if error.value else str(error))
+        return problems + [
+            f"the {change['kind']} on `{change['target']}` does not say how it was tested: "
+            "`tested`, the capture it stayed silent on and the replay it fired on"
+            for change in (record or {}).get("changes", [])
+            if change["kind"] in RULE_KINDS and not str(change.get("tested") or "").strip()
+        ]
+
+    def kept(self, name: str, started: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "ledger_before": started["ledger"],
+            "ledger": self.ledger.counts(self.ledger.read()),
+        }
 
 
 class Material:

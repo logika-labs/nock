@@ -394,38 +394,57 @@ def option_flag(name: str) -> str:
 
 
 class Group:
+    """Commands under a common word: `decisions list`, `reflect logika finish`.
+    A command named like the group is its default, run when no command of
+    the group is named (`reflect`); it takes no arguments but `--json` and
+    `--full`."""
+
     def __init__(self, name: str, help: str = "") -> None:
         self.name = name
         self.help = help
         self.members: dict[str, Command | Group] = {}
+        self.default: Command | None = None
 
     @property
     def summary(self) -> str:
-        return self.help
+        return self.default.summary if self.default else self.help
 
     def group(self, name: str, help: str = "") -> Group:
         found = self.members.get(name)
         if isinstance(found, Group):
             return found
         created = Group(name, help)
+        if isinstance(found, Command):
+            created.default = found
         self.members[name] = created
         return created
 
     def add(self, command: Command) -> None:
-        if command.group:
-            self.group(command.group).members[command.name] = command
+        target = self
+        for word in (command.group or "").split():
+            target = target.group(word)
+        found = target.members.get(command.name)
+        if isinstance(found, Group):
+            found.default = command
         else:
-            self.members[command.name] = command
+            target.members[command.name] = command
 
     def commands(self) -> list[Command]:
-        found = []
+        found = [self.default] if self.default else []
         for member in self.members.values():
             found += member.commands() if isinstance(member, Group) else [member]
         return found
 
     def configure(self, parser: argparse.ArgumentParser, depth: int = 0) -> None:
-        parser.description = self.help
+        parser.description = inspect.getdoc(self.default.function) if self.default else self.help
         parser.set_defaults(**{DESTINATION: self})
+        if self.default:
+            parser.add_argument(
+                "--json", action="store_true", dest=JSON_FLAG, help="Print the result as JSON."
+            )
+            parser.add_argument(
+                "--full", action="store_true", dest=FULL_FLAG, help="Print all of it, uncapped."
+            )
         commands = parser.add_subparsers(title="commands", metavar="COMMAND", dest=f"_group{depth}")
         for name, member in sorted(self.members.items()):
             child = commands.add_parser(
@@ -458,6 +477,8 @@ class Group:
         except UsageError as error:
             raise UsageError(self.suggest(str(error), arguments)) from error
         target = getattr(namespace, DESTINATION)
+        if isinstance(target, Group) and target.default:
+            target = target.default
         if extras:
             raise UsageError(self.unrecognized(target, extras))
         return target, namespace

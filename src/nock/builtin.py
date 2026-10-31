@@ -19,10 +19,10 @@ from nock.docs import Docs
 from nock.errors import Error, ExitCode, Failed, UsageError
 from nock.fixtures import Shell
 from nock.generators import Catalogs, Generators
-from nock.logika import LogikaRound
+from nock.kinds import DEFAULT, KINDS
 from nock.processes import Output
 from nock.project import Project
-from nock.reflect import Record, Reflection, Topic, tool_rows
+from nock.reflect import Record, Reflection, Round, tool_rows
 from nock.render import Problem
 from nock.schema import check_schema
 from nock.sessions import Sessions
@@ -352,38 +352,53 @@ def advise(project: Project, advice: Advice) -> str:
 # --- reflection ---------------------------------------------------------------------
 
 
-TOPIC_HELP = "logika: the round on a Logika project's ledger rules (`/nock-reflect-logika`)."
-
-
-@command(name="start", group="reflect")
-def reflect_start(
-    project: Project, *, topic: Annotated[Topic | None, Option(help=TOPIC_HELP)] = None
-) -> dict[str, Any]:
-    """Start a reflection round (the `/nock-reflect` skill), or pick up the one
-    under way: writes what its three parts read, and says where the report
-    and the shareable summary go. With `--topic logika`, a logika round
-    instead: what it reads, and where its report goes."""
-    started = LogikaRound(project).start() if topic is Topic.LOGIKA else Reflection(project).start()
-    disclose(project, started, Moment.ROUND)
-    return started
+@command(name="reflect")
+def reflect(project: Project) -> dict[str, Any]:
+    """Start nock's own reflection round (the `/nock-reflect` skill), or pick
+    up the one under way: writes what its three parts read, and says where
+    the report and the shareable summary go. `nock reflect KIND` starts
+    another kind (`nock docs reflection.kinds`)."""
+    return started(project, DEFAULT(project))
 
 
 @command(name="finish", group="reflect")
-def reflect_finish(
-    project: Project,
-    record: Record,
-    *,
-    topic: Annotated[Topic | None, Option(help=TOPIC_HELP)] = None,
-) -> dict[str, Any]:
-    """Finish the round: requires its report and summary, nock's checks to
+def reflect_finish(project: Project, record: Record) -> dict[str, Any]:
+    """Finish nock's round: requires its report and summary, nock's checks to
     pass, then records what the toolbox part changed and what each change
-    should do by the next round, and commits `.nock/`. With `--topic logika`,
-    the logika round: requires its report and a ledger that parses, records
-    the rules it changed and how each was tested, and commits `.nock/` and
-    `logika.json`."""
-    if topic is Topic.LOGIKA:
-        return LogikaRound(project).finish(record)
-    return Reflection(project).finish(record)
+    should do by the next round, and commits `.nock/`."""
+    return DEFAULT(project).finish(record)
+
+
+def started(project: Project, kind: Round) -> dict[str, Any]:
+    begun = kind.start()
+    disclose(project, begun, Moment.ROUND)
+    return begun
+
+
+def kind_commands(kind: type[Round]) -> None:
+    """`nock reflect KIND` and `nock reflect KIND finish JSON`, for a kind other than nock's."""
+
+    def start_kind(project: Project) -> dict[str, Any]:
+        return started(project, kind(project))
+
+    def finish_kind(project: Project, record: Record) -> dict[str, Any]:
+        return kind(project).finish(record)
+
+    start_kind.__doc__ = (
+        f"Start a {kind.title} (the `/{kind.skill}` skill), or pick up the one under way: "
+        "writes what it reads, and says where its report goes."
+    )
+    finish_kind.__doc__ = (
+        f"Finish the {kind.title}: requires its report and its checks to pass, records it, "
+        "and commits it."
+    )
+    command(name=kind.kind, group="reflect")(start_kind)
+    command(name="finish", group=f"reflect {kind.kind}")(finish_kind)
+
+
+for _kind in KINDS.values():
+    if not _kind.default:
+        kind_commands(_kind)
 
 
 @command

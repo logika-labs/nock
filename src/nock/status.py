@@ -1,8 +1,8 @@
 """Where the project stands with nock, in one place: whether a reflection round
 is due, the decisions by status and review, those rejected and waiting to be
 redone, the questions the owner answered, a round summary not yet shared, a
-newer nock, and — in a Logika project — whether a logika round is worth
-offering. `nock status` prints it; a
+newer nock, and whether another kind of round (a logika round, in a Logika
+project) is worth offering. `nock status` prints it; a
 session the human starts begins with it."""
 
 from __future__ import annotations
@@ -10,7 +10,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from nock.decisions import Decisions, Review, Status
-from nock.logika import SKILL, LogikaRound
+from nock.kinds import offered
 from nock.reflect import Reflection
 from nock.releases import Updates
 from nock.share import Sharing
@@ -73,7 +73,15 @@ class Standing:
             ],
             "unshared": Sharing(self.project).unshared(),
             "newer_nock": Updates(self.project).newer(),
-            "logika": LogikaRound(self.project).standing(),
+            # The other kinds of round that can run here, each offered when due.
+            "rounds": {
+                kind.kind: {
+                    **(kind.standing() or {}),
+                    "title": kind.title,
+                    "skill_name": kind.skill,
+                }
+                for kind in offered(self.project)
+            },
         }
 
     def lines(self, standing: dict[str, Any]) -> list[str]:
@@ -135,11 +143,13 @@ class Standing:
                 f"nock: the {standing['unshared']} round's summary is not shared yet — "
                 "`.nock/nock share` shows it; sharing it helps nock's makers improve nock."
             )
-        logika = standing["logika"]
-        if logika and logika["due"]:
-            install = "" if logika["skill"] else " (`.nock/nock init` installs the skill)"
+        for kind, offer in standing["rounds"].items():
+            if not offer.get("due"):
+                continue
+            install = "" if offer["skill"] else " (`.nock/nock init` installs the skill)"
             lines.append(
-                f"nock: {logika['due']} — when the human wants one, `/{SKILL}`{install} turns the "
-                "ledger and its captured data into rules, with them; never start it unasked."
+                f"nock: {offer['due']} — when the human wants one, `/{offer['skill_name']}`{install}"
+                f" runs the {offer['title']} with them (`.nock/nock reflect {kind}`); never start"
+                " it unasked."
             )
         return lines

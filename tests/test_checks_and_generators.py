@@ -121,7 +121,7 @@ def test_a_hook_needs_its_event_wired(project: Project) -> None:
     write_tool(
         project,
         "hooks",
-        "import nock\n\n@nock.hook('stop')\ndef remind(payload):\n    return 'x'\n",
+        "import nock\n\n@nock.hook('tool-failed')\ndef remind(payload):\n    return 'x'\n",
     )
     result = nock(project.root, "check", "nock-wiring")
     assert result.returncode == 1 and "`.nock/nock init` wires it" in result.stdout
