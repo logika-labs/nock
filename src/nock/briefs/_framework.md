@@ -101,6 +101,9 @@ files and the tool's own code are unchanged; `--fresh` runs it anyway.
 Tools run where nock runs: on `python3`, or on the project's interpreter
 when `[environment]` in `.nock/config.toml` names one (`python`, with its
 `setup`, `path` and `dotenv`); then they can import the project's packages.
+Every call and every hook loads the whole toolbox, so keep a module's
+top-level imports light and import heavy packages inside the tool that
+needs them.
 `.nock/nock calls --tool NAME` shows how a tool has been called and how it
 ended.
 
