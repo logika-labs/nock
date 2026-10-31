@@ -2,7 +2,9 @@
 wrong (exit 1) or the machine is (42) — never both, so the first look names the
 cause. A project's checks are its configured commands (`[checks.NAME] command
 = …` in `.nock/config.toml`) and its `@nock.check` functions; nock adds its own
-over the toolbox and the generated files."""
+over the toolbox and the generated files. Checks that share a `chain` run
+one after another (they share a build, a lock, a cache); everything else runs
+side by side."""
 
 from __future__ import annotations
 
@@ -10,6 +12,7 @@ import fcntl
 import os
 import time
 from collections.abc import Iterator
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from enum import StrEnum
@@ -84,19 +87,44 @@ class Checks:
         disabled = self.project.configuration.get("checks.disabled", []) or []
         return {name: value for name, value in found.items() if name not in disabled}
 
+    def chains(self) -> dict[str, list[str]]:
+        """Chain → its checks, in the order they are configured. A check with
+        no `chain` is a chain of its own."""
+        chains: dict[str, list[str]] = {}
+        sections = self.project.configuration.section("checks")
+        for name in self.available():
+            settings = sections.get(name)
+            chain = settings.get("chain") if isinstance(settings, dict) else None
+            chains.setdefault(str(chain or name), []).append(name)
+        return chains
+
     def run(self, only: list[str] | None = None, fix: bool = False) -> Verdict:
+        """The checks named (a chain's name stands for its checks), or all of
+        them: each chain's checks one after another, the chains side by side."""
         available = self.available()
-        names = only or list(available)
-        missing = [name for name in names if name not in available]
+        chains = self.chains()
+        missing = [name for name in only or [] if name not in available and name not in chains]
         if missing:
+            named = [name for name in chains if name not in available]
             raise NotFoundError(
                 f"no check named {', '.join(missing)}; there are: {', '.join(available)}"
+                + (f"; chains: {', '.join(named)}" if named else "")
             )
+        chosen = {
+            name
+            for item in only or list(available)
+            for name in (chains[item] if item in chains and item not in available else [item])
+        }
+        plan = [[name for name in chain if name in chosen] for chain in chains.values()]
+        plan = [chain for chain in plan if chain]
         results: dict[str, Result] = {}
-        with self.slot():
-            for name in names:
-                results[name] = self.run_one(name, fix)
-        return Verdict(results)
+        with self.slot(), ThreadPoolExecutor(max_workers=len(plan) or 1) as pool:
+            for finished in pool.map(lambda chain: self.run_chain(chain, fix), plan):
+                results.update(finished)
+        return Verdict({name: results[name] for name in available if name in results})
+
+    def run_chain(self, chain: list[str], fix: bool) -> dict[str, Result]:
+        return {name: self.run_one(name, fix) for name in chain}
 
     def run_one(self, name: str, fix: bool) -> Result:
         settings = self.project.configuration.section("checks").get(name)
@@ -145,7 +173,12 @@ class Checks:
             return Result(Outcome.PASSED)
         characters = int(self.project.configuration.get("output.characters")) // 2
         if output.code in (settings.get("failure_codes") or [1]):
-            return Result(Outcome.FAILED, [output.excerpt(characters)], ExitCode.SUBJECT_FAILED)
+            evidence = output.excerpt(characters) if output.text.strip() else ""
+            return Result(
+                Outcome.FAILED,
+                [evidence or f"exited {output.code}, printing nothing"],
+                ExitCode.SUBJECT_FAILED,
+            )
         code = (
             output.code
             if output.code in (ExitCode.TIMED_OUT, ExitCode.HUNG)

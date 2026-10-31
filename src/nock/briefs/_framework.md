@@ -68,7 +68,9 @@ line)` — and nothing when all is well. `.nock/nock check` runs them all.
 
 Asking for `changed` keeps a check to new code, so it can land while old code
 still breaks the rule. A plain command can be a check too, in
-`.nock/config.toml`: `[checks.test]` with `command = "pytest -q"`.
+`.nock/config.toml`: `[checks.test]` with `command = "pytest -q"`. Checks
+run side by side; those sharing a `chain = "rust"` run one after another,
+and `.nock/nock check rust` runs just that chain.
 
 **Hooks** react to Claude Code's events: `@nock.hook("session-start")` (or
 `prompt`, `after-tool`, `tool-failed`, `stop`, `session-end`), asking for

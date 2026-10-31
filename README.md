@@ -121,6 +121,22 @@ command = "pytest -q"
 command = "ruff check"
 ```
 
+Checks run side by side. Those that must not — they share a build, a lock
+or a cache — share a `chain`, and run one after another in the order they
+are written:
+
+```toml
+[checks.clippy]
+command = "cargo clippy -- -D warnings"
+chain = "rust"
+
+[checks.cargo-test]
+command = "cargo test"
+chain = "rust"
+```
+
+`nock check rust` runs a chain; `nock check cargo-test` one check of it.
+
 ## A tool
 
 ```python
@@ -516,7 +532,7 @@ window.
 | command | does |
 |---|---|
 | `nock` | the toolbox: the project's tools first, then nock's |
-| `nock check [NAME…] [--fix]` | run the checks; prints nothing when all pass |
+| `nock check [NAME…] [--fix]` | run the checks (all, or the checks and chains named), side by side; prints nothing when all pass |
 | `nock run -- COMMAND` | run anything supervised and condensed |
 | `nock guide` | how to write a tool, check, hook or generator |
 | `nock calls`, `stats`, `sessions`, `query SQL` | the telemetry |
@@ -564,7 +580,7 @@ one machine.
 | `branch` | `main` | the main branch, which `changed` diffs against |
 | `output.characters`, `output.rows` | 8000, 60 | the cap on what a call prints |
 | `run.deadline`, `run.silence` | 3600, 900 | seconds before a supervised process is stopped |
-| `checks.NAME.command` | — | a command that is a check |
+| `checks.NAME.command`, `fix`, `chain`, `directory`, `deadline`, `silence`, `failure_codes` | — | a command that is a check; the command that fixes what it finds; the chain it runs in, after the chain's earlier checks; where it runs and its bounds; the exit codes that mean the code is wrong (`[1]`) |
 | `checks.concurrency` | 2 | checks run at once, machine-wide |
 | `reflect.sessions`, `reflect.days` | 15, 7 | when a round is due, whichever comes first |
 | `reflect.logika.days` | 30 | in a Logika project, days after a logika round before the next is offered (once the ledger has changed) |

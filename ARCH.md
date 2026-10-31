@@ -412,8 +412,11 @@ Notes:
 - **Fixtures** are found by parameter name. A project fixture can ask for
   other fixtures, nock's included. The names `project`, `payload` and `call`
   are supplied by the caller (`cli` or `hooks`), not by a function.
-- **Checks** run concurrently, in machine-wide slots (`checks.concurrency`,
-  via file locks), so parallel sessions don't pile up test suites. A check's
+- **Checks** of one call run side by side, a thread per chain: checks that
+  share a `chain` run one after another, in the order they are configured
+  (they share a build lock or a cache). Calls take machine-wide slots
+  (`checks.concurrency`, via file locks), so parallel sessions don't pile up
+  test suites. A check's
   verdict is 1 (the code is wrong) or 42 (the machine is not ready). The
   first look names the cause.
 - **Catalogs** are directories:

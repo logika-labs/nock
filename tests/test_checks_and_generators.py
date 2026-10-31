@@ -4,6 +4,7 @@ and generators, which keep derived files from drifting."""
 from __future__ import annotations
 
 import json
+import time
 
 from nock.checks import Checks, Outcome
 from nock.project import Project
@@ -36,6 +37,52 @@ def test_check_prints_nothing_when_everything_passes(project: Project) -> None:
     configure(project, '[checks.ok]\ncommand = "echo fine"\n')
     result = nock(project.root, "check")
     assert result.returncode == 0 and result.stdout == "" and result.stderr == ""
+
+
+CHAINS = """
+[checks.format]
+command = "sleep 1; echo format >> order.log"
+chain = "rust"
+
+[checks.lint]
+command = "echo lint >> order.log; exit 1"
+chain = "rust"
+
+[checks.tests]
+command = "echo tests >> order.log"
+chain = "rust"
+
+[checks.web]
+command = "sleep 1; echo web >> order.log"
+
+[checks.types]
+command = "sleep 1; echo types >> order.log"
+"""
+
+
+def test_chains_run_in_order_and_side_by_side(project: Project) -> None:
+    configure(project, CHAINS)
+    started = time.monotonic()
+    result = nock(project.root, "check", "rust", "web", "types")
+    elapsed = time.monotonic() - started
+    assert result.returncode == 1 and result.stdout == "lint: exited 1, printing nothing\n"
+    order = (project.root / "order.log").read_text().split()
+    assert [step for step in order if step in ("format", "lint", "tests")] == [
+        "format",
+        "lint",
+        "tests",
+    ]
+    assert sorted(order) == ["format", "lint", "tests", "types", "web"]
+    assert elapsed < 2.8, "the chains ran one after another"
+
+
+def test_a_chain_or_a_check_can_be_named(project: Project) -> None:
+    configure(project, CHAINS)
+    (project.root / "order.log").unlink(missing_ok=True)
+    assert nock(project.root, "check", "tests").returncode == 0
+    assert (project.root / "order.log").read_text().split() == ["tests"]
+    missing = nock(project.root, "check", "rusty")
+    assert missing.returncode == 44 and "chains: rust" in missing.stderr
 
 
 def test_a_check_returns_problems_and_asks_for_fixtures(project: Project) -> None:
