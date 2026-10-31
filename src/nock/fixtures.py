@@ -14,7 +14,7 @@ import os
 import shlex
 import sys
 import tempfile
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -102,15 +102,16 @@ class Scope:
         self.values[name] = value
         return value
 
-    def arguments(self, function: Callable[..., Any]) -> dict[str, Any]:
-        """The fixtures `function` asks for, by its parameter names."""
-        names = self.names()
+    def arguments(self, function: Callable[..., Any], given: Iterable[str] = ()) -> dict[str, Any]:
+        """The fixtures `function` asks for, by its parameter names, but for
+        those `given` otherwise (an option that shares a fixture's name)."""
+        names = self.names() - set(given)
         return {
             name: self.get(name) for name in inspect.signature(function).parameters if name in names
         }
 
     def call(self, function: Callable[..., Any], **values: Any) -> Any:
-        return function(**self.arguments(function), **values)
+        return function(**self.arguments(function, values), **values)
 
 
 class CommandFailed(SubjectFailedError):

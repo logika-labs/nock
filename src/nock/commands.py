@@ -236,9 +236,13 @@ class Command:
         hints = typing.get_type_hints(self.function, include_extras=True)
         found = []
         for parameter in inspect.signature(self.function).parameters.values():
-            annotation, option, optional = unwrap(hints.get(parameter.name, str))
+            hint = hints.get(parameter.name, str)
+            annotation, option, optional = unwrap(hint)
             default = parameter.default
-            if parameter.name in self.fixtures:
+            declared = typing.get_origin(hint) is typing.Annotated and any(
+                isinstance(extra, Option) for extra in typing.get_args(hint)[1:]
+            )
+            if parameter.name in self.fixtures and not declared:
                 kind = Kind.FIXTURE
             elif parameter.name == self.rest:
                 kind = Kind.REST

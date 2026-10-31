@@ -270,3 +270,17 @@ def test_a_tool_whose_signature_cannot_be_read_is_a_load_failure_not_a_crash(
     assert listed.returncode == 0, listed.stderr
     assert "`broken`'s signature cannot be read: NameError" in listed.stderr
     assert nock(project.root, "fine").stdout == "ok\n"
+
+
+def test_a_declared_option_may_share_a_fixture_s_name(project: Project) -> None:
+    write_tool(
+        project,
+        "named",
+        "from typing import Annotated\n\nimport nock\n\n"
+        "@nock.command\n"
+        "def named(root, *, project: Annotated[str, nock.Option(help='The account.')] = 'p') -> str:\n"
+        "    '''An option called project.'''\n"
+        "    return f'{project} in {root.name}'\n",
+    )
+    assert nock(project.root, "named", "--project", "q").stdout == "q in repository\n"
+    assert nock(project.root, "named").stdout == "p in repository\n"
