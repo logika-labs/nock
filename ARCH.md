@@ -101,6 +101,7 @@ src/nock/
 tests/               real git repositories and processes; no mocks
   conftest.py        a fresh repository with nock installed, per test; the `nock()` runner
   fake_agent.py      the scripted stand-in for the dispatched agents (elaborator, consultant)
+scripts/release.py   cut a release: checks, asks, then tags vVERSION and pushes it (standard library)
 evals/               does reflection pay? real sessions, with and without a toolbox
 web/                 nock.dev, never vendored or packaged: site/ (the pages), build.py (docs/
                      from this README), publish.py (to GitHub Pages), api/ (api.nock.dev)
@@ -560,9 +561,15 @@ about a newer release: it asks `upgrade.index` at most once a day, with a
 two-second timeout, keeps the answer in `.nock/local/latest.json`, and is
 silent on any failure.
 
-`.github/workflows/release.yml` is the only workflow: a pushed tag `vX.Y.Z`
-that matches the package's version is tested, built and published to PyPI
-as `nock`, through trusted publishing. Nothing runs on other pushes.
+Nothing in `.github/workflows/` runs on an ordinary push. `gate.yml` (ruff
+check, ruff format --check, basedpyright, and the suite on Python 3.12 and
+3.14) runs only by hand (`gh workflow run gate --ref BRANCH`) or when
+`release.yml` calls it. `release.yml` runs on a pushed tag `vX.Y.Z`, which
+`scripts/release.py` creates and pushes once the owner says yes: it runs the
+gate on the tagged commit, checks the tag names the package's version, builds
+the sdist and the wheel, publishes them to PyPI as `nock` through trusted
+publishing (environment `pypi`), and attaches them with their SHA-256 sums to
+a GitHub release.
 
 ## Tests and evals
 
