@@ -1,33 +1,84 @@
-# The only workflow: a pushed tag `vX.Y.Z` is tested, then published to PyPI
-# as nock through trusted publishing (environment `pypi`). Nothing runs on
-# ordinary pushes.
 name: release
+
+# Releases nock to PyPI from a tag `v<version>` (`python3 scripts/release.py VERSION` creates and pushes it,
+# asking first), once the gate passes on the tagged commit and the tag names the version pyproject.toml declares.
+# Publishing uses PyPI trusted publishing (no token) from the environment `pypi`, which also uploads the PyPI
+# attestations. The sdist, the wheel and their SHA-256 sums are attached to the GitHub release.
 
 on:
   push:
-    tags: ["v*"]
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
 
 jobs:
-  test:
+  gate:
+    uses: ./.github/workflows/gate.yml
+
+  build:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+
       - uses: astral-sh/setup-uv@v6
-      - name: The tag is the package's version
-        run: test "v$(uv version --short)" = "$GITHUB_REF_NAME"
-      - run: uv sync
-      - run: uv run ruff check
-      - run: uv run basedpyright
-      - run: uv run pytest -n 4
+
+      - name: The tag names the package's version
+        run: |
+          version="$(uv version --short)"
+          test "${GITHUB_REF_NAME}" = "v${version}" || {
+            echo "tag ${GITHUB_REF_NAME} does not match nock ${version}"; exit 1; }
+
+      - name: Build the sdist and the wheel
+        run: uv build --out-dir release/dist
+
+      - name: The wheel runs on the oldest supported Python
+        run: uv run --isolated --no-project --python 3.12 --with release/dist/*.whl nock --help
+
+      - name: Checksum
+        run: cd release && sha256sum dist/* > SHA256SUMS
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nock
+          path: release/
 
   publish:
-    needs: test
+    needs: [gate, build]
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     environment: pypi
     permissions:
       id-token: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v6
-      - run: uv build
-      - uses: pypa/gh-action-pypi-publish@release/v1
+      - uses: actions/download-artifact@v4
+        with:
+          name: nock
+          path: release
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: release/dist/
+
+  github-release:
+    needs: publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: nock
+          path: release
+
+      - name: Attach the distributions and their checksums to the release
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          gh release create "${GITHUB_REF_NAME}" release/dist/* release/SHA256SUMS --repo "${GITHUB_REPOSITORY}" \
+            --title "nock ${version}" --notes "nock ${version} on PyPI: https://pypi.org/project/nock/${version}/"
+        env:
+          GH_TOKEN: ${{ github.token }}
