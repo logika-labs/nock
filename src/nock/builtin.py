@@ -25,7 +25,7 @@ from nock.reflect import Record, Reflection, Topic, tool_rows
 from nock.render import Problem
 from nock.schema import check_schema
 from nock.sessions import Sessions
-from nock.setup import Installer, Upgrader, wired_events
+from nock.setup import ASK_PERMISSION, Installer, Upgrader, asked_permissions, wired_events
 from nock.share import Request as ShareRequest
 from nock.share import Sharing
 from nock.status import Standing
@@ -573,10 +573,16 @@ def summary_names_nothing(project: Project) -> list[Problem]:
 
 @check(name="nock-wiring")
 def hooks_wired(project: Project) -> list[str]:
-    """Every event a hook listens to is wired into Claude Code."""
+    """Every event a hook listens to is wired into Claude Code, and Claude
+    Code asks the owner before an agent runs a command that needs their word."""
     wired = wired_events(project.here)
+    asked = asked_permissions(project.here)
     return [
         f"a hook listens to {entry.event} ({entry.source}) but Claude Code does not send it — `.nock/nock init` wires it"
         for entry in project.registry.hooks
         if NATIVE_EVENTS[entry.event] not in wired
+    ] + [
+        f"`{tool.command.path}` needs the owner's word ({tool.source}) but Claude Code would run it unasked — `.nock/nock init` wires it"
+        for tool in project.registry.project_tools()
+        if tool.confirm and ASK_PERMISSION.format(path=tool.command.path) not in asked
     ]

@@ -98,7 +98,8 @@ uvx nock init
 - writes `.nock/config.toml` and an empty `.nock/tools/`;
 - writes the primer `.nock/context.md`, and imports it into CLAUDE.md;
 - wires Claude Code's hooks;
-- allows `.nock/nock` in Claude Code's permissions.
+- allows `.nock/nock` in Claude Code's permissions, except the commands that
+  need the owner's word, which Claude Code asks about.
 
 Commit the result. From then on, every agent session in the repository starts
 with the project's tools listed, and is recorded when it ends.
@@ -216,6 +217,13 @@ everything.
   `nock.NotFoundError` 44.
 - A crash prints the lines of the tool's own code that it went through, with
   the values those lines used, and leaves nock's frames out.
+
+**The owner's word.** `@nock.command(confirm=True)` is for a command only
+the owner may set off: a deploy, a release, a payment. `nock init` adds a
+Claude Code `ask` rule for it, so an agent's call waits for the owner to
+approve it although `.nock/nock` is otherwise allowed, and the toolbox
+lists it as asking the owner. The `nock-wiring` check fails while the rule
+is missing.
 
 **Caching.** With `cache="src/**"`, a call with the same arguments replays the
 last result as long as those files and the tool's own code are unchanged.

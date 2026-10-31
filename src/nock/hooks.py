@@ -97,7 +97,11 @@ class HookRunner:
         own = registry.project_tools()
         if own:
             lines.append("This project's nock tools (`.nock/nock NAME --help` for usage):")
-            lines += [f"- {tool.command.usage()}: {tool.command.summary}" for tool in own]
+            lines += [
+                f"- {tool.command.usage()}: {tool.command.summary}"
+                + (" (asks the owner)" if tool.confirm else "")
+                for tool in own
+            ]
         if registry.failures:
             lines += [f"nock: a tool did not load — {failure}" for failure in registry.failures]
         if self.project.current_role() is None:

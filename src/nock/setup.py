@@ -104,6 +104,18 @@ SKILLS = ("nock-reflect", "nock-triage")
 RETIRED_SKILLS = ("reflect", "consolidate")
 HOOK_COMMAND = '"$CLAUDE_PROJECT_DIR"/.nock/nock hook {event}'
 PERMISSION = "Bash(.nock/nock:*)"
+# A command that needs the owner's word is asked for, whatever `allow` says.
+ASK_PERMISSION = "Bash(.nock/nock {path}:*)"
+
+
+def asked_permissions(root: Path) -> set[str]:
+    """The commands this checkout's Claude Code asks the owner about."""
+    settings_path = root / ".claude" / "settings.json"
+    try:
+        settings = read_json(settings_path) if settings_path.is_file() else {}
+    except PreconditionError:
+        return set()
+    return {str(rule) for rule in settings.get("permissions", {}).get("ask", [])}
 
 
 def wired_events(root: Path) -> set[str]:
@@ -271,9 +283,24 @@ class Installer:
                 )
             ]
             entries.append(entry)
-        allowed = settings.setdefault("permissions", {}).setdefault("allow", [])
+        permissions = settings.setdefault("permissions", {})
+        allowed = permissions.setdefault("allow", [])
         if PERMISSION not in allowed:
             allowed.append(PERMISSION)
+        asked = [
+            rule
+            for rule in permissions.get("ask", [])
+            if not str(rule).startswith("Bash(.nock/nock ")
+        ]
+        asked += [
+            ASK_PERMISSION.format(path=tool.command.path)
+            for tool in Project(self.root).registry.project_tools()
+            if tool.confirm
+        ]
+        if asked:
+            permissions["ask"] = asked
+        else:
+            permissions.pop("ask", None)
         write_json(settings_path, settings)
         self.report.written.append(".claude/settings.json")
 

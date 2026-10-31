@@ -16,7 +16,7 @@ from nock.project import Project
 from nock.releases import NAME, VERSION, Updates, parsed
 from nock.setup import PACKAGE, Installer, Upgrader, core_files
 
-from .conftest import git, nock
+from .conftest import git, nock, write_tool
 
 
 def test_init_is_idempotent_and_keeps_the_project_s_settings(repository: Path) -> None:
@@ -202,3 +202,40 @@ def test_a_session_start_says_when_a_newer_nock_is_out_once_a_day(project: Proje
 def test_the_version_is_the_package_s() -> None:
     pyproject = tomllib.loads((Path(__file__).parents[1] / "pyproject.toml").read_text())
     assert pyproject["project"]["version"] == VERSION and pyproject["project"]["name"] == NAME
+
+
+OWNER_TOOLS = '''\
+import nock
+
+
+@nock.command(confirm=True)
+def deploy(host: str) -> str:
+    """Deploy to a live box."""
+    return f"deployed to {host}"
+
+
+@nock.command(confirm=True, group="release")
+def publish() -> None:
+    """Publish the packages."""
+'''
+
+
+def test_a_command_that_needs_the_owner_s_word_is_asked_for_in_claude_code(
+    project: Project,
+) -> None:
+    settings = project.root / ".claude" / "settings.json"
+    write_tool(project, "owner", OWNER_TOOLS)
+    unwired = nock(project.root, "check", "nock-wiring")
+    assert unwired.returncode == 1
+    assert "`deploy` needs the owner's word" in unwired.stdout
+    assert nock(project.root, "init").returncode == 0
+    permissions = json.loads(settings.read_text())["permissions"]
+    assert permissions["ask"] == ["Bash(.nock/nock deploy:*)", "Bash(.nock/nock release publish:*)"]
+    assert "Bash(.nock/nock:*)" in permissions["allow"]
+    assert nock(project.root, "check", "nock-wiring").returncode == 0
+    listed = nock(project.root).stdout
+    assert "deploy HOST — Deploy to a live box (asks the owner)" in listed
+    assert nock(project.root, "deploy", "box-1").stdout == "deployed to box-1\n"
+    (project.root / ".nock" / "tools" / "owner.py").unlink()
+    assert nock(project.root, "init").returncode == 0
+    assert "ask" not in json.loads(settings.read_text())["permissions"]

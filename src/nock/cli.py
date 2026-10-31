@@ -72,7 +72,7 @@ def listing(registry: Registry) -> str:
 
 
 def line(tool: Tool) -> str:
-    summary = tool.command.summary
+    summary = tool.command.summary + (" (asks the owner)" if tool.confirm else "")
     return f"{tool.command.usage()}" + (f" — {summary}" if summary else "")
 
 

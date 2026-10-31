@@ -275,8 +275,11 @@ else and hands it to `hooks.run`, which:
    A broken toolbox must never block the tool call that would fix it.
 
 `setup.wired_events` wires the built-in events plus any event a project hook
-listens to. The `nock-wiring` check fails when a hook exists for an event
-that isn't wired.
+listens to. Beside the blanket `Bash(.nock/nock:*)` allow, every
+`confirm=True` command gets an `ask` rule (`Bash(.nock/nock PATH:*)`), which
+Claude Code puts before `allow`, so an agent's call waits on the owner. The
+`nock-wiring` check fails when a hook exists for an event that isn't wired,
+or a `confirm` command has no ask rule.
 
 ### Decisions
 
@@ -440,8 +443,8 @@ Notes:
 - records the version, the source (`pypi` unless told otherwise) and, from a
   checkout, its commit in `.nock/core/VERSION.json`;
 - imports `@.nock/context.md` into CLAUDE.md;
-- wires `.claude/settings.json`: the hooks and the `Bash(.nock/nock:*)`
-  permission;
+- wires `.claude/settings.json`: the hooks, the `Bash(.nock/nock:*)`
+  permission and an `ask` rule per `confirm=True` command;
 - writes the `/nock-reflect` and `/nock-triage` skills, and in a Logika
   project (`logika.json` at the root) `/nock-reflect-logika`.
 

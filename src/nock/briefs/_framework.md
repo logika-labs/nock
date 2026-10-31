@@ -85,6 +85,10 @@ writes it, and `.nock/nock check` fails when the file drifts. For a list the
 code is generated from (error codes, flags, strings), see
 `.nock/nock gen new --help`.
 
+**The owner's word**: `@nock.command(confirm=True)` for a command only the
+owner may set off (a deploy, a release): Claude Code asks them before an
+agent's call runs (`.nock/nock init` wires the rule; `nock-wiring` checks it).
+
 **Caching**: `cache="src/** tests/**"` replays the last result while those
 files and the tool's own code are unchanged; `--fresh` runs it anyway.
 

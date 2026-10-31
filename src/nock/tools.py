@@ -55,6 +55,8 @@ class Tool:
     source: str
     cache: list[str] = field(default_factory=list)
     pinned: bool = False
+    confirm: bool = False
+    """An agent's call waits on the owner's word."""
 
 
 @dataclass
@@ -127,6 +129,7 @@ def command(
     cache: str | list[str] | None = None,
     examples: list[str] | None = None,
     pinned: bool = False,
+    confirm: bool = False,
     rest: str | None = None,
     epilog: str | None = None,
 ) -> Any:
@@ -140,7 +143,11 @@ def command(
       result instead of running.
     - `examples`: argument strings that show how to call it; `--help` lists
       them and `nock check` runs each, so they cannot go stale.
-    - `pinned`: reflection keeps it however rarely it is used."""
+    - `pinned`: reflection keeps it however rarely it is used.
+    - `confirm`: it acts on the world in a way only the owner may set off (a
+      deploy, a release, a payment): Claude Code asks the owner before an
+      agent's call runs it (`nock init` wires the rule), and the toolbox says
+      so. The owner typing it is their word."""
 
     def decorate(target: Callable[..., Any]) -> Callable[..., Any]:
         globs = cache.split() if isinstance(cache, str) else list(cache or [])
@@ -153,7 +160,7 @@ def command(
             examples=list(examples or []),
             cached=bool(globs),
         )
-        PENDING.tools.append(Tool(built, CURRENT_SOURCE[-1], globs, pinned))
+        PENDING.tools.append(Tool(built, CURRENT_SOURCE[-1], globs, pinned, confirm))
         return target
 
     return decorate(function) if function is not None else decorate
