@@ -24,5 +24,8 @@ a note alone answers in words. For more, look into it yourself and answer;
 edit the decision if it should say so too. Don't argue for it; if you think
 it is wrong, say so once.
 
+When an edit gives `tell_the_owner`, tell the owner it at once, in its
+words: it is what nock shares with its makers, said once.
+
 At the end, say what was accepted and rejected, and offer to rework the
 rejected done ones; edit each to say what was done.

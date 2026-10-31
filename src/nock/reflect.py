@@ -265,7 +265,9 @@ class Reflection:
         material = {
             "process": Material(self.project, window, last).render(),
             "knowledge": Knowledge(self.project, window).render(),
-            "nock": Evidence(self.project, metrics, self.rounds.all()).render(),
+            "nock": Evidence(
+                self.project, metrics, self.rounds.all(), feedback(self.project, window.since)
+            ).render(),
         }
         for part, text in material.items():
             (scratch / f"{part}.md").write_text(text)
@@ -383,6 +385,13 @@ class Reflection:
             "nock_said_no": codes.get(1, 0),
             "nock_called_wrong": sum(n for code, n in codes.items() if code and 40 <= code < 50),
             "nock_broke": sum(n for code, n in codes.items() if code and code >= 50),
+            "consultations": sum(
+                1
+                for row in self.project.store.rows(
+                    "SELECT exit_code FROM calls WHERE tool = 'consult' AND started > ?", (since,)
+                )
+                if row["exit_code"] == 0
+            ),
             "decisions_recorded": len(recorded),
             "decisions_todo": sum(1 for d in recorded if d["status"] == "todo"),
             "decisions_question": sum(1 for d in recorded if d["status"] == "question"),
@@ -400,6 +409,20 @@ class Reflection:
             else 0,
             "map_citations": cited,
         }
+
+
+def feedback(project: Project, since: str | None) -> list[str]:
+    """What consultants said nock lacked, in the window."""
+    found = []
+    for path in sorted((project.local / "consultations").glob("*.json")):
+        try:
+            record = read_json(path)
+        except PreconditionError:
+            continue
+        said = str((record.get("submitted") or {}).get("feedback") or "").strip()
+        if said and str(record.get("moment") or "") > (since or ""):
+            found.append(said)
+    return found
 
 
 def tool_rows(project: Project, since: str | None) -> list[dict[str, Any]]:
@@ -874,11 +897,16 @@ class Evidence:
     earlier round's — the first is the baseline."""
 
     def __init__(
-        self, project: Project, metrics: dict[str, Any], rounds: list[dict[str, Any]]
+        self,
+        project: Project,
+        metrics: dict[str, Any],
+        rounds: list[dict[str, Any]],
+        feedback: list[str] | None = None,
     ) -> None:
         self.project = project
         self.metrics = metrics
         self.rounds = [record for record in rounds if record.get("metrics")]
+        self.feedback = feedback or []
 
     def render(self) -> str:
         columns = [*(record["round"] for record in self.rounds), "this window"]
@@ -896,6 +924,9 @@ class Evidence:
         for key in self.metrics:
             lines.append(f"| {key} | " + " | ".join(str(row.get(key, "-")) for row in rows) + " |")
         lines += ["", METRICS_HELP, "", QUERY_HELP]
+        if self.feedback:
+            lines += ["", "# Where consultants said nock fell short", ""]
+            lines += [f"- {said}" for said in self.feedback]
         return "\n".join(lines) + "\n"
 
 
@@ -904,7 +935,7 @@ What they count: sessions the human started in the window (`days` long) and
 what they asked (`requests`), interrupted and compacted; every tool call
 they made and how many failed; tokens and dollars; commits. `nock_*`: calls
 to nock, and how many said no (exit 1), were called wrong (40s) or broke
-(50s). `decisions_*`: recorded in the window (and how many as todos and
+(50s); `consultations` answered. `decisions_*`: recorded in the window (and how many as todos and
 questions),
 reviewed by the owner in it (accepted, rejected), and every standing one
 still unreviewed. `tools`: the project's own commands, how many were used,

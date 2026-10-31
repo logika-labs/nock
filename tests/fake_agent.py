@@ -58,14 +58,7 @@ def main() -> int:
     if os.environ.get("NOCK_ROLE") == "elaborator":
         return elaborate(session, prompt)
     if os.environ.get("NOCK_ROLE") == "consultant":
-        assert "**What it is about to do:**" in prompt
-        assert "When each of the project's decisions matters:" in prompt
-        write_transcript(session, prompt)
-        print(
-            json.dumps({"type": "result", "result": "**Decisions**: none.\n\n**Tools**: none."}),
-            flush=True,
-        )
-        return 0
+        return consult(session, prompt)
     if os.environ.get("NOCK_ROLE") == "sharer":
         assert "NOTHING TO SHARE:" in prompt
         write_transcript(session, prompt)
@@ -73,6 +66,27 @@ def main() -> int:
         print(json.dumps({"type": "result", "result": text}), flush=True)
         return 0
     raise SystemExit(f"no seat for role {os.environ.get('NOCK_ROLE')!r}")
+
+
+def consult(session: str, prompt: str) -> int:
+    """Advise through `nock advise` (FAKE_ADVICE, else a stock answer), and
+    once more, fixed, when the first is refused; FAKE_ADVICE=`silent` only
+    answers in its last message."""
+    assert "<intent>" in prompt and "When each of the project's decisions matters:" in prompt
+    write_transcript(session, prompt)
+    given = os.environ.get("FAKE_ADVICE", "")
+    if given == "silent":
+        print(json.dumps({"type": "result", "result": "Nothing bears on it."}), flush=True)
+        return 0
+    advice = json.loads(given) if given else {"advice": "Nothing in nock bears on it."}
+    result = run(".nock/nock", "advise", json.dumps(advice))
+    print(json.dumps({"type": "system", "message": result.stdout + result.stderr}), flush=True)
+    if result.returncode != 0:
+        fixed = {key: value for key, value in advice.items() if key in ("advice", "feedback")}
+        result = run(".nock/nock", "advise", json.dumps(fixed))
+        print(json.dumps({"type": "system", "message": result.stdout + result.stderr}), flush=True)
+    print(json.dumps({"type": "result", "result": "submitted"}), flush=True)
+    return 0
 
 
 def elaborate(session: str, prompt: str) -> int:

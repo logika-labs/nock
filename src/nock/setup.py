@@ -17,6 +17,7 @@ from nock.git import Git, GitError
 from nock.hooks import BUILT_IN_EVENTS, EDIT_TOOLS
 from nock.logika import LEDGER
 from nock.logika import SKILL as LOGIKA_SKILL
+from nock.primer import PRIMER, refresh
 from nock.project import NOCK_DIRECTORY, Project
 from nock.releases import PYPI, VERSION, Releases
 from nock.templates import Library
@@ -41,6 +42,11 @@ CONFIG = """\
 
 branch = "main"
 
+# Whether nock speaks up unasked: the primer's advice, the toolbox and an
+# occasional word on where things stand at a session's start, the owner's
+# reviews, the decisions behind an edited file. false: silent unless asked.
+reminders = true
+
 # Checks `.nock/nock check` runs besides the @nock.check functions in
 # .nock/tools/. Exit 0 passes, 1 fails (the code is wrong), anything else
 # means the machine is.
@@ -59,34 +65,20 @@ days = 7
 [agent]
 # The model of the agents nock dispatches (elaborate, consult); empty is Claude Code's default.
 model = ""
+
+[consult]
+# Whether agents are asked to consult nock's consultant before changing code.
+enabled = true
+
+[share]
+# What nock sends its makers: "anonymous" usage statistics (counts and
+# categories, never code, paths, names or text), "public" (those and the
+# toolbox's tool names, published on nock.dev), or "none" (nothing at all).
+# `.nock/nock usage` shows exactly what would be sent.
+level = "anonymous"
 """
 
 GITIGNORE = "local/\n"
-
-PRIMER = """\
-## nock
-
-This project uses nock to stay coherent across sessions, which matters as
-much as getting each task done: you start knowing nothing of earlier
-sessions, and nock keeps what they decided, what the owner said about it, and
-the tools agents built.
-
-- **Consult while you work out how to do something,** unless the task is
-  really straightforward and unambiguous:
-  `.nock/nock consult '{"intent": …, "context": …}'`. A fresh agent searches
-  the project and tells you the decisions and tools that bear on your work.
-- **Record decisions as you make them:** `.nock/nock decide` (`--help` has
-  the fields). A decision is a choice between ways that could each work, a
-  deliberate simplification, your reading of something ambiguous, a todo
-  you are leaving, or a question only the owner can settle when they are
-  not there to ask; give the alternatives you weighed, for someone who knows
-  what the system does but not how it is built. The owner reviews them
-  later, so don't wait. When you do a todo, act on an answer or rework a
-  rejected decision, edit it to say what you did.
-- **Run noisy or long commands through `.nock/nock run -- COMMAND`,** and
-  `.nock/nock check` before you finish. Exit codes: 1 fix the code, 42 fix
-  the machine or the state, 50 and up retry or escalate.
-"""
 
 MAP_STUB = """\
 # The map of decisions
@@ -193,7 +185,8 @@ class Installer:
         self.write("nock", SHIM, executable=True, replace=True)
         self.write(".gitignore", GITIGNORE, replace=False)
         self.write("config.toml", CONFIG, replace=False)
-        self.write("context.md", PRIMER, replace=True)
+        if refresh(self.directory):
+            self.report.written.append(f"{NOCK_DIRECTORY}/{PRIMER}")
         self.write("tools/.gitkeep", "", replace=False)
         self.import_context()
         self.wire_claude()

@@ -28,9 +28,11 @@ class Word(TypedDict):
 
 
 class Server(ThreadingHTTPServer):
-    def __init__(self, decisions: Decisions, port: int) -> None:
+    def __init__(self, decisions: Decisions, port: int, notice: str | None = None) -> None:
         super().__init__(("127.0.0.1", port), Handler)
         self.decisions = decisions
+        # Said once at the top of the page: what nock shares, the first time the owner opens it.
+        self.notice = notice
 
     @property
     def address(self) -> str:
@@ -49,7 +51,8 @@ class Server(ThreadingHTTPServer):
 
 
 class Handler(BaseHTTPRequestHandler):
-    """`GET /` the page, `GET /decisions` every decision with the tags in use,
+    """`GET /` the page, `GET /decisions` every decision with the tags in use
+    (and a notice for the owner, if there is one),
     `POST /decisions/N` the owner's word on one."""
 
     @property
@@ -61,8 +64,16 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == "/":
             self.send(HTTPStatus.OK, PAGE.read_bytes(), "text/html")
         elif self.path == "/decisions":
+            assert isinstance(self.server, Server)
             decisions = self.decisions
-            self.send_json(HTTPStatus.OK, {"decisions": decisions.all(), "tags": decisions.tags()})
+            self.send_json(
+                HTTPStatus.OK,
+                {
+                    "decisions": decisions.all(),
+                    "tags": decisions.tags(),
+                    "notice": self.server.notice,
+                },
+            )
         else:
             self.send_json(HTTPStatus.NOT_FOUND, {"error": "no such page"})
 

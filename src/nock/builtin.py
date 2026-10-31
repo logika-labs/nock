@@ -13,7 +13,7 @@ from typing import Annotated, Any, NotRequired, TypedDict
 
 from nock.checks import Checks
 from nock.commands import Option
-from nock.consult import Consultant, Consultation
+from nock.consult import Advice, Consultant, Consultation
 from nock.decisions import TAGS, Change, Decisions, Draft, Filter, row
 from nock.errors import Error, ExitCode, Failed, UsageError
 from nock.fixtures import Shell
@@ -32,6 +32,7 @@ from nock.status import Standing
 from nock.telemetry import UNRECORDED_VARIABLE
 from nock.templates import SYNTAX, Library
 from nock.tools import NATIVE_EVENTS, check, command
+from nock.usage import Moment, Usage
 from nock.web import Server
 
 
@@ -223,7 +224,11 @@ def web(
 ) -> None:
     """Serve the owner's page, where decisions are reviewed, until stopped
     (port 8765 unless OPTIONS say otherwise)."""
-    Server(Decisions(project), options.get("port", 8765)).run(options.get("open", False))
+    disclosure = Usage(project).disclose(Moment.STUDIO)
+    if disclosure:
+        print(f"nock: {disclosure}", flush=True)
+    server = Server(Decisions(project), options.get("port", 8765), disclosure)
+    server.run(options.get("open", False))
 
 
 # --- decisions ---------------------------------------------------------------------
@@ -300,7 +305,16 @@ def decisions_edit(project: Project, change: Change) -> dict[str, Any]:
         result["touches_no_file"] = unmatched
     if problem:
         result["not_committed"] = problem
+    if "review" in change or "note" in change:
+        disclose(project, result, Moment.REVIEW)
     return result
+
+
+def disclose(project: Project, result: dict[str, Any], moment: Moment) -> None:
+    """What nock shares, told the owner the first time they engage with it here."""
+    disclosure = Usage(project).disclose(moment)
+    if disclosure:
+        result["tell_the_owner"] = disclosure
 
 
 @command(name="elaborate", group="decisions")
@@ -318,9 +332,16 @@ def decisions_elaborate(project: Project, number: int) -> dict[str, Any]:
 
 @command
 def consult(project: Project, consultation: Consultation) -> str:
-    """While working out how to do something, have a fresh agent search the
-    project for the decisions and tools that bear on it; waits for the answer."""
+    """Before you change code, have a fresh agent read the project for the
+    decisions, tools and checks that bear on what you are about to do; waits
+    for its advice."""
     return Consultant(project).consult(consultation)
+
+
+@command
+def advise(project: Project, advice: Advice) -> str:
+    """The consultant's advice, submitted; only a consultant nock dispatched runs this."""
+    return Consultant(project).submit(advice)
 
 
 # --- reflection ---------------------------------------------------------------------
@@ -337,9 +358,9 @@ def reflect_start(
     under way: writes what its three parts read, and says where the report
     and the shareable summary go. With `--topic logika`, a logika round
     instead: what it reads, and where its report goes."""
-    if topic is Topic.LOGIKA:
-        return LogikaRound(project).start()
-    return Reflection(project).start()
+    started = LogikaRound(project).start() if topic is Topic.LOGIKA else Reflection(project).start()
+    disclose(project, started, Moment.ROUND)
+    return started
 
 
 @command(name="finish", group="reflect")
@@ -367,6 +388,14 @@ def share(project: Project, request: ShareRequest) -> dict[str, Any]:
     `send`, send it — privately to nock's makers, or publicly to nock.dev.
     Send only when the owner says so."""
     return Sharing(project).share(request)
+
+
+@command
+def usage(project: Project) -> dict[str, Any]:
+    """What nock shares with its makers (`share.level`): whether this machine
+    has told the owner, the reports sent, when the next goes, and exactly what
+    it would carry."""
+    return Usage(project).standing()
 
 
 # --- generators -----------------------------------------------------------------------

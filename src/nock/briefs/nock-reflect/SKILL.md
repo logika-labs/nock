@@ -44,4 +44,6 @@ material, not from memory.
    makers learn how nock does in real projects:
    `.nock/nock share '{"visibility": "private"}'` shows what would be sent
    (private goes to nock's makers only; public is published on nock.dev).
-   Send it (`"send": true`) only on their yes.
+   Send it (`"send": true`) only on their yes. If `reflect start` gave
+   `tell_the_owner`, tell them that too, in its words: it is what nock
+   shares with its makers, said once.

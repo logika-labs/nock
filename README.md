@@ -102,7 +102,10 @@ uvx nock init
   need the owner's word, which Claude Code asks about.
 
 Commit the result. From then on, every agent session in the repository starts
-with the project's tools listed, and is recorded when it ends.
+with the project's tools listed, and is recorded when it ends. nock speaks up
+unasked only a little, and `reminders = false` silences it (see [What agents
+see](#what-agents-see)); it shares anonymous usage statistics once you have
+been told (see [What nock shares](#what-nock-shares)).
 
 To upgrade, `.nock/nock upgrade`. It merges the latest release from PyPI into
 the vendored core, keeping any local edits to it (a three-way merge against
@@ -317,8 +320,25 @@ when one of them has drifted.
 ## What agents see
 
 Every session starts with the project's tools listed, through Claude Code's
-SessionStart hook. CLAUDE.md imports a short primer: why the project uses nock (to stay coherent across sessions), when to consult, recording decisions, and `nock run`. What the session start says comes with a word on what to do with it: take into account what bears on the request, and mention the rest to the human only when relevant or once the work is done. `.nock/nock` with no
-arguments lists the toolbox. A mistake gets an answer:
+SessionStart hook. CLAUDE.md imports a short primer, `.nock/context.md`: why
+the project uses nock (to stay coherent across sessions), to consult before
+changing code, recording decisions, and `nock run`. A session the human
+starts also hears where things stand, in a few lines — once a day, or sooner
+when something new calls (a round falls due, the owner answers a question or
+rejects a decision) — with a word on what to do with it: take into account
+what bears on the request, and mention the rest to the human only when
+relevant or once the work is done. `.nock/nock` with no arguments lists the
+toolbox.
+
+**`reminders = false`** in `.nock/config.toml` keeps nock silent unless
+asked: no toolbox or standing at a session's start, no reviews at a prompt,
+no decisions after an edit, and a primer that only says what nock is. Every
+session and call is still recorded, `nock status` still answers, and the
+project's own hooks still run. The primer follows the committed settings (a
+session start rewrites it when they change), so set it in
+`.nock/local/config.toml` to quiet only the hooks on your machine.
+
+A mistake gets an answer:
 
 ```sh
 $ .nock/nock failurs
@@ -351,7 +371,7 @@ committed:
 | `events` | every tool call of every session: the command, path or pattern, whether it failed, the bytes returned, and the duration |
 | `heard` | which sessions were told the owner's reviews of the decisions they recorded |
 | `shown` | which sessions were shown the decisions behind a file they edited |
-| `nudged` | which rounds' unshared summaries a session start mentioned |
+| `nudged` | what a session start said and when: the day's standing, a round's unshared summary, a logika round's offer |
 
 Sessions are read from Claude Code's transcripts when they end, and any
 that were missed are read when a reflection round starts. To look:
@@ -400,8 +420,8 @@ decisions it overturns, which stay as history.
 | **question** | asks you | yes, as proposed | no: the note says what holds |
 
 A note alone answers a question in words. Until an agent acts on the answer
-— and edits the question to done, saying what it did — every session the
-human starts lists it.
+— and edits the question to done, saying what it did — the session start
+lists it, the day it comes and once a day after.
 
 - **The owner reviews.** On the page, `nock web` (or with `{"open": true}`),
   which lists the decisions to review, accepted and rejected, searchable and
@@ -423,11 +443,12 @@ human starts lists it.
   the summary, evidence and alternatives, answering the owner's note
   (`nock decisions elaborate N`).
 
-Any session the human starts says how many questions, todos and done
-decisions wait on review, the questions answered and not yet acted on, which rejected ones wait to be reworked, the owner's backlog (todos
-they accepted), and what they said about decisions since the last round —
-a note often asks for something. `nock status` says the same, and whether a
-reflection round is due.
+Once a day (sooner when something new calls), a session the human starts
+says how many questions, todos and done decisions wait on review, the
+questions answered and not yet acted on and the rejected ones to rework (the
+first few of each), and how many todos the owner accepted and notes they
+left since the last round — a note often asks for something. `nock status`
+says it all in full, and whether a reflection round is due.
 
 ### The map
 
@@ -446,18 +467,31 @@ at; and `decide` says at once when `touches` names a file that doesn't exist.
 
 ### Consulting
 
-While an agent works out how to do something, it consults:
+Before an agent changes code, it consults:
 
 ```sh
 $ .nock/nock consult '{"intent": "Move orders to Postgres.", "context": "SQLite locks under load."}'
 ```
 
-A fresh headless agent is given the map, and searches the decisions and the
-project's tools. It changes nothing, and answers within `consult.deadline` seconds with
-the decisions that bear on the work and the tools that help; the calling
-agent waits for it. The primer tells agents to consult while they work out
-how to do something, unless the task is really straightforward and
-unambiguous.
+A fresh headless agent is given the map, the project's tools and checks,
+and reads the decisions that govern what the work touches. It changes
+nothing, and takes the intent as given: it doesn't redesign the task. It
+advises in a few lines — what the decisions mean for this work (what to keep
+to, a rejected option the work would bring back, a todo or answered
+question it could close, and first, plainly, an accepted decision the intent
+goes against), the tools that do its steps, a choice the work is about to
+make that should be recorded, and the checks to pass — or says that nothing
+in nock bears on it. It submits with `nock advise`, which refuses a decision,
+tool or check that doesn't exist, so it fixes the name; the calling agent
+reads the advice exactly as submitted, followed by each named decision's
+title and standing, each tool's usage and the `nock check` to run. Where
+nock fell short for the task goes to the next reflection round. The caller
+waits up to `consult.deadline` seconds.
+
+The primer asks agents to consult before changing code, unless the task is
+really straightforward and unambiguous. **`consult.enabled = false`** turns
+it off: the primer no longer mentions it, and `nock consult` says so and
+dispatches nothing.
 
 ## Reflection
 
@@ -497,7 +531,8 @@ The round ends by asking the owner whether to share the summary. `nock share
 to learn its names, people, partners and customers, and rewrites whatever
 would identify it — scrubs the result again, and shows exactly what would be
 sent. With `"send": true` it goes to nock's makers (`private`), or is
-published on nock.dev (`public`). Nothing is sent otherwise.
+published on nock.dev (`public`). Nothing is sent otherwise, and nothing at
+all when `share.level` is `none`.
 
 ### The logika round
 
@@ -540,6 +575,43 @@ status` always says.
 Logika rounds are kept apart from nock's own, so neither moves the other's
 window.
 
+## What nock shares
+
+nock tells its makers how it is used, so they can improve it. What it
+sends is set by `share.level` in `.nock/config.toml` (or, for one machine,
+`.nock/local/config.toml`):
+
+- **`anonymous`** (the default): usage statistics, counts and categories
+  only. Each report carries nock's version, Python's (`3.12`) and the
+  platform (`darwin`, `linux`); whether reminders and the consultant are on
+  and whether it is a Logika project; the window's numbers that a
+  reflection round also keeps (how many days, sessions, requests,
+  interrupts, compactions, tool calls and failed ones, tokens, cost,
+  commits, nock calls by how they ended, consultations, decisions by status
+  and review, how many of the project's tools were used and how often, the
+  map's length and citations); calls and failures per nock command (`check`,
+  `decide`, …: nock's own names); how many tools, checks, hooks and
+  generators the toolbox has and how many failed to load; and how many
+  rounds have run. Never code, paths, file or tool names, prompts, command
+  arguments, what decisions say, or anything else written in the project.
+- **`public`**: the same, plus the names of the project's own tools with
+  their calls and failures, and the report may be published on nock.dev.
+- **`none`**: nothing is ever sent — no statistics, and `nock share` won't
+  send a summary either.
+
+Nothing is sent from a machine until the owner has been told, once, the
+first time they engage with nock there: the first reflection round, opening
+the page (`nock web`), or their first review or note on a decision. The
+page shows it at the top; the round and `/nock-triage` say it in the
+session. Counting starts then. The first report goes a week later, as a
+session ends, then at most weekly, to `share.usage_endpoint`, with a
+three-second timeout; a failure is silent and tried again a day later.
+`.nock/nock usage` shows the level, when the owner was told, the reports
+sent and exactly what the next would carry.
+
+A round's summary is sent only with `nock share` and the owner's yes (see
+[Reflection](#reflection)).
+
 ## Reference
 
 ### Commands
@@ -555,7 +627,9 @@ window.
 | `nock decide JSON` | record a decision |
 | `nock decisions list [JSON]`, `show N`, `edit JSON`, `elaborate N` | the decisions: filtered, in full, changed or reviewed, elaborated |
 | `nock web [JSON]` | the owner's page |
-| `nock consult JSON` | a fresh agent finds the decisions and tools that bear on a task, and the caller waits |
+| `nock consult JSON` | a fresh agent advises on a task: the decisions, tools and checks that bear on it; the caller waits |
+| `nock advise JSON` | the consultant's advice, submitted; only a consultant nock dispatched runs it |
+| `nock usage` | what nock shares with its makers, and exactly what the next report carries |
 | `nock reflect start`, `finish JSON` | a reflection round; the round is the `/nock-reflect` skill; `--topic logika` for a logika round (`/nock-reflect-logika`) |
 | `nock share JSON` | a round's summary, and sending it |
 | `nock gen write`, `new`, `add`, `set`, `rm`, `show`, `bind`, `unbind` | generators |
@@ -593,6 +667,7 @@ one machine.
 | key | default | is |
 |---|---|---|
 | `branch` | `main` | the main branch, which `changed` diffs against |
+| `reminders` | true | whether nock speaks up unasked (primer, session start, prompt and edit hooks); false: silent unless asked |
 | `output.characters`, `output.rows` | 8000, 60 | the cap on what a call prints |
 | `run.deadline`, `run.silence` | 3600, 900 | seconds before a supervised process is stopped |
 | `checks.NAME.command`, `fix`, `chain`, `directory`, `deadline`, `silence`, `failure_codes` | — | a command that is a check; the command that fixes what it finds; the chain it runs in, after the chain's earlier checks; where it runs and its bounds; the exit codes that mean the code is wrong (`[1]`) |
@@ -600,9 +675,10 @@ one machine.
 | `reflect.sessions`, `reflect.days` | 15, 7 | when a round is due, whichever comes first |
 | `reflect.logika.days` | 30 | in a Logika project, days after a logika round before the next is offered (once the ledger has changed) |
 | `agent.command`, `agent.model`, `agent.deadline` | `claude`, —, 1800 | the headless agent nock dispatches (elaborate, consult) |
-| `consult.deadline` | 600 | seconds a consultation may take |
+| `consult.enabled`, `consult.deadline` | true, 600 | whether the consultant runs and the primer asks for it; seconds a consultation may take |
 | `upgrade.check`, `upgrade.index` | true, PyPI's `nock` | whether a session start says a newer nock is out, and where releases are looked up |
-| `share.endpoint` | `https://api.nock.dev/reflections` | where `nock share` sends a summary |
+| `share.level` | `anonymous` | what nock sends its makers: `anonymous`, `public` or `none` (see [What nock shares](#what-nock-shares)) |
+| `share.endpoint`, `share.usage_endpoint` | `https://api.nock.dev/reflections`, `https://api.nock.dev/usage` | where `nock share` sends a summary, and where the usage statistics go |
 | `environment.python`, `setup`, `path`, `dotenv` | —, —, `[]`, — | what tools run in: the project's interpreter and how to make it, PATH entries, a dotenv file |
 | `pricing` | — | per-model prices, to cost sessions |
 

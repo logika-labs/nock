@@ -1,16 +1,19 @@
 """Claude Code's hook events, handled: `nock hook EVENT` reads the payload on
 stdin and answers in Claude Code's hook format. nock's own: a session starts
-knowing the toolbox and — when the human started it — where things stand
-(a reflection round due, decisions waiting on review or rework, a logika
-round worth offering); a prompt
-brings the owner's reviews of the decisions the session recorded; an edit to
-a file shows the decisions that govern it; and the transcript is read into
-telemetry when the session ends. What calls for the owner is also said to
-the human. The project's `@nock.hook`s run after. Every handler fails open —
-a nock that cannot load must never block the tool call that would fix it."""
+knowing the toolbox and — when the human started it, once a day or when
+something new calls — where things stand, in a few lines (a reflection round
+due, decisions waiting on review or rework, a logika round worth offering); a
+prompt brings the owner's reviews of the decisions the session recorded; an
+edit to a file shows the decisions that govern it; and when the session ends
+its transcript is read into telemetry and, when due, the usage statistics
+are shared. What calls for the owner is also said to the human. With
+`reminders = false` nock says nothing unasked, and still records. The
+project's `@nock.hook`s run after. Every handler fails open — a nock that
+cannot load must never block the tool call that would fix it."""
 
 from __future__ import annotations
 
+import hashlib
 import json
 import sys
 from datetime import UTC, datetime
@@ -19,10 +22,12 @@ from typing import Any
 
 from nock.decisions import Decisions
 from nock.fixtures import Call, Scope
-from nock.project import Project
+from nock.primer import refresh
+from nock.project import NOCK_DIRECTORY, Project
 from nock.sessions import Sessions
 from nock.status import Standing
 from nock.tools import NATIVE_EVENTS, Event
+from nock.usage import Usage
 
 EVENTS = {native: event for event, native in NATIVE_EVENTS.items()}
 # The events nock itself always listens to.
@@ -31,9 +36,8 @@ BUILT_IN_EVENTS = (Event.SESSION_START, Event.PROMPT, Event.AFTER_TOOL, Event.SE
 EDIT_TOOLS = "Edit|MultiEdit|Write|NotebookEdit"
 # What the standing a session starts with is, and what to do with it.
 STANDING_PREFACE = (
-    "Where the project stands with nock, as this session starts. It is not your task: work"
-    " on what the human asks. Take into account what bears on it, and mention the rest to"
-    " the human only when it is relevant to the request, or once your work is done."
+    "Where the project stands with nock (not your task: take into account what bears on the"
+    " request, and mention the rest to the human only when relevant, or once you are done):"
 )
 
 
@@ -48,14 +52,21 @@ class HookRunner:
         # What the human should see, beside what the agent reads.
         self.notices: list[str] = []
 
+    @property
+    def reminding(self) -> bool:
+        """Whether nock may speak up unasked (`reminders`)."""
+        return self.project.configuration.get("reminders") is not False
+
     def handle(self, native: str) -> dict[str, Any] | None:
         event = EVENTS[native]
         messages: list[str] = []
         if event is Event.SESSION_START:
-            messages.append(self.session_start())
-        elif event is Event.PROMPT:
+            refresh(self.project.here / NOCK_DIRECTORY)
+            if self.reminding:
+                messages.append(self.session_start())
+        elif event is Event.PROMPT and self.reminding:
             messages.append(self.reviews())
-        elif event is Event.AFTER_TOOL:
+        elif event is Event.AFTER_TOOL and self.reminding:
             messages.append(self.decisions())
         elif event is Event.SESSION_END:
             self.session_end()
@@ -105,24 +116,7 @@ class HookRunner:
         if registry.failures:
             lines += [f"nock: a tool did not load — {failure}" for failure in registry.failures]
         if self.project.current_role() is None:
-            standing = Standing(self.project)
-            collected = standing.collect()
-            unshared = collected["unshared"]
-            if unshared and self.project.store.rows(
-                "SELECT round FROM nudged WHERE round = ?", (unshared,)
-            ):
-                collected["unshared"] = None
-            elif unshared:
-                self.project.store.insert("nudged", {"round": unshared})
-            if collected["logika"] and collected["logika"]["due"]:
-                # A logika round is offered gently: at most once a week while it is due.
-                year, week, _ = datetime.now(UTC).isocalendar()
-                key = f"logika:{collected['logika']['last'] or 'never'}:{year}-{week}"
-                if self.project.store.rows("SELECT round FROM nudged WHERE round = ?", (key,)):
-                    collected["logika"] = None
-                else:
-                    self.project.store.insert("nudged", {"round": key})
-            said = standing.lines(collected)
+            said = self.standing()
             if said:
                 lines += [STANDING_PREFACE, *said]
             # The human hears what calls for them; the backlog and their own notes, they know.
@@ -130,6 +124,43 @@ class HookRunner:
                 line for line in said if line.startswith("nock:") and "the owner" not in line
             ]
         return "\n".join(lines)
+
+    def standing(self) -> list[str]:
+        """Where things stand, said once a day — sooner when something new
+        calls: a round falls due, the owner answers or rejects something."""
+        store = self.project.store
+
+        def seen(key: str) -> bool:
+            if store.rows("SELECT round FROM nudged WHERE round = ?", (key,)):
+                return True
+            store.insert("nudged", {"round": key})
+            return False
+
+        standing = Standing(self.project)
+        collected = standing.collect()
+        logika_due = bool(collected["logika"] and collected["logika"]["due"])
+        news = [
+            bool(collected["reflection"]["due"]),
+            sorted(item["number"] for item in collected["to_rework"]),
+            sorted(item["number"] for item in collected["answered"]),
+            collected["unshared"],
+            collected["newer_nock"],
+            logika_due,
+        ]
+        if not standing.lines(collected):
+            return []
+        digest = hashlib.sha256(json.dumps(news).encode()).hexdigest()[:16]
+        if seen(f"standing:{datetime.now(UTC).date().isoformat()}:{digest}"):
+            return []
+        # An unshared summary is mentioned once per round.
+        if collected["unshared"] and seen(collected["unshared"]):
+            collected["unshared"] = None
+        if logika_due:
+            # A logika round is offered gently: at most once a week while it is due.
+            year, week, _ = datetime.now(UTC).isocalendar()
+            if seen(f"logika:{collected['logika']['last'] or 'never'}:{year}-{week}"):
+                collected["logika"] = None
+        return standing.lines(collected)
 
     def decisions(self) -> str:
         """The standing decisions that govern the file just edited, the first
@@ -185,6 +216,8 @@ class HookRunner:
         transcript = self.payload.get("transcript_path")
         if isinstance(transcript, str) and Path(transcript).is_file():
             Sessions(self.project).ingest(Path(transcript))
+        if self.project.current_role() is None:
+            Usage(self.project).send()
 
 
 def run(native: str, stdin_text: str) -> int:

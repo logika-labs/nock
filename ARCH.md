@@ -60,9 +60,12 @@ src/nock/
   status.py          Standing: a round due, decisions waiting, rejected ones to rework, answered
                      questions, an unshared summary
   share.py           Sharing: a round's summary, held to naming nothing, sent on the owner's word
-  consult.py         Consultant: a fresh agent finds the decisions and tools that bear on a task
+  usage.py           Usage: the statistics shared with nock's makers (`share.level`), the
+                     disclosure that comes first, the weekly send
+  consult.py         Consultant: a fresh agent advises on a task, submitting through `nock advise`
   dispatch.py        Dispatcher: launch a headless `claude -p` session and ingest it
   hooks.py           `nock hook EVENT`: nock's own handlers, then the project's
+  primer.py          the primer `.nock/context.md`, as the committed settings have it
   briefs/
     nock-reflect/    the `/nock-reflect` skill: SKILL.md (the lead) and its three parts'
                      briefs — process.md (includes _framework.md), knowledge.md, nock.md
@@ -231,7 +234,7 @@ evidence, or it returns the `Output` when `check=False`.
 | `sessions`, `prompts`, `events` | `sessions.Sessions.ingest` | at SessionEnd, at a round's start (`catch_up`), and after a dispatched session |
 | `heard` | `decisions.Decisions.news_for` | when a session is told the owner's review of a decision it recorded |
 | `shown` | `decisions.Decisions.reminders_for` | when a session is shown the decisions governing a file it edited |
-| `nudged` | `hooks.HookRunner.session_start` | when a session start mentions a round's unshared summary |
+| `nudged` | `hooks.HookRunner.standing` | when a session start says the day's standing, a round's unshared summary, or a logika round's offer |
 
 Sessions are tied to calls through `CLAUDE_CODE_SESSION_ID`, which Claude Code
 sets in its Bash tool and nock records on each call.
@@ -257,21 +260,33 @@ else and hands it to `hooks.run`, which:
 
 1. reads the payload from stdin and discovers the project from its `cwd`;
 2. runs nock's own handlers:
-   - **SessionStart** returns the project's tools, any load failures, and,
-     for a session the human started, `status.Standing`'s lines: a round
-     due, decisions waiting on review, rejected ones to rework, and — once
-     per round (the `nudged` table) — an unshared summary. What calls for
-     the human is said to them too, as `systemMessage`;
+   - **SessionStart** rewrites the primer when the committed settings say
+     otherwise (`primer.refresh`), then returns the project's tools, any
+     load failures, and, for a session the human started, `status.Standing`'s
+     short lines (the first few items of each kind): a round due, decisions
+     waiting on review, rejected ones to rework, answered questions, and —
+     once per round — an unshared summary. The standing is said once a day,
+     keyed in `nudged` by the date and a digest of what calls (a round due,
+     the rejected and answered decisions, an unshared summary, a newer nock,
+     a logika round), so something new is said at once and the same thing
+     not again that day. What calls for the human is said to them too, as
+     `systemMessage`;
    - **UserPromptSubmit** tells the session the owner's reviews and notes on
      the decisions it recorded, once per change (the `heard` table);
    - **PostToolUse**, wired with an edit-tools matcher unless a project hook
      wants every tool, shows the standing decisions whose `touches` cover the
      edited file, the rejected first, once per session (the `shown` table);
-   - **SessionEnd** ingests the transcript;
+   - **SessionEnd** ingests the transcript and, for a session the human
+     started, sends the usage statistics when due (`usage.Usage.send`);
 3. runs the project's `@nock.hook`s for the event, each in a fixture
    `Scope` with `payload`. Returned text is joined into `additionalContext`,
    and `Block` at `stop` becomes `{"decision": "block"}`;
 4. **fails open**: any exception is printed to stderr, and the hook exits 0.
+
+`reminders = false` turns off everything nock's own handlers would add to
+the context (SessionStart's tools and standing, the prompt's reviews, the
+edit's decisions), and the primer becomes a short note on what nock is;
+ingest, the usage send and the project's own hooks go on.
    A broken toolbox must never block the tool call that would fix it.
 
 `setup.wired_events` wires the built-in events plus any event a project hook
@@ -304,9 +319,19 @@ files are gone) goes to the round's knowledge material instead, and
 file. `nock init` writes an empty `map.md`.
 
 `consult.Consultant` renders `briefs/consult.md` with the caller's intent
-and context, and dispatches a read-only consultant in the caller's working
-tree under `consult.deadline`. The session's last message is the answer the
-caller prints.
+and context, the map, the project's tools and the checks, and dispatches a
+read-only consultant in the caller's working tree under `consult.deadline`,
+with `NOCK_CONSULTATION` naming the file its submission goes to. The
+consultant ends with `nock advise` (`Advice`: advice, decisions, tools,
+checks, feedback), which only that role may run and which refuses a
+decision, tool or check that doesn't exist. The caller prints the advice as
+submitted, then each named decision's title and standing, each tool's usage
+and the checks to run; a consultant that submits nothing (a project's own
+brief) is heard by its last message. The consultation is kept in
+`.nock/local/consultations/`, and its `feedback` goes to the next round's
+nock material. `consult.enabled = false` returns a line saying the
+consultant is off, dispatching nothing, and drops consulting from the
+primer.
 
 ### Dispatch
 
@@ -378,6 +403,17 @@ commits `.nock/` and `logika.json` through `reflect.commit`. The round
 itself reads Logika's docs through the `logika` CLI rather than copying
 them.
 
+`usage.Usage` keeps `.nock/local/usage.json`: when this machine told the
+owner what is shared (`disclose`, called by `reflect start`, `web` — the
+page shows it — and the owner's first review or note through `decisions
+edit`), and the reports sent. `report` is the next one, built from
+`Reflection.metrics` over the window since the last report (or the
+disclosure), nock's own commands' calls and failures, the toolbox's counts,
+versions and switches; at `public` it adds the project's tool names with
+their counts. `send` posts it to `share.usage_endpoint` when the owner was
+told, the level isn't `none` and a week has passed (a day after a failed
+try), with a three-second timeout. `nock usage` shows it all.
+
 `share.Sharing` reads a round's `share.md`. Its `problems` — the
 `nock-share` check — flag every line naming the repository's directory or
 remotes, a tracked path or a file name (common ones aside), an author's
@@ -387,7 +423,7 @@ answer the same way, and keeps it in the round's scratch directory, keyed
 by the summary and the visibility, so a preview and the send that follows
 vet once. It returns the text and where it would go; with `send`, it posts
 it to `share.endpoint`, records `shared` in the round's record, and
-commits.
+commits; it refuses to send when `share.level` is `none`.
 
 ## Extension points
 
@@ -440,7 +476,7 @@ Notes:
 worktree's install is that branch's change, never the main checkout's):
 
 - copies the core and writes the shim, `.gitignore` (`local/`),
-  `config.toml`, `context.md` and `tools/`;
+  `config.toml`, `context.md` (the primer, from the settings) and `tools/`;
 - records the version, the source (`pypi` unless told otherwise) and, from a
   checkout, its commit in `.nock/core/VERSION.json`;
 - imports `@.nock/context.md` into CLAUDE.md;

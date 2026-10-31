@@ -27,6 +27,10 @@ def brief(decision: dict[str, Any]) -> dict[str, Any]:
 ANSWERS = {Review.ACCEPTED: "yes", Review.REJECTED: "no", Review.UNREVIEWED: "answered in a note"}
 
 
+# The most items of a kind the session start lists; `nock status` has them all.
+SHOWN = 3
+
+
 def said(decision: dict[str, Any]) -> str:
     return f" — the owner: {decision['note']}" if decision["note"] else ""
 
@@ -73,7 +77,7 @@ class Standing:
         }
 
     def lines(self, standing: dict[str, Any]) -> list[str]:
-        """The standing, said in a few lines; nothing when nothing calls for the owner."""
+        """The standing, said in a few short lines; nothing when nothing calls."""
         lines = []
         due = standing["reflection"]["due"]
         if due:
@@ -90,27 +94,37 @@ class Standing:
             lines.append(
                 f"nock: decisions — {parts}: review them on `.nock/nock web`, or with `/nock-triage`."
             )
-        for decision in standing["to_rework"]:
-            lines.append(f"- rework [D{decision['number']}] {decision['title']}{said(decision)}")
-        if standing["answered"]:
+        rework = standing["to_rework"]
+        lines += [
+            f"- rework [D{decision['number']}] {decision['title']}{said(decision)}"
+            for decision in rework[:SHOWN]
+        ]
+        if len(rework) > SHOWN:
+            lines.append(f"- and {len(rework) - SHOWN} more — `.nock/nock status` lists them")
+        answered = standing["answered"]
+        if answered:
             lines.append(
                 "nock: questions the owner answered — act on each, then edit it to done saying what you did:"
             )
             lines += [
                 f"- [D{item['number']}] {item['title']} — {ANSWERS[item['answer']]}{said(item)}"
-                for item in standing["answered"]
+                for item in answered[:SHOWN]
             ]
-        if standing["backlog"]:
-            lines.append("nock: the owner's backlog — todos they accepted, not done yet:")
-            lines += [
-                f"- [D{item['number']}] {item['title']}{said(item)}" for item in standing["backlog"]
-            ]
+            if len(answered) > SHOWN:
+                lines.append(f"- and {len(answered) - SHOWN} more — `.nock/nock status` lists them")
         notes = [item for item in standing["notes"] if item not in standing["backlog"]]
-        if notes:
+        if standing["backlog"] or notes:
+            parts = [
+                f"{count} {what}"
+                for count, what in (
+                    (len(standing["backlog"]), "todo(s) the owner accepted"),
+                    (len(notes), "note(s) the owner left on decisions lately"),
+                )
+                if count
+            ]
             lines.append(
-                "nock: what the owner said about decisions lately — some may ask for something:"
+                f"nock: the owner's backlog — {', '.join(parts)}: `.nock/nock status` lists them."
             )
-            lines += [f"- [D{item['number']}] {item['title']}{said(item)}" for item in notes]
         if standing["newer_nock"]:
             lines.append(
                 f"nock: nock {standing['newer_nock']} is out (this project has "

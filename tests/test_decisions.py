@@ -247,12 +247,29 @@ def test_a_session_starts_with_the_owner_s_backlog_and_notes(project: Project) -
     edit(project.root, {"number": done["number"], "review": "accepted", "note": "Check the sums."})
     begun = start(project, "s1")
     context = begun["hookSpecificOutput"]["additionalContext"]
-    assert "It is not your task" in context
+    assert "not your task" in context
     assert (
-        f"- [D{todo['number']}] Remind before keys expire — the owner: Do it this week." in context
+        "nock: the owner's backlog — 1 todo(s) the owner accepted, 1 note(s) the owner left on"
+        " decisions lately: `.nock/nock status` lists them." in context
     )
-    assert f"- [D{done['number']}] Orders live in SQLite — the owner: Check the sums." in context
+    assert "Remind before keys expire" not in context
     assert "backlog" not in begun.get("systemMessage", "")
+    standing = json.loads(nock(project.root, "status", "--json").stdout)
+    assert [item["number"] for item in standing["backlog"]] == [todo["number"]]
+
+
+def test_the_standing_is_said_once_a_day_unless_something_new_calls(
+    project: Project, page: str
+) -> None:
+    number = decide(project.root)["number"]
+    assert "1 done unreviewed" in start(project, "s1")["hookSpecificOutput"]["additionalContext"]
+    assert HookRunner(project, {"session_id": "s2"}).handle("SessionStart") is None
+    decide(project.root, {**DRAFT, "title": "Keep the README short"})
+    assert HookRunner(project, {"session_id": "s3"}).handle("SessionStart") is None
+    post(page, number, {"review": "rejected", "note": "Postgres, please"})
+    context = start(project, "s4")["hookSpecificOutput"]["additionalContext"]
+    assert f"- rework [D{number}] Orders live in SQLite — the owner: Postgres, please" in context
+    assert HookRunner(project, {"session_id": "s5"}).handle("SessionStart") is None
 
 
 def test_a_question_waits_on_the_owner_and_its_answer_waits_on_an_agent(
@@ -295,10 +312,75 @@ def test_the_edit_hook_is_wired_for_edits_only(project: Project) -> None:
     assert entry["matcher"] == "Edit|MultiEdit|Write|NotebookEdit"
 
 
-def test_a_consultation_waits_for_the_decisions_and_tools(project: Project) -> None:
-    consultation = {"intent": "Move orders to Postgres.", "context": "SQLite is slow."}
+def consult(project: Project, intent: str = "Move orders to Postgres.") -> str:
+    consultation = {"intent": intent, "context": "SQLite is slow."}
     result = nock(project.root, "consult", json.dumps(consultation))
     assert result.returncode == 0, result.stdout + result.stderr
-    assert result.stdout.startswith("**Decisions**")
+    return result.stdout
+
+
+def test_a_consultation_prints_the_advice_then_what_it_names(
+    project: Project, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    number = decide(project.root)["number"]
+    local = project.root / ".nock" / "local" / "config.toml"
+    local.write_text(local.read_text() + '[checks.test]\ncommand = "true"\n')
+    advice = {
+        "advice": "Orders stay in SQLite unless the load changes: say why it has.",
+        "decisions": [number],
+        "tools": ["decisions list"],
+        "checks": ["test"],
+        "feedback": "No decision said what the load is.",
+    }
+    monkeypatch.setenv("FAKE_ADVICE", json.dumps(advice))
+    printed = consult(project)
+    assert printed.startswith("Orders stay in SQLite unless the load changes: say why it has.")
+    assert f"- [D{number}] (done, unreviewed) Orders live in SQLite." in printed
+    assert "- `.nock/nock decisions list [JSON]`: The standing decisions" in printed
+    assert "Before you finish: `.nock/nock check test`." in printed
     roles = [row["role"] for row in project.store.rows("SELECT role FROM sessions")]
     assert roles == ["consultant"]
+    (kept,) = (project.root / ".nock" / "local" / "consultations").glob("*.json")
+    record = json.loads(kept.read_text())
+    assert record["intent"] == "Move orders to Postgres." and record["submitted"] == advice
+
+
+def test_advice_naming_what_does_not_exist_is_refused_and_fixed(
+    project: Project, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    advice = {
+        "advice": "Use the tool.",
+        "decisions": [42],
+        "tools": ["decisions lst"],
+        "checks": ["lint"],
+    }
+    monkeypatch.setenv("FAKE_ADVICE", json.dumps(advice))
+    printed = consult(project)
+    assert printed.strip() == "Use the tool."
+    log = project.store.rows("SELECT exit_code FROM calls WHERE tool = 'advise' ORDER BY id")
+    assert [row["exit_code"] for row in log] == [40, 0]
+
+
+def test_only_a_dispatched_consultant_submits_advice(project: Project) -> None:
+    result = nock(project.root, "advise", json.dumps({"advice": "Do it."}))
+    assert result.returncode == 43 and "only the consultant nock dispatches" in result.stderr
+
+
+def test_a_consultant_that_answers_in_its_last_message_is_still_heard(
+    project: Project, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("FAKE_ADVICE", "silent")
+    assert consult(project).strip() == "Nothing bears on it."
+
+
+def test_the_consultant_off_dispatches_nothing_and_the_primer_asks_for_none(
+    project: Project,
+) -> None:
+    primer = project.root / ".nock" / "context.md"
+    assert "**Consult before you change code,**" in primer.read_text()
+    config = project.root / ".nock" / "config.toml"
+    config.write_text(config.read_text().replace("enabled = true", "enabled = false"))
+    assert "consultant is off in this project" in consult(project)
+    assert project.store.rows("SELECT role FROM sessions") == []
+    HookRunner(project, {"session_id": "s1"}).handle("SessionStart")
+    assert "consult" not in primer.read_text()

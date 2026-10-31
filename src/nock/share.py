@@ -16,11 +16,12 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, NotRequired, TypedDict
 
 from nock.dispatch import Dispatcher
-from nock.errors import ExternalError, Failed, NotFoundError
+from nock.errors import ExternalError, Failed, NotFoundError, PolicyError
 from nock.git import GitError
 from nock.reflect import SHARE, Reflection, commit
 from nock.render import Problem
 from nock.templates import Library
+from nock.usage import Level, level_of
 from nock.utils import now, read_json, write_json
 
 if TYPE_CHECKING:
@@ -107,6 +108,11 @@ class Sharing:
         visibility = Visibility(request["visibility"])
         text = self.vetted(name, visibility, bool(request.get("again")))
         endpoint = str(self.project.configuration.get("share.endpoint"))
+        if request.get("send") and level_of(self.project) is Level.NONE:
+            raise PolicyError(
+                '`share.level` is "none" here, so nock sends nothing — set it to "anonymous" or'
+                ' "public" in .nock/config.toml to send the summary'
+            )
         if not request.get("send"):
             return {
                 "round": name,

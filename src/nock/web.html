@@ -267,6 +267,7 @@ kbd {
 .empty strong { color: var(--foreground); font: 700 17px/24px var(--sans); }
 .empty code { font: 13px var(--mono); background: var(--card); padding: 1px 5px; border-radius: 4px; }
 
+.notice { margin-top: 8px; max-width: 72ch; font-size: 0.85em; opacity: 0.8; }
 .toast {
   position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom, 0px)); transform: translate(-50%, 8px);
   background: var(--foreground); color: var(--background); padding: 10px 16px; border-radius: 8px; font-size: 14px;
@@ -296,6 +297,7 @@ kbd {
     <span class="label wordmark">nock</span>
     <h1>Decisions</h1>
     <p id="summary">Loading…</p>
+    <p id="notice" class="notice" hidden></p>
   </div>
 </header>
 <div class="frame">
@@ -579,6 +581,9 @@ async function load() {
     const data = JSON.parse(text);
     state.decisions = data.decisions;
     state.tags_in_use = data.tags;
+    const notice = document.getElementById("notice");
+    notice.textContent = data.notice || "";
+    notice.hidden = !data.notice;
     // `#7` opens decision 7; otherwise the first in the tab opens.
     const linked = !state.expanded.size && find(Number(location.hash.slice(1)));
     if (linked) { state.tab = linked.review; state.expanded.add(linked.number); state.active = linked.number; }

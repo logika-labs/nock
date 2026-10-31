@@ -13,6 +13,11 @@ from nock.errors import PreconditionError
 DEFAULTS: dict[str, Any] = {
     # The project's main branch.
     "branch": "main",
+    # Whether nock speaks up unasked: the primer's advice, the toolbox and the
+    # occasional standing at a session's start, the owner's reviews at a prompt,
+    # the decisions behind an edited file. False keeps nock silent unless asked
+    # (telemetry is still recorded).
+    "reminders": True,
     "output": {
         # The most characters a call prints before the rest goes to a file. Claude
         # Code shows a failed command only ~10k characters, middle cut, no path.
@@ -65,6 +70,8 @@ DEFAULTS: dict[str, Any] = {
         "silence": 600,
     },
     "consult": {
+        # Whether the consultant runs, and the primer asks agents to consult.
+        "enabled": True,
         # The longest a consultation may take, in seconds: the caller waits.
         "deadline": 600,
     },
@@ -75,8 +82,15 @@ DEFAULTS: dict[str, Any] = {
         "index": "https://pypi.org/pypi/nock",
     },
     "share": {
+        # What nock sends its makers: "anonymous" usage statistics (counts and
+        # categories), "public" (those and the toolbox's tool names, published on
+        # nock.dev), or "none" (nothing at all, summaries included). Nothing is
+        # sent before this machine has shown the owner what is shared.
+        "level": "anonymous",
         # Where `nock share` sends a round's summary, when the owner says so.
         "endpoint": "https://api.nock.dev/reflections",
+        # Where the usage statistics go, once a week at most.
+        "usage_endpoint": "https://api.nock.dev/usage",
     },
     # Dollars per million tokens, by model-name prefix: {input, output, cache_read, cache_write}.
     "pricing": {},
