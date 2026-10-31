@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>nock — a toolbox your coding agents build for themselves</title>
+<meta name="description" content="nock is a toolbox your coding agents build for themselves: an agent-friendly CLI framework, a record of every call and session, decisions you review, and reflection rounds that turn it all into better tools.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23da121a'/%3E%3Cpath d='M9 23V9l14 14V9' stroke='white' stroke-width='3' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+
+<header class="band">
+  <div class="frame">
+    <nav aria-label="Site">
+      <a class="wordmark" href="/">nock</a>
+      <div class="links">
+        <a href="/docs/">Docs</a>
+        <a href="https://github.com/logika-labs/nock">GitHub</a>
+      </div>
+    </nav>
+    <div class="hero">
+      <h1>A toolbox your coding agents build for themselves.</h1>
+      <p>nock records what your Claude Code sessions do, and turns what keeps costing them turns into tools — code that breaks loudly when it stops fitting, instead of notes that quietly go stale.</p>
+      <div class="install">
+        <code id="command">uvx --from git+https://github.com/logika-labs/nock nock init</code>
+        <button type="button" class="copy" data-copy="command">copy</button>
+      </div>
+    </div>
+  </div>
+</header>
+
+<main>
+
+<section id="why">
+  <div class="frame">
+    <div class="heading">
+      <span class="label kicker">Why</span>
+      <h2>Prose goes stale. Code breaks.</h2>
+    </div>
+    <div class="pair">
+      <div class="prose">
+        <p>Agents repeat themselves: the same commands to find out why a test fails, the same throwaway script, the mistake you already corrected twice. The usual fix is prose — skills, notes, rules — but a paragraph that no longer fits still reads as true, and nobody can tell whether an agent followed it.</p>
+        <p>A command that no longer fits <em>fails</em>, and the failure is recorded. So a toolbox can be kept honest by measuring it.</p>
+        <a class="more" href="/docs/#why">Why nock exists →</a>
+      </div>
+      <div class="rule">
+        <strong>A check beats a hook beats prose.</strong>
+        <span>A rule a check enforces cannot be ignored. A behaviour a hook triggers cannot be forgotten. Prose is the last resort.</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="how">
+  <div class="frame">
+    <div class="heading">
+      <span class="label kicker">How it works</span>
+      <h2>Work, record, reflect, repeat.</h2>
+    </div>
+    <div class="loop">
+      <svg viewBox="0 0 440 440" role="img" aria-labelledby="loop-title">
+        <title id="loop-title">The loop: sessions do the work, nock records it, a reflection round improves the toolbox, and the next session uses it.</title>
+        <defs>
+          <marker id="head" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path class="head" d="M0 0 L10 5 L0 10 z"/>
+          </marker>
+        </defs>
+        <circle class="ring" cx="220" cy="220" r="150"/>
+        <path class="arrow" marker-end="url(#head)" d="M 296 91 A 150 150 0 0 1 349 144"/>
+        <path class="arrow" marker-end="url(#head)" d="M 349 296 A 150 150 0 0 1 296 349"/>
+        <path class="arrow" marker-end="url(#head)" d="M 144 349 A 150 150 0 0 1 91 296"/>
+        <path class="arrow" marker-end="url(#head)" d="M 91 144 A 150 150 0 0 1 144 91"/>
+        <rect class="node" x="160" y="42" width="120" height="56" rx="12"/>
+        <text class="name" x="220" y="66">work</text><text class="what" x="220" y="84">your sessions</text>
+        <rect class="node" x="312" y="192" width="120" height="56" rx="12"/>
+        <text class="name" x="372" y="216">record</text><text class="what" x="372" y="234">every call and turn</text>
+        <rect class="node" x="160" y="342" width="120" height="56" rx="12"/>
+        <text class="name" x="220" y="366">reflect</text><text class="what" x="220" y="384">a round, every week</text>
+        <rect class="node" x="8" y="192" width="120" height="56" rx="12"/>
+        <text class="name" x="68" y="216">tools</text><text class="what" x="68" y="234">live on the next call</text>
+        <text class="centre" x="220" y="222">.nock/</text>
+        <text class="centre-sub" x="220" y="244">in your repository</text>
+      </svg>
+      <div class="prose">
+        <p><strong>A toolbox in your repository.</strong> <code>.nock/nock</code> is a CLI whose commands are your project's own code, written by agents for agents. A tool is a function; nock owns the arguments, output, exit codes and help.</p>
+        <p><strong>Every run recorded.</strong> Each call and each session — what you asked, every tool call, what failed, what it cost — goes into a local database that is never committed.</p>
+        <p><strong>Decisions you review.</strong> Agents never wait on you: they record the choices they make, with the alternatives they weighed, and you accept or reject them when you like.</p>
+        <p><strong>Reflection rounds.</strong> Every week or so, agents read the record, improve the toolbox, keep the map of decisions, and tell you how nock is doing.</p>
+        <a class="more" href="/docs/#a-tool">How it works, in detail →</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="start">
+  <div class="frame">
+    <div class="heading">
+      <span class="label kicker">Getting started</span>
+      <h2>One command, then commit.</h2>
+    </div>
+    <div class="pair">
+<pre class="terminal"><span class="prompt">$</span> cd your-repository
+<span class="prompt">$</span> uvx --from git+https://github.com/logika-labs/nock nock init
+<span class="prompt">$</span> git add -A && git commit -m "Add nock"</pre>
+      <div class="prose">
+        <p>nock vendors itself into <code>.nock/</code> — standard-library Python 3.12, no dependencies, your code from then on — imports a short primer into CLAUDE.md, and wires Claude Code's hooks. Every session after that starts with the toolbox listed.</p>
+        <a class="more" href="/docs/#getting-started">Getting started →</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer>
+  <div class="frame">
+    <span>nock — MIT licensed. Made for Claude Code.</span>
+    <a href="https://github.com/logika-labs/nock">github.com/logika-labs/nock</a>
+  </div>
+</footer>
+
+<script>
+document.addEventListener("click", async event => {
+  const button = event.target.closest("[data-copy]");
+  if (!button) return;
+  const text = document.getElementById(button.dataset.copy).textContent;
+  try { await navigator.clipboard.writeText(text); button.textContent = "copied"; }
+  catch { getSelection().selectAllChildren(document.getElementById(button.dataset.copy)); button.textContent = "selected"; }
+  setTimeout(() => { button.textContent = "copy"; }, 1600);
+});
+</script>
+</body>
+</html>

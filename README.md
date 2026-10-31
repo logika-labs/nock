@@ -619,3 +619,6 @@ uv run nock init          # in another repository: vendor this checkout into it
 
 `evals/` measures whether reflection pays (`evals/README.md`), and whether nock
 helps through a month of real work (`evals/story/README.md`).
+
+`web/` is nock.dev: the site, its docs page built from this README, and the
+publishing to GitHub Pages (`web/README.md`).

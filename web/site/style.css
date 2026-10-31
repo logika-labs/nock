@@ -1,0 +1,226 @@
+/* nock's studio look: warm paper, off-black ink, one red, white cards with borders and no shadows. */
+:root {
+  --paper: #f2efe9;
+  --ink: #393939;
+  --red: #da121a;
+  --white: #ffffff;
+  --grey: #8a8a8a;
+  --green: #1f7a44;
+
+  --background: var(--paper);
+  --foreground: var(--ink);
+  --card: var(--white);
+  --muted: color-mix(in oklab, var(--grey) 62%, var(--ink));
+  --border: color-mix(in oklab, var(--paper) 85%, var(--ink));
+  --code: color-mix(in oklab, var(--paper) 55%, var(--white));
+  --terminal: #262626;
+  --terminal-foreground: #e9e6df;
+  --terminal-muted: #9b978f;
+  --accent: var(--red);
+  --link: var(--red);
+  --ok: var(--green);
+  --field: var(--red);
+  --field-foreground: var(--white);
+  --field-grid: color-mix(in oklab, var(--white) 20%, transparent);
+
+  --sans: "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "Geist Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --column: 64rem;
+  --prose: 40rem;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --background: color-mix(in oklab, var(--ink) 94%, var(--paper));
+    --foreground: color-mix(in oklab, var(--white) 94%, var(--ink));
+    --card: color-mix(in oklab, var(--ink) 86%, var(--paper));
+    --muted: color-mix(in oklab, var(--grey) 70%, var(--paper));
+    --border: color-mix(in oklab, var(--paper) 16%, var(--ink));
+    --code: color-mix(in oklab, var(--ink) 78%, var(--paper));
+    --terminal: #1c1c1c;
+    --accent: color-mix(in oklab, var(--red) 70%, var(--white));
+    --link: color-mix(in oklab, var(--red) 55%, var(--paper));
+    --ok: color-mix(in oklab, var(--green) 72%, var(--white));
+    --field: color-mix(in oklab, var(--red) 70%, var(--ink));
+    --field-grid: color-mix(in oklab, var(--white) 16%, transparent);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --background: color-mix(in oklab, var(--ink) 94%, var(--paper));
+  --foreground: color-mix(in oklab, var(--white) 94%, var(--ink));
+  --card: color-mix(in oklab, var(--ink) 86%, var(--paper));
+  --muted: color-mix(in oklab, var(--grey) 70%, var(--paper));
+  --border: color-mix(in oklab, var(--paper) 16%, var(--ink));
+  --code: color-mix(in oklab, var(--ink) 78%, var(--paper));
+  --terminal: #1c1c1c;
+  --accent: color-mix(in oklab, var(--red) 70%, var(--white));
+  --link: color-mix(in oklab, var(--red) 55%, var(--paper));
+  --ok: color-mix(in oklab, var(--green) 72%, var(--white));
+  --field: color-mix(in oklab, var(--red) 70%, var(--ink));
+  --field-grid: color-mix(in oklab, var(--white) 16%, transparent);
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body { margin: 0; background: var(--background); color: var(--foreground); font: 400 16px/1.65 var(--sans); -webkit-font-smoothing: antialiased; }
+a { color: var(--link); text-underline-offset: 3px; }
+a:hover { text-decoration: none; }
+code { font: 0.88em var(--mono); background: var(--code); padding: 1px 5px; border-radius: 4px; }
+.frame {
+  max-width: calc(var(--column) + 32px); margin: 0 auto;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.label { font: 500 12px/16px var(--sans); letter-spacing: .06em; text-transform: uppercase; }
+h1, h2, h3 { text-wrap: balance; margin: 0; }
+h2 { font: 700 30px/38px var(--sans); letter-spacing: -.02em; }
+h3 { font: 600 18px/26px var(--sans); letter-spacing: -.01em; }
+p { margin: 0; }
+.prose { max-width: var(--prose); display: grid; gap: 14px; }
+.lede { font-size: 18px; color: var(--muted); }
+
+/* The field band. */
+.band {
+  background-color: var(--field); color: var(--field-foreground);
+  background-image:
+    linear-gradient(to right, var(--field-grid) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--field-grid) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+.band nav { display: flex; align-items: center; justify-content: space-between; padding-block: 20px; }
+.band nav .wordmark { font: 700 20px/1 var(--sans); letter-spacing: -.02em; color: inherit; text-decoration: none; }
+.band nav .links { display: flex; gap: 20px; }
+.band nav .links a { color: inherit; opacity: .9; font-size: 14px; text-decoration: none; }
+.band nav .links a:hover { opacity: 1; text-decoration: underline; }
+.hero { padding-block: 64px 72px; display: grid; gap: 22px; max-width: 46rem; }
+.hero h1 { font: 700 clamp(36px, 6vw, 58px)/1.05 var(--sans); letter-spacing: -.035em; }
+.hero p { font-size: 19px; line-height: 1.55; opacity: .94; max-width: 38rem; }
+.install {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  background: color-mix(in oklab, var(--ink) 88%, transparent); color: var(--white);
+  border-radius: 10px; padding: 12px 14px 12px 18px; max-width: 100%; width: fit-content;
+}
+.install code { background: none; padding: 0; font-size: 14px; color: inherit; overflow-wrap: anywhere; }
+.install code::before { content: "$ "; opacity: .55; }
+.copy {
+  border: 1px solid color-mix(in oklab, var(--white) 30%, transparent); background: none; color: inherit;
+  font: 500 12px/1 var(--sans); letter-spacing: .05em; text-transform: uppercase; padding: 8px 10px; border-radius: 6px; cursor: pointer;
+}
+.copy:hover { background: color-mix(in oklab, var(--white) 12%, transparent); }
+.note { font-size: 14px; opacity: .85; }
+
+section { padding-block: 88px 0; }
+section > .frame { display: grid; gap: 36px; }
+.kicker { color: var(--accent); }
+.heading { display: grid; gap: 12px; max-width: var(--prose); }
+
+/* The rule, set large. */
+.rule { border-left: 3px solid var(--accent); padding: 6px 0 6px 22px; display: grid; gap: 8px; max-width: var(--prose); }
+.rule strong { font: 700 24px/32px var(--sans); letter-spacing: -.015em; }
+.rule span { color: var(--muted); }
+
+/* The loop. */
+.loop { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); gap: 40px; align-items: center; }
+.loop svg { width: 100%; max-width: 440px; height: auto; justify-self: center; }
+.loop svg .ring { fill: none; stroke: var(--border); stroke-width: 2; }
+.loop svg .arrow { fill: none; stroke: var(--accent); stroke-width: 2.5; stroke-linecap: round; }
+.loop svg .head { fill: var(--accent); }
+.loop svg .node { fill: var(--card); stroke: var(--border); stroke-width: 1.5; }
+.loop svg .name { fill: var(--foreground); font: 600 15px var(--sans); text-anchor: middle; }
+.loop svg .what { fill: var(--muted); font: 400 12px var(--sans); text-anchor: middle; }
+.loop svg .centre { fill: var(--accent); font: 700 22px var(--sans); text-anchor: middle; letter-spacing: -.02em; }
+.loop svg .centre-sub { fill: var(--muted); font: 400 12px var(--sans); text-anchor: middle; }
+.steps { display: grid; gap: 18px; margin: 0; padding: 0; list-style: none; counter-reset: step; }
+.steps li { display: grid; grid-template-columns: 32px minmax(0, 1fr); gap: 14px; counter-increment: step; }
+.steps li::before {
+  content: counter(step); display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%;
+  border: 1.5px solid var(--accent); color: var(--accent); font: 600 13px/1 var(--sans); margin-top: 1px;
+}
+.steps strong { display: block; font-weight: 600; }
+.steps span { color: var(--muted); }
+
+/* Cards. */
+.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 19rem), 1fr)); gap: 14px; }
+.card { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 24px; display: grid; gap: 10px; align-content: start; min-width: 0; }
+.card .label { color: var(--muted); }
+.card p { color: var(--muted); font-size: 15px; }
+.card p strong { color: var(--foreground); font-weight: 600; }
+
+/* Terminals. */
+.terminal {
+  background: var(--terminal); color: var(--terminal-foreground); border-radius: 12px;
+  font: 13px/1.7 var(--mono); padding: 18px 20px; overflow-x: auto; margin: 0; min-width: 0;
+}
+.terminal .prompt { color: var(--terminal-muted); }
+.terminal .comment { color: var(--terminal-muted); }
+.terminal .say { color: #f0a7a9; }
+.terminal .ok { color: #9fd3b0; }
+.pair { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 32px; align-items: start; }
+.pair .prose { align-content: start; }
+
+/* The matrix. */
+.matrix-wrap { overflow-x: auto; }
+.matrix { border-collapse: separate; border-spacing: 0; background: var(--card); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; min-width: 32rem; width: 100%; }
+.matrix th, .matrix td { padding: 14px 16px; text-align: left; border-bottom: 1px solid var(--border); vertical-align: top; font-size: 15px; }
+.matrix tr:last-child td, .matrix tr:last-child th { border-bottom: 0; }
+.matrix thead th { font: 500 12px/16px var(--sans); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); background: var(--code); }
+.matrix tbody th { font-weight: 600; white-space: nowrap; }
+.matrix td { color: var(--muted); }
+
+/* Share. */
+.share { background: var(--card); border: 1px solid var(--border); border-radius: 18px; padding: clamp(24px, 5vw, 48px); display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 32px; align-items: center; }
+.share .options { display: grid; gap: 12px; }
+.share .option { border: 1px solid var(--border); border-radius: 12px; padding: 16px 18px; display: grid; gap: 4px; }
+.share .option strong { font-weight: 600; }
+.share .option span { color: var(--muted); font-size: 15px; }
+.badge { display: inline-flex; width: fit-content; border: 1px solid var(--accent); color: var(--accent); border-radius: 999px; padding: 4px 9px; font: 500 11px/1 var(--sans); letter-spacing: .06em; text-transform: uppercase; }
+
+footer { padding-block: 96px 48px; color: var(--muted); font-size: 14px; }
+footer .frame { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px; border-top: 1px solid var(--border); padding-top: 24px; }
+
+@media (max-width: 760px) {
+  .loop, .pair, .share { grid-template-columns: minmax(0, 1fr); }
+  section { padding-block: 64px 0; }
+  .hero { padding-block: 40px 52px; }
+  h2 { font-size: 25px; line-height: 32px; }
+  .band nav .links a.optional { display: none; }
+}
+
+.more { font-weight: 600; text-decoration: none; width: fit-content; }
+.more:hover { text-decoration: underline; }
+.loop .prose { gap: 16px; }
+
+/* The documentation. */
+.docs { display: grid; grid-template-columns: 15rem minmax(0, 1fr); gap: 48px; padding-block: 48px 0; align-items: start; }
+.contents { position: sticky; top: 24px; display: grid; gap: 2px; max-height: calc(100vh - 48px); overflow-y: auto; font-size: 14px; }
+.contents a { color: var(--muted); text-decoration: none; padding: 3px 0; }
+.contents a:hover { color: var(--foreground); }
+.contents .level-2 { color: var(--foreground); font-weight: 600; margin-top: 10px; }
+.contents .level-3 { padding-left: 12px; }
+.article { max-width: 46rem; min-width: 0; }
+.article h2 { margin: 56px 0 16px; scroll-margin-top: 24px; }
+.article h2:first-child { margin-top: 0; }
+.article h3 { margin: 36px 0 10px; scroll-margin-top: 24px; font-size: 20px; }
+.article h4 { margin: 24px 0 8px; font: 600 16px/24px var(--sans); }
+.article p, .article ul, .article ol, .article pre, .article blockquote, .article .table { margin: 0 0 14px; }
+.article ul, .article ol { padding-left: 1.3em; }
+.article li { margin: 4px 0; }
+.article li > p { margin: 0; }
+.article li > ul, .article li > ol { margin: 4px 0 0; }
+.article pre { background: var(--terminal); color: var(--terminal-foreground); border-radius: 12px; padding: 16px 18px; overflow-x: auto; font: 13px/1.65 var(--mono); }
+.article pre code { background: none; padding: 0; font: inherit; color: inherit; }
+.article blockquote { border-left: 3px solid var(--accent); padding: 4px 0 4px 18px; }
+.article blockquote p { font-size: 18px; }
+.article .table { overflow-x: auto; }
+.article table { border-collapse: collapse; width: 100%; font-size: 14px; background: var(--card); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+.article th, .article td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+.article th { background: var(--code); font-weight: 600; }
+.article tr:last-child td { border-bottom: 0; }
+.band.slim .frame nav { padding-block: 20px; }
+@media (max-width: 860px) {
+  .docs { grid-template-columns: minmax(0, 1fr); gap: 24px; }
+  .contents { position: static; max-height: none; grid-template-columns: repeat(auto-fill, minmax(10rem, 1fr)); gap: 0 16px; }
+  .contents .level-3 { display: none; }
+}

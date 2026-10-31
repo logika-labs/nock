@@ -93,6 +93,8 @@ tests/               real git repositories and processes; no mocks
   conftest.py        a fresh repository with nock installed, per test; the `nock()` runner
   fake_agent.py      the scripted stand-in for the dispatched agents (elaborator, consultant)
 evals/               does reflection pay? real sessions, with and without a toolbox
+web/                 nock.dev, never vendored or packaged: site/ (the pages), build.py (docs/
+                     from this README), publish.py (to GitHub Pages), api/ (api.nock.dev)
 ```
 
 ## The layers

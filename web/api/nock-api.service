@@ -1,0 +1,13 @@
+# /etc/systemd/system/nock-api.service: api.nock.dev (source: web/api in github.com/logika-labs/nock)
+[Unit]
+Description=api.nock.dev: shared reflection summaries
+After=network.target
+
+[Service]
+User=user
+WorkingDirectory=/srv/nock-api
+ExecStart=/usr/bin/python3 /srv/nock-api/reflections.py --database /srv/nock-api/reflections.db --port 8610
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
