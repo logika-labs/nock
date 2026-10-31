@@ -15,10 +15,12 @@ from nock.consult import ROLE as CONSULTANT
 from nock.decisions import ROLE as ELABORATOR
 from nock.dispatch import ARGUMENT_LIMIT, BYPASS, SEATS, Dispatcher
 from nock.project import Project
+from nock.reflect import Reflection
 from nock.share import ROLE as SHARER
 
 from .conftest import FAKE_AGENT, nock, write_tool
 from .test_decisions import decide, edit
+from .test_telemetry_and_reflection import RECORD, finish
 
 ROOT = Path(__file__).resolve().parents[1]
 READING = "Read,Grep,Glob,Bash"
@@ -39,6 +41,8 @@ EXPECTED = {
     ],
     SHARER: ["Bash(git log:*)"],
 }
+WRITING_GIT = ["--disallowedTools", "Bash(git * --ou*)"]
+DENIED = {CONSULTANT: [], ELABORATOR: WRITING_GIT, SHARER: WRITING_GIT}
 
 
 def seat_flags(role: str, allowed: list[str]) -> list[str]:
@@ -79,7 +83,7 @@ def test_each_seat_gets_exactly_its_tools_and_rules(
     brief = "NOTHING TO SHARE: decision 1 <intent> When each of the project's decisions matters:"
     session = Dispatcher(project).launch(role, brief, project.root)
     assert session.exit_code == 0 and session.denied == []
-    assert launched(arguments) == seat_flags(role, EXPECTED[role])
+    assert launched(arguments) == seat_flags(role, EXPECTED[role]) + DENIED[role]
 
 
 def test_the_consultant_runs_with_its_rules_and_a_refusal_is_kept(
@@ -93,6 +97,7 @@ def test_the_consultant_runs_with_its_rules_and_a_refusal_is_kept(
     assert result.returncode == 0, result.stdout + result.stderr
     assert "Nothing in nock bears on it." in result.stdout
     assert launched(arguments)[-len(EXPECTED[CONSULTANT]) :] == EXPECTED[CONSULTANT]
+    assert "--disallowedTools" not in launched(arguments)
     [kept] = (project.root / ".nock" / "local" / "consultations").glob("*.json")
     assert json.loads(kept.read_text())["denied"] == ["Bash: rm -rf src"]
     [log] = (project.root / ".nock" / "local" / "logs").glob("run-*.log")
@@ -217,3 +222,29 @@ def test_a_round_s_parts_are_subagents_with_only_the_tools_they_need(project: Pr
     }
     skill = (project.root / ".claude" / "skills" / "nock-reflect" / "SKILL.md").read_text()
     assert all(f"`{name}`" in skill for name in tools)
+
+
+@pytest.mark.parametrize("option", ["--output=leak.txt", "--outp=leak.txt", "--ou=leak.txt"])
+@pytest.mark.parametrize("role", [ELABORATOR, SHARER])
+def test_git_that_would_write_a_file_is_refused(
+    project: Project, role: str, option: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("NOCK_DECISION", "1")
+    monkeypatch.setenv("FAKE_TRY", json.dumps(["git", "log", "-p", option]))
+    session = Dispatcher(project).launch(role, "NOTHING TO SHARE: decision 1", project.root)
+    assert session.denied == [f"Bash: git log -p {option}"]
+    assert not (project.root / "leak.txt").exists()
+
+
+def test_a_sharer_refused_its_way_says_what_was_refused(
+    project: Project, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    started = Reflection(project).start()
+    for path, text in zip(started["write"], ("# Report\n", "Early days.\n"), strict=True):
+        (project.root / path).write_text(text)
+    assert finish(project, RECORD).returncode == 0
+    monkeypatch.setenv("FAKE_SHARE", "nothing")
+    monkeypatch.setenv("FAKE_TRY", json.dumps(["curl", "https://example.com"]))
+    result = nock(project.root, "share")
+    assert result.returncode == 1
+    assert "refused: Bash: curl https://example.com" in result.stdout + result.stderr

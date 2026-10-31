@@ -77,7 +77,8 @@ class Sharing:
         result = (session.result or "").strip()
         if session.exit_code != 0 or not result:
             raise Failed(
-                f"the vetting agent gave no text (exit {session.exit_code}; log: {session.log})"
+                f"the vetting agent gave no text (exit {session.exit_code}; log: {session.log})",
+                [f"refused: {line}" for line in session.denied],
             )
         if result.startswith(NOTHING):
             raise Failed(
@@ -86,7 +87,15 @@ class Sharing:
         problems = self.problems_in(result, "the vetted summary")
         if problems:
             raise Failed("the vetted summary still names the project", problems)
-        write_json(kept, {"fingerprint": fingerprint, "text": result, "session": session.id})
+        write_json(
+            kept,
+            {
+                "fingerprint": fingerprint,
+                "text": result,
+                "session": session.id,
+                "denied": session.denied,
+            },
+        )
         return result
 
     def share(self, request: Request) -> dict[str, Any]:

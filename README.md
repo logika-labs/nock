@@ -644,9 +644,14 @@ Reading files in the directory it runs in needs no rule.
 | elaborator | Read, Grep, Glob, Bash | `.nock/nock decisions list`, `decisions show`, `docs`, `decisions edit`; `git log`, `git show` |
 | sharer | Read, Grep, Glob, Bash | `git log` |
 
+`git log` and `git show` are allowed without `--output` (or any
+abbreviation of it git accepts, down to `--ou`), which a deny rule refuses:
+it would write their output to a file.
+
 None can edit a file, reach the network, or run any other command. What
 Claude Code refused comes back with the session: in the consultation's
-record and its failure, in the elaboration's result, and in the run's log.
+record and its failure, in the elaboration's result, in the vetted summary's
+record and the share's failure, and in the run's log.
 The owner's user-level Claude Code settings still apply to these sessions:
 they are the owner's.
 

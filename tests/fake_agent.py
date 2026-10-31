@@ -5,10 +5,12 @@ not start with its permissions bypassed, and, like Claude Code in `dontAsk`,
 refuses and reports a call no allow rule covers (FAKE_TRY is one more call to
 attempt). As the elaborator it deepens the decision it was given, unless
 FAKE_ELABORATE is `silent`; as the consultant it answers at once; as the
-sharer it hands back the vetted summary (FAKE_SHARE, or a stock one)."""
+sharer it reads the authors and hands back the vetted summary (FAKE_SHARE,
+or a stock one; `nothing` hands back nothing)."""
 
 from __future__ import annotations
 
+import fnmatch
 import json
 import os
 import re
@@ -25,6 +27,7 @@ BYPASS = (
 # What Claude Code refused this session, as its `result` line reports it.
 DENIED: list[dict[str, object]] = []
 ALLOWED: list[str] = []
+DENIED_RULES: list[str] = []
 
 
 def flags(arguments: list[str]) -> list[str]:
@@ -34,13 +37,24 @@ def flags(arguments: list[str]) -> list[str]:
     assert arguments[arguments.index("--permission-mode") + 1] == "dontAsk", arguments
     if os.environ.get("FAKE_ARGUMENTS"):
         Path(os.environ["FAKE_ARGUMENTS"]).write_text(json.dumps(arguments))
-    start = arguments.index("--allowedTools") + 1
+    return listed(arguments, "--allowedTools")
+
+
+def listed(arguments: list[str], flag: str) -> list[str]:
+    """The rules after `flag`, up to the next flag."""
+    if flag not in arguments:
+        return []
+    start = arguments.index(flag) + 1
     end = next(index for index in range(start, len(arguments)) if arguments[index].startswith("--"))
     return arguments[start:end]
 
 
 def allows(command: str) -> bool:
-    """Claude Code's prefix rules, as far as the fake needs them."""
+    """Claude Code's rules, as far as the fake needs them: a deny rule's `*`
+    matches anything and wins; an allow rule is a prefix."""
+    for rule in DENIED_RULES:
+        if rule.startswith("Bash(") and fnmatch.fnmatchcase(command, rule[len("Bash(") : -1]):
+            return False
     for rule in ALLOWED:
         if rule.startswith("Bash(") and rule.endswith(":*)"):
             prefix = rule[len("Bash(") : -len(":*)")]
@@ -96,6 +110,7 @@ def write_transcript(session: str, prompt: str) -> None:
 def main() -> int:
     arguments = sys.argv[1:]
     ALLOWED.extend(flags(arguments))
+    DENIED_RULES.extend(listed(arguments, "--disallowedTools"))
     session = arguments[arguments.index("--session-id") + 1]
     prompt = arguments[-1]
     if os.environ.get("FAKE_TRY"):
@@ -106,9 +121,11 @@ def main() -> int:
         return consult(session, prompt)
     if os.environ.get("NOCK_ROLE") == "sharer":
         assert "NOTHING TO SHARE:" in prompt
+        authors = run("git", "log", "--format=%an %ae")
+        assert authors.returncode == 0, authors.stderr
         write_transcript(session, prompt)
         text = os.environ.get("FAKE_SHARE", "Early days, vetted.")
-        finish(text)
+        finish("" if text == "nothing" else text)
         return 0
     raise SystemExit(f"no seat for role {os.environ.get('NOCK_ROLE')!r}")
 

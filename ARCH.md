@@ -391,12 +391,13 @@ with only the tools its part needs.) It:
   Claude Code settings, whose allow rules would widen the seat, are not
   loaded), `--strict-mcp-config`, `--tools` (the seat's tools) and
   `--allowedTools` (its rules; a long brief's file adds a `Read` of that
-  file). A role with no seat is refused, and so is an `agent.command` with a
+  file), and `--disallowedTools` for what its rules would let through but
+  must not run (git's `--output`, `dispatch.GIT_WRITING`). A role with no seat is refused, and so is an `agent.command` with a
   bypass flag (`dispatch.BYPASS`) or one of these flags of its own;
 - reads what Claude Code refused from the result's `permission_denials`
   into `Session.denied`, and appends it to the run's log; the consultant
   keeps it in the consultation's record and its failure, the elaborator in
-  its result;
+  its result, the sharer in `outgoing.json` and the share's failure;
 
 - runs under a Supervisor, with `agent.deadline` (or the caller's) and
   `agent.silence`;

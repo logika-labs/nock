@@ -46,6 +46,8 @@ PERMISSION_FLAGS = (
     "--permission-mode",
     "--allowedTools",
     "--allowed-tools",
+    "--disallowedTools",
+    "--disallowed-tools",
     "--tools",
     "--setting-sources",
 )
@@ -65,9 +67,15 @@ class Seat:
 
     tools: tuple[str, ...]
     allowed: tuple[str, ...]
+    denied: tuple[str, ...] = ()
+    """Rules refused even where `allowed` would let them through."""
 
 
 READING = ("Read", "Grep", "Glob", "Bash")
+# `git log` and `git show` read, but `--output` (or any abbreviation git
+# accepts, down to `--ou`) writes their output to a file anywhere.
+GIT_READING = ("Bash(git log:*)", "Bash(git show:*)")
+GIT_WRITING = ("Bash(git * --ou*)",)
 SEATS = {
     # Reads the decisions and advises through `nock advise`; changes nothing.
     "consultant": Seat(
@@ -82,12 +90,12 @@ SEATS = {
             nock("decisions show"),
             nock("docs"),
             nock("decisions edit"),
-            "Bash(git log:*)",
-            "Bash(git show:*)",
+            *GIT_READING,
         ),
+        GIT_WRITING,
     ),
     # Reads what identifies the project and answers in its last message.
-    "sharer": Seat(READING, ("Bash(git log:*)",)),
+    "sharer": Seat(READING, (GIT_READING[0],), GIT_WRITING),
 }
 
 
@@ -179,6 +187,7 @@ class Dispatcher:
             "--allowedTools",
             *seat.allowed,
             *allowed,
+            *(["--disallowedTools", *seat.denied] if seat.denied else []),
         ]
 
     def environment(self, session: str, role: str) -> dict[str, str]:

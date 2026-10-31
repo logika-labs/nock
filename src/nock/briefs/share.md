@@ -2,8 +2,9 @@ The owner wants to share this reflection summary with nock's makers, privately.
 Make sure nothing in it tells which project, company or people it comes from,
 and hand back the text to send. Change nothing in the repository.
 
-Learn what identifies the project: the README, docs, CLAUDE.md,
-`git log --format='%an %ae' | sort -u`, the code's top-level names. Then
+Learn what identifies the project: the README, docs, CLAUDE.md, the
+authors in `git log --format='%an %ae'` (run as it is, without a pipe; each
+name and address once is enough), the code's top-level names. Then
 rewrite the summary without:
 - names of the project, company, products, people, partners, vendors or
   customers (say "a payments partner", "the owner");
