@@ -436,7 +436,8 @@ Notes:
 
 ## Install and upgrade
 
-`setup.Installer.install`:
+`setup.Installer.install` installs into the working tree it runs in (a
+worktree's install is that branch's change, never the main checkout's):
 
 - copies the core and writes the shim, `.gitignore` (`local/`),
   `config.toml`, `context.md` and `tools/`;

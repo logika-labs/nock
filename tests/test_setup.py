@@ -239,3 +239,17 @@ def test_a_command_that_needs_the_owner_s_word_is_asked_for_in_claude_code(
     (project.root / ".nock" / "tools" / "owner.py").unlink()
     assert nock(project.root, "init").returncode == 0
     assert "ask" not in json.loads(settings.read_text())["permissions"]
+
+
+def test_init_in_a_worktree_installs_there_and_leaves_the_main_checkout_alone(
+    repository: Path,
+) -> None:
+    worktree = repository.with_name("feature")
+    git(repository, "worktree", "add", "-q", "-b", "feature", str(worktree))
+    Installer(worktree).install()
+    assert (worktree / ".nock" / "nock").is_file()
+    assert (worktree / ".claude" / "settings.json").is_file()
+    assert "@.nock/context.md" in (worktree / "CLAUDE.md").read_text()
+    assert not (repository / ".nock").exists()
+    assert not (repository / ".claude").exists()
+    assert git(repository, "status", "--porcelain") == ""

@@ -166,9 +166,12 @@ def core_files(root: Path) -> dict[str, bytes]:
 
 
 class Installer:
+    """Installs into the working tree it is run in — a worktree's install is
+    that branch's change, never the main checkout's."""
+
     def __init__(self, target: Path) -> None:
         try:
-            self.root = Git(target).main_checkout()
+            self.root = Git(target).toplevel()
         except GitError as error:
             raise PreconditionError(
                 f"{target} is not a git repository — `git init` it first"
@@ -311,8 +314,8 @@ class Upgrader:
 
     def __init__(self, project: Project) -> None:
         self.project = project
-        self.core = project.root / NOCK_DIRECTORY / "core" / "nock"
-        self.version_file = project.root / NOCK_DIRECTORY / "core" / "VERSION.json"
+        self.core = project.code_path("core", "nock")
+        self.version_file = project.code_path("core", "VERSION.json")
 
     def upgrade(self, source: str | None = None, force: bool = False) -> Report:
         version = read_json(self.version_file) if self.version_file.is_file() else {}

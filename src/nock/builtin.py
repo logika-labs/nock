@@ -485,8 +485,8 @@ def upgrade(
     if report.conflicts:
         return [*lines, "resolve the conflicts, then `.nock/nock init` re-wires the project"]
     rewired = subprocess.run(
-        [str(project.root / ".nock" / "nock"), "init"],
-        cwd=project.root,
+        [str(project.here / ".nock" / "nock"), "init"],
+        cwd=project.here,
         capture_output=True,
         text=True,
     )
