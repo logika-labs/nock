@@ -259,7 +259,8 @@ creates is its own.
 
 ### Long-running and interactive commands
 
-`sh(command, stream=True)` prints the output as it arrives instead of
+`sh(command, stream=True)` says the command line on stderr and prints the
+output as it arrives instead of
 condensing it afterwards, and the command reads the caller's stdin and has
 the caller's terminal: `ssh` and `sudo` can prompt on it, and Ctrl-C reaches
 it. A failing streamed command points at its log rather than printing its

@@ -12,6 +12,7 @@ import contextlib
 import inspect
 import os
 import shlex
+import sys
 import tempfile
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
@@ -125,8 +126,9 @@ class Shell:
     With `check` (the default) a non-zero exit ends the call: exit 1 with the
     output as evidence, or the machine's code when it timed out, hung or could
     not start. With `check=False` the `Output` comes back whatever happened.
-    With `stream`, the output is printed as it arrives, and the command reads
-    the caller's stdin; a bound of 0 is none, for a server."""
+    With `stream`, the command line is said on stderr, the output is printed as
+    it arrives, and the command reads the caller's stdin and has the caller's
+    terminal; a bound of 0 is none, for a server."""
 
     def __init__(self, project: Project, call: Call) -> None:
         self.project = project
@@ -147,6 +149,10 @@ class Shell:
         argv = (
             ["sh", "-c", command] if isinstance(command, str) else [str(part) for part in command]
         )
+        text = command if isinstance(command, str) else shlex.join(argv)
+        if stream:
+            sys.stderr.write(f"$ {text}\n")
+            sys.stderr.flush()
         output = Supervisor(
             self.project,
             argv,
@@ -164,7 +170,6 @@ class Shell:
         ).run()
         if not check or output.ok:
             return output
-        text = command if isinstance(command, str) else shlex.join(argv)
         if output.code == ExitCode.TIMED_OUT:
             raise TimedOutError(f"`{text}` {output.note} (log: {output.log})")
         if output.code == ExitCode.HUNG:

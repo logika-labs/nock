@@ -179,6 +179,7 @@ def test_a_streamed_failure_points_at_its_log_without_printing_it_again(project:
     result = nock(project.root, "deploy")
     assert result.returncode == 1
     assert result.stdout == "step one\nstep two\n"
+    assert result.stderr.startswith("$ echo step one\n$ echo step two; exit 2\n")
     assert "`echo step two; exit 2` exited 2; its output is above (log: " in result.stderr
     assert "step two" not in result.stderr.replace("echo step two", "")
 
