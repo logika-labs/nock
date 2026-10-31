@@ -710,6 +710,114 @@ sent and exactly what the next would carry.
 A round's summary is sent only with `nock share` and the owner's yes (see
 [Reflection](#reflection)).
 
+## Evaluations
+
+Does a change make the agents better? An evaluation answers it with real
+runs, and keeps every intermediate result so the next question costs only
+what changed. It lives in git beside the code:
+
+```
+evals/detect/
+  scenario.json            the steps in order, and the parameters each reads
+  parameters/bug/none.json one file per value (bug=none is the clean twin)
+  steps/plant.py           run(step) turns the snapshot before it into the next
+  snapshots/3f2a…/         snapshot.json (results, digests, manifest) and artefacts/
+  runs/20261031T2107-ab12/ run.json: the commit, assignment, what was reused and computed, time, cost
+```
+
+```json
+{
+  "steps": [
+    {"name": "build", "reads": ["code"]},
+    {"name": "plant", "reads": ["bug"]},
+    {"name": "detect", "reads": ["arm", "rep"], "estimate": {"seconds": 300, "cost_usd": 0.4}}
+  ],
+  "parameters": {
+    "code": {"values": {"current": ["/src/**"]}},
+    "bug": {"files": "parameters/bug/*"},
+    "arm": {"values": ["control", "toolbox"]},
+    "rep": {"values": [1, 2, 3, 4, 5]}
+  }
+}
+```
+
+- **A step** is `steps/NAME.py` with `run(step)`, returning its results (a
+  dict). It works in `step.directory`, a copy of the snapshot before it,
+  and what the directory holds afterwards are its artefacts. It reads
+  `step.value("arm")`, `step.file("bug")`, an earlier step's
+  `step.results("build")`; it counts what it spends with `step.spend(usd)`;
+  and `step.agent(brief, allowed=["Edit", "Bash(pytest:*)"])` dispatches a
+  headless agent as nock dispatches its own, in `dontAsk` with that
+  allowlist and nothing more, its cost counted. Each step runs in its own
+  process on the project's interpreter (`[environment]`), so it can import
+  the project's packages. A step that raises is a result too: `failed`,
+  with its log.
+- **A snapshot** is named by a short hash of its identity: the step, the
+  parameter values read up to it, and the content digests of those values'
+  files and of the steps' code (a step's `code` globs add to it). Content,
+  not commits, so code is just a parameter (`"/src/**"` is the working
+  tree's). Edit a value's file or a step and the snapshots that read it are
+  **stale**: kept and marked, and a run computes fresh ones beside them.
+  Every snapshot holds its whole state, so every branch of a fork resumes
+  from the snapshot before it. Order the steps so the expensive-to-vary
+  come first: a parameter read late keeps everything before it shared.
+- **Repetition is a parameter**, `rep`, so each repetition is its own
+  snapshot and more can be added later.
+
+```sh
+$ .nock/nock eval init detect                     # scaffold evals/detect/
+$ .nock/nock eval run '{"bug": "*", "arm": "*", "rep": "*"}' --dry
+build code=current  [c2ab56d0b65e] reused
+  plant bug=off-by-one  [738ff1597589] compute ~40s
+    detect arm=control rep=1  [a1574d3ba207] compute ~5m ~$0.40
+…
+$ .nock/nock eval run '{"bug": "*", "arm": "*", "rep": "*", "budget_usd": 20}'
+$ .nock/nock eval compare '{"by": "arm", "metric": "detected", "unit": "bug"}'
+```
+
+`eval run` takes an **assignment**: each parameter a value, a list or `"*"`
+(one with a single value needs no mention; `"scenario"` names the scenario
+when there are several). It runs up to `--parallel` steps at once (4), never
+recomputes a snapshot that exists, and is resumable: run it again. `--dry`
+prints the tree, what is reused and what computed, and the time and cost
+estimated from the snapshots each step made before (or its `estimate`). With
+`"budget_usd"` it stops starting steps once what it spent plus what is
+estimated would pass the budget. **`eval compare`** groups the leaves by one
+parameter, holding the others fixed and pooling `rep` (`over` pools others;
+`unit` averages within a unit, a bug say, and resamples units): each mean
+with a bootstrap confidence interval, the difference from the baseline,
+paired when both sides have the same units, and the runs behind each number.
+Comparisons are never steps: a clean run is just `bug=none`. **`eval show`**
+shows a scenario, a snapshot (a prefix of its hash) or a run: parameters,
+results, artefacts and those missing here, stale snapshots. **`eval prune`**
+(`--dry` first) deletes stale and failed snapshots and their artefacts; runs
+keep their own numbers, so history stays readable. A failed snapshot is
+reused as a result until it is pruned.
+
+**Artefacts in git.** Small ones are committed with their snapshots. The
+scenario's `.gitattributes` and `.gitignore` (written commented by `eval
+init`) send big ones to Git LFS or leave them out. A clone that lacks some
+is told what it lacks (`eval show`; `--dry` marks the steps blocked on it),
+and never breaks. The `nock-eval` check fails when scenario.json is invalid,
+a step is missing or reads a parameter it does not declare, or a committed
+snapshot's artefact is neither where its manifest says nor ignored.
+
+**More machines.** Steps run locally. Another machine is another checkout:
+it runs part of an assignment (`{"bug": ["off-by-one"], …}`), commits the
+snapshots and runs, and pushes; the snapshots merge as plain files, and the
+next run anywhere reuses them.
+
+**The studio's Evals tab** draws a scenario from these files, never running
+a step: a column per step, fanned out by the values of the parameters first
+read there. Hover a step for what it is, what it reads and the runs through
+it; select a run to highlight its path and see each step's results, cost and
+artefacts in it; pick a value where it forks to narrow what follows. Change
+values or edit a file there as a draft, nothing written, to see what would
+rerun and what is reused, with the `--dry` estimate; and compare by any
+parameter. `nock docs eval` has the rest, with the practice that keeps an
+evaluation honest: fix the inputs, keep the answers from what is scored,
+measure the outcome, run enough repetitions, write the comparison down first.
+
 ## Reference
 
 ### Commands
@@ -724,7 +832,8 @@ A round's summary is sent only with `nock share` and the owner's yes (see
 | `nock status` | a round due, decisions waiting, rejected ones to rework, answered questions, an unshared summary, a logika round to offer |
 | `nock decide JSON` | record a decision |
 | `nock decisions list [JSON]`, `show N`, `edit JSON`, `elaborate N` | the decisions: filtered, in full, changed or reviewed, elaborated |
-| `nock studio [JSON]` | the owner's page, a tab for each thing to look at: the decisions and questions |
+| `nock studio [JSON]` | the owner's page, a tab for each thing to look at: the decisions and questions, the evaluations |
+| `nock eval init NAME`, `run ASSIGNMENT [--dry]`, `show [NAME]`, `compare QUERY`, `prune [NAME] [--dry]` | evaluations: scaffold a scenario, run it reusing what matches, read it, compare its leaves, delete stale and failed snapshots |
 | `nock consult JSON` | a fresh agent advises on a task: the decisions, tools, checks and docs that bear on it; the caller waits |
 | `nock advise JSON` | the consultant's advice, submitted; only a consultant nock dispatched runs it |
 | `nock usage` | what nock shares with its makers, and exactly what the next report carries |

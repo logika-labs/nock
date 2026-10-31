@@ -1,6 +1,6 @@
 """The owner's page (`nock studio`): one local server, a tab for each thing
-nock keeps for the owner — today the decisions and questions agents recorded,
-reviewed in place. Local, and only while `nock studio` runs.
+nock keeps for the owner: the decisions and questions agents recorded,
+reviewed in place, and the evaluations, read from their files. Local, and only while `nock studio` runs.
 
 A tab is a `Tab` in `TABS`: its name is its address on the page (`#NAME`) and
 its routes on the server (`/NAME/…`); its page is the fragment
@@ -19,8 +19,10 @@ from pathlib import Path
 from typing import Any, NotRequired, TypedDict
 
 from nock.commands import schema_of
+from nock.comparison import Comparison, Query
 from nock.decisions import Change, Decisions, Review
 from nock.errors import Error, NotFoundError
+from nock.evaluation import Evaluations
 from nock.project import Project
 from nock.schema import validate
 
@@ -82,7 +84,46 @@ class DecisionsTab(Tab):
         return decision
 
 
-TABS: tuple[type[Tab], ...] = (DecisionsTab,)
+class Draft(TypedDict):
+    """A run weighed on the page: its assignment, and text standing in for
+    files of the scenario (by their path in its directory), nothing written."""
+
+    assignment: dict[str, Any]
+    drafts: NotRequired[dict[str, str]]
+
+
+class EvalsTab(Tab):
+    """`GET /evals` every scenario as its files have it — steps, parameters,
+    snapshots, runs; `POST /evals/NAME/dry` what a draft would rerun and
+    reuse; `POST /evals/NAME/compare` a comparison. Nothing here runs a step
+    or writes a file."""
+
+    name = "evals"
+    title = "Evals"
+
+    def __init__(self, project: Project) -> None:
+        super().__init__(project)
+        self.evaluations = Evaluations(project)
+
+    def get(self, route: str) -> Any:
+        if route:
+            raise NotFoundError("no such page")
+        return {"scenarios": self.evaluations.page()}
+
+    def post(self, route: str, body: Any) -> Any:
+        name, _, action = route.partition("/")
+        if name not in self.evaluations.names():
+            raise NotFoundError(f"no scenario {name}")
+        if action == "dry":
+            validate(body, schema_of(Draft))
+            return self.evaluations.dry(name, body["assignment"], body.get("drafts", {}))
+        if action == "compare":
+            validate(body, schema_of(Query))
+            return Comparison(self.project).compare(Query(**{**body, "scenario": name}))
+        raise NotFoundError("no such page")
+
+
+TABS: tuple[type[Tab], ...] = (DecisionsTab, EvalsTab)
 
 
 class Studio(ThreadingHTTPServer):

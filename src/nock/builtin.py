@@ -13,17 +13,19 @@ from typing import Annotated, Any, NotRequired, TypedDict
 
 from nock.checks import Checks
 from nock.commands import Option
+from nock.comparison import Comparison, Query
 from nock.consult import Advice, Consultant, Consultation
 from nock.decisions import TAGS, Change, Decisions, Draft, Filter, row
 from nock.docs import Docs
 from nock.errors import Error, ExitCode, Failed, UsageError
+from nock.evaluation import PARALLEL, SCENARIOS, Evaluations, Plan, Runner, value_key
 from nock.fixtures import Shell
 from nock.generators import Catalogs, Generators
 from nock.kinds import DEFAULT, KINDS
 from nock.processes import Output
 from nock.project import Project
 from nock.reflect import Record, Reflection, Round, tool_rows
-from nock.render import Problem
+from nock.render import Problem, render
 from nock.schema import check_schema
 from nock.sessions import Sessions
 from nock.setup import (
@@ -43,6 +45,7 @@ from nock.telemetry import UNRECORDED_VARIABLE
 from nock.templates import SYNTAX
 from nock.tools import NATIVE_EVENTS, check, command
 from nock.usage import Moment, Usage
+from nock.utils import format_duration
 
 
 class StudioOptions(TypedDict):
@@ -662,3 +665,114 @@ def hooks_wired(project: Project) -> list[str]:
             if rule not in allowed
         ]
     )
+
+
+# --- evaluations ---------------------------------------------------------------------------
+
+
+@command(name="init", group="eval")
+def eval_init(project: Project, scenario: str) -> list[str]:
+    """Start a scenario in `evals/SCENARIO/`: an empty scenario.json, parameters/
+    and steps/, and the .gitattributes and .gitignore lines (commented) that
+    decide where big artefacts go."""
+    return Evaluations(project).init(scenario)
+
+
+@command(name="run", group="eval")
+def eval_run(
+    project: Project,
+    assignment: dict[str, Any],
+    *,
+    dry: Annotated[
+        bool, Option(help="Print the tree, what is reused and computed, and the estimate.")
+    ] = False,
+    parallel: Annotated[int, Option(help="Steps run at once.")] = PARALLEL,
+) -> Any:
+    """Run a scenario for ASSIGNMENT — each parameter a value, a list, or "*";
+    `"scenario"` names it (the only one by default) and `"budget_usd"` stops
+    starting steps once spent and estimated would pass it — reusing every
+    snapshot that matches and computing the rest, in parallel. Writes
+    `runs/ID/run.json`; run it again to resume."""
+    plan = Plan(Evaluations(project).scenario(assignment.get("scenario")), assignment)
+    if dry:
+        return f"{plan.tree()}\n\n{render(plan.summary(parallel))}"
+    summary = plan.summary(parallel)
+    if summary["to_compute"]:
+        print(
+            f"nock: computing {summary['to_compute']} of {summary['snapshots']} snapshots, "
+            f"~{format_duration(summary['estimated_seconds'])}, ~${summary['estimated_cost_usd']:.2f}",
+            file=sys.stderr,
+            flush=True,
+        )
+    record = Runner(plan, parallel).run()
+    snapshots = record["snapshots"]
+    result: dict[str, Any] = {
+        "run": record["id"],
+        **{key: len(value) for key, value in snapshots.items()},
+        "seconds": record["seconds"],
+        "cost_usd": record["cost_usd"],
+    }
+    for outcome in ("failed", "blocked", "over budget"):
+        if snapshots.get(outcome):
+            result[outcome.replace(" ", "_")] = [
+                " ".join(
+                    [node["snapshot"], node["step"]]
+                    + [f"{key}={value_key(value)}" for key, value in node["parameters"].items()]
+                )
+                + (f": {node['why']}" if node.get("why") else "")
+                for node in record["nodes"]
+                if node["outcome"] == outcome
+            ][:10]
+    result["next"] = (
+        f"`nock eval show {record['id']}` for the leaves, `nock eval compare` across them; "
+        f"commit {SCENARIOS}/{plan.scenario.name}/ to share the snapshots"
+    )
+    return result
+
+
+@command(name="show", group="eval")
+def eval_show(project: Project, name: str | None = None) -> Any:
+    """The scenarios; or one scenario, snapshot (a prefix of its hash) or run:
+    parameters, results, artefacts and those missing here, stale snapshots."""
+    evaluations = Evaluations(project)
+    if name is None:
+        return (
+            evaluations.overview()
+            or f"no scenarios yet: `nock eval init NAME` starts one in {SCENARIOS}/"
+        )
+    scenario, kind, found = evaluations.find(name)
+    if kind == "scenario":
+        return evaluations.show_scenario(scenario)
+    if kind == "run":
+        return evaluations.show_run(found)
+    return evaluations.show_snapshot(scenario, found)
+
+
+@command(name="compare", group="eval")
+def eval_compare(project: Project, query: Query) -> list[dict[str, Any]]:
+    """Compare a scenario's leaves by one parameter, holding the others fixed and
+    pooling the repetitions: each mean with its bootstrap confidence interval (95 in 100), the
+    difference from the baseline (paired when the units match), and the runs
+    behind each number."""
+    return Comparison(project).compare(query)
+
+
+@command(name="prune", group="eval")
+def eval_prune(
+    project: Project,
+    scenario: str | None = None,
+    *,
+    dry: Annotated[bool, Option(help="Say what would be deleted, and delete nothing.")] = False,
+) -> list[dict[str, Any]] | str:
+    """Delete stale and failed snapshots and their artefacts — every
+    scenario's, or SCENARIO's. Runs keep their own numbers."""
+    rows = Evaluations(project).prune(scenario, dry)
+    return rows or "nothing to prune"
+
+
+@check(name="nock-eval")
+def evaluations_hold(project: Project) -> list[str]:
+    """Every scenario's scenario.json is valid, its steps exist and read only
+    declared parameters, and committed snapshots' artefacts are where their
+    manifests say."""
+    return Evaluations(project).problems()

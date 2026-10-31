@@ -6,7 +6,8 @@ refuses and reports a call no allow rule covers (FAKE_TRY is one more call to
 attempt). As the elaborator it deepens the decision it was given, unless
 FAKE_ELABORATE is `silent`; as the consultant it answers at once; as the
 sharer it reads the authors and hands back the vetted summary (FAKE_SHARE,
-or a stock one; `nothing` hands back nothing)."""
+or a stock one; `nothing` hands back nothing); as an evaluation step's
+agent it writes its brief to answer.txt, when its allow rules let it write."""
 
 from __future__ import annotations
 
@@ -126,6 +127,14 @@ def main() -> int:
         write_transcript(session, prompt)
         text = os.environ.get("FAKE_SHARE", "Early days, vetted.")
         finish("" if text == "nothing" else text)
+        return 0
+    if os.environ.get("NOCK_ROLE") == "evaluated":
+        write_transcript(session, prompt)
+        if "Write" in ALLOWED:
+            Path("answer.txt").write_text(prompt)
+        else:
+            DENIED.append({"tool_name": "Write", "tool_input": {"file_path": "answer.txt"}})
+        finish("answered")
         return 0
     raise SystemExit(f"no seat for role {os.environ.get('NOCK_ROLE')!r}")
 

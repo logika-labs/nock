@@ -90,6 +90,13 @@ src/nock/
   schema.py          JSON Schema subset validation
   builtin.py         nock's own commands and checks, as tools
 
+  # evaluations
+  evaluation.py      Scenario (scenario.json, parameters, digests, identity), Snapshots (stale,
+                     prunable, the check), Plan (the tree an assignment makes; --dry), Runner
+                     (steps in parallel, each in its own process), Runs, Evaluations (show, page)
+  steps.py           Step, what a step's `run(step)` gets; `python -m nock.steps REQUEST`
+  comparison.py      Comparison: leaves grouped by one parameter, bootstrap intervals, pairing
+
   # plumbing
   project.py         Project: the hub (places, configuration, git, registry, store, locks)
   configuration.py   defaults ⊕ .nock/config.toml ⊕ .nock/local/config.toml
@@ -100,7 +107,9 @@ src/nock/
 
 tests/               real git repositories and processes; no mocks
   conftest.py        a fresh repository with nock installed, per test; the `nock()` runner
-  fake_agent.py      the scripted stand-in for the dispatched agents (elaborator, consultant, sharer)
+  fake_agent.py      the scripted stand-in for the dispatched agents (elaborator, consultant, sharer,
+                     an evaluation step's agent)
+  toy/               the toy scenario test_eval.py runs: a word list, a planted bug, a detector
 scripts/release.py   cut a release: checks, asks, then tags vVERSION and pushes it (standard library)
 evals/               does reflection pay? real sessions, with and without a toolbox
 web/                 nock.dev, never vendored or packaged: site/ (the pages), build.py (docs/
@@ -374,9 +383,18 @@ On the server, `/NAME/ROUTE` goes to that tab's `get` or `post`, JSON both
 ways, a nock `Error` becoming 404 or 400. A tab is a `studio.Tab` subclass
 listed in `TABS`, and a fragment whose script calls
 `studio.register(NAME, {show(route), hide()})`; the studio gives it
-`studio.summary` (the line under the title) and `studio.toast`.
+`studio.summary` (the line under the title) and `studio.toast`. Fragments
+share the page's scripts and styles, so a tab keeps its script in a closure
+and its style under its own class. Two tabs: `DecisionsTab`, and `EvalsTab`,
+which reads `evaluation.Evaluations.page` and answers `POST
+/evals/NAME/dry` (a `Plan` over a `Scenario` whose `drafts` stand in for
+files, nothing written) and `POST /evals/NAME/compare`.
 
 ### Dispatch
+
+An evaluation step's agent (`steps.Step.agent`) is dispatched the same way,
+as role `evaluated`, with the seat the step gives (`launch(seat=…)`): its
+tools and allow rules, which a step must state.
 
 `dispatch.Dispatcher.launch` runs `claude -p --output-format stream-json
 --session-id …` (`agent.command`, `agent.model`) for the sessions no human
@@ -507,6 +525,50 @@ by the summary, so a preview and the send that follows vet once. It
 returns the text and where it would go; with `send`, it posts it to
 `endpoints.reflections`, records `shared` in the round's record, and
 commits; it refuses to send, before vetting, when `share` is false.
+
+## Evaluations
+
+`nock eval` lives in `evaluation.py`, `steps.py` and `comparison.py`, over
+files in the working tree's `evals/NAME/` (README, "Evaluations").
+
+- **Identity.** `Scenario.identity(index, values)` is the step, the values
+  of the parameters read up to it, the digests of those values' files
+  (`files` globs, or `values` naming globs) and the ordered digests of the
+  steps' code up to it (`steps/STEP.py` and the step's `code` globs). Its
+  canonical JSON's SHA-256, cut to 12 characters, names the snapshot
+  directory. Digests skip `__pycache__` and `.git`, and are cached per call.
+  `Snapshots.staleness` recomputes a snapshot's identity from the scenario
+  as it is and says what changed.
+- **Plan.** `Plan` expands the steps in order: each node's children are
+  the product of the assignment's values of the parameters first read by
+  the next step (a fork when there are several). A node whose snapshot
+  exists is reused (or failed); one under a failed node, or under a
+  snapshot whose artefacts this checkout lacks (absent, or a Git LFS
+  pointer), is blocked. Estimates are each step's mean time and cost over
+  the snapshots it made, else its `estimate`.
+- **Runner.** A thread pool of `--parallel` workers. A node starts once the
+  snapshot before it exists; under `budget_usd` none starts once spent plus
+  in flight plus its estimate would pass it. Each computes under a lock on
+  its hash, in `.nock/local/eval/SCENARIO/HASH.PID/`: the parent's artefacts
+  copied in, `python -m nock.steps` run there under a `Supervisor` (on the
+  interpreter `[environment]` re-executed nock on, the vendored core on
+  `PYTHONPATH`), its log kept, then the directory moved into `snapshots/`
+  whole. `runs/ID/run.json` is rewritten after each step, so an interrupted
+  run shows what it did, and keeps every node's outcome and the leaves'
+  results, so pruning loses no history.
+- **The step's process.** `steps.main` reads the request (the values, the
+  value files, the results of the steps before on this path), imports the
+  step's module and writes `outcome.json`: results and cost, or the error.
+- **The check.** `nock-eval` validates scenario.json against `SCHEMA`
+  (`schema.py`), that each step's file exists and defines `run`, and, by
+  its syntax tree, that it reads (`step.value`, `step.file`, `step.files`,
+  `step.parameters[…]`) only parameters read up to it; then that each
+  snapshot's name is its identity's hash and that a committed snapshot's
+  artefacts are present and tracked, or ignored by git.
+- **Compare.** `Comparison.compare` reads the current snapshots of one step
+  (the last by default), groups them by `by` with the other parameters
+  fixed, pools `over` (default `rep`), and resamples units 2000 times with
+  a fixed seed; a difference is paired when both sides have the same units.
 
 ## Extension points
 

@@ -124,11 +124,14 @@ class Dispatcher:
         directory: Path,
         variables: dict[str, str] | None = None,
         deadline: float | None = None,
+        seat: Seat | None = None,
     ) -> Session:
+        """`seat` is the role's own when not given; an evaluation step gives
+        its agent's, since what it may do is the scenario's to say."""
         session = str(uuid.uuid4())
         settings = self.project.configuration
         prompt, allowed = self.carried(session, brief)
-        command = [*self.command(role, allowed)]
+        command = [*self.command(role, allowed, seat)]
         command += ["--session-id", session]
         model = str(settings.get("agent.model") or "")
         if model:
@@ -155,13 +158,15 @@ class Dispatcher:
             session, output.run, output.code, final_result(output.raw), output.log, denied
         )
 
-    def command(self, role: str, allowed: tuple[str, ...] = ()) -> list[str]:
+    def command(
+        self, role: str, allowed: tuple[str, ...] = (), seat: Seat | None = None
+    ) -> list[str]:
         """The agent's command line for a seat, up to its session and brief:
         headless, its tools and allow rules only, refusing the rest
         (`dontAsk`: nobody is there to answer a prompt). The project's and
         this checkout's Claude Code settings are not loaded, so the
         project's own allow rules never widen a seat; the user's are theirs."""
-        seat = SEATS.get(role)
+        seat = seat or SEATS.get(role)
         if seat is None:
             raise PolicyError(f"nock dispatches no agent as {role!r}: seats are {', '.join(SEATS)}")
         base = [str(part) for part in self.project.configuration.get("agent.command")]

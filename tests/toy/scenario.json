@@ -1,0 +1,14 @@
+{
+  "description": "A toy: make a word list, plant a bug in it, look for the bug.",
+  "steps": [
+    {"name": "build", "reads": ["corpus"], "description": "The word list."},
+    {"name": "plant", "reads": ["bug"], "description": "Drop a word, or none."},
+    {"name": "detect", "reads": ["arm", "rep"], "description": "Look for the missing word.", "estimate": {"seconds": 1, "cost_usd": 0.1}}
+  ],
+  "parameters": {
+    "corpus": {"files": "parameters/corpus/*"},
+    "bug": {"files": "parameters/bug/*"},
+    "arm": {"values": ["control", "toolbox"]},
+    "rep": {"values": [1, 2, 3]}
+  }
+}
