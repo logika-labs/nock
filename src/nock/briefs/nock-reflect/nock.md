@@ -8,7 +8,8 @@ work, hooks that tell sessions what bears on them, and these rounds.
 
 Your material has this window's numbers beside earlier rounds'; the first
 column is the baseline. Read trends, not single numbers. Then look behind
-them with `.nock/nock query` and the files:
+them with `.nock/nock query` and the files (`.nock/nock docs telemetry.tables`
+has the tables):
 - **Decisions**: real choices with real alternatives, or narration? Written
   for someone who doesn't know the code? How does the owner meet them?
 - **Toolbox**: used, and saving work, or worked around? What do agents try

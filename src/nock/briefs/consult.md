@@ -19,6 +19,7 @@ decisions and tools that bear on its work. It waits for your answer.
     .nock/nock decisions list '{"tag": "payments"}'
     .nock/nock decisions show 7
     .nock/nock NAME --help                                   # a tool the session start listed
+    .nock/nock docs decisions.review decisions.map           # how decisions and the map work
 
 An accepted decision is the owner's; an unreviewed one is an agent's call so
 far; a rejected one says what not to do, and its note says why.

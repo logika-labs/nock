@@ -32,7 +32,12 @@ as an agent would, give each new command `examples=[...]`, and leave
 
 # How to write a tool
 
-!include("_framework.md")
+nock's documentation is `.nock/nock docs`, one short article per term
+(`.nock/nock docs` lists them). Before you write, read these, all in one call:
+
+    .nock/nock docs --full tools tools.signature tools.records tools.caching tools.examples tools.confirm tools.loading tools.retiring fixtures sh sh.stream run output output.cap errors exit-codes checks checks.commands checks.chains hooks generators generators.catalogs generators.templates environment configuration logika
+
+and for drilling into the record, `.nock/nock docs telemetry telemetry.tables`.
 
 # Report
 

@@ -4,7 +4,7 @@ A toolbox coding agents build for themselves: an agent-friendly CLI framework
 (`commands.py`, `fixtures.py`, `render.py`, woven together in `cli.py`),
 telemetry of every call and session (`store.py`, `telemetry.py`,
 `sessions.py`), the decisions agents record — and the questions they ask —
-and the owner reviews (`decisions.py`, the page in `web.py`), consultation
+and the owner reviews (`decisions.py`, the owner's page in `studio.py`), consultation
 (`consult.py`), and
 reflection rounds that turn it all into better tools, a map of the
 decisions and an account of how nock is doing (`reflect.py`, `share.py`,
@@ -21,8 +21,9 @@ Schema subset in `schema.py`.
   are `tests/fake_agent.py`, configured as `agent.command`. No mocks.
 - The README is the product's documentation; keep it true when behavior
   changes; nock.dev's docs page is built from it (`web/`, the site, outside
-  the vendored core: `web/README.md`). `briefs/_framework.md` is the agents'
-  documentation (`nock guide`, and the reflection brief): keep it true too.
+  the vendored core: `web/README.md`). `terms/` is the agents' documentation
+  (`nock docs`, a short article per term, which the briefs point at): keep it
+  true too.
 
 ## How the code is shaped
 

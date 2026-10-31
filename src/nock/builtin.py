@@ -15,6 +15,7 @@ from nock.checks import Checks
 from nock.commands import Option
 from nock.consult import Consultant, Consultation
 from nock.decisions import TAGS, Change, Decisions, Draft, Filter, row
+from nock.docs import Docs
 from nock.errors import Error, ExitCode, Failed, UsageError
 from nock.fixtures import Shell
 from nock.generators import Catalogs, Generators
@@ -29,20 +30,19 @@ from nock.setup import ASK_PERMISSION, Installer, Upgrader, asked_permissions, w
 from nock.share import Request as ShareRequest
 from nock.share import Sharing
 from nock.status import Standing
+from nock.studio import Studio
 from nock.telemetry import UNRECORDED_VARIABLE
-from nock.templates import SYNTAX, Library
+from nock.templates import SYNTAX
 from nock.tools import NATIVE_EVENTS, check, command
-from nock.web import Server
 
 
-class WebOptions(TypedDict):
+class StudioOptions(TypedDict):
     port: NotRequired[int]
     """0 picks a free one."""
     open: NotRequired[bool]
     """Open it in the browser."""
 
 
-BRIEFS = Path(__file__).resolve().parent / "briefs"
 EXAMPLE_DEADLINE = 300
 
 
@@ -88,10 +88,15 @@ def run_command(
     return sh(command, check=False, deadline=deadline, silence=silence)
 
 
-@command
-def guide() -> str:
-    """How to write a tool, a check, a hook or a generator."""
-    return Library(BRIEFS).render("_framework.md").rstrip()
+@command(examples=["tools", "tools.caching fixtures"])
+def docs(terms: list[str] | None = None) -> str | dict[str, str]:
+    """nock's documentation, a short article per term: how to write a tool, a
+    check, a hook or a generator, and how decisions, consultation and
+    reflection work. With no term, the terms; with several, each in turn."""
+    documentation = Docs()
+    if not terms:
+        return documentation.index()
+    return documentation.read(terms)
 
 
 # --- telemetry -------------------------------------------------------------------
@@ -217,13 +222,14 @@ def status(project: Project) -> dict[str, Any]:
 
 
 @command
-def web(
+def studio(
     project: Project,
-    options: WebOptions = {},  # noqa: B006
+    options: StudioOptions = {},  # noqa: B006
 ) -> None:
-    """Serve the owner's page, where decisions are reviewed, until stopped
-    (port 8765 unless OPTIONS say otherwise)."""
-    Server(Decisions(project), options.get("port", 8765)).run(options.get("open", False))
+    """Serve the owner's page, a tab for each thing to look at — the
+    decisions and questions to review — until stopped (port 8765 unless
+    OPTIONS say otherwise)."""
+    Studio(project, options.get("port", 8765)).run(options.get("open", False))
 
 
 # --- decisions ---------------------------------------------------------------------

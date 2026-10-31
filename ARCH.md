@@ -55,24 +55,27 @@ src/nock/
   logika.py          the `logika` topic: Ledger (logika.json read and counted), LogikaRound
                      (due, start, finish) and its Material
   decisions.py       Decisions (decide, edit, review, elaborate, what governs a file, the map's problems)
-  web.py             the owner's page (`nock web`), a local server
-  web.html           the page
+  studio.py          the owner's page (`nock studio`): a local server, a Tab per tab
+  pages/             studio.html, the shell (band, tab links, routing by `#NAME/ROUTE`);
+                     NAME.html, each tab's fragment (markup, style, a script registering it)
   status.py          Standing: a round due, decisions waiting, rejected ones to rework, answered
                      questions, an unshared summary
   share.py           Sharing: a round's summary, held to naming nothing, sent on the owner's word
   consult.py         Consultant: a fresh agent finds the decisions and tools that bear on a task
   dispatch.py        Dispatcher: launch a headless `claude -p` session and ingest it
   hooks.py           `nock hook EVENT`: nock's own handlers, then the project's
+  docs.py            Docs: the terms of `nock docs`, parsed and validated; the closest to a miss
+  terms/             one article per term (`tools.caching.md`): front matter term, aliases,
+                     description; at most 500 characters. The briefs point at the terms
   briefs/
     nock-reflect/    the `/nock-reflect` skill: SKILL.md (the lead) and its three parts'
-                     briefs — process.md (includes _framework.md), knowledge.md, nock.md
+                     briefs — process.md, knowledge.md, nock.md
     nock-reflect-logika/  the `/nock-reflect-logika` skill, installed in Logika projects only:
                      SKILL.md (the round, with the owner) and rules.md (from data to rules)
     nock-triage/     the `/nock-triage` skill: going through decisions with the owner
     elaborate.md     the brief of the agent that elaborates on a decision
     consult.md       the consultant's brief
     share.md         the brief of the agent that vets a summary before it is shared
-    _framework.md    the framework on one page: `nock guide`, and part of the toolbox brief
 
   # the rest of the toolbox
   checks.py          Checks: command checks and @check functions → one Verdict
@@ -249,6 +252,20 @@ and are left out of the material, so reflection does not study itself.
 Raw telemetry is never committed, because it is per-machine and does not
 merge. What is shared is the reflection record (see below).
 
+## Documentation for agents
+
+`nock docs` serves `terms/`, one Markdown file per term, named by it
+(`tools.caching.md`). Its front matter holds `term`, `aliases` and a
+one-line `description` (at most 100 characters); the article is at most 500.
+A dotted term is the child of the term before its last dot, and its parent's
+article ends by listing it. `docs.Docs` reads them all on each call, sorted
+parents first; `problems` finds a name taken twice or a child without its
+parent, and the tests hold every file to the rules. A miss answers the three
+closest: names it nearly spells (`difflib`), then the articles that mention
+it most, then the most alike names. The briefs name the terms their agents
+read (`.nock/nock docs TERM …`), and a test holds each name to a term. A new
+area is a new root term with its children, such as `eval.*`.
+
 ## The loop
 
 ### Hooks
@@ -291,7 +308,8 @@ checkout's `.nock/decisions/` and commits each change there with
 once. It skips the commit, and says so, when the main checkout is mid-merge
 or mid-rebase. `decide` and `edit` take the `Draft` and `Change` records;
 `edit` is also the owner's review (`review`, `note`, `elaborate`), from the
-page (`web.Server`, which accepts only those three) or from a session. A
+studio's Decisions tab (`studio.DecisionsTab`, which accepts only those
+three) or from a session. A
 change to a field in `SUBSTANCE` resets the review. A question
 (`status: question`) is a decision whose review is the owner's answer;
 `answered` lists those answered and not yet edited to done, for
@@ -310,6 +328,19 @@ and context, and dispatches a read-only consultant in the caller's working
 tree under `consult.deadline`. The session's last message is the answer the
 caller prints.
 
+### The studio
+
+`nock studio` serves one page from one process, `studio.Studio`, a
+`ThreadingHTTPServer` on 127.0.0.1. The page is `pages/studio.html` with
+each tab's link and its fragment (`pages/NAME.html`) put in; the browser
+shows the tab the address names (`#NAME`, or `#NAME/ROUTE` for something in
+it; an address naming no tab goes to the first, so `#7` opens decision 7).
+On the server, `/NAME/ROUTE` goes to that tab's `get` or `post`, JSON both
+ways, a nock `Error` becoming 404 or 400. A tab is a `studio.Tab` subclass
+listed in `TABS`, and a fragment whose script calls
+`studio.register(NAME, {show(route), hide()})`; the studio gives it
+`studio.summary` (the line under the title) and `studio.toast`.
+
 ### Dispatch
 
 `dispatch.Dispatcher.launch` runs `claude -p --output-format stream-json
@@ -327,9 +358,8 @@ lead's own subagents, not dispatched.) It:
 ### Reflection
 
 A round is the `/nock-reflect` skill in an ordinary session. `nock init`
-renders `briefs/nock-reflect/` into `.claude/skills/nock-reflect/`, the
-toolbox brief with `!include("_framework.md")` bringing in the framework
-guide.
+renders `briefs/nock-reflect/` into `.claude/skills/nock-reflect/`; the
+toolbox brief names the `nock docs` terms the part reads before writing.
 
 1. **Start.** `nock reflect start` catches up on transcripts
    (`Sessions.catch_up`), names the round by date (`Rounds.new_name`, or the

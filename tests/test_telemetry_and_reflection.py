@@ -304,7 +304,7 @@ def test_init_installs_the_skills_and_retires_the_old_ones(project: Project) -> 
     lead = (skills / "nock-reflect" / "SKILL.md").read_text()
     assert lead.startswith("---\nname: nock-reflect\n") and "`.nock/nock reflect start`" in lead
     process = (skills / "nock-reflect" / "process.md").read_text()
-    assert "**Ask for what you need by name**" in process
+    assert ".nock/nock docs --full tools tools.signature" in process
     assert {path.name for path in (skills / "nock-reflect").iterdir()} == {
         "SKILL.md",
         "process.md",

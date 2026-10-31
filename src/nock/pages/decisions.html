@@ -1,126 +1,6 @@
-<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>nock decisions</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap">
 <style>
-/* nock's studio look: warm paper, off-black ink, one red for everything interactive,
-   white cards with borders and no shadows, outlined pills, uppercase labels.
-   Layout: a red field band, then one centred column of decisions; a decision opens in place. */
-:root {
-  --paper: #f2efe9;
-  --ink: #393939;
-  --red: #da121a;
-  --white: #ffffff;
-  --grey: #8a8a8a;
-  --ok-hue: #1f7a44;
-  --warning-hue: #d1881b;
-  --error-hue: #a4161a;
-  --info-hue: #1b94d1;
-
-  --background: var(--paper);
-  --foreground: var(--ink);
-  --card: var(--white);
-  --muted: color-mix(in oklab, var(--grey) 62%, var(--ink));
-  --border: color-mix(in oklab, var(--paper) 85%, var(--ink));
-  --input: color-mix(in oklab, var(--paper) 78%, var(--ink));
-  --hover: color-mix(in oklab, var(--paper) 55%, var(--white));
-  --selection: var(--red);
-  --selection-foreground: var(--white);
-  --selection-tint: color-mix(in oklab, var(--red) 8%, var(--white));
-  --ring: var(--red);
-  --link: var(--red);
-  --ok: var(--ok-hue);
-  --ok-tint: color-mix(in oklab, var(--ok-hue) 9%, var(--white));
-  --warning: var(--warning-hue);
-  --error: var(--error-hue);
-  --info: var(--info-hue);
-  --field: var(--red);
-  --field-foreground: var(--white);
-  --field-grid: color-mix(in oklab, var(--white) 20%, transparent);
-
-  --sans: "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-  --mono: "Geist Mono", ui-monospace, "SF Mono", Menlo, monospace;
-  --column: 46rem;
-  --number: 2.25rem;
-  color-scheme: light;
-}
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --background: color-mix(in oklab, var(--ink) 94%, var(--paper));
-    --foreground: color-mix(in oklab, var(--white) 94%, var(--ink));
-    --card: color-mix(in oklab, var(--ink) 86%, var(--paper));
-    --muted: color-mix(in oklab, var(--grey) 70%, var(--paper));
-    --border: color-mix(in oklab, var(--paper) 16%, var(--ink));
-    --input: color-mix(in oklab, var(--paper) 26%, var(--ink));
-    --hover: color-mix(in oklab, var(--ink) 80%, var(--paper));
-    --selection: color-mix(in oklab, var(--red) 70%, var(--white));
-    --selection-tint: color-mix(in oklab, var(--red) 16%, var(--card));
-    --ring: color-mix(in oklab, var(--red) 62%, var(--paper));
-    --link: color-mix(in oklab, var(--red) 55%, var(--paper));
-    --ok: color-mix(in oklab, var(--ok-hue) 72%, var(--white));
-    --ok-tint: color-mix(in oklab, var(--ok-hue) 16%, var(--card));
-    --warning: color-mix(in oklab, var(--warning-hue) 74%, var(--white));
-    --error: color-mix(in oklab, var(--error-hue) 74%, var(--white));
-    --info: color-mix(in oklab, var(--info-hue) 70%, var(--white));
-    --field: color-mix(in oklab, var(--red) 70%, var(--ink));
-    --field-grid: color-mix(in oklab, var(--white) 16%, transparent);
-    color-scheme: dark;
-  }
-}
-:root[data-theme="dark"] {
-  --background: color-mix(in oklab, var(--ink) 94%, var(--paper));
-  --foreground: color-mix(in oklab, var(--white) 94%, var(--ink));
-  --card: color-mix(in oklab, var(--ink) 86%, var(--paper));
-  --muted: color-mix(in oklab, var(--grey) 70%, var(--paper));
-  --border: color-mix(in oklab, var(--paper) 16%, var(--ink));
-  --input: color-mix(in oklab, var(--paper) 26%, var(--ink));
-  --hover: color-mix(in oklab, var(--ink) 80%, var(--paper));
-  --selection: color-mix(in oklab, var(--red) 70%, var(--white));
-  --selection-tint: color-mix(in oklab, var(--red) 16%, var(--card));
-  --ring: color-mix(in oklab, var(--red) 62%, var(--paper));
-  --link: color-mix(in oklab, var(--red) 55%, var(--paper));
-  --ok: color-mix(in oklab, var(--ok-hue) 72%, var(--white));
-  --ok-tint: color-mix(in oklab, var(--ok-hue) 16%, var(--card));
-  --warning: color-mix(in oklab, var(--warning-hue) 74%, var(--white));
-  --error: color-mix(in oklab, var(--error-hue) 74%, var(--white));
-  --info: color-mix(in oklab, var(--info-hue) 70%, var(--white));
-  --field: color-mix(in oklab, var(--red) 70%, var(--ink));
-  --field-grid: color-mix(in oklab, var(--white) 16%, transparent);
-  color-scheme: dark;
-}
-
-* { box-sizing: border-box; }
-[hidden] { display: none !important; }
-html, body { background: var(--background); color: var(--foreground); }
-body { margin: 0; font: 400 15px/1.6 var(--sans); -webkit-font-smoothing: antialiased; }
-button:not(:disabled), label[for] { cursor: pointer; }
-.frame {
-  max-width: calc(var(--column) + 32px); margin: 0 auto;
-  padding-left: max(16px, env(safe-area-inset-left, 0px));
-  padding-right: max(16px, env(safe-area-inset-right, 0px));
-}
-.label { font: 500 12px/16px var(--sans); letter-spacing: .04em; text-transform: uppercase; }
-.numeral { font-variant-numeric: tabular-nums; }
-
-/* The field band: the page's one loud surface. */
-.band {
-  background-color: var(--field); color: var(--field-foreground);
-  background-image:
-    linear-gradient(to right, var(--field-grid) 1px, transparent 1px),
-    linear-gradient(to bottom, var(--field-grid) 1px, transparent 1px);
-  background-size: 24px 24px;
-}
-.band .frame { padding-block: 40px 32px; display: grid; gap: 6px; }
-.band .wordmark { opacity: .85; }
-.band h1 { margin: 0; font: 700 32px/40px var(--sans); letter-spacing: -.02em; }
-.band p { margin: 0; font-size: 16px; opacity: .92; }
-
-nav { display: flex; flex-wrap: wrap; align-items: center; gap: 0 24px; border-bottom: 1px solid var(--border); margin-top: 8px; }
+/* The decisions tab: the review tabs, search and filters, then the decisions; one opens in place. */
+nav.reviews { display: flex; flex-wrap: wrap; align-items: center; gap: 0 24px; border-bottom: 1px solid var(--border); margin-top: 8px; }
 
 /* Search and filters: one line under the tabs, every control a bare field with a bottom border. */
 .tools { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px; padding-top: 20px; }
@@ -152,14 +32,14 @@ nav { display: flex; flex-wrap: wrap; align-items: center; gap: 0 24px; border-b
 }
 .sort button:hover { color: var(--foreground); }
 .sort button[aria-pressed="true"] { color: var(--foreground); font-weight: 600; }
-nav [role="tab"] {
+.reviews [role="tab"] {
   display: inline-flex; align-items: center; gap: 8px; margin-bottom: -1px;
   padding: 14px 2px 12px; border: 0; border-bottom: 2px solid transparent; background: none;
   color: var(--muted); font: 500 12px/16px var(--sans); letter-spacing: .04em; text-transform: uppercase;
 }
-nav [role="tab"]:hover { color: var(--foreground); }
-nav [role="tab"][aria-selected="true"] { color: var(--foreground); border-bottom-color: var(--selection); }
-nav .count { color: var(--muted); font-variant-numeric: tabular-nums; }
+.reviews [role="tab"]:hover { color: var(--foreground); }
+.reviews [role="tab"][aria-selected="true"] { color: var(--foreground); border-bottom-color: var(--selection); }
+.reviews .count { color: var(--muted); font-variant-numeric: tabular-nums; }
 
 main { padding-block: 20px 80px; }
 #list { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; }
@@ -263,46 +143,24 @@ kbd {
 .links code { font: 12px var(--mono); background: var(--background); color: var(--foreground); padding: 1px 4px; border-radius: 4px; }
 .reference { border: 0; background: none; padding: 0; color: var(--link); font: 500 13px var(--sans); text-decoration: underline; text-underline-offset: 2px; }
 .reference:hover { text-decoration: none; }
-.empty { text-align: center; padding: 64px 16px; color: var(--muted); display: grid; gap: 6px; justify-items: center; }
-.empty strong { color: var(--foreground); font: 700 17px/24px var(--sans); }
-.empty code { font: 13px var(--mono); background: var(--card); padding: 1px 5px; border-radius: 4px; }
-
-.toast {
-  position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom, 0px)); transform: translate(-50%, 8px);
-  background: var(--foreground); color: var(--background); padding: 10px 16px; border-radius: 8px; font-size: 14px;
-  opacity: 0; pointer-events: none; transition: opacity .15s, transform .15s; max-width: calc(100vw - 32px);
-}
-.toast.shown { opacity: 1; transform: translate(-50%, 0); }
 
 @media (max-width: 560px) {
   :root { --number: 1.5rem; }
   .row { grid-template-columns: var(--number) minmax(0, 1fr); padding: 14px; gap: 10px; }
   .row .side { grid-column: 2; justify-self: start; }
   .body { padding: 16px 14px 16px; }
-  .band .frame { padding-block: 28px 24px; }
-  .band h1 { font-size: 26px; line-height: 32px; }
   .search { flex-basis: 100%; }
   .sort { margin-left: 0; padding-block: 4px 8px; flex-basis: 100%; }
 }
 @media (prefers-reduced-motion: reduce) {
-  * { transition: none !important; }
   .spinner { animation-duration: 2.4s; }
 }
 </style>
-</head>
-<body>
-<header class="band">
-  <div class="frame">
-    <span class="label wordmark">nock</span>
-    <h1>Decisions</h1>
-    <p id="summary">Loading…</p>
-  </div>
-</header>
 <div class="frame">
-  <nav role="tablist" aria-label="Which decisions">
-    <button type="button" role="tab" data-tab="unreviewed" aria-selected="true">to review <span class="count" id="count-unreviewed"></span></button>
-    <button type="button" role="tab" data-tab="accepted" aria-selected="false">accepted <span class="count" id="count-accepted"></span></button>
-    <button type="button" role="tab" data-tab="rejected" aria-selected="false">rejected <span class="count" id="count-rejected"></span></button>
+  <nav class="reviews" role="tablist" aria-label="Which decisions">
+    <button type="button" role="tab" data-review="unreviewed" aria-selected="true">to review <span class="count" id="count-unreviewed"></span></button>
+    <button type="button" role="tab" data-review="accepted" aria-selected="false">accepted <span class="count" id="count-accepted"></span></button>
+    <button type="button" role="tab" data-review="rejected" aria-selected="false">rejected <span class="count" id="count-rejected"></span></button>
     <div class="sort" role="group" aria-label="Sort">
       <span class="label">sort</span>
       <button type="button" data-sort="oldest" aria-pressed="true">oldest</button>
@@ -317,15 +175,13 @@ kbd {
     <div class="chips" id="chips" role="group" aria-label="Filter"></div>
   </div>
   <main><section id="list" aria-live="polite"></section></main>
-</div>
-<div class="toast" id="toast" role="status"></div>
 <script>
 const CHEVRON = '<svg class="chevron" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M6 3.5 10.5 8 6 12.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 const MAC = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
 // The chips: done/todo/question, then the tags in use, the fixed ones first.
 const STATUSES = ["done", "todo", "question"];
 const SHOWN_TAGS = 6;
-const state = { search: "", statuses: new Set(), tags: new Set(), sort: "oldest", tab: "unreviewed", decisions: [], tags_in_use: {}, expanded: new Set(), notes: new Map(), active: null, seen: "" };
+const state = { shown: false, link: null, search: "", statuses: new Set(), tags: new Set(), sort: "oldest", review: "unreviewed", decisions: [], tags_in_use: {}, expanded: new Set(), notes: new Map(), active: null, seen: "" };
 
 function escape(text) {
   return String(text).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
@@ -481,7 +337,7 @@ function matches(decision) {
   return words.every(word => text.includes(word));
 }
 
-function inTab(decision) { return decision.review === state.tab; }
+function inTab(decision) { return decision.review === state.review; }
 
 function visible() {
   const oldest = (left, right) => moment(left).localeCompare(moment(right));
@@ -524,8 +380,8 @@ function draw() {
   const kinds = [todos ? `${todos} of them ${todos === 1 ? "a todo" : "todos"}` : "", questions ? `${questions} ${todos ? "" : "of them "}${questions === 1 ? "a question" : "questions"}` : ""].filter(Boolean);
   if (counts.unreviewed) said.push(`${counts.unreviewed} ${counts.unreviewed === 1 ? "decision waits" : "decisions wait"} on your review${kinds.map(kind => `, ${kind}`).join("")}`);
   if (rework) said.push(`${rework} rejected, to be reworked`);
-  document.getElementById("summary").textContent = said.length ? `${said.join(". ")}.` : "Nothing waits on you.";
-  for (const tab of document.querySelectorAll("[data-tab]")) tab.setAttribute("aria-selected", String(tab.dataset.tab === state.tab));
+  studio.summary("decisions", said.length ? `${said.join(". ")}.` : "Nothing waits on you.");
+  for (const tab of document.querySelectorAll("[data-review]")) tab.setAttribute("aria-selected", String(tab.dataset.review === state.review));
   for (const button of document.querySelectorAll("[data-sort]")) button.setAttribute("aria-pressed", String(button.dataset.sort === state.sort));
   drawChips();
   const shown = visible();
@@ -540,7 +396,7 @@ function draw() {
       </button>
       ${open ? body(decision) : ""}
     </article>`;
-  }).join("") : `<div class="empty">${filtered ? EMPTY_SEARCH : EMPTY[state.tab]}</div>`;
+  }).join("") : `<div class="empty">${filtered ? EMPTY_SEARCH : EMPTY[state.review]}</div>`;
   for (const field of document.querySelectorAll("textarea")) showSave(Number(field.dataset.number));
   grow();
 }
@@ -579,26 +435,18 @@ async function load() {
     const data = JSON.parse(text);
     state.decisions = data.decisions;
     state.tags_in_use = data.tags;
-    // `#7` opens decision 7; otherwise the first in the tab opens.
-    const linked = !state.expanded.size && find(Number(location.hash.slice(1)));
-    if (linked) { state.tab = linked.review; state.expanded.add(linked.number); state.active = linked.number; }
+    // The address's decision opens (`#decisions/7`, or `#7`); otherwise the first in the tab.
+    const linked = state.link !== null && find(state.link);
+    state.link = null;
+    if (linked) { state.review = linked.review; state.expanded.add(linked.number); state.active = linked.number; }
     else if (!state.expanded.size) {
       const first = visible()[0];
       if (first) { state.expanded.add(first.number); state.active = first.number; }
     }
     render();
   } catch (error) {
-    document.getElementById("summary").textContent = "Lost touch with nock — is `nock web` still running?";
+    studio.summary("decisions", "Lost touch with nock — is `nock studio` still running?");
   }
-}
-
-let toastTimer = null;
-function toast(message) {
-  const element = document.getElementById("toast");
-  element.textContent = message;
-  element.classList.add("shown");
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => element.classList.remove("shown"), 2600);
 }
 
 async function send(number, word, message, close) {
@@ -607,13 +455,13 @@ async function send(number, word, message, close) {
   if (!response.ok) {
     const hint = document.getElementById(`hint-${number}`);
     if (hint) { hint.textContent = result.error; hint.className = "hint error"; }
-    else toast(result.error);
+    else studio.toast(result.error);
     return;
   }
   state.notes.delete(number);
   if (close) state.expanded.delete(number);
   state.seen = "";
-  toast(message);
+  studio.toast(message);
   await load();
 }
 
@@ -628,8 +476,9 @@ function act(number, action) {
 }
 
 document.addEventListener("click", event => {
-  const tab = event.target.closest("[data-tab]");
-  if (tab) { state.tab = tab.dataset.tab; render(); return; }
+  if (!state.shown) return;
+  const tab = event.target.closest("[data-review]");
+  if (tab) { state.review = tab.dataset.review; render(); return; }
   const status = event.target.closest("[data-status]");
   if (status) { const value = status.dataset.status; state.statuses.has(value) ? state.statuses.delete(value) : state.statuses.add(value); render(); return; }
   const tag = event.target.closest("[data-tag]");
@@ -648,7 +497,7 @@ document.addEventListener("click", event => {
   if (reference) {
     const target = find(Number(reference.dataset.open));
     if (target) {
-      state.tab = target.review;
+      state.review = target.review;
       state.search = "";
       state.statuses.clear();
       state.tags.clear();
@@ -670,6 +519,7 @@ document.addEventListener("click", event => {
   act(number, action.dataset.action);
 });
 document.addEventListener("input", event => {
+  if (!state.shown) return;
   if (event.target.id === "search") { state.search = event.target.value; draw(); return; }
   if (event.target.tagName !== "TEXTAREA") return;
   grow(event.target);
@@ -680,6 +530,7 @@ document.addEventListener("input", event => {
 });
 // `/` searches; ⌘/Ctrl-Enter accepts the decision in hand.
 document.addEventListener("keydown", event => {
+  if (!state.shown) return;
   const search = document.getElementById("search");
   if (event.key === "/" && !["TEXTAREA", "INPUT"].includes(event.target.tagName)) { event.preventDefault(); search.focus(); return; }
   if (event.key === "Escape" && event.target === search) { search.value = ""; state.search = ""; draw(); search.blur(); return; }
@@ -689,9 +540,19 @@ document.addEventListener("keydown", event => {
   if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) { event.preventDefault(); act(number, "accepted"); }
 });
 
-load();
-setInterval(load, 3000);
+// Shown, the tab keeps up with what agents record: it asks again every few seconds.
+studio.register("decisions", {
+  show(route) {
+    state.shown = true;
+    const number = Number(route);
+    if (route && Number.isInteger(number)) {
+      state.link = number;
+      state.seen = "";
+    }
+    load();
+  },
+  hide() { state.shown = false; },
+});
+setInterval(() => { if (state.shown) load(); }, 3000);
 setInterval(refreshTimes, 30000);
 </script>
-</body>
-</html>

@@ -2,7 +2,7 @@
 agent-friendly CLI framework, telemetry of every call and session, and
 reflection rounds that turn that telemetry into better tools.
 
-What a project's `.nock/tools/` modules use (`.nock/nock guide` explains it):
+What a project's `.nock/tools/` modules use (`.nock/nock docs` explains it):
 
     import nock
 

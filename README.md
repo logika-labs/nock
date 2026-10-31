@@ -159,8 +159,10 @@ tests/unit/test_cart.py::test_total,assert 41 == 42
 tests/unit/test_cart.py::test_empty,KeyError: 'items'
 ```
 
-The tool works on its next call, with nothing to register. `.nock/nock guide`
-is the whole framework on one page, written for agents. In short:
+The tool works on its next call, with nothing to register. `.nock/nock docs`
+is the framework written for agents, one short article per term (`.nock/nock
+docs` lists them, `.nock/nock docs fixtures` reads one, and a term it doesn't
+know answers with the three closest). In short:
 
 **The signature is the command line.**
 
@@ -403,9 +405,11 @@ A note alone answers a question in words. Until an agent acts on the answer
 — and edits the question to done, saying what it did — every session the
 human starts lists it.
 
-- **The owner reviews.** On the page, `nock web` (or with `{"open": true}`),
-  which lists the decisions to review, accepted and rejected, searchable and
-  filtered by status and tag; `#7` in its address opens decision 7. Or in a
+- **The owner reviews.** In the studio, `nock studio` (or with
+  `{"open": true}`), the owner's local page: its Decisions tab lists the
+  decisions and questions to review, accepted and rejected, searchable and
+  filtered by status and tag; `#decisions/7` (or just `#7`) in its address
+  opens decision 7. Or in a
   session, with `/nock-triage`, which goes through them one at a time. Each
   can be accepted, rejected or noted; asked for more, the session looks into
   it itself.
@@ -549,12 +553,12 @@ window.
 | `nock` | the toolbox: the project's tools first, then nock's |
 | `nock check [NAME…] [--fix]` | run the checks (all, or the checks and chains named), side by side; prints nothing when all pass |
 | `nock run -- COMMAND` | run anything supervised and condensed |
-| `nock guide` | how to write a tool, check, hook or generator |
+| `nock docs [TERM…]` | nock's documentation for agents, a short article per term: with no term, the terms |
 | `nock calls`, `stats`, `sessions`, `query SQL` | the telemetry |
 | `nock status` | a round due, decisions waiting, rejected ones to rework, answered questions, an unshared summary, a logika round to offer |
 | `nock decide JSON` | record a decision |
 | `nock decisions list [JSON]`, `show N`, `edit JSON`, `elaborate N` | the decisions: filtered, in full, changed or reviewed, elaborated |
-| `nock web [JSON]` | the owner's page |
+| `nock studio [JSON]` | the owner's page, a tab for each thing to look at: the decisions and questions |
 | `nock consult JSON` | a fresh agent finds the decisions and tools that bear on a task, and the caller waits |
 | `nock reflect start`, `finish JSON` | a reflection round; the round is the `/nock-reflect` skill; `--topic logika` for a logika round (`/nock-reflect-logika`) |
 | `nock share JSON` | a round's summary, and sending it |
