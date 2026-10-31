@@ -60,10 +60,12 @@ RECORD_FILE = "record.json"
 class Change(TypedDict):
     kind: Literal[
         "add", "change", "retire", "check", "generator",
-        "validate", "path", "timeout", "rule", "invariant", "other",
+        "validate", "path", "timeout", "rule", "invariant", "error",
+        "identity", "dimension", "funnel", "milestone", "view", "other",
     ]  # fmt: skip
     """add, change, retire, check, generator — the toolbox; validate, path,
-    timeout, rule, invariant — a logika round's ledger; other."""
+    timeout, rule, invariant, error — a logika round's rules; identity,
+    dimension, funnel, milestone, view — its analytics; other."""
     target: str
     """The tool, check or file: `failures`, `.nock/tools/db.py`; in a logika
     round, the event or rule: `checkout`, `receipt_continuity`."""
@@ -72,7 +74,9 @@ class Change(TypedDict):
     expect: str
     """What should be measurably different by the next round, and how to tell."""
     tested: NotRequired[str]
-    """A logika round's: the capture it stayed silent on, and the replay it fired on."""
+    """A logika round's: for a rule, the capture it stayed silent on and the
+    replay it fired on (required); for analytics, the captures that showed
+    the events and params it names."""
 
 
 class Verdict(TypedDict):

@@ -53,8 +53,8 @@ src/nock/
   reflect.py         Round (a kind of round: start, finish, its checks, a round left open),
                      Rounds; Reflection, nock's own kind (due, metrics), and what each part
                      reads: Material (the toolbox), Knowledge (the map), Evidence (nock itself)
-  logika.py          the `logika` kind: Ledger (logika.json read and counted), LogikaRound
-                     and its Material
+  logika.py          the `logika` kind: Ledger (logika.json read and counted), LogikaRound,
+                     and what its two parts read: Material (rules), Analytics
   kinds.py           KINDS: the kinds of round, the default first; adding one is an entry here
   decisions.py       Decisions (decide, edit, review, elaborate, what governs a file, the map's problems)
   studio.py          the owner's page (`nock studio`): a local server, a Tab per tab
@@ -76,7 +76,8 @@ src/nock/
     nock-reflect/    the `/nock-reflect` skill: SKILL.md (the lead) and its three parts'
                      briefs — process.md, knowledge.md, nock.md
     nock-reflect-logika/  the `/nock-reflect-logika` skill, installed in Logika projects only:
-                     SKILL.md (the round, with the owner) and rules.md (from data to rules)
+                     SKILL.md (the round, with the owner) and its two parts' briefs,
+                     rules.md (from data to rules) and analytics.md (from questions to analytics)
     nock-triage/     the `/nock-triage` skill: going through decisions with the owner
     elaborate.md     the brief of the agent that elaborates on a decision
     consult.md       the consultant's brief
@@ -448,9 +449,12 @@ declares events, or `reflect.logika.days` after the last with commits to
 `logika.json` since — goes into `status.Standing` as an offer (`rounds`),
 and the session start says it at most once a week (`nudged` keys
 `KIND:LAST:WEEK`), as for any kind other than the default. `begin` writes
-`logika.md` from the ledger, git and the decisions tagged `logika`; its end
+its two parts' material from the ledger, git and the decisions tagged
+`logika`: `rules.md` (`logika.Material`) and `analytics.md`
+(`logika.Analytics`: params and their flags, funnels, milestones, views);
+the skill's `rules.md` and `analytics.md` briefs are the parts'. Its end
 requires `report.md`, a parsing ledger and a `tested` on every rule
-changed (validate, path, timeout, rule, invariant), and commits
+changed (validate, path, timeout, rule, invariant, error), and commits
 `logika.json` too. The round itself reads Logika's docs through the
 `logika` CLI rather than copying them.
 

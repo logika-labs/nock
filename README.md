@@ -553,10 +553,15 @@ all when `share.level` is `none`.
 In a [Logika](https://logika.host) project (a `logika.json` ledger at the
 root, the `logika` CLI on PATH) there is a second kind of round: the
 `/nock-reflect-logika` skill, which `nock init` installs only there. It
-turns the instrumented code and the data it captures into the ledger's
-rules (validations, paths, timeouts, rules and invariants) for how the
-system is expected to behave, so that Logika wakes an agent when it
-doesn't.
+has two parts, run as subagents while the session works with the owner:
+
+- **rules** turns the instrumented code and the data it captures into what
+  must hold (validations, paths, timeouts, rules, invariants and error
+  marking), so that Logika wakes an agent when the system misbehaves, each
+  rule with a one-sentence `description` that becomes the anomaly's title;
+- **analytics** declares what the owner wants to measure (which params are
+  identities and dimensions, funnels, milestones and views), so that
+  Logika's analytics fill from real captures.
 
 It is never automatic. It runs only when the owner asks. When one is due,
 the session start offers it at most once a week: when no logika round has
@@ -564,24 +569,29 @@ run yet and the ledger declares events, or `reflect.logika.days` (30)
 after the last one, once `logika.json` has changed since then. `nock
 status` always says.
 
-1. **`nock reflect logika`** writes its material: what the
-   ledger already says per event and per component (with the commits that
-   touched each component since the last round), the ledger's history,
-   the last logika round's changes and expectations, and the questions
-   and suggestions tagged `logika`.
+1. **`nock reflect logika`** writes each part's material: for rules, what
+   the ledger already says per event and per component (with the commits
+   that touched each component since the last round); for analytics, each
+   param with its flags and the events that carry it, and the funnels,
+   milestones and views declared; for both, the ledger's history, the last
+   logika round's changes and expectations, and the questions and
+   suggestions tagged `logika`.
 2. **The session works through it with the owner.** It learns the forms
    from Logika's own docs (`logika docs …`) instead of a copy, explores real
    captures with `logika show query`, and agrees with the owner what must
-   hold. It lands a rule only once it has seen the rule stay quiet on a
-   real capture (`logika test`) and fire on a replay (`logika test
-   --replay`). False positives are the cost it guards against first.
+   hold and what to measure. It lands a rule only once it has seen the rule
+   stay quiet on a real capture (`logika test`) and fire on a replay
+   (`logika test --replay`), and a declaration only once captures show the
+   events and params it names. False positives are the cost it guards
+   against first.
 3. **What only the owner knows** is asked in the session. A question for
    later becomes a question decision tagged `logika`, and the next round
-   acts on the answer. A rule that needs state the code doesn't record
-   becomes a todo tagged `logika` and `instrumentation`, not a weaker rule.
+   acts on the answer. A rule or a measure that needs state the code
+   doesn't record becomes a todo tagged `logika` and `instrumentation`, not
+   a weaker rule or an empty funnel.
 4. **`nock reflect logika finish JSON`** requires the round's
    `report.md`, a `logika.json` that parses, and every rule changed to say
-   how it was `tested`. It records the rules
+   how it was `tested`. It records the rules and declarations
    changed, how each was tested, and the ledger's numbers before and after
    in `.nock/reflections/logika/DATE/record.json`, and commits `.nock/` and
    `logika.json`. Deploying the ledger (`logika sync`) is left to the

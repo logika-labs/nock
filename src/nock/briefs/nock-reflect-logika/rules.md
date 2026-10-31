@@ -1,5 +1,8 @@
 # From data to rules
 
+This is the rules part of a logika round: what must hold. The analytics
+part, beside it, declares what is measured.
+
 A rule says how the system is expected to behave. Each time it fires, an
 agent is woken and someone pays for it. A rule that fires on normal behaviour
 teaches the owner to ignore Logika, and that costs more than a bug the rule
@@ -73,11 +76,14 @@ Leave out:
 - any value you have seen only once.
 
 Set every time bound above the legitimate worst case: the observed maximum
-with a wide margin, never the mean. When a rule depends on a reason that
-isn't obvious (why 10 minutes, why a zero amount is allowed), record it as a
-nock decision tagged `logika` (`.nock/nock decide`), naming the rule in the
-title and `logika.json` in `touches`. When the reason fits in one sentence
-and the rule is an invariant, its `description` can say it instead.
+with a wide margin, never the mean. Give each rule its one-sentence
+`description` wherever Logika takes one (`logika docs` for the form): it
+becomes the anomaly's title, so it says what must hold and why, in words
+the agent woken by it can act on ("A refund never exceeds what was charged,
+since the provider refuses it"). When the reason needs more than a sentence
+(why 10 minutes, why a zero amount is allowed), also record it as a nock
+decision tagged `logika` (`.nock/nock decide`), naming the rule in the title
+and `logika.json` in `touches`.
 
 ## 4. Prove each rule both ways
 

@@ -1,10 +1,12 @@
 """The `logika` kind of reflection round. In a Logika project — a
 `logika.json` ledger, and the `logika` CLI on PATH — the owner runs a round
-with the `/nock-reflect-logika` skill: it turns the instrumented code and the
-data it captures into the ledger's rules (validations, paths, timeouts,
-rules, invariants), each shown silent on real captures and firing on a
-replay, asks the owner what only they know, and suggests the instrumentation
-a rule would need. `nock reflect logika` writes what it reads, and `nock
+with the `/nock-reflect-logika` skill, in two parts: **rules** turns the
+instrumented code and the data it captures into what must hold
+(validations, paths, timeouts, rules, invariants, error marking), each shown
+silent on real captures and firing on a replay; **analytics** declares what
+the owner wants to measure (identities, dimensions, funnels, milestones,
+views), so Logika's analytics fill from real captures. Both ask the owner
+what only they know, and suggest the instrumentation the data lacks. `nock reflect logika` writes what it reads, and `nock
 reflect logika finish` requires the ledger to parse and every rule changed
 to say how it was tested, records it and commits `.nock/` and `logika.json`.
 Its rounds are kept apart from nock's own, so neither moves the other's
@@ -33,7 +35,9 @@ SKILL = "nock-reflect-logika"
 # What a round asks about, and suggests, is tagged so the next round finds it.
 TAG = "logika"
 # The changes that are rules, each of which must say how it was tested.
-RULE_KINDS = ("validate", "path", "timeout", "rule", "invariant")
+RULE_KINDS = ("validate", "path", "timeout", "rule", "invariant", "error")
+# The round's parts: each a brief beside the skill, and a material file.
+PARTS = ("rules", "analytics")
 SECTION_ROWS = 40
 
 
@@ -83,6 +87,11 @@ class Ledger:
     def counts(self, ledger: dict[str, Any]) -> dict[str, int]:
         """What the ledger says must hold, in numbers: the next round compares."""
         events = [event for _, event in flattened(ledger.get("events"))]
+        params = {
+            name: param
+            for name, param in (ledger.get("params") or {}).items()
+            if isinstance(param, dict)
+        }
         components = (ledger.get("map") or {}).get("components") or []
         return {
             "params": len(ledger.get("params") or {}),
@@ -93,6 +102,11 @@ class Ledger:
             "with_timeout": sum(1 for event in events if (event.get("span") or {}).get("timeout")),
             "rules": len(ledger.get("rules") or []),
             "invariants": len(ledger.get("invariants") or []),
+            "identities": sum(1 for param in params.values() if param.get("identity")),
+            "dimensions": sum(1 for param in params.values() if param.get("dimension")),
+            "funnels": len(ledger.get("funnels") or []),
+            "milestones": len(ledger.get("milestones") or []),
+            "views": len(ledger.get("views") or []),
             "components": len(components),
             "instrumented": sum(
                 1 for item in components if isinstance(item, dict) and item.get("instrumented")
@@ -176,11 +190,15 @@ class LogikaRound(Round):
         """What the ledger already says, the commits since, what earlier rounds left."""
         ledger = self.ledger.read()
         last = self.rounds.last()
-        material = scratch / f"{TAG}.md"
-        material.write_text(Material(self, ledger, last).render())
+        written = {
+            "rules": Material(self, ledger, last).render(),
+            "analytics": Analytics(self, ledger, last).render(),
+        }
+        for part, text in written.items():
+            (scratch / f"{part}.md").write_text(text)
         return {
             "since": last.get("finished") if last else None,
-            "material": {TAG: str(material)},
+            "material": {part: str(scratch / f"{part}.md") for part in PARTS},
             "kept": {"ledger": self.ledger.counts(ledger)},
         }
 
@@ -206,7 +224,7 @@ class LogikaRound(Round):
 
 
 class Material:
-    """What a logika round reads, computed: what the ledger already says must
+    """What the rules part reads, computed: what the ledger already says must
     hold, per component and per event; what changed since the last round; and
     the questions and suggestions earlier rounds left."""
 
@@ -395,4 +413,90 @@ class Material:
                 f"- [D{decision['number']}] {decision['status']}, {decision['review']}: "
                 f"{decision['title']}{note}"
             )
+        return "\n".join(lines)
+
+
+class Analytics(Material):
+    """What the analytics part reads: what the ledger already measures — the
+    params marked as identities or dimensions, the numeric ones, the funnels,
+    milestones and views — beside the components, the history, the last
+    round and the questions."""
+
+    def render(self) -> str:
+        sections = [
+            self.measured(),
+            self.params(),
+            self.declared(),
+            self.components(),
+            self.direction(),
+            self.previous(),
+            self.questions(),
+        ]
+        return "\n\n".join(section for section in sections if section) + "\n"
+
+    def measured(self) -> str:
+        counts = self.logika.ledger.counts(self.ledger)
+        return (
+            f"# What the ledger measures\n\n`{LEDGER}`, ledger `{self.ledger.get('ledger', '?')}`: "
+            f"{counts['events']} events, {counts['params']} params ({counts['identities']} "
+            f"identities, {counts['dimensions']} dimensions), {counts['funnels']} funnels, "
+            f"{counts['milestones']} milestones, {counts['views']} views. Every declared event "
+            "and numeric param is measured already; identities, dimensions, funnels, "
+            "milestones and views are declared."
+        )
+
+    def params(self) -> str:
+        params = {
+            name: param
+            for name, param in (self.ledger.get("params") or {}).items()
+            if isinstance(param, dict)
+        }
+        if not params:
+            return "# Params\n\nThe ledger declares none yet."
+        carried: dict[str, list[str]] = {}
+        for path, event in flattened(self.ledger.get("events")):
+            for param in event.get("params") or []:
+                carried.setdefault(str(param), []).append(path)
+        lines = [
+            "# Params",
+            "",
+            "Each param, its flags and the events that carry it: an identity is someone or "
+            "something worth following (actives, retention, funnels); a dimension a small "
+            "stable set worth breaking down by, never an id.",
+            "",
+            "param,type,identity,dimension,pii,events",
+        ]
+        for name, param in params.items():
+            lines.append(
+                ",".join(
+                    [
+                        name,
+                        str(param.get("type", "?")),
+                        "yes" if param.get("identity") else "-",
+                        "yes" if param.get("dimension") else "-",
+                        "yes" if param.get("pii") else "-",
+                        " ".join(carried.get(name, [])) or "-",
+                    ]
+                )
+            )
+        return "\n".join(lines)
+
+    def declared(self) -> str:
+        lines = ["# Funnels, milestones and views", ""]
+        for funnel in self.ledger.get("funnels") or []:
+            if isinstance(funnel, dict):
+                steps = " → ".join(map(str, funnel.get("steps") or []))
+                lines.append(
+                    f"- funnel `{funnel.get('name')}` within {funnel.get('within')}: {steps}"
+                )
+        for milestone in self.ledger.get("milestones") or []:
+            if isinstance(milestone, dict):
+                lines.append(
+                    f"- milestone `{milestone.get('name')}`: {milestone.get('from')} → {milestone.get('to')}"
+                )
+        for view in self.ledger.get("views") or []:
+            if isinstance(view, dict):
+                lines.append(f"- view `{view.get('name')}`: {len(view.get('panels') or [])} panels")
+        if len(lines) == 2:
+            lines.append("None yet.")
         return "\n".join(lines)

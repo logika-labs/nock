@@ -125,7 +125,7 @@ def test_the_material_says_what_the_ledger_holds_and_what_was_asked(logika: Proj
     assert asked.returncode == 0, asked.stderr
     nock(logika.root, "decisions", "edit", '{"number": 1, "review": "rejected", "note": "110%"}')
     started = start(logika)
-    material = Path(started["material"]["logika"]).read_text()
+    material = Path(started["material"]["rules"]).read_text()
     assert "3 events (1 spans; 1 with `validate`, 0 with paths, 1 with a timeout)" in material
     assert 'checkout,span,order_id amount,"amount > 0",-,2m,on,-' in material
     assert "checkout.reserved,leaf,sku,-,-,-,-,-" in material
@@ -138,6 +138,33 @@ def test_the_material_says_what_the_ledger_holds_and_what_was_asked(logika: Proj
         "- [D1] question, rejected: Refunds never exceed the charge — the owner: 110%" in material
     )
     assert started["write"] == [".nock/reflections/logika/" + started["round"] + "/report.md"]
+    analytics = Path(started["material"]["analytics"]).read_text()
+    assert "3 events, 3 params (0 identities, 0 dimensions), 0 funnels" in analytics
+    assert "order_id,str,-,-,-,checkout refund" in analytics
+    assert "Instrument the shop" in analytics and "Refunds never exceed the charge" in analytics
+
+
+def test_the_analytics_part_reads_what_is_measured(logika: Project) -> None:
+    ledger = copy.deepcopy(LEDGER)
+    ledger["params"]["user_id"] = {"type": "str", "identity": True, "pii": True}
+    ledger["params"]["plan"] = {"type": "str", "dimension": True}
+    ledger["events"][0]["params"] += ["user_id", "plan"]
+    ledger["events"].append({"name": "signup", "params": ["user_id"]})
+    ledger["funnels"] = [
+        {"name": "activation", "within": "7d", "steps": ["signup.user_id", "checkout.user_id"]}
+    ]
+    ledger["milestones"] = [
+        {"name": "first_buy", "from": "signup.user_id", "to": "checkout.user_id"}
+    ]
+    ledger["views"] = [{"name": "Checkout", "panels": [{"event": "checkout", "by": "plan"}]}]
+    write_ledger(logika, ledger)
+    analytics = Path(start(logika)["material"]["analytics"]).read_text()
+    assert "(1 identities, 1 dimensions), 1 funnels, 1 milestones, 1 views" in analytics
+    assert "user_id,str,yes,-,yes,checkout signup" in analytics
+    assert "plan,str,-,yes,-,checkout" in analytics
+    assert "- funnel `activation` within 7d: signup.user_id → checkout.user_id" in analytics
+    assert "- milestone `first_buy`: signup.user_id → checkout.user_id" in analytics
+    assert "- view `Checkout`: 1 panels" in analytics
 
 
 def test_a_logika_round_finishes_and_commits_the_ledger_apart_from_nock_s_rounds(
@@ -172,7 +199,7 @@ def test_a_logika_round_finishes_and_commits_the_ledger_apart_from_nock_s_rounds
 
     again = start(logika)
     assert again["round"] == f"{started['round']}-2"
-    material = Path(again["material"]["logika"]).read_text()
+    material = Path(again["material"]["rules"]).read_text()
     assert "# The last logika round" in material
     assert "expected fires only on a refund of 0 or less" in material
 
