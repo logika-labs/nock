@@ -29,13 +29,13 @@ from nock.setup import ASK_PERMISSION, Installer, Upgrader, asked_permissions, w
 from nock.share import Request as ShareRequest
 from nock.share import Sharing
 from nock.status import Standing
+from nock.studio import Studio
 from nock.telemetry import UNRECORDED_VARIABLE
 from nock.templates import SYNTAX, Library
 from nock.tools import NATIVE_EVENTS, check, command
-from nock.web import Server
 
 
-class WebOptions(TypedDict):
+class StudioOptions(TypedDict):
     port: NotRequired[int]
     """0 picks a free one."""
     open: NotRequired[bool]
@@ -217,13 +217,14 @@ def status(project: Project) -> dict[str, Any]:
 
 
 @command
-def web(
+def studio(
     project: Project,
-    options: WebOptions = {},  # noqa: B006
+    options: StudioOptions = {},  # noqa: B006
 ) -> None:
-    """Serve the owner's page, where decisions are reviewed, until stopped
-    (port 8765 unless OPTIONS say otherwise)."""
-    Server(Decisions(project), options.get("port", 8765)).run(options.get("open", False))
+    """Serve the owner's page, a tab for each thing to look at — the
+    decisions and questions to review — until stopped (port 8765 unless
+    OPTIONS say otherwise)."""
+    Studio(project, options.get("port", 8765)).run(options.get("open", False))
 
 
 # --- decisions ---------------------------------------------------------------------

@@ -55,8 +55,9 @@ src/nock/
   logika.py          the `logika` topic: Ledger (logika.json read and counted), LogikaRound
                      (due, start, finish) and its Material
   decisions.py       Decisions (decide, edit, review, elaborate, what governs a file, the map's problems)
-  web.py             the owner's page (`nock web`), a local server
-  web.html           the page
+  studio.py          the owner's page (`nock studio`): a local server, a Tab per tab
+  pages/             studio.html, the shell (band, tab links, routing by `#NAME/ROUTE`);
+                     NAME.html, each tab's fragment (markup, style, a script registering it)
   status.py          Standing: a round due, decisions waiting, rejected ones to rework, answered
                      questions, an unshared summary
   share.py           Sharing: a round's summary, held to naming nothing, sent on the owner's word
@@ -289,7 +290,8 @@ checkout's `.nock/decisions/` and commits each change there with
 once. It skips the commit, and says so, when the main checkout is mid-merge
 or mid-rebase. `decide` and `edit` take the `Draft` and `Change` records;
 `edit` is also the owner's review (`review`, `note`, `elaborate`), from the
-page (`web.Server`, which accepts only those three) or from a session. A
+studio's Decisions tab (`studio.DecisionsTab`, which accepts only those
+three) or from a session. A
 change to a field in `SUBSTANCE` resets the review. A question
 (`status: question`) is a decision whose review is the owner's answer;
 `answered` lists those answered and not yet edited to done, for
@@ -307,6 +309,19 @@ file. `nock init` writes an empty `map.md`.
 and context, and dispatches a read-only consultant in the caller's working
 tree under `consult.deadline`. The session's last message is the answer the
 caller prints.
+
+### The studio
+
+`nock studio` serves one page from one process, `studio.Studio`, a
+`ThreadingHTTPServer` on 127.0.0.1. The page is `pages/studio.html` with
+each tab's link and its fragment (`pages/NAME.html`) put in; the browser
+shows the tab the address names (`#NAME`, or `#NAME/ROUTE` for something in
+it; an address naming no tab goes to the first, so `#7` opens decision 7).
+On the server, `/NAME/ROUTE` goes to that tab's `get` or `post`, JSON both
+ways, a nock `Error` becoming 404 or 400. A tab is a `studio.Tab` subclass
+listed in `TABS`, and a fragment whose script calls
+`studio.register(NAME, {show(route), hide()})`; the studio gives it
+`studio.summary` (the line under the title) and `studio.toast`.
 
 ### Dispatch
 

@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>nock studio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap">
+<style>
+/* nock's studio look: warm paper, off-black ink, one red for everything interactive,
+   white cards with borders and no shadows, outlined pills, uppercase labels.
+   Layout: a red field band holding the studio's tabs, then the open tab's one centred column.
+   What every tab shares is here; each tab's own look is in its fragment (pages/NAME.html). */
+:root {
+  --paper: #f2efe9;
+  --ink: #393939;
+  --red: #da121a;
+  --white: #ffffff;
+  --grey: #8a8a8a;
+  --ok-hue: #1f7a44;
+  --warning-hue: #d1881b;
+  --error-hue: #a4161a;
+  --info-hue: #1b94d1;
+
+  --background: var(--paper);
+  --foreground: var(--ink);
+  --card: var(--white);
+  --muted: color-mix(in oklab, var(--grey) 62%, var(--ink));
+  --border: color-mix(in oklab, var(--paper) 85%, var(--ink));
+  --input: color-mix(in oklab, var(--paper) 78%, var(--ink));
+  --hover: color-mix(in oklab, var(--paper) 55%, var(--white));
+  --selection: var(--red);
+  --selection-foreground: var(--white);
+  --selection-tint: color-mix(in oklab, var(--red) 8%, var(--white));
+  --ring: var(--red);
+  --link: var(--red);
+  --ok: var(--ok-hue);
+  --ok-tint: color-mix(in oklab, var(--ok-hue) 9%, var(--white));
+  --warning: var(--warning-hue);
+  --error: var(--error-hue);
+  --info: var(--info-hue);
+  --field: var(--red);
+  --field-foreground: var(--white);
+  --field-grid: color-mix(in oklab, var(--white) 20%, transparent);
+
+  --sans: "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "Geist Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --column: 46rem;
+  --number: 2.25rem;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --background: color-mix(in oklab, var(--ink) 94%, var(--paper));
+    --foreground: color-mix(in oklab, var(--white) 94%, var(--ink));
+    --card: color-mix(in oklab, var(--ink) 86%, var(--paper));
+    --muted: color-mix(in oklab, var(--grey) 70%, var(--paper));
+    --border: color-mix(in oklab, var(--paper) 16%, var(--ink));
+    --input: color-mix(in oklab, var(--paper) 26%, var(--ink));
+    --hover: color-mix(in oklab, var(--ink) 80%, var(--paper));
+    --selection: color-mix(in oklab, var(--red) 70%, var(--white));
+    --selection-tint: color-mix(in oklab, var(--red) 16%, var(--card));
+    --ring: color-mix(in oklab, var(--red) 62%, var(--paper));
+    --link: color-mix(in oklab, var(--red) 55%, var(--paper));
+    --ok: color-mix(in oklab, var(--ok-hue) 72%, var(--white));
+    --ok-tint: color-mix(in oklab, var(--ok-hue) 16%, var(--card));
+    --warning: color-mix(in oklab, var(--warning-hue) 74%, var(--white));
+    --error: color-mix(in oklab, var(--error-hue) 74%, var(--white));
+    --info: color-mix(in oklab, var(--info-hue) 70%, var(--white));
+    --field: color-mix(in oklab, var(--red) 70%, var(--ink));
+    --field-grid: color-mix(in oklab, var(--white) 16%, transparent);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --background: color-mix(in oklab, var(--ink) 94%, var(--paper));
+  --foreground: color-mix(in oklab, var(--white) 94%, var(--ink));
+  --card: color-mix(in oklab, var(--ink) 86%, var(--paper));
+  --muted: color-mix(in oklab, var(--grey) 70%, var(--paper));
+  --border: color-mix(in oklab, var(--paper) 16%, var(--ink));
+  --input: color-mix(in oklab, var(--paper) 26%, var(--ink));
+  --hover: color-mix(in oklab, var(--ink) 80%, var(--paper));
+  --selection: color-mix(in oklab, var(--red) 70%, var(--white));
+  --selection-tint: color-mix(in oklab, var(--red) 16%, var(--card));
+  --ring: color-mix(in oklab, var(--red) 62%, var(--paper));
+  --link: color-mix(in oklab, var(--red) 55%, var(--paper));
+  --ok: color-mix(in oklab, var(--ok-hue) 72%, var(--white));
+  --ok-tint: color-mix(in oklab, var(--ok-hue) 16%, var(--card));
+  --warning: color-mix(in oklab, var(--warning-hue) 74%, var(--white));
+  --error: color-mix(in oklab, var(--error-hue) 74%, var(--white));
+  --info: color-mix(in oklab, var(--info-hue) 70%, var(--white));
+  --field: color-mix(in oklab, var(--red) 70%, var(--ink));
+  --field-grid: color-mix(in oklab, var(--white) 16%, transparent);
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { background: var(--background); color: var(--foreground); }
+body { margin: 0; font: 400 15px/1.6 var(--sans); -webkit-font-smoothing: antialiased; }
+button:not(:disabled), label[for] { cursor: pointer; }
+.frame {
+  max-width: calc(var(--column) + 32px); margin: 0 auto;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.label { font: 500 12px/16px var(--sans); letter-spacing: .04em; text-transform: uppercase; }
+.numeral { font-variant-numeric: tabular-nums; }
+
+/* The field band: the page's one loud surface. */
+.band {
+  background-color: var(--field); color: var(--field-foreground);
+  background-image:
+    linear-gradient(to right, var(--field-grid) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--field-grid) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+.band .frame { padding-block: 40px 32px; display: grid; gap: 6px; }
+.band .wordmark { opacity: .85; }
+.band h1 { margin: 0; font: 700 32px/40px var(--sans); letter-spacing: -.02em; }
+.band p { margin: 0; font-size: 16px; opacity: .92; }
+.empty { text-align: center; padding: 64px 16px; color: var(--muted); display: grid; gap: 6px; justify-items: center; }
+.empty strong { color: var(--foreground); font: 700 17px/24px var(--sans); }
+.empty code { font: 13px var(--mono); background: var(--card); padding: 1px 5px; border-radius: 4px; }
+
+.toast {
+  position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom, 0px)); transform: translate(-50%, 8px);
+  background: var(--foreground); color: var(--background); padding: 10px 16px; border-radius: 8px; font-size: 14px;
+  opacity: 0; pointer-events: none; transition: opacity .15s, transform .15s; max-width: calc(100vw - 32px);
+}
+.toast.shown { opacity: 1; transform: translate(-50%, 0); }
+/* The studio's tabs: words on the band, the open one underlined in white. */
+.band .frame { padding-bottom: 0; }
+.band .tabs { display: flex; flex-wrap: wrap; gap: 0 24px; margin-top: 18px; }
+.band .tabs a {
+  padding: 6px 0 8px; border-bottom: 2px solid transparent; color: inherit; opacity: .75; text-decoration: none;
+  font: 500 12px/16px var(--sans); letter-spacing: .04em; text-transform: uppercase;
+}
+.band .tabs a:hover { opacity: 1; }
+.band .tabs a[aria-current="page"] { opacity: 1; border-bottom-color: var(--field-foreground); }
+.band .tabs a:focus-visible { outline: 2px solid var(--field-foreground); outline-offset: 2px; }
+
+@media (max-width: 560px) {
+  .band .frame { padding-top: 28px; }
+  .band h1 { font-size: 26px; line-height: 32px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; }
+}
+</style>
+<script>
+// The studio: tabs register here, and the address says which is open (`#NAME`,
+// or `#NAME/ROUTE` for something in it). An address naming no tab goes to the
+// first, whole, as its route — so `#7` still opens decision 7.
+const studio = {
+  tabs: new Map(),
+  summaries: new Map(),
+  current: null,
+  // tab: { show(route) — it is opened, or its route changes; hide() — another is opened }.
+  register(name, tab) { this.tabs.set(name, tab); },
+  // The line under the title, kept per tab and shown for the open one.
+  summary(name, text) {
+    this.summaries.set(name, text);
+    if (name === this.current) document.getElementById("summary").textContent = text;
+  },
+  toast(message) {
+    const element = document.getElementById("toast");
+    element.textContent = message;
+    element.classList.add("shown");
+    clearTimeout(this.toastTimer);
+    this.toastTimer = setTimeout(() => element.classList.remove("shown"), 2600);
+  },
+  route() {
+    const hash = decodeURIComponent(location.hash.slice(1));
+    const [name, ...rest] = hash.split("/");
+    if (this.tabs.has(name)) return [name, rest.join("/")];
+    return [this.tabs.keys().next().value, hash];
+  },
+  open() {
+    const [name, route] = this.route();
+    if (this.current && this.current !== name) this.tabs.get(this.current).hide();
+    this.current = name;
+    for (const panel of document.querySelectorAll("[data-tab-panel]")) panel.hidden = panel.dataset.tabPanel !== name;
+    for (const link of document.querySelectorAll(".tabs a")) {
+      if (link.dataset.tabLink === name) link.setAttribute("aria-current", "page");
+      else link.removeAttribute("aria-current");
+    }
+    const title = document.querySelector(`[data-tab-link="${name}"]`).textContent;
+    document.getElementById("title").textContent = title;
+    document.title = `nock studio — ${title}`;
+    document.getElementById("summary").textContent = this.summaries.get(name) ?? "Loading…";
+    this.tabs.get(name).show(route);
+  },
+};
+</script>
+</head>
+<body>
+<header class="band">
+  <div class="frame">
+    <span class="label wordmark">nock studio</span>
+    <h1 id="title"></h1>
+    <p id="summary">Loading…</p>
+    <nav class="tabs" aria-label="Studio">
+<!-- nock:tabs -->
+    </nav>
+  </div>
+</header>
+<!-- nock:panels -->
+<div class="toast" id="toast" role="status"></div>
+<script>
+addEventListener("hashchange", () => studio.open());
+studio.open();
+</script>
+</body>
+</html>

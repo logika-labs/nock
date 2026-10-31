@@ -403,9 +403,11 @@ A note alone answers a question in words. Until an agent acts on the answer
 — and edits the question to done, saying what it did — every session the
 human starts lists it.
 
-- **The owner reviews.** On the page, `nock web` (or with `{"open": true}`),
-  which lists the decisions to review, accepted and rejected, searchable and
-  filtered by status and tag; `#7` in its address opens decision 7. Or in a
+- **The owner reviews.** In the studio, `nock studio` (or with
+  `{"open": true}`), the owner's local page: its Decisions tab lists the
+  decisions and questions to review, accepted and rejected, searchable and
+  filtered by status and tag; `#decisions/7` (or just `#7`) in its address
+  opens decision 7. Or in a
   session, with `/nock-triage`, which goes through them one at a time. Each
   can be accepted, rejected or noted; asked for more, the session looks into
   it itself.
@@ -554,7 +556,7 @@ window.
 | `nock status` | a round due, decisions waiting, rejected ones to rework, answered questions, an unshared summary, a logika round to offer |
 | `nock decide JSON` | record a decision |
 | `nock decisions list [JSON]`, `show N`, `edit JSON`, `elaborate N` | the decisions: filtered, in full, changed or reviewed, elaborated |
-| `nock web [JSON]` | the owner's page |
+| `nock studio [JSON]` | the owner's page, a tab for each thing to look at: the decisions and questions |
 | `nock consult JSON` | a fresh agent finds the decisions and tools that bear on a task, and the caller waits |
 | `nock reflect start`, `finish JSON` | a reflection round; the round is the `/nock-reflect` skill; `--topic logika` for a logika round (`/nock-reflect-logika`) |
 | `nock share JSON` | a round's summary, and sending it |

@@ -3,7 +3,7 @@ be done later, and what they ask the owner — one committed file per decision
 in the main checkout's
 `.nock/decisions/`, each with its reasoning, the alternatives that lost, the
 files it governs (`touches`) and the decisions it overturns (`supersedes`).
-The owner reviews them, on the page (`nock web`) or in a session: accepts,
+The owner reviews them, on the page (`nock studio`) or in a session: accepts,
 rejects, leaves a note, or has an agent elaborate. `map.md` beside them says
 how they bear on the work and on each other."""
 
