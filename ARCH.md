@@ -9,7 +9,10 @@ README covers what nock is for and how to use it.
 - **Vendored.** `nock init` copies `src/nock/` into a project's
   `.nock/core/nock/`, and the `.nock/nock` shim runs it with
   `PYTHONPATH=.nock/core python3 -m nock`. So the package must run on bare
-  Python 3.12 with the standard library and nothing else. That is why nock
+  Python 3.12 with the standard library and nothing else. A project whose
+  tools need its own packages names its interpreter (`environment.python`),
+  and `environment.Environment` re-executes nock on it first thing — nock
+  is still only the standard library there. That is why nock
   has its own template engine (`templates.py`) and its own JSON Schema subset
   (`schema.py`), and why `pyproject.toml` has no runtime dependencies.
 - **One process per call.** Every `.nock/nock …` call is a fresh interpreter.
@@ -38,6 +41,7 @@ src/nock/
   render.py          return value → text (CSV, key: value, …); caps; crash reports
   errors.py          the ExitCode taxonomy and the error class for each code
   processes.py       Supervisor: run a process with a deadline and a silence timeout; Output
+  environment.py     Environment: the project's interpreter, PATH and dotenv, entered first
   condense.py        clean, fold and excerpt process output
 
   # telemetry
@@ -116,6 +120,11 @@ nock's built-ins.
 
 `.nock/nock failures --path tests` goes through `cli.Invocation.run`:
 
+0. **Enter the environment.** `cli.main`, before anything else (hooks
+   included), applies `[environment]`: it re-executes on
+   `environment.python` when that is not the interpreter running (making it
+   with `environment.setup` first if it is missing, except in a hook), puts
+   `environment.path` first on PATH and sets the dotenv's variables.
 1. **Discover.** `Project.discover()` finds `here` (`git rev-parse
    --show-toplevel`) and `root` (the main checkout). It then requires
    `.nock/` to exist.
@@ -198,7 +207,15 @@ The output goes through `condense.clean`:
 `Output.excerpt` keeps a quarter of its budget for the head and the rest for
 the tail, and points at the log.
 
-The `sh` fixture wraps the Supervisor for tools. It sets a quiet environment
+Streamed (`stream=True`), the output is also copied to stdout as it
+arrives, the child reads the caller's stdin, and when that is a terminal
+the child's process group is made its foreground (`tcsetpgrp`, as a shell
+does for a job), so it can prompt and Ctrl-C reaches it. On an interrupt
+from elsewhere it gets SIGINT and `INTERRUPT_GRACE` seconds, its output
+still logged, before the group is killed.
+
+The `sh` fixture wraps the Supervisor for tools. It drops git's location
+variables (`GIT_DIR`, …), which git sets when it runs nock. It sets a quiet environment
 (`NO_COLOR`, `TERM=dumb`, `PAGER=cat`). It then either raises, for a timeout,
 a hang, a program that cannot start, or `CommandFailed` with the excerpt as
 evidence, or it returns the `Output` when `check=False`.

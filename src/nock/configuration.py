@@ -29,6 +29,20 @@ DEFAULTS: dict[str, Any] = {
         # the process is alive.
         "heartbeat": 60,
     },
+    "environment": {
+        # What the project's tools, checks, generators and hooks run in. `python`
+        # is the interpreter nock re-executes itself on, so tools can import the
+        # project's packages (a path is relative to the working tree, so each
+        # worktree has its own; empty is whatever runs the shim). `setup` is the
+        # command that makes it when it is missing (`uv sync`). `path` puts
+        # directories first on PATH (relative ones to the working tree, `~`
+        # expanded), and `dotenv` names a file whose variables are set unless
+        # already set (the working tree's, else the main checkout's).
+        "python": "",
+        "setup": "",
+        "path": [],
+        "dotenv": "",
+    },
     "checks": {
         # How many check suites may run at once on this machine.
         "concurrency": 2,

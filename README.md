@@ -78,7 +78,8 @@ tool.
 
 nock is standard-library Python 3.12 and has no dependencies. It is vendored
 into the project, so it is the project's own code: an agent can read it, and
-fix it if it must.
+fix it if it must. Tools that need the project's own packages run on the
+project's interpreter instead (see [The project's environment](#the-projects-environment)).
 
 ## Getting started
 
@@ -162,7 +163,7 @@ parameter after it:
 
 | fixture | is |
 |---|---|
-| `sh` | runs a command supervised: bounded by a deadline and a silence timeout, logged, and condensed |
+| `sh` | runs a command supervised: bounded by a deadline and a silence timeout, logged, and condensed; `stream=True` prints it as it goes instead, for servers and for commands someone watches or answers |
 | `root` | the working tree |
 | `git` | `git("log", "-1")` returns the output |
 | `changed` | the files changed against the main branch |
@@ -206,6 +207,40 @@ last result as long as those files and the tool's own code are unchanged.
 
 **Examples.** The strings in `examples=[...]` appear in `--help`, and
 `nock check` runs them, so a tool that breaks fails the gate.
+
+### The project's environment
+
+nock itself needs nothing but Python, but a project's tools often do: its
+packages, its build tools on PATH, its secrets. `[environment]` says what
+they run in:
+
+```toml
+# .nock/config.toml
+[environment]
+python = ".venv/bin/python"   # nock re-runs itself on it, so tools import the project's code
+setup = "uv sync"             # how to make it, run when it is missing (a fresh worktree)
+path = ["~/.cargo/bin"]       # first on PATH, for every tool and every command they run
+dotenv = ".env"               # its variables, unless already set
+```
+
+A relative interpreter path is the working tree's, so each worktree runs on
+its own. The dotenv is the working tree's, else the main checkout's, since
+it is rarely committed. Hooks get the same environment, but never wait on
+`setup`: until it has run, nock says the interpreter is missing and runs on
+the one it has. Variables git sets when it runs nock (`GIT_DIR`,
+`GIT_INDEX_FILE`, …) never reach a command `sh` runs, so a repository a test
+creates is its own.
+
+### Long-running and interactive commands
+
+`sh(command, stream=True)` prints the output as it arrives instead of
+condensing it afterwards, and the command reads the caller's stdin and has
+the caller's terminal: `ssh` and `sudo` can prompt on it, and Ctrl-C reaches
+it. A failing streamed command points at its log rather than printing its
+output twice. A bound of 0 is none, so a dev server is
+`sh("uvicorn app:app", check=False, stream=True, deadline=0, silence=0)`;
+interrupted, it is asked to stop (SIGINT) and given five seconds before it
+is killed.
 
 ### Checks, hooks and generators
 
@@ -537,6 +572,7 @@ one machine.
 | `consult.deadline` | 600 | seconds a consultation may take |
 | `upgrade.check`, `upgrade.index` | true, PyPI's `nock` | whether a session start says a newer nock is out, and where releases are looked up |
 | `share.endpoint` | `https://api.nock.dev/reflections` | where `nock share` sends a summary |
+| `environment.python`, `setup`, `path`, `dotenv` | —, —, `[]`, — | what tools run in: the project's interpreter and how to make it, PATH entries, a dotenv file |
 | `pricing` | — | per-model prices, to cost sessions |
 
 ## Developing nock

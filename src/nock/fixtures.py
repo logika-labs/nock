@@ -37,6 +37,16 @@ if TYPE_CHECKING:
 
 # What every process `sh` starts is told, so it prints for a reader, not a terminal.
 QUIET_ENVIRONMENT = {"NO_COLOR": "1", "TERM": "dumb", "PAGER": "cat", "GIT_PAGER": "cat"}
+# Set when git runs nock (a hook, `rebase -x`): passed on, they would point any
+# repository a command creates or enters at this one.
+GIT_LOCATION = (
+    "GIT_DIR",
+    "GIT_WORK_TREE",
+    "GIT_INDEX_FILE",
+    "GIT_COMMON_DIR",
+    "GIT_OBJECT_DIRECTORY",
+    "GIT_PREFIX",
+)
 
 
 @dataclass
@@ -114,7 +124,9 @@ class Shell:
     call, its output condensed. A string runs in `sh -c`; a list runs as is.
     With `check` (the default) a non-zero exit ends the call: exit 1 with the
     output as evidence, or the machine's code when it timed out, hung or could
-    not start. With `check=False` the `Output` comes back whatever happened."""
+    not start. With `check=False` the `Output` comes back whatever happened.
+    With `stream`, the output is printed as it arrives, and the command reads
+    the caller's stdin; a bound of 0 is none, for a server."""
 
     def __init__(self, project: Project, call: Call) -> None:
         self.project = project
@@ -130,6 +142,7 @@ class Shell:
         silence: float | None = None,
         environment: dict[str, str] | None = None,
         input: str | None = None,
+        stream: bool = False,
     ) -> Output:
         argv = (
             ["sh", "-c", command] if isinstance(command, str) else [str(part) for part in command]
@@ -140,9 +153,14 @@ class Shell:
             directory=self.project.here / directory if directory else None,
             deadline=deadline,
             silence=silence,
-            environment={**os.environ, **QUIET_ENVIRONMENT, **(environment or {})},
+            environment={
+                **{name: value for name, value in os.environ.items() if name not in GIT_LOCATION},
+                **QUIET_ENVIRONMENT,
+                **(environment or {}),
+            },
             call=self.call.id,
             stdin=input,
+            stream=stream,
         ).run()
         if not check or output.ok:
             return output
@@ -154,6 +172,10 @@ class Shell:
         if output.code in (*NOT_RUNNABLE, ExitCode.PRECONDITIONS):
             raise PreconditionError(
                 f"`{text}` could not run — {output.note or output.excerpt(400)}"
+            )
+        if output.streamed:
+            raise SubjectFailedError(
+                f"`{text}` exited {output.code}; its output is above (log: {output.log})"
             )
         raise CommandFailed(text, output, int(self.project.configuration.get("output.characters")))
 

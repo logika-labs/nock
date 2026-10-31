@@ -11,6 +11,7 @@ import selectors
 import signal
 import subprocess
 import sys
+import threading
 import time
 from collections.abc import Iterator
 from dataclasses import dataclass
@@ -24,6 +25,8 @@ from nock.utils import now
 if TYPE_CHECKING:
     from nock.project import Project
 
+# Seconds a streamed child gets to stop on an interrupt before it is killed.
+INTERRUPT_GRACE = 5
 # Exit codes that say the command could not be run at all, not that it said no.
 NOT_RUNNABLE = (126, 127)
 
@@ -38,6 +41,8 @@ class Output:
     log: Path
     note: str | None = None
     run: int | None = None
+    streamed: bool = False
+    """The caller has seen it already, as it was printed."""
 
     @property
     def ok(self) -> bool:
@@ -67,7 +72,14 @@ class Output:
 class Supervisor:
     """Runs one command to a bounded conclusion. Silence, not elapsed time, is
     the hang signal; a heartbeat dot on stdout tells a caller watching the
-    output that the child is quiet but alive."""
+    output that the child is quiet but alive. A bound of 0 is no bound.
+
+    Streamed, the output is also passed to stdout as it arrives and the child
+    reads the caller's stdin: for servers, and for commands someone watches
+    or answers (a deploy, a login). Its process group then gets the caller's
+    terminal, as a shell's job does, so it can prompt on it (`ssh`, `sudo`) and
+    Ctrl-C reaches it; an interrupt from elsewhere asks it to stop (SIGINT)
+    before it is killed."""
 
     def __init__(
         self,
@@ -81,12 +93,14 @@ class Supervisor:
         call: int | None = None,
         session: str | None = None,
         stdin: str | None = None,
+        stream: bool = False,
     ) -> None:
         settings = project.configuration
         self.project = project
         self.command = command
         self.directory = directory or project.here
-        self.deadline = deadline if deadline is not None else float(settings.get("run.deadline"))
+        deadline = deadline if deadline is not None else float(settings.get("run.deadline"))
+        self.deadline = deadline if deadline > 0 else float("inf")
         silence = silence if silence is not None else float(settings.get("run.silence"))
         self.silence = silence if silence > 0 else float("inf")
         self.environment = environment
@@ -94,6 +108,7 @@ class Supervisor:
         self.call = call
         self.session = session if session is not None else project.current_session()
         self.stdin = stdin
+        self.streaming = stream
         self.heartbeat = float(settings.get("run.heartbeat"))
 
     def run(self) -> Output:
@@ -114,14 +129,21 @@ class Supervisor:
         chunks: list[bytes] = []
         with log_path.open("wb", buffering=0) as log:
             try:
+                terminal = self.terminal()
                 process = subprocess.Popen(
                     self.command,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.STDOUT,
-                    stdin=subprocess.PIPE if self.stdin is not None else subprocess.DEVNULL,
+                    stdin=subprocess.PIPE
+                    if self.stdin is not None
+                    else (None if self.streaming else subprocess.DEVNULL),
                     cwd=self.directory,
                     env=self.environment,
-                    start_new_session=True,
+                    start_new_session=not self.streaming,
+                    process_group=0 if self.streaming else None,
+                    preexec_fn=(lambda: hand_terminal(terminal, 0))
+                    if terminal is not None
+                    else None,
                 )
             except (FileNotFoundError, PermissionError) as error:
                 note = f"cannot run {self.command[0]}: {error.strerror or error}"
@@ -138,8 +160,16 @@ class Supervisor:
                 process.stdin.close()
             try:
                 with terminate_as_interrupt():
-                    code, note = self.stream(process, log, chunks)
+                    if terminal is not None:
+                        hand_terminal(terminal, process.pid)
+                    try:
+                        code, note = self.stream(process, log, chunks)
+                    finally:
+                        if terminal is not None:
+                            hand_terminal(terminal, os.getpgrp())
             except KeyboardInterrupt:
+                if self.streaming:
+                    self.wind_down(process, log, chunks)
                 kill_group(process)
                 store.update(
                     "runs",
@@ -149,7 +179,34 @@ class Supervisor:
                 raise
         store.update("runs", number, {"finished": now(), "exit_code": code, "note": note})
         text = b"".join(chunks).decode(errors="replace")
-        return Output(code, clean(text, self.directory), log_path, note, number)
+        return Output(code, clean(text, self.directory), log_path, note, number, self.streaming)
+
+    def wind_down(self, process: subprocess.Popen[bytes], log: Any, chunks: list[bytes]) -> None:
+        """Ask the child's group to stop, and keep its last words, for a grace
+        period."""
+        with contextlib.suppress(ProcessLookupError):
+            os.killpg(process.pid, signal.SIGINT)
+        self.deadline = self.silence = INTERRUPT_GRACE
+        with contextlib.suppress(KeyboardInterrupt):
+            self.stream(process, log, chunks)
+
+    def terminal(self) -> int | None:
+        """The caller's terminal, when a streamed child should have it."""
+        if (
+            not self.streaming
+            or self.stdin is not None
+            or threading.current_thread() is not threading.main_thread()
+        ):
+            return None
+        try:
+            descriptor = sys.stdin.fileno()
+            return (
+                descriptor
+                if os.isatty(descriptor) and os.tcgetpgrp(descriptor) == os.getpgrp()
+                else None
+            )
+        except (OSError, ValueError):
+            return None
 
     def stream(
         self, process: subprocess.Popen[bytes], log: Any, chunks: list[bytes]
@@ -169,6 +226,7 @@ class Supervisor:
                 return ExitCode.HUNG, f"no output for {self.silence:g}s; killed as hung"
             if (
                 self.echo
+                and not self.streaming
                 and self.heartbeat > 0
                 and moment - max(last_output, last_dot) >= self.heartbeat
             ):
@@ -180,6 +238,9 @@ class Supervisor:
                 if chunk:
                     log.write(chunk)
                     chunks.append(chunk)
+                    if self.streaming:
+                        sys.stdout.buffer.write(chunk)
+                        sys.stdout.flush()
                     last_output = time.monotonic()
                 else:
                     selector.unregister(process.stdout)
@@ -228,3 +289,15 @@ def kill_group(process: subprocess.Popen[bytes]) -> None:
     with contextlib.suppress(ProcessLookupError):
         os.killpg(process.pid, signal.SIGKILL)
     process.wait()
+
+
+def hand_terminal(descriptor: int, group: int) -> None:
+    """Make `group` (0: the calling process's own) the terminal's foreground,
+    as a shell does for a job; a process outside the foreground that does this
+    is stopped by SIGTTOU unless it ignores it."""
+    previous = signal.signal(signal.SIGTTOU, signal.SIG_IGN)
+    try:
+        with contextlib.suppress(OSError):
+            os.tcsetpgrp(descriptor, group or os.getpgrp())
+    finally:
+        signal.signal(signal.SIGTTOU, previous)

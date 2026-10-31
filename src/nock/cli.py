@@ -15,6 +15,7 @@ from typing import Any
 
 from nock import hooks
 from nock.commands import FRESH_FLAG, FULL_FLAG, JSON_FLAG, Command, Group
+from nock.environment import Environment
 from nock.errors import Error, Exit, ExitCode, UsageError
 from nock.fixtures import Call, Scope
 from nock.processes import Output
@@ -35,9 +36,21 @@ FOOTER = (
 
 def main() -> None:
     arguments = sys.argv[1:]
+    enter_environment(arguments)
     if arguments[:1] == ["hook"]:
         sys.exit(hooks.run(arguments[1] if len(arguments) > 1 else "", sys.stdin.read()))
     sys.exit(Invocation(arguments).run())
+
+
+def enter_environment(arguments: list[str]) -> None:
+    """Run on the project's interpreter, with its PATH and dotenv, before
+    anything loads its tools."""
+    try:
+        project = Project.discover()
+    except Error:
+        return
+    for note in Environment(project).enter(arguments, setup=arguments[:1] != ["hook"]):
+        sys.stderr.write(f"nock: {note}\n")
 
 
 def build(registry: Registry) -> Group:
@@ -193,7 +206,13 @@ class Invocation:
                 {
                     "duration": round(time.monotonic() - self.started, 3),
                     "exit_code": outcome.code,
-                    "output_bytes": len(printed.encode()),
+                    "output_bytes": len(
+                        (
+                            full
+                            if isinstance(outcome.result, Output) and outcome.result.streamed
+                            else printed
+                        ).encode()
+                    ),
                     "output_lines": printed.count("\n") + 1 if printed else 0,
                     "full_bytes": len(full.encode()),
                     "cached": int(cached is not None),
@@ -230,7 +249,8 @@ class Invocation:
                 [f"`{command.path}` crashed — {report}"],
             )
         if isinstance(result, Output):
-            return Outcome(result, result.code)
+            notes = [result.note] if result.streamed and result.note else []
+            return Outcome(result, result.code, notes=notes)
         return Outcome(result, ExitCode.SUBJECT_FAILED if result is False else ExitCode.SUCCESS)
 
     def replayed(self, cached: dict[str, Any]) -> Any:
@@ -262,6 +282,8 @@ class Invocation:
             return text, text
         if isinstance(result, Output):
             full = result.text
+            if result.streamed:
+                return "", full
             if options.get(FULL_FLAG):
                 return full, full
             return result.excerpt(self.characters()), full

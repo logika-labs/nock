@@ -25,7 +25,9 @@ the tool's summary everywhere it is listed; the rest is its `--help`.
 returns the output); `sh` (runs a command supervised, logged and condensed:
 `sh(command)` ends the call on failure, `sh(command, check=False)` returns an
 Output with `.code`, `.ok`, `.lines`, `.text`, `.raw` and `.log`; it takes
-`deadline=`, `silence=`, `directory=`, `input=`); `tmp` (a directory removed
+`deadline=`, `silence=`, `directory=`, `input=`, and `stream=True` to print as
+it goes and hand the command the caller's terminal — for servers, with
+`deadline=0, silence=0`, and for what someone watches or answers); `tmp` (a directory removed
 after the call); `log` (notes to the call's log file — never to the caller);
 `changed` (files changed against the main branch); `config`. Make your own
 with `@nock.fixture`, and `yield` to clean up after the call:
@@ -86,7 +88,9 @@ files and the tool's own code are unchanged; `--fresh` runs it anyway.
 **Examples**: `examples=["--path tests/unit"]` shows in `--help`, and
 `.nock/nock check` runs each one — a tool that breaks fails the gate.
 
-Tools are standard-library Python, run by the vendored nock on `python3`.
+Tools run where nock runs: on `python3`, or on the project's interpreter
+when `[environment]` in `.nock/config.toml` names one (`python`, with its
+`setup`, `path` and `dotenv`); then they can import the project's packages.
 `.nock/nock calls --tool NAME` shows how a tool has been called and how it
 ended.
 

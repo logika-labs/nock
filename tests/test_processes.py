@@ -3,6 +3,14 @@ cache and the repeat note that save it re-running what has not changed."""
 
 from __future__ import annotations
 
+import fcntl
+import os
+import pty
+import signal
+import subprocess
+import sys
+import termios
+import time
 from pathlib import Path
 
 from nock.condense import clean, excerpt
@@ -118,3 +126,140 @@ def test_a_cached_tool_replays_while_its_inputs_stand_still(project: Project) ->
     assert fresh.stdout == "32\n" and "cached" not in fresh.stderr
     calls = project.store.rows("SELECT cached FROM calls WHERE tool = 'total' ORDER BY id")
     assert [row["cached"] for row in calls] == [0, 1, 0, 0]
+
+
+STREAMING = '''\
+import nock
+
+
+@nock.command
+def serve(sh):
+    """A server: it says it is ready, then answers its input, however long that takes."""
+    return sh(
+        "echo ready; read line; echo got $line; exit 3",
+        check=False,
+        stream=True,
+        deadline=0,
+        silence=0,
+    )
+
+
+@nock.command
+def deploy(sh) -> None:
+    """Steps whose output the owner watches; the second fails."""
+    sh("echo step one", stream=True)
+    sh("echo step two; exit 2", stream=True)
+'''
+
+
+def test_a_streamed_command_prints_as_it_goes_and_takes_the_caller_s_input(
+    project: Project,
+) -> None:
+    write_tool(project, "serve", STREAMING)
+    process = subprocess.Popen(
+        [str(project.root / ".nock" / "nock"), "serve"],
+        cwd=project.root,
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        env={**os.environ, "NOCK_PYTHON": sys.executable},
+    )
+    assert process.stdout is not None and process.stdin is not None
+    assert process.stdout.readline() == "ready\n"
+    assert process.poll() is None
+    rest, _ = process.communicate("hello\n", timeout=30)
+    assert rest == "got hello\n" and process.returncode == 3
+    call = project.store.rows("SELECT exit_code, output_bytes FROM calls WHERE tool = 'serve'")[0]
+    assert call["exit_code"] == 3 and call["output_bytes"] > 0
+
+
+def test_a_streamed_failure_points_at_its_log_without_printing_it_again(project: Project) -> None:
+    write_tool(project, "serve", STREAMING)
+    result = nock(project.root, "deploy")
+    assert result.returncode == 1
+    assert result.stdout == "step one\nstep two\n"
+    assert "`echo step two; exit 2` exited 2; its output is above (log: " in result.stderr
+    assert "step two" not in result.stderr.replace("echo step two", "")
+
+
+PROMPTING = '''\
+import nock
+
+
+@nock.command
+def login(sh):
+    """Asks on the terminal, as ssh and sudo do."""
+    return sh(
+        "printf 'name? ' >/dev/tty; read name </dev/tty; echo hello $name",
+        check=False,
+        stream=True,
+    )
+'''
+
+
+def test_a_streamed_command_has_the_caller_s_terminal_to_prompt_on(project: Project) -> None:
+    write_tool(project, "login", PROMPTING)
+    descriptor, terminal = pty.openpty()
+    process = subprocess.Popen(
+        [str(project.root / ".nock" / "nock"), "login"],
+        cwd=project.root,
+        stdin=terminal,
+        stdout=terminal,
+        stderr=terminal,
+        env={**os.environ, "NOCK_PYTHON": sys.executable},
+        start_new_session=True,
+        preexec_fn=lambda: fcntl.ioctl(0, termios.TIOCSCTTY, 0),
+    )
+    os.close(terminal)
+    seen = b""
+    deadline = time.monotonic() + 30
+    while b"name? " not in seen and time.monotonic() < deadline:
+        seen += os.read(descriptor, 1024)
+    os.write(descriptor, b"ann\n")
+    while time.monotonic() < deadline:
+        try:
+            chunk = os.read(descriptor, 1024)
+        except OSError:
+            break
+        if not chunk:
+            break
+        seen += chunk
+    status = process.wait(timeout=30)
+    assert b"hello ann" in seen, seen
+    assert status == 0
+
+
+SERVER = '''\
+import nock
+
+
+@nock.command
+def serve(sh):
+    """A server that shuts down cleanly when asked."""
+    return sh(
+        "trap 'echo stopping; exit 0' INT; echo up; while :; do sleep 0.1; done",
+        check=False,
+        stream=True,
+        deadline=0,
+        silence=0,
+    )
+'''
+
+
+def test_an_interrupted_server_is_asked_to_stop_before_it_is_killed(project: Project) -> None:
+    write_tool(project, "serve", SERVER)
+    process = subprocess.Popen(
+        [str(project.root / ".nock" / "nock"), "serve"],
+        cwd=project.root,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        env={**os.environ, "NOCK_PYTHON": sys.executable},
+    )
+    assert process.stdout is not None
+    assert process.stdout.readline() == "up\n"
+    process.send_signal(signal.SIGTERM)
+    process.wait(timeout=30)
+    logs = sorted((project.root / ".nock" / "local" / "logs").glob("run-*.log"))
+    assert "stopping" in logs[-1].read_text()
