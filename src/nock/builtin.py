@@ -15,6 +15,7 @@ from nock.checks import Checks
 from nock.commands import Option
 from nock.consult import Consultant, Consultation
 from nock.decisions import TAGS, Change, Decisions, Draft, Filter, row
+from nock.docs import Docs
 from nock.errors import Error, ExitCode, Failed, UsageError
 from nock.fixtures import Shell
 from nock.generators import Catalogs, Generators
@@ -31,7 +32,7 @@ from nock.share import Sharing
 from nock.status import Standing
 from nock.studio import Studio
 from nock.telemetry import UNRECORDED_VARIABLE
-from nock.templates import SYNTAX, Library
+from nock.templates import SYNTAX
 from nock.tools import NATIVE_EVENTS, check, command
 
 
@@ -42,7 +43,6 @@ class StudioOptions(TypedDict):
     """Open it in the browser."""
 
 
-BRIEFS = Path(__file__).resolve().parent / "briefs"
 EXAMPLE_DEADLINE = 300
 
 
@@ -88,10 +88,15 @@ def run_command(
     return sh(command, check=False, deadline=deadline, silence=silence)
 
 
-@command
-def guide() -> str:
-    """How to write a tool, a check, a hook or a generator."""
-    return Library(BRIEFS).render("_framework.md").rstrip()
+@command(examples=["tools", "tools.caching fixtures"])
+def docs(terms: list[str] | None = None) -> str | dict[str, str]:
+    """nock's documentation, a short article per term: how to write a tool, a
+    check, a hook or a generator, and how decisions, consultation and
+    reflection work. With no term, the terms; with several, each in turn."""
+    documentation = Docs()
+    if not terms:
+        return documentation.index()
+    return documentation.read(terms)
 
 
 # --- telemetry -------------------------------------------------------------------

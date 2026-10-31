@@ -20,8 +20,8 @@ Schema subset in `schema.py`.
 - Tests use real git repositories and real processes; the dispatched agents
   are `tests/fake_agent.py`, configured as `agent.command`. No mocks.
 - The README is the product's documentation; keep it true when behavior
-  changes. `briefs/_framework.md` is the agents' documentation (`nock guide`,
-  and the reflection brief): keep it true too.
+  changes. `terms/` is the agents' documentation (`nock docs`, a short
+  article per term, which the briefs point at): keep it true too.
 
 ## How the code is shaped
 

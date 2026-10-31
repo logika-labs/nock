@@ -159,8 +159,10 @@ tests/unit/test_cart.py::test_total,assert 41 == 42
 tests/unit/test_cart.py::test_empty,KeyError: 'items'
 ```
 
-The tool works on its next call, with nothing to register. `.nock/nock guide`
-is the whole framework on one page, written for agents. In short:
+The tool works on its next call, with nothing to register. `.nock/nock docs`
+is the framework written for agents, one short article per term (`.nock/nock
+docs` lists them, `.nock/nock docs fixtures` reads one, and a term it doesn't
+know answers with the three closest). In short:
 
 **The signature is the command line.**
 
@@ -551,7 +553,7 @@ window.
 | `nock` | the toolbox: the project's tools first, then nock's |
 | `nock check [NAME…] [--fix]` | run the checks (all, or the checks and chains named), side by side; prints nothing when all pass |
 | `nock run -- COMMAND` | run anything supervised and condensed |
-| `nock guide` | how to write a tool, check, hook or generator |
+| `nock docs [TERM…]` | nock's documentation for agents, a short article per term: with no term, the terms |
 | `nock calls`, `stats`, `sessions`, `query SQL` | the telemetry |
 | `nock status` | a round due, decisions waiting, rejected ones to rework, answered questions, an unshared summary, a logika round to offer |
 | `nock decide JSON` | record a decision |

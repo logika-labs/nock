@@ -64,16 +64,18 @@ src/nock/
   consult.py         Consultant: a fresh agent finds the decisions and tools that bear on a task
   dispatch.py        Dispatcher: launch a headless `claude -p` session and ingest it
   hooks.py           `nock hook EVENT`: nock's own handlers, then the project's
+  docs.py            Docs: the terms of `nock docs`, parsed and validated; the closest to a miss
+  terms/             one article per term (`tools.caching.md`): front matter term, aliases,
+                     description; at most 500 characters. The briefs point at the terms
   briefs/
     nock-reflect/    the `/nock-reflect` skill: SKILL.md (the lead) and its three parts'
-                     briefs — process.md (includes _framework.md), knowledge.md, nock.md
+                     briefs — process.md, knowledge.md, nock.md
     nock-reflect-logika/  the `/nock-reflect-logika` skill, installed in Logika projects only:
                      SKILL.md (the round, with the owner) and rules.md (from data to rules)
     nock-triage/     the `/nock-triage` skill: going through decisions with the owner
     elaborate.md     the brief of the agent that elaborates on a decision
     consult.md       the consultant's brief
     share.md         the brief of the agent that vets a summary before it is shared
-    _framework.md    the framework on one page: `nock guide`, and part of the toolbox brief
 
   # the rest of the toolbox
   checks.py          Checks: command checks and @check functions → one Verdict
@@ -248,6 +250,20 @@ and are left out of the material, so reflection does not study itself.
 Raw telemetry is never committed, because it is per-machine and does not
 merge. What is shared is the reflection record (see below).
 
+## Documentation for agents
+
+`nock docs` serves `terms/`, one Markdown file per term, named by it
+(`tools.caching.md`). Its front matter holds `term`, `aliases` and a
+one-line `description` (at most 100 characters); the article is at most 500.
+A dotted term is the child of the term before its last dot, and its parent's
+article ends by listing it. `docs.Docs` reads them all on each call, sorted
+parents first; `problems` finds a name taken twice or a child without its
+parent, and the tests hold every file to the rules. A miss answers the three
+closest: names it nearly spells (`difflib`), then the articles that mention
+it most, then the most alike names. The briefs name the terms their agents
+read (`.nock/nock docs TERM …`), and a test holds each name to a term. A new
+area is a new root term with its children, such as `eval.*`.
+
 ## The loop
 
 ### Hooks
@@ -340,9 +356,8 @@ lead's own subagents, not dispatched.) It:
 ### Reflection
 
 A round is the `/nock-reflect` skill in an ordinary session. `nock init`
-renders `briefs/nock-reflect/` into `.claude/skills/nock-reflect/`, the
-toolbox brief with `!include("_framework.md")` bringing in the framework
-guide.
+renders `briefs/nock-reflect/` into `.claude/skills/nock-reflect/`; the
+toolbox brief names the `nock docs` terms the part reads before writing.
 
 1. **Start.** `nock reflect start` catches up on transcripts
    (`Sessions.catch_up`), names the round by date (`Rounds.new_name`, or the

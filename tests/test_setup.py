@@ -48,7 +48,7 @@ def test_init_is_idempotent_and_keeps_the_project_s_settings(repository: Path) -
 def test_the_vendored_shim_runs_the_project_s_own_copy(project: Project) -> None:
     marker = project.root / ".nock" / "core" / "nock" / "builtin.py"
     marker.write_text(
-        marker.read_text().replace('"""How to write a tool', '"""VENDORED How to write a tool')
+        marker.read_text().replace('"""nock\'s documentation', '"""VENDORED nock\'s documentation')
     )
     result = subprocess.run(
         [str(project.root / ".nock" / "nock")],
@@ -57,7 +57,7 @@ def test_the_vendored_shim_runs_the_project_s_own_copy(project: Project) -> None
         text=True,
     )
     assert result.returncode == 0, result.stderr
-    assert "guide — VENDORED" in result.stdout
+    assert "— VENDORED nock's documentation" in result.stdout
 
 
 def test_upgrade_merges_upstream_into_a_locally_edited_core(
