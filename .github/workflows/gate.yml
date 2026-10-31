@@ -1,0 +1,48 @@
+name: gate
+
+# Nothing runs automatically: run it by hand (`gh workflow run gate --ref BRANCH`, or Actions → gate → Run
+# workflow); the release workflow calls it and publishes only after it passes on the tagged commit.
+# nock is vendored into projects on Python 3.12, so the suite runs on the oldest supported Python and on the
+# newest; a failing run's JUnit report is uploaded.
+on:
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - run: uv sync --locked
+      - run: uv run ruff check
+      - run: uv run ruff format --check
+      - run: uv run basedpyright
+
+  test:
+    name: test (Python ${{ matrix.python }})
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.12", "3.14"]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - run: uv sync --locked --python ${{ matrix.python }}
+      - run: uv run pytest -n 4 --junitxml=reports/pytest.xml
+
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pytest (Python ${{ matrix.python }})
+          path: reports/

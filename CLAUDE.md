@@ -17,6 +17,12 @@ Schema subset in `schema.py`.
 
 - `uv run pytest -n 4`, `uv run ruff check`, `uv run ruff format`,
   `uv run basedpyright` — all green before a commit.
+- Nothing in CI runs automatically: the gate (`.github/workflows/gate.yml`)
+  runs by hand, `gh workflow run gate --ref BRANCH`, or when a release calls
+  it. A release is a tag `vVERSION` that `python3 scripts/release.py VERSION`
+  creates and pushes after asking the owner; `release.yml` then gates the
+  tagged commit and publishes to PyPI (README, "Developing nock"). Never push,
+  tag or publish without the owner's word.
 - Tests use real git repositories and real processes; the dispatched agents
   are `tests/fake_agent.py`, configured as `agent.command`. No mocks.
 - The README is the product's documentation; keep it true when behavior
