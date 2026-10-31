@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Any, NotRequired, TypedDict
 from nock.checks import Checks
 from nock.decisions import Decisions
 from nock.dispatch import Dispatcher
+from nock.docs import Docs
 from nock.errors import Failed, NotFoundError, PolicyError, UsageError
 from nock.templates import Library
 from nock.utils import now, read_json, write_json
@@ -48,6 +49,8 @@ class Advice(TypedDict):
     """The `.nock/nock` commands that do steps of the work; the agent is shown their usage."""
     checks: NotRequired[list[str]]
     """The checks or chains the work should pass before it is done."""
+    docs: NotRequired[list[str]]
+    """The `nock docs` terms the agent should read; it is shown their articles."""
     feedback: NotRequired[str]
     """Where nock fell short for this task, in general terms, for the next reflection round."""
 
@@ -141,6 +144,9 @@ class Consultant:
         checks = submitted.get("checks") or []
         if checks:
             parts.append(f"Before you finish: `.nock/nock check {' '.join(checks)}`.")
+        terms = submitted.get("docs") or []
+        if terms:
+            parts.append("Read first (`.nock/nock docs`):\n\n" + Docs().read(terms))
         return "\n\n".join(parts)
 
     def submit(self, advice: Advice) -> str:
@@ -176,6 +182,12 @@ class Consultant:
                 problems.append(
                     f"checks: no check or chain `{name}` (there are: {', '.join(sorted(known)) or 'none'})"
                 )
+        docs = Docs()
+        problems += [
+            f"docs: `{word}` is not a term — `.nock/nock docs` lists them"
+            for word in advice.get("docs") or []
+            if docs.find(word) is None
+        ]
         if problems:
             raise UsageError(
                 "the advice names what does not exist — fix it and submit again", problems

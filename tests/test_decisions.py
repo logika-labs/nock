@@ -18,7 +18,7 @@ import pytest
 from nock.decisions import Decisions
 from nock.hooks import HookRunner
 from nock.project import Project
-from nock.web import Server
+from nock.studio import PAGES, TABS, Studio
 
 from .conftest import git, nock
 
@@ -53,7 +53,7 @@ def start(project: Project, session: str) -> dict[str, Any]:
 
 @pytest.fixture
 def page(project: Project) -> Iterator[str]:
-    server = Server(Decisions(project), 0)
+    server = Studio(project, 0)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     yield server.address
@@ -138,7 +138,10 @@ def test_the_owner_reviews_on_the_page_and_the_recording_session_hears_once(
     monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "s1")
     number = decide(project.root)["number"]
     with urllib.request.urlopen(page) as response:
-        assert b"<h1>Decisions</h1>" in response.read()
+        shown = response.read().decode()
+    assert '<a href="#decisions" data-tab-link="decisions">Decisions</a>' in shown
+    assert '<section data-tab-panel="decisions" hidden>' in shown
+    assert "<!-- nock:" not in shown
     with urllib.request.urlopen(f"{page}decisions") as response:
         listed = json.loads(response.read())
         assert listed["decisions"][0]["title"] == "Orders live in SQLite"
@@ -270,6 +273,21 @@ def test_the_standing_is_said_once_a_day_unless_something_new_calls(
     context = start(project, "s4")["hookSpecificOutput"]["additionalContext"]
     assert f"- rework [D{number}] Orders live in SQLite — the owner: Postgres, please" in context
     assert HookRunner(project, {"session_id": "s5"}).handle("SessionStart") is None
+
+
+def test_every_studio_tab_has_its_panel_and_its_routes_only(page: str) -> None:
+    for tab in TABS:
+        assert f'studio.register("{tab.name}"' in (PAGES / f"{tab.name}.html").read_text()
+    for path in ("nothing", "decisions/7", "decisions/extra"):
+        with pytest.raises(urllib.error.HTTPError) as missing:
+            urllib.request.urlopen(f"{page}{path}")
+        assert missing.value.code == 404
+    status, error = post(page, 1, {"review": "accepted"})
+    assert status == 404 and "decision" in error["error"]
+    request = urllib.request.Request(f"{page}decisions/1", data=b"{", method="POST")
+    with pytest.raises(urllib.error.HTTPError) as malformed:
+        urllib.request.urlopen(request)
+    assert malformed.value.code == 400
 
 
 def test_a_question_waits_on_the_owner_and_its_answer_waits_on_an_agent(

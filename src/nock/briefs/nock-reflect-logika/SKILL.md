@@ -36,7 +36,7 @@ session was doing.
    a time. Each question names the rule it would settle and the answer you
    propose. If they would rather answer later, or someone else has to:
    `.nock/nock decide '{"status": "question", "tags": ["logika"], …}'`, with
-   the answer you propose as the title. Don't land a rule that depends on an
+   the answer you propose as the title (`.nock/nock docs decisions.questions`). Don't land a rule that depends on an
    unanswered question.
 6. Where a rule needs a state change the code does not record, don't add the
    instrumentation in this round unless the owner says to. Record it as a

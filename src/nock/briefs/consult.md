@@ -25,6 +25,7 @@ your answer. Look through the repository; change nothing.
        .nock/nock decisions list '{"path": "src/billing.py"}'   # decisions governing a file
        .nock/nock decisions list '{"tag": "payments"}'
        .nock/nock decisions show 7
+       .nock/nock docs decisions.review decisions.map           # how decisions and the map work
 
    An accepted decision is the owner's; an unreviewed one is an agent's call
    so far; a rejected one says what not to do, and its note says why. A
@@ -42,17 +43,20 @@ your answer. Look through the repository; change nothing.
    - **what to record**: a choice the work is about to make that no decision
      covers yet, which `.nock/nock decide` should record as it makes it, with
      the alternative it passes over;
-   - **the checks** that judge the change, to pass before it is done.
+   - **the checks** that judge the change, to pass before it is done;
+   - **the docs** it needs for the nock side of the work: `.nock/nock docs`
+     lists the terms (`tools` to write a tool, `decisions.record` to record
+     one); name them in `docs` (step 5) rather than repeating them.
 4. Take the intent as given. Don't redesign the task, reframe it, or advise
    on the code beyond what the decisions and tools say: the agent does the
    work and has the context; you have the project's memory.
 5. Submit your advice, naming the decisions, tools and checks it rests on:
 
-       .nock/nock advise '{"advice": "<as the agent should read it>", "decisions": [7], "tools": ["db query"], "checks": ["test"], "feedback": ""}'
+       .nock/nock advise '{"advice": "<as the agent should read it>", "decisions": [7], "tools": ["db query"], "checks": ["test"], "docs": ["decisions.record"], "feedback": ""}'
 
    The agent sees your advice exactly as submitted, followed by each named
-   decision's title and standing, each tool's usage, and the checks to run,
-   and nothing else you write; so don't repeat those in the advice. A name
+   decision's title and standing, each tool's usage, the checks to run and
+   the articles of the docs terms named, and nothing else you write; so don't repeat those in the advice. A name
    that doesn't exist is refused: fix it and submit again.
 
    `feedback` is for the project's next reflection round, which improves

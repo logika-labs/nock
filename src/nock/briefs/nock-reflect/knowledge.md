@@ -10,6 +10,8 @@ them no search would find.
 Your material has the decisions changed since the last round in full, every
 standing one in a line, the tags and the map. `.nock/nock decisions show N`
 shows any decision; read the code and history where it points.
+`.nock/nock docs decisions decisions.map decisions.tags decisions.review` has
+how decisions, the map and the tags work.
 
 Edit the map as you see fit, short enough to read before a piece of work:
 - write triggers, not facts: "if you touch X, then Y, because Z [D7]";

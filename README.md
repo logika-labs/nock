@@ -162,8 +162,10 @@ tests/unit/test_cart.py::test_total,assert 41 == 42
 tests/unit/test_cart.py::test_empty,KeyError: 'items'
 ```
 
-The tool works on its next call, with nothing to register. `.nock/nock guide`
-is the whole framework on one page, written for agents. In short:
+The tool works on its next call, with nothing to register. `.nock/nock docs`
+is the framework written for agents, one short article per term (`.nock/nock
+docs` lists them, `.nock/nock docs fixtures` reads one, and a term it doesn't
+know answers with the three closest). In short:
 
 **The signature is the command line.**
 
@@ -423,9 +425,11 @@ A note alone answers a question in words. Until an agent acts on the answer
 — and edits the question to done, saying what it did — the session start
 lists it, the day it comes and once a day after.
 
-- **The owner reviews.** On the page, `nock web` (or with `{"open": true}`),
-  which lists the decisions to review, accepted and rejected, searchable and
-  filtered by status and tag; `#7` in its address opens decision 7. Or in a
+- **The owner reviews.** In the studio, `nock studio` (or with
+  `{"open": true}`), the owner's local page: its Decisions tab lists the
+  decisions and questions to review, accepted and rejected, searchable and
+  filtered by status and tag; `#decisions/7` (or just `#7`) in its address
+  opens decision 7. Or in a
   session, with `/nock-triage`, which goes through them one at a time. Each
   can be accepted, rejected or noted; asked for more, the session looks into
   it itself.
@@ -601,7 +605,7 @@ sends is set by `share.level` in `.nock/config.toml` (or, for one machine,
 
 Nothing is sent from a machine until the owner has been told, once, the
 first time they engage with nock there: the first reflection round, opening
-the page (`nock web`), or their first review or note on a decision. The
+the studio (`nock studio`), or their first review or note on a decision. The
 page shows it at the top; the round and `/nock-triage` say it in the
 session. Counting starts then. The first report goes a week later, as a
 session ends, then at most weekly, to `share.usage_endpoint`, with a
@@ -621,13 +625,13 @@ A round's summary is sent only with `nock share` and the owner's yes (see
 | `nock` | the toolbox: the project's tools first, then nock's |
 | `nock check [NAME…] [--fix]` | run the checks (all, or the checks and chains named), side by side; prints nothing when all pass |
 | `nock run -- COMMAND` | run anything supervised and condensed |
-| `nock guide` | how to write a tool, check, hook or generator |
+| `nock docs [TERM…]` | nock's documentation for agents, a short article per term: with no term, the terms |
 | `nock calls`, `stats`, `sessions`, `query SQL` | the telemetry |
 | `nock status` | a round due, decisions waiting, rejected ones to rework, answered questions, an unshared summary, a logika round to offer |
 | `nock decide JSON` | record a decision |
 | `nock decisions list [JSON]`, `show N`, `edit JSON`, `elaborate N` | the decisions: filtered, in full, changed or reviewed, elaborated |
-| `nock web [JSON]` | the owner's page |
-| `nock consult JSON` | a fresh agent advises on a task: the decisions, tools and checks that bear on it; the caller waits |
+| `nock studio [JSON]` | the owner's page, a tab for each thing to look at: the decisions and questions |
+| `nock consult JSON` | a fresh agent advises on a task: the decisions, tools, checks and docs that bear on it; the caller waits |
 | `nock advise JSON` | the consultant's advice, submitted; only a consultant nock dispatched runs it |
 | `nock usage` | what nock shares with its makers, and exactly what the next report carries |
 | `nock reflect start`, `finish JSON` | a reflection round; the round is the `/nock-reflect` skill; `--topic logika` for a logika round (`/nock-reflect-logika`) |
@@ -695,3 +699,6 @@ uv run nock init          # in another repository: vendor this checkout into it
 
 `evals/` measures whether reflection pays (`evals/README.md`), and whether nock
 helps through a month of real work (`evals/story/README.md`).
+
+`web/` is nock.dev: the site, its docs page built from this README, and the
+publishing to GitHub Pages (`web/README.md`).

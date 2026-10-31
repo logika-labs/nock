@@ -92,7 +92,7 @@ class Standing:
         if any(not part.startswith("0 ") for part in waiting):
             parts = ", ".join(part for part in waiting if not part.startswith("0 "))
             lines.append(
-                f"nock: decisions — {parts}: review them on `.nock/nock web`, or with `/nock-triage`."
+                f"nock: decisions — {parts}: review them on `.nock/nock studio`, or with `/nock-triage`."
             )
         rework = standing["to_rework"]
         lines += [

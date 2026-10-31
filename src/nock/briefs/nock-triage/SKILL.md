@@ -14,6 +14,9 @@ Their word is what you record.
     .nock/nock decisions edit '{"number": 7, "review": "rejected", "note": "what they said"}'
     .nock/nock decisions edit '{"number": 7, "note": "what they said"}'
 
+What each review means for a done decision, a todo and a question:
+`.nock/nock docs decisions.review decisions.todos decisions.questions`.
+
 Start where the owner says; otherwise questions first (an agent waits on
 the answer), then done decisions (they are in the code), then todos,
 `important` first, then the oldest. Put each in a few lines: what was
