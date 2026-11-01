@@ -14,7 +14,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from build import OUTPUT, README, build
+from build import OUTPUT, README, build, build_legal
 
 HERE = Path(__file__).resolve().parent
 SITE = HERE / "site"
@@ -54,6 +54,7 @@ def stage(site: Path, checkout: Path) -> None:
 
 def publish(repository: str, push: bool) -> str:
     build(README, OUTPUT)
+    build_legal(SITE)
     if found := problems(SITE):
         raise SystemExit("the site is not publishable: " + "; ".join(found))
     head = run("git", "rev-parse", "--short=12", "HEAD", cwd=HERE).strip()

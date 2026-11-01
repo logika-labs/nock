@@ -666,7 +666,8 @@ edits a file. A refused call is reported, not worked around.
 
 ## What nock shares
 
-nock tells its makers how it is used, so they can improve it. `share` in
+nock tells its makers how it is used, so they can improve it ([privacy
+policy](https://nock.dev/privacy/)). `share` in
 `.nock/config.toml` (or, for one machine, `.nock/local/config.toml`) turns it
 on or off:
 

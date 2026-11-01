@@ -1,6 +1,7 @@
 """Build nock.dev's documentation from the repository's README — the product's
 documentation, kept true beside the code — into `site/docs/index.html`, in the
-site's look, with a table of contents. Standard library only.
+site's look, with a table of contents; and the legal pages from `legal/` into
+`site/privacy/` and `site/terms/`. Standard library only.
 
     python3 web/build.py [--output PATH]
 """
@@ -16,6 +17,12 @@ HERE = Path(__file__).resolve().parent
 README = HERE.parent / "README.md"
 TEMPLATE = HERE / "docs.html"
 OUTPUT = HERE / "site" / "docs" / "index.html"
+PAGE = HERE / "page.html"
+# Each legal page: its source in legal/, its description, and where it is served.
+LEGAL = {
+    "privacy": "What reaches nock's makers from nock.dev and from nock: the usage report, shared summaries, and your rights.",
+    "terms": "The terms of nock.dev and api.nock.dev; the software itself is MIT licensed.",
+}
 REPOSITORY = "https://github.com/logika-labs/nock/blob/main/"
 
 
@@ -40,7 +47,7 @@ def inline(text: str) -> str:
 
     def link(match: re.Match[str]) -> str:
         target = match.group(2)
-        if not re.match(r"[a-z]+:|#", target):
+        if not re.match(r"[a-z]+:|#|/", target):
             target = REPOSITORY + target
         return f'<a href="{html.escape(target)}">{match.group(1)}</a>'
 
@@ -182,12 +189,34 @@ def build(readme: Path, output: Path) -> int:
     return len(converter.headings)
 
 
+def build_legal(site: Path) -> list[Path]:
+    """Write each legal page to `site/NAME/index.html`; the pages written."""
+    written = []
+    for name, description in LEGAL.items():
+        text = (HERE / "legal" / f"{name}.md").read_text()
+        title = re.match(r"# (.+)\n", text)
+        assert title, f"legal/{name}.md starts with its title"
+        page = (
+            PAGE.read_text()
+            .replace("{{ title }}", html.escape(title.group(1).lower()))
+            .replace("{{ description }}", html.escape(description))
+            .replace("{{ body }}", Converter(text).convert())
+        )
+        output = site / name / "index.html"
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(page)
+        written.append(output)
+    return written
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--output", type=Path, default=OUTPUT, help="where to write the page")
     arguments = parser.parse_args()
     headings = build(README, arguments.output)
     print(f"wrote {arguments.output}: {headings} headings")
+    for page in build_legal(arguments.output.parent.parent):
+        print(f"wrote {page}")
 
 
 if __name__ == "__main__":

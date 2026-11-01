@@ -7,3 +7,5 @@ dist/
 .DS_Store
 web/site/docs/
 web/pages/
+web/site/privacy/
+web/site/terms/

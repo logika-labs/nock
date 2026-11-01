@@ -29,6 +29,27 @@ def test_the_docs_page_is_built_from_the_readme_with_contents(tmp_path: Path) ->
     assert "**" not in re.sub(r"<pre>.*?</pre>|<code>.*?</code>", "", article, flags=re.S)
 
 
+def test_the_legal_pages_are_built_from_web_legal_and_linked_from_every_page(
+    tmp_path: Path,
+) -> None:
+    subprocess.run(
+        [sys.executable, WEB / "build.py", "--output", tmp_path / "docs" / "index.html"], check=True
+    )
+    for name in ("privacy", "terms"):
+        text = (tmp_path / name / "index.html").read_text()
+        title = (WEB / "legal" / f"{name}.md").read_text().splitlines()[0].removeprefix("# ")
+        assert "<h1" in text and title in text
+        assert "{{" not in text
+        assert "github.com/logika-labs/nock/blob/main//" not in text
+    for page in (
+        tmp_path / "docs" / "index.html",
+        WEB / "site" / "index.html",
+        tmp_path / "terms" / "index.html",
+    ):
+        text = page.read_text()
+        assert 'href="/privacy/"' in text and 'href="/terms/"' in text
+
+
 def publish(source: Path, pages: Path, answer: str = "", *options: str) -> str:
     return subprocess.run(
         [sys.executable, source / "web" / "publish.py", "--repository", str(pages), *options],
@@ -54,7 +75,15 @@ def test_publishing_replaces_the_pages_tree_and_pushes_only_on_the_word(tmp_path
     assert "not pushed" in publish(source, pages, "", "--no-push")
     checkout = source / "web" / "pages"
     published = {path.name for path in checkout.iterdir()} - {".git"}
-    assert published == {"CNAME", ".nojekyll", "index.html", "style.css", "docs"}
+    assert published == {
+        "CNAME",
+        ".nojekyll",
+        "index.html",
+        "style.css",
+        "docs",
+        "privacy",
+        "terms",
+    }
     assert (checkout / "CNAME").read_text() == "nock.dev\n"
     assert not git(pages, "for-each-ref")
 

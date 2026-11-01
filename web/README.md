@@ -7,7 +7,9 @@ Standard library only, like nock.
 ```
 site/              the pages: index.html, style.css, docs/ (built, gitignored)
 docs.html          the docs page's template
-build.py           ../README.md → site/docs/index.html, with a table of contents
+legal/             privacy.md and terms.md → site/privacy/, site/terms/ (built, gitignored)
+page.html          their template
+build.py           ../README.md → site/docs/index.html, with a table of contents; legal/ → its pages
 publish.py         build, and push to GitHub Pages
 api/               api.nock.dev, where `nock share` sends a summary and nock its usage reports (not deployed)
 ```
