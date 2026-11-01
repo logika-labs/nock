@@ -48,6 +48,9 @@ def test_the_legal_pages_are_built_from_web_legal_and_linked_from_every_page(
     ):
         text = page.read_text()
         assert 'href="/privacy/"' in text and 'href="/terms/"' in text
+        assert not re.search(r'(?:href|src)="https://(?!github\.com/)', text.split("<body")[0]), (
+            page
+        )
 
 
 def publish(source: Path, pages: Path, answer: str = "", *options: str) -> str:
@@ -83,6 +86,7 @@ def test_publishing_replaces_the_pages_tree_and_pushes_only_on_the_word(tmp_path
         "docs",
         "privacy",
         "terms",
+        "fonts",
     }
     assert (checkout / "CNAME").read_text() == "nock.dev\n"
     assert not git(pages, "for-each-ref")

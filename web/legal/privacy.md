@@ -15,12 +15,7 @@ The website sets no cookies and runs no analytics.
 
 ## 2. The website
 
-nock.dev is a static site. It sets no cookies, keeps nothing in your browser and runs no analytics. Two companies receive your IP address and browser details when you open it, as part of delivering it:
-
-- **GitHub, Inc.** (GitHub Pages), which hosts the site, in the United States;
-- **Google LLC** (Google Fonts), which serves the site's fonts, in the United States.
-
-Each keeps its own server logs under its own privacy statement. Both transfers rely on the EU–US Data Privacy Framework.
+nock.dev is a static site. It sets no cookies, keeps nothing in your browser, runs no analytics and loads nothing from other sites. It is hosted by **GitHub, Inc.** (GitHub Pages) in the United States, which receives your IP address and browser details when you open it, as part of delivering it, and keeps its own server logs under its own privacy statement. The transfer relies on the EU–US Data Privacy Framework.
 
 ## 3. The usage report
 
