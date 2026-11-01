@@ -18,7 +18,10 @@ if TYPE_CHECKING:
     from nock.project import Project
     from nock.tools import Tool
 
-# Set on calls that stay out of telemetry: `nock check` running tools' examples.
+# Set on calls that stay out of telemetry: every nock command sets it for
+# whatever it starts, so a nock call made while another runs (a test suite under
+# `nock check`, an example the `nock-tools` check runs) is not recorded; the
+# agents nock dispatches have it removed, as their calls are an agent's own.
 UNRECORDED_VARIABLE = "NOCK_UNRECORDED"
 # How far back a repeated failure is looked for, in seconds.
 REPEAT_WINDOW = 6 * 3600

@@ -16,6 +16,7 @@ from nock.errors import PolicyError
 from nock.processes import Supervisor
 from nock.project import ROLE_VARIABLE, SESSION_VARIABLE
 from nock.sessions import Sessions, find_transcript
+from nock.telemetry import UNRECORDED_VARIABLE
 
 if TYPE_CHECKING:
     from nock.project import Project
@@ -197,7 +198,9 @@ class Dispatcher:
 
     def environment(self, session: str, role: str) -> dict[str, str]:
         environment = {
-            key: value for key, value in os.environ.items() if key not in PARENT_SESSION_VARIABLES
+            key: value
+            for key, value in os.environ.items()
+            if key not in (*PARENT_SESSION_VARIABLES, UNRECORDED_VARIABLE)
         }
         environment[ROLE_VARIABLE] = role
         environment[SESSION_VARIABLE] = session

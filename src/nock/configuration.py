@@ -92,8 +92,15 @@ DEFAULTS: dict[str, Any] = {
         # Where the usage reports go, once a week at most.
         "usage": "https://api.nock.dev/usage",
     },
-    # Dollars per million tokens, by model-name prefix: {input, output, cache_read, cache_write}.
-    "pricing": {},
+    "pricing": {
+        # Sessions are costed at API prices (API-equivalent: a subscription does
+        # not pay per token) from LiteLLM's public table, fetched with a plain GET
+        # at most daily and cached in .nock/local/; false never fetches it.
+        "fetch": True,
+        "table": "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json",
+        # Any other key is a model-name prefix whose prices override the table's:
+        # dollars per million tokens, {input, output, cache_read, cache_write}.
+    },
 }
 
 

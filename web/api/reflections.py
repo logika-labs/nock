@@ -42,8 +42,9 @@ CREATE INDEX IF NOT EXISTS usage_by_project ON usage (project);
 LONGEST = 20_000
 # The largest usage report read, in bytes; a real one is about two thousand.
 LARGEST_REPORT = 32_000
-# The usage report's shape this server reads (nock's `usage.SCHEMA`).
-REPORT_SCHEMA = 2
+# The usage report's shapes this server reads (nock's `usage.SCHEMA`): 3 adds
+# metrics that may be null — `api_cost` when no session in the window was priced.
+REPORT_SCHEMAS = (2, 3)
 NAME = re.compile(r"[a-z][a-z0-9_-]{0,39}")
 COMMAND = re.compile(r"[a-z][a-z0-9-]*( [a-z][a-z0-9-]*){0,3}")
 VERSION = re.compile(r"\d{1,4}(\.\d{1,4}){1,3}([a-z0-9.+-]{0,20})")
@@ -120,8 +121,10 @@ def report(sent: Any) -> dict[str, Any]:
             "rounds",
         ),
     )
-    if body["schema"] != REPORT_SCHEMA or isinstance(body["schema"], bool):
-        raise Refused(f"`schema` is {REPORT_SCHEMA}: this server reads no other")
+    if body["schema"] not in REPORT_SCHEMAS or isinstance(body["schema"], bool):
+        raise Refused(
+            f"`schema` is one of {', '.join(map(str, REPORT_SCHEMAS))}: this server reads no other"
+        )
     project = body["project"]
     try:
         canonical = isinstance(project, str) and str(uuid.UUID(project, version=4)) == project
@@ -136,6 +139,8 @@ def report(sent: Any) -> dict[str, Any]:
         if not isinstance(value, bool):
             raise Refused(f"`settings.{name}` is true or false")
     for name, value in names(body["metrics"], "metrics", NAME, 64).items():
+        if value is None and body["schema"] >= 3:
+            continue
         number(value, f"metrics.{name}")
     for name, counts in names(body["commands"], "commands", COMMAND, 120).items():
         for field, value in fields(counts, f"commands.{name}", COUNT).items():

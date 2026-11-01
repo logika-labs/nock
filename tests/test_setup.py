@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -58,6 +59,28 @@ def test_the_vendored_shim_runs_the_project_s_own_copy(project: Project) -> None
     )
     assert result.returncode == 0, result.stderr
     assert "— VENDORED nock's documentation" in result.stdout
+
+
+def test_nock_source_runs_nock_from_a_checkout_instead(project: Project, tmp_path: Path) -> None:
+    source = tmp_path / "checkout" / "src"
+    shutil.copytree(project.root / ".nock" / "core" / "nock", source / "nock")
+    marker = source / "nock" / "builtin.py"
+    marker.write_text(
+        marker.read_text().replace('"""nock\'s documentation', '"""CHECKOUT nock\'s documentation')
+    )
+    result = subprocess.run(
+        [str(project.root / ".nock" / "nock")],
+        cwd=project.root,
+        capture_output=True,
+        text=True,
+        env={**os.environ, "NOCK_SOURCE": str(source)},
+    )
+    assert result.returncode == 0, result.stderr
+    assert "— CHECKOUT nock's documentation" in result.stdout
+    vendored = subprocess.run(
+        [str(project.root / ".nock" / "nock")], cwd=project.root, capture_output=True, text=True
+    )
+    assert "CHECKOUT" not in vendored.stdout
 
 
 def test_upgrade_merges_upstream_into_a_locally_edited_core(

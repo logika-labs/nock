@@ -284,3 +284,35 @@ def test_a_declared_option_may_share_a_fixture_s_name(project: Project) -> None:
     )
     assert nock(project.root, "named", "--project", "q").stdout == "q in repository\n"
     assert nock(project.root, "named").stdout == "p in repository\n"
+
+
+NESTED = '''\
+import nock
+
+
+@nock.command
+def inner():
+    """Called from inside another call."""
+    return "inner"
+
+
+@nock.command
+def outer(sh):
+    """Runs nock, right and wrong, as a test suite would."""
+    sh(".nock/nock inner")
+    sh(".nock/nock inner --no-such-flag", check=False)
+    sh(".nock/nock no-such-command", check=False)
+    return "outer"
+'''
+
+
+def test_a_nock_call_made_while_another_runs_is_not_recorded(project: Project) -> None:
+    write_tool(project, "nested", NESTED)
+    path = project.root / ".nock" / "config.toml"
+    path.write_text(path.read_text() + '\n[checks.suite]\ncommand = ".nock/nock outer"\n')
+    assert nock(project.root, "outer").returncode == 0
+    assert nock(project.root, "check", "suite").returncode == 0
+    assert nock(project.root, "run", "--", ".nock/nock", "inner").returncode == 0
+    assert nock(project.root, "inner").returncode == 0
+    calls = [row["tool"] for row in project.store.rows("SELECT tool FROM calls ORDER BY id")]
+    assert calls == ["outer", "check", "run", "inner"]

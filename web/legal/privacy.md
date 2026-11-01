@@ -25,10 +25,12 @@ A report holds:
 
 - nock's version, Python's version and your platform (`darwin`, `linux`);
 - whether reminders and the consultant are on, and whether the project uses Logika;
-- counts over the week: sessions, requests, tool calls and failures, tokens, cost, commits, decisions by status, nock's own commands by how they ended, how many tools, checks and hooks the project has, and how many reflection rounds ran;
+- counts over the week: sessions (and, apart, headless `claude -p` runs), requests, tool calls and failures, tokens by kind, their API-equivalent cost and how many sessions could not be priced, commits, decisions by status, nock's own commands by how they ended, how many tools, checks and hooks the project has, and how many reflection rounds ran;
 - the project's anonymous id: a random UUID, made when the first report is sent and kept in `.nock/project.json`, derived from nothing about you or the project.
 
 It never holds code, file paths, file or tool names, prompts, command arguments, what your decisions say, or anything else written in your project. `nock usage` shows exactly what the next report would carry.
+
+To cost sessions, nock also downloads, at most once a day, LiteLLM's public price table from GitHub (`raw.githubusercontent.com`). That request sends nothing about you or the project; GitHub receives your IP address, as for any download. `pricing.fetch = false` turns it off.
 
 We use reports to learn how nock is used and to improve it, on the basis of our legitimate interest in improving nock (GDPR Art. 6(1)(f)). The reports identify no person. Set `share = false` (for the project in `.nock/config.toml`, or for one machine in `.nock/local/config.toml`) and nothing is ever sent.
 
