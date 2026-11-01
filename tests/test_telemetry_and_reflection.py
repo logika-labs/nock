@@ -24,10 +24,17 @@ from .conftest import git, nock, write_tool
 
 
 def transcript(
-    project: Project, session: str, prompts: list[str], commands: list[tuple[str, int, bool]]
+    project: Project,
+    session: str,
+    prompts: list[str],
+    commands: list[tuple[str, int, bool]],
+    *,
+    entrypoint: str = "cli",
+    model: str = "claude-test",
 ) -> Path:
     """A Claude Code transcript: the human's prompts, then Bash calls — each a
-    command, how many bytes it printed and whether it failed — a second apart."""
+    command, how many bytes it printed and whether it failed — a second apart,
+    from a session someone works in (`cli`) or a `claude -p` run (`sdk-cli`)."""
     directory = Path(os.environ["CLAUDE_CONFIG_DIR"]) / "projects" / encoded(project.root)
     directory.mkdir(parents=True, exist_ok=True)
     records: list[dict[str, object]] = []
@@ -44,6 +51,7 @@ def transcript(
                 "type": "user",
                 "timestamp": moment(),
                 "cwd": str(project.root),
+                "entrypoint": entrypoint,
                 "message": {"role": "user", "content": prompt},
             }
         )
@@ -55,7 +63,7 @@ def transcript(
                 "timestamp": moment(),
                 "message": {
                     "id": f"m{index}",
-                    "model": "claude-test",
+                    "model": model,
                     "usage": {
                         "input_tokens": 100,
                         "output_tokens": 20,

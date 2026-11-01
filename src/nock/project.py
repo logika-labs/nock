@@ -13,6 +13,7 @@ from pathlib import Path
 from nock.configuration import Configuration
 from nock.errors import PreconditionError
 from nock.git import Git, GitError
+from nock.sessions import HEADLESS, headless
 from nock.store import Store
 from nock.tools import Registry
 
@@ -20,6 +21,8 @@ NOCK_DIRECTORY = ".nock"
 # Set by nock on the sessions it dispatches; Claude Code sets the session's id.
 ROLE_VARIABLE = "NOCK_ROLE"
 SESSION_VARIABLE = "CLAUDE_CODE_SESSION_ID"
+# Claude Code's: `cli` for a session someone works in, `sdk-…` for `claude -p`.
+ENTRYPOINT_VARIABLE = "CLAUDE_CODE_ENTRYPOINT"
 
 
 class Project:
@@ -93,7 +96,11 @@ class Project:
         return os.environ.get(SESSION_VARIABLE) or None
 
     def current_role(self) -> str | None:
-        return os.environ.get(ROLE_VARIABLE) or None
+        """The role nock dispatched this session as, `headless` for a
+        `claude -p` run nock did not start, and None for a person's session."""
+        if os.environ.get(ROLE_VARIABLE):
+            return os.environ[ROLE_VARIABLE]
+        return HEADLESS if headless(os.environ.get(ENTRYPOINT_VARIABLE)) else None
 
     @contextmanager
     def lock(self, name: str) -> Iterator[None]:

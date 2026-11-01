@@ -31,7 +31,7 @@ if TYPE_CHECKING:
     from nock.project import Project
 
 # The shape of a report, so a reader can tell versions apart.
-SCHEMA = 2
+SCHEMA = 3
 # Days between reports, and between attempts after one failed.
 INTERVAL = 7
 RETRY = 1
@@ -161,7 +161,9 @@ class Usage:
         if since is None:
             moment = datetime.now(UTC) - timedelta(days=INTERVAL)
             since = moment.replace(microsecond=0).isoformat().replace("+00:00", "Z")
-        window = Window(since, Sessions(project).since(since))
+        sessions = Sessions(project)
+        sessions.catch_up()
+        window = Window(since, sessions.since(since))
         registry = project.registry
         commands = {
             row["tool"]: {"calls": row["calls"], "failures": row["failures"]}

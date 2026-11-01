@@ -16,6 +16,8 @@ from nock.project import Project
 from nock.setup import Installer
 
 FAKE_AGENT = Path(__file__).with_name("fake_agent.py")
+# A copy of a few entries of LiteLLM's price table, so no test reaches the network.
+PRICES = Path(__file__).with_name("prices.json")
 
 
 def git(directory: Path, *arguments: str) -> str:
@@ -59,6 +61,7 @@ def project(repository: Path, monkeypatch: pytest.MonkeyPatch) -> Project:
     (local / "config.toml").write_text(
         f'[agent]\ncommand = ["{sys.executable}", "{FAKE_AGENT}"]\n[run]\nheartbeat = 0\n'
         "[upgrade]\ncheck = false\n"
+        f'[pricing]\ntable = "{PRICES.as_uri()}"\n'
     )
     git(repository, "add", "-A")
     git(repository, "commit", "-q", "-m", "Add nock")

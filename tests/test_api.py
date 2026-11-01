@@ -93,7 +93,7 @@ def test_the_report_nock_builds_is_kept(project: Project, api: Api) -> None:
     status, answer = api.post("/usage", built)
     assert (status, answer) == (201, {"id": 1})
     (row,) = api.rows("usage")
-    assert row["project"] == built["project"] and row["schema"] == 2
+    assert row["project"] == built["project"] and row["schema"] == 3
     assert json.loads(row["report"]) == built
 
 
@@ -111,7 +111,8 @@ def test_the_report_nock_builds_is_kept(project: Project, api: Api) -> None:
         ({"toolbox": {**REPORT["toolbox"], "tools": -1}}, "toolbox.tools"),
         ({"project": "/Users/someone/acme"}, "`project` is a random UUID"),
         ({"project": "6F1C2B9E-3D4A-4E5F-8A7B-1C2D3E4F5A6B"}, "`project` is a random UUID"),
-        ({"schema": 1}, "`schema` is 2"),
+        ({"schema": 1}, "`schema` is one of 2, 3"),
+        ({"schema": 2, "metrics": {"api_cost": None}}, "metrics.api_cost"),
         ({"platform": "a laptop at acme"}, "platform"),
     ],
 )

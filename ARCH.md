@@ -47,7 +47,8 @@ src/nock/
   # telemetry
   store.py           the SQLite schema and a thin Store over it
   telemetry.py       Calls (start, finish, the repeated-failure note) and Cache
-  sessions.py        Claude Code transcripts → sessions, prompts and events
+  sessions.py        Claude Code transcripts → sessions, prompts and events, read on as they grow
+  prices.py          Prices: LiteLLM's public table, cached daily, and `[pricing]`, for API-equivalent cost
 
   # the loop
   reflect.py         Round (a kind of round: start, finish, its checks, a round left open),
@@ -249,13 +250,13 @@ evidence, or it returns the `Output` when `check=False`.
 
 ## Telemetry
 
-`store.Store` is one SQLite file, `.nock/local/nock.db`, with eight tables:
+`store.Store` is one SQLite file, `.nock/local/nock.db`, with nine tables:
 
 | table | written by | when |
 |---|---|---|
 | `calls` | `telemetry.Calls` | every call, including refusals |
 | `runs` | `processes.Supervisor` | every supervised process |
-| `sessions`, `prompts`, `events` | `sessions.Sessions.ingest` | at SessionEnd, at a round's start (`catch_up`), and after a dispatched session |
+| `sessions`, `prompts`, `events`, `transcripts` | `sessions.Sessions.ingest` | at SessionEnd, after a dispatched session, and whenever telemetry is read (`catch_up`: a window, `usage`, `query`, `sessions`) |
 | `heard` | `decisions.Decisions.news_for` | when a session is told the owner's review of a decision it recorded |
 | `shown` | `decisions.Decisions.reminders_for` | when a session is shown the decisions governing a file it edited |
 | `nudged` | `hooks.HookRunner.standing` | when a session start says the day's standing, a round's unshared summary, or a logika round's offer |
@@ -265,9 +266,31 @@ sets in its Bash tool and nock records on each call.
 
 `sessions.Transcript` reads Claude Code's JSONL transcripts as best it can.
 The format is internal, so a record that fits no known shape is skipped,
-never a crash. Ingest replaces the session's rows, so it can be run again.
-Sessions that nock dispatched carry `NOCK_ROLE`, are recorded with that role,
-and are left out of the material, so reflection does not study itself.
+never a crash. Ingest is incremental: the `transcripts` row keeps the byte
+offset read to (the end of the last whole line) and, as JSON, what reading on
+needs — the totals, tokens by model, the message ids already counted, the tool
+calls still waiting for their results (with their `events` rowids, which a
+later read fills in). One transaction, under the `transcripts` lock, writes
+the new rows and the state, so a growing transcript read many times counts
+each thing once; a file that shrank or moved is read again from the start,
+replacing the session's rows. `catch_up` stats each transcript and reads only
+those whose size moved.
+
+The role is the one nock dispatched it as (`NOCK_ROLE`, noted in
+`.nock/local/dispatched/`), else `headless` when the transcript's
+`entrypoint` starts with `sdk` (`claude -p`, the Agent SDK), else
+`interactive`. Only interactive sessions are the window (`Sessions.since`),
+so reflection studies neither itself nor scripted runs. `Project.current_role`
+reads `CLAUDE_CODE_ENTRYPOINT` the same way, so a headless session start hears
+no standing and its end sends no report.
+
+`prices.Prices` costs a session's tokens by model and kind at LiteLLM's public
+table (`pricing.table`), fetched at most daily with a three-second timeout and
+cached, reduced, in `.nock/local/prices.json` (a failed fetch is tried again
+after an hour); `[pricing]` prefixes override it. A `cost-state` record's
+total wins. An unpriced session's cost is NULL; `catch_up` prices those again
+once prices can be had, and a window's `spend` sums the priced and counts the
+rest.
 
 `nock query` opens the database read-only (`mode=ro`).
 

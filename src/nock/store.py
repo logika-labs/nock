@@ -1,6 +1,6 @@
 """The telemetry store: one SQLite database in `.nock/local/`, never committed —
 every call to a nock command, every supervised process, and what each Claude
-Code session did, read from its transcript (and which decisions and reviews it
+Code session did (and how far its transcript has been read), read from its transcript (and which decisions and reviews it
 was shown). Reflection reads it; so can any
 agent, with `nock query`."""
 
@@ -49,7 +49,7 @@ CREATE TABLE IF NOT EXISTS runs (
 );
 CREATE TABLE IF NOT EXISTS sessions (
     id TEXT PRIMARY KEY,
-    role TEXT,                   -- `interactive`, or the role nock dispatched it as
+    role TEXT,                   -- `interactive`, `headless` (`claude -p`, the SDK), or the role nock dispatched it as
     title TEXT,
     started TEXT,
     ended TEXT,
@@ -61,7 +61,7 @@ CREATE TABLE IF NOT EXISTS sessions (
     output_tokens INTEGER,
     cache_read_tokens INTEGER,
     cache_write_tokens INTEGER,
-    cost REAL,
+    cost REAL,                   -- dollars at API prices (API-equivalent); NULL when unpriced
     transcript TEXT,
     ingested TEXT
 );
@@ -81,6 +81,12 @@ CREATE TABLE IF NOT EXISTS events (
     duration REAL                -- seconds between the call and its result
 );
 CREATE INDEX IF NOT EXISTS events_session ON events (session);
+CREATE TABLE IF NOT EXISTS transcripts (
+    session TEXT PRIMARY KEY,
+    path TEXT NOT NULL,
+    offset INTEGER NOT NULL,     -- bytes read so far, to the end of a whole line
+    state TEXT NOT NULL          -- JSON: the totals and open tool calls reading on needs
+);
 CREATE TABLE IF NOT EXISTS heard (
     session TEXT NOT NULL,       -- a session told of the owner's review of a decision it recorded
     decision INTEGER NOT NULL,

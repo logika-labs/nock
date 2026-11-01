@@ -114,7 +114,10 @@ To upgrade, `.nock/nock upgrade`. It merges the latest release from PyPI into
 the vendored core, keeping any local edits to it (a three-way merge against
 the release you have), and re-wires the project: primer, hooks and skills.
 Once a day at most, a session you start asks PyPI whether a newer nock is out
-and says so; `upgrade.check = false` turns that off.
+and says so; `upgrade.check = false` turns that off. Once a day at most, too,
+nock fetches LiteLLM's public price table from GitHub (`pricing.table`), a
+plain GET that sends nothing about the project, to cost sessions at API
+prices; `pricing.fetch = false` turns that off.
 
 To make your test suite and linters the gate that tools and reflection rounds
 must pass, add them as checks:
@@ -377,22 +380,43 @@ committed:
 |---|---|
 | `calls` | every nock call, including refused ones: the command, its arguments, session, duration, exit code, bytes printed and in full, whether it was cached, and the error |
 | `runs` | every supervised process; the logs are in `.nock/local/logs/` |
-| `sessions` | each Claude Code session's title, tokens, cost, prompts, interrupts and compactions |
+| `sessions` | each Claude Code session's role, title, tokens by kind, API-equivalent cost, prompts, interrupts and compactions |
 | `prompts` | what the human typed |
 | `events` | every tool call of every session: the command, path or pattern, whether it failed, the bytes returned, and the duration |
 | `heard` | which sessions were told the owner's reviews of the decisions they recorded |
 | `shown` | which sessions were shown the decisions behind a file they edited |
 | `nudged` | what a session start said and when: the day's standing, a round's unshared summary, a logika round's offer |
+| `transcripts` | how far each session's transcript has been read, and what reading on needs |
 
-Sessions are read from Claude Code's transcripts when they end, and any
-that were missed are read when a reflection round starts.
+Sessions are read from Claude Code's transcripts when they end and whenever
+telemetry is read (`nock usage` and its report, `stats`, `status`, `query`,
+`sessions`, a session start's standing, a round): each transcript is read on
+from where the last read stopped, so a session that runs for days is counted
+as it goes and nothing is counted twice; a transcript that has not grown costs
+one `stat`.
 
-**Calls made while another nock call runs are not recorded.** Every nock
-command sets `NOCK_UNRECORDED=1` for what it starts, so a test suite run by
-`nock check`, `nock run` or a project's test tool never records the nock
-calls its tests make. A call an agent makes directly is recorded, and so
-are those of the agents nock dispatches. Set `NOCK_UNRECORDED=1` yourself
-for anything else that should stay out.
+- **Roles.** A session someone works in is `interactive`. A `claude -p` run or
+  an Agent SDK session that nock did not dispatch (its transcript says
+  `"entrypoint": "sdk-…"`) is `headless`: graders, planners, CI. Headless
+  sessions are kept out of the numbers (sessions, requests, interrupts, tool
+  calls) and out of what a reflection round reads; the usage report counts
+  them apart, as `headless_sessions`. Sessions nock dispatched carry their
+  role (`consultant`, …).
+- **Windows.** A window's requests and tool calls are those made inside it,
+  even in a session that began before it; tokens are the sessions'.
+- **Cost** is API-equivalent: what the tokens would cost at the API's list
+  prices, by model and kind (input, output, cache read, cache write) — a
+  subscription does not pay per token. The prices are LiteLLM's public table,
+  fetched at most daily and cached in `.nock/local/prices.json`; `[pricing]`
+  overrides them by model-name prefix. A model in neither, or no table at all
+  (offline, `pricing.fetch = false`), leaves the session unpriced: its cost is
+  unknown, never 0, and totals say how many sessions they leave out.
+- **Calls made while another nock call runs are not recorded.** Every nock
+  command sets `NOCK_UNRECORDED=1` for what it starts, so a test suite run by
+  `nock check`, `nock run` or a project's test tool never records the nock
+  calls its tests make. A call an agent makes directly is recorded, and so
+  are those of the agents nock dispatches. Set `NOCK_UNRECORDED=1` yourself
+  for anything else that should stay out.
 
 To look:
 
@@ -689,8 +713,9 @@ on or off:
   and categories only. Each report carries nock's version, Python's (`3.12`)
   and the platform (`darwin`, `linux`); whether reminders and the consultant
   are on and whether it is a Logika project; the window's numbers that a
-  reflection round also keeps (how many days, sessions, requests,
-  interrupts, compactions, tool calls and failed ones, tokens, cost,
+  reflection round also keeps (how many days, sessions and headless ones,
+  requests, interrupts, compactions, tool calls and failed ones, tokens in
+  all and by kind, the API-equivalent cost and how many sessions are unpriced,
   commits, nock calls by how they ended, consultations, decisions by status
   and review, how many of the project's tools were used and how often, the
   map's length and citations); calls and failures per nock command (`check`,
@@ -892,7 +917,8 @@ one machine.
 | `share` | true | whether nock sends its makers the anonymous usage report (false sends nothing, summaries included; see [What nock shares](#what-nock-shares)) |
 | `endpoints.reflections`, `endpoints.usage` | `https://api.nock.dev/reflections`, `https://api.nock.dev/usage` | where `nock share` sends a summary, and where the usage reports go |
 | `environment.python`, `setup`, `path`, `dotenv` | —, —, `[]`, — | what tools run in: the project's interpreter and how to make it, PATH entries, a dotenv file |
-| `pricing` | — | per-model prices, to cost sessions |
+| `pricing.fetch`, `pricing.table` | true, LiteLLM's `model_prices_and_context_window.json` on GitHub | whether nock fetches the public price table (at most daily) to cost sessions at API prices, and from where |
+| `pricing."PREFIX"` | — | dollars per million tokens, `{input, output, cache_read, cache_write}`, for models whose name starts with PREFIX; overrides the table |
 
 ## Developing nock
 

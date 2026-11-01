@@ -190,13 +190,17 @@ def stats(
 @command
 def query(project: Project, sql: str) -> list[dict[str, Any]]:
     """Read the telemetry with SQL (read-only). Tables: calls, runs, sessions,
-    prompts, events — a round's material explains them."""
+    prompts, events — a round's material explains them. The transcripts are
+    read up to now first."""
+    Sessions(project).catch_up()
     return project.store.query(sql)
 
 
 @command
 def sessions(project: Project, *, limit: int = 15) -> list[dict[str, Any]]:
-    """Recent Claude Code sessions in this project: what each was, what it cost."""
+    """Recent Claude Code sessions in this project: what each was, its role
+    (interactive, headless or the one nock dispatched it as), its tokens and
+    what they would cost at API prices (unknown when its model is unpriced)."""
     Sessions(project).catch_up()
     rows = project.store.rows("SELECT * FROM sessions ORDER BY started DESC LIMIT ?", (limit,))
     return [
@@ -215,7 +219,7 @@ def sessions(project: Project, *, limit: int = 15) -> list[dict[str, Any]]:
                     "cache_write_tokens",
                 )
             ),
-            "cost": round(row["cost"], 2) if row["cost"] else None,
+            "api_cost": round(row["cost"], 2) if row["cost"] is not None else "unknown",
         }
         for row in rows
     ]

@@ -32,7 +32,7 @@ from nock.decisions import Decisions, live
 from nock.errors import Failed, PreconditionError
 from nock.git import Git, GitError
 from nock.schema import validate
-from nock.sessions import Sessions
+from nock.sessions import HEADLESS, Sessions
 from nock.utils import format_duration, now, parse_moment, read_json, write_json
 
 if TYPE_CHECKING:
@@ -138,6 +138,50 @@ def seconds(value: float | None) -> str:
 class Window:
     since: str | None
     sessions: list[dict[str, Any]]
+
+    def rows(self, project: Project, table: str, order: str) -> list[dict[str, Any]]:
+        """The window's sessions' prompts or events from inside the window: a
+        session that ran for days brings only what it did since `since`."""
+        identities = [row["id"] for row in self.sessions]
+        marks = ",".join("?" for _ in identities) or "''"
+        rows = project.store.rows(
+            f"SELECT * FROM {table} WHERE session IN ({marks}) ORDER BY {order}",
+            tuple(identities),
+        )
+        start = parse_moment(self.since)
+        if start is None:
+            return rows
+        return [row for row in rows if (parse_moment(row["moment"]) or start) >= start]
+
+    def spend(self) -> tuple[float | None, int]:
+        """The sessions' API-equivalent cost over those priced, and how many
+        are unpriced; the cost is None when none is priced but some ran."""
+        priced = [row["cost"] for row in self.sessions if row["cost"] is not None]
+        unpriced = len(self.sessions) - len(priced)
+        if unpriced and not priced:
+            return None, unpriced
+        return round(sum(priced), 4), unpriced
+
+    def tokens(self, kind: str | None = None) -> int:
+        kinds = [kind] if kind else list(TOKEN_COLUMNS)
+        return sum(row[TOKEN_COLUMNS[name]] or 0 for row in self.sessions for name in kinds)
+
+
+# The sessions table's column of each token kind.
+TOKEN_COLUMNS = {
+    "input": "input_tokens",
+    "output": "output_tokens",
+    "cache_read": "cache_read_tokens",
+    "cache_write": "cache_write_tokens",
+}
+
+
+def said_spend(cost: float | None, unpriced: int) -> str:
+    """The cost as a reader should take it: API-equivalent, with what it leaves out."""
+    if cost is None:
+        return "cost unknown (no session priced)"
+    left_out = f", {unpriced} session(s) unpriced" if unpriced else ""
+    return f"${cost:.2f} at API prices{left_out}"
 
 
 class Rounds:
@@ -404,9 +448,12 @@ class Reflection(Round):
     # --- when -----------------------------------------------------------------
 
     def window(self) -> Window:
+        """The sessions since the last round, the transcripts read up to now first."""
         last = self.rounds.last()
         since = last.get("finished") if last else None
-        return Window(since, Sessions(self.project).since(since))
+        sessions = Sessions(self.project)
+        sessions.catch_up()
+        return Window(since, sessions.since(since))
 
     def due(self) -> str:
         """Why a round is due, or nothing when it is not: enough sessions or
@@ -433,7 +480,6 @@ class Reflection(Round):
 
     def begin(self, name: str, scratch: Path) -> dict[str, Any]:
         """What its three parts read: the toolbox's, the map's and nock's."""
-        Sessions(self.project).catch_up()
         window = self.window()
         last = self.rounds.last()
         metrics = self.metrics(window)
@@ -481,11 +527,9 @@ class Reflection(Round):
         nock's use, the decisions and how the owner met them, the toolbox and
         the map. The first round's are the baseline."""
         since = window.since or ""
-        identities = [row["id"] for row in window.sessions]
-        marks = ",".join("?" for _ in identities) or "''"
-        events = self.project.store.rows(
-            f"SELECT failed FROM events WHERE session IN ({marks})", tuple(identities)
-        )
+        events = window.rows(self.project, "events", "rowid")
+        prompts = window.rows(self.project, "prompts", "rowid")
+        cost, unpriced = window.spend()
         calls = self.project.store.rows("SELECT exit_code FROM calls WHERE started > ?", (since,))
         codes = Counter(row["exit_code"] for row in calls)
         decisions = Decisions(self.project)
@@ -507,19 +551,16 @@ class Reflection(Round):
         return {
             "days": round(self.days(window), 1),
             "sessions": len(window.sessions),
-            "requests": sum(row["prompts"] or 0 for row in window.sessions),
+            "headless_sessions": len(Sessions(self.project).since(window.since, HEADLESS)),
+            "requests": len(prompts),
             "interrupts": sum(row["interrupts"] or 0 for row in window.sessions),
             "compactions": sum(row["compactions"] or 0 for row in window.sessions),
             "tool_calls": len(events),
             "failed_tool_calls": sum(row["failed"] or 0 for row in events),
-            "tokens": sum(
-                (row["input_tokens"] or 0)
-                + (row["output_tokens"] or 0)
-                + (row["cache_read_tokens"] or 0)
-                + (row["cache_write_tokens"] or 0)
-                for row in window.sessions
-            ),
-            "cost": round(sum(row["cost"] or 0 for row in window.sessions), 2),
+            "tokens": window.tokens(),
+            **{f"{kind}_tokens": window.tokens(kind) for kind in TOKEN_COLUMNS},
+            "api_cost": cost,
+            "unpriced_sessions": unpriced,
             "commits": commits,
             "nock_calls": len(calls),
             "nock_said_no": codes.get(1, 0),
@@ -617,15 +658,8 @@ class Material:
         self.window = window
         self.last = last
         self.since = window.since or ""
-        identities = [row["id"] for row in window.sessions]
-        marks = ",".join("?" for _ in identities) or "''"
-        self.events = project.store.rows(
-            f"SELECT * FROM events WHERE session IN ({marks}) ORDER BY session, moment",
-            tuple(identities),
-        )
-        self.prompts = project.store.rows(
-            f"SELECT * FROM prompts WHERE session IN ({marks}) ORDER BY moment", tuple(identities)
-        )
+        self.events = window.rows(project, "events", "session, moment")
+        self.prompts = window.rows(project, "prompts", "moment")
         self.calls = project.store.rows(
             "SELECT * FROM calls WHERE started > ? ORDER BY id", (self.since,)
         )
@@ -647,14 +681,7 @@ class Material:
 
     def overview(self) -> str:
         sessions = self.window.sessions
-        tokens = sum(
-            (row["input_tokens"] or 0)
-            + (row["output_tokens"] or 0)
-            + (row["cache_read_tokens"] or 0)
-            + (row["cache_write_tokens"] or 0)
-            for row in sessions
-        )
-        cost = sum(row["cost"] or 0 for row in sessions)
+        tokens = self.window.tokens()
         since = (
             f"since the last round ({self.since})"
             if self.window.since
@@ -663,7 +690,7 @@ class Material:
         return (
             f"# Overview\n\n{len(sessions)} sessions {since}: {len(self.prompts)} requests from the human, "
             f"{len(self.events)} tool calls, {len(self.calls)} calls to nock, "
-            f"{tokens / 1e6:.1f}M tokens" + (f", ${cost:.2f}" if cost else "") + "."
+            f"{tokens / 1e6:.1f}M tokens, {said_spend(*self.window.spend())}."
         )
 
     def requests(self) -> str:
@@ -938,7 +965,7 @@ class Material:
         lines = [
             "# Sessions",
             "",
-            "started,id,title,prompts,tool_calls,failed,interrupts,compactions,tokens,cost",
+            "started,id,title,prompts,tool_calls,failed,interrupts,compactions,tokens,api_cost",
         ]
         for row in sessions[-SECTION_ROWS * 2 :]:
             tokens = sum(
@@ -962,7 +989,7 @@ class Material:
                         str(row["interrupts"] or 0),
                         str(row["compactions"] or 0),
                         f"{tokens / 1000:.0f}k",
-                        f"${row['cost']:.2f}" if row["cost"] else "-",
+                        f"${row['cost']:.2f}" if row["cost"] is not None else "unknown",
                     ]
                 )
             )
@@ -1073,7 +1100,11 @@ class Evidence:
 METRICS_HELP = """\
 What they count: sessions the human started in the window (`days` long) and
 what they asked (`requests`), interrupted and compacted; every tool call
-they made and how many failed; tokens and dollars; commits. `nock_*`: calls
+they made and how many failed, counted from the window's start even in a
+session that began before it; `headless_sessions`, the `claude -p` runs nock
+did not dispatch, kept out of everything else; tokens, in all and by kind, of
+the sessions; `api_cost`, what they would cost at API prices (a subscription
+does not pay per token), over the priced ones, and `unpriced_sessions`; commits. `nock_*`: calls
 to nock, and how many said no (exit 1), were called wrong (40s) or broke
 (50s); `consultations` answered. `decisions_*`: recorded in the window (and how many as todos and
 questions),
