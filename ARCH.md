@@ -205,8 +205,12 @@ nock's built-ins.
 Stdout carries only the result. Notes and errors go to stderr, after stdout
 is flushed, so a caller that pipes the output gets clean data.
 
-`NOCK_UNRECORDED=1` turns step 8 off. The `nock-tools` check uses it when it
-runs examples.
+`NOCK_UNRECORDED=1` turns step 8 off. Every call sets it in its own
+environment once its row is started, so whatever it spawns — a check's suite,
+`run`'s command, a test that runs `.nock/nock`, the `nock-tools` check's
+examples — calls nock unrecorded; a refusal (`record_refusal`) honours it too.
+`Dispatcher.environment` removes it, so the agents nock dispatches are
+recorded as agents.
 
 ## Supervised processes
 

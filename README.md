@@ -385,7 +385,16 @@ committed:
 | `nudged` | what a session start said and when: the day's standing, a round's unshared summary, a logika round's offer |
 
 Sessions are read from Claude Code's transcripts when they end, and any
-that were missed are read when a reflection round starts. To look:
+that were missed are read when a reflection round starts.
+
+**Calls made while another nock call runs are not recorded.** Every nock
+command sets `NOCK_UNRECORDED=1` for what it starts, so a test suite run by
+`nock check`, `nock run` or a project's test tool never records the nock
+calls its tests make. A call an agent makes directly is recorded, and so
+are those of the agents nock dispatches. Set `NOCK_UNRECORDED=1` yourself
+for anything else that should stay out.
+
+To look:
 
 - `nock calls`, `nock stats` and `nock sessions` summarize the data;
 - `nock query "SELECT …"` runs read-only SQL.

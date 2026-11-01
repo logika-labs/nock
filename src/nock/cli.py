@@ -144,7 +144,7 @@ class Invocation:
 
     def record_refusal(self, attempted: str, error: Error) -> None:
         sys.stderr.write(f"nock: {error}\n")
-        if self.project is None:
+        if self.project is None or os.environ.get(UNRECORDED_VARIABLE):
             return
         calls = Calls(self.project)
         call = calls.start(attempted, self.arguments, None)
@@ -166,6 +166,9 @@ class Invocation:
         options = vars(namespace)
         calls = Calls(project) if project and not os.environ.get(UNRECORDED_VARIABLE) else None
         call = calls.start(command.path, words, tool.source) if calls else None
+        # What this call starts — a check's suite, `run`'s command, a test that
+        # runs nock — is not an agent calling nock, so its nock calls go unrecorded.
+        os.environ[UNRECORDED_VARIABLE] = "1"
         cache = Cache(project) if project and tool.cache else None
         key = (
             cache.key(tool, [word for word in words if word not in ("--full", "--fresh")])
