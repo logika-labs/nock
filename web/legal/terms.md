@@ -10,7 +10,7 @@ nock itself is open-source software under the [MIT License](https://github.com/l
 
 ## 2. What you send us
 
-nock sends a weekly anonymous usage report unless you turn it off, and a reflection summary only when you confirm one ([privacy policy](/privacy/)). By sending a summary you confirm that you may share it, and you allow us to use it, without payment, to understand and improve nock. We never publish it. Do not send us anything confidential, personal or that you may not share; you see the whole text before it goes.
+nock sends a weekly usage report only if you turned sharing on when it asked, and a reflection summary only when you confirm one ([privacy policy](/privacy/)). By sending a summary you confirm that you may share it, and you allow us to use it, without payment, to understand and improve nock. We never publish it. Do not send us anything confidential, personal or that you may not share; you see the whole text before it goes.
 
 ## 3. Fair use
 
