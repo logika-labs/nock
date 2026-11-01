@@ -1,12 +1,15 @@
-"""`nock eval`: a toy scenario — a word list built, a bug planted in it (a
-fork on `bug`), a detector run per arm and repetition — run for real, in
-step processes, against snapshots on disk."""
+"""`nock eval`: a toy Snakemake scenario — a word list built, a bug planted in
+it (a fork on `bug`), a detector per arm and repetition (a checkpoint), a fix
+only where the toolbox detected the bug (`when`), and a score joining both
+arms — run for real through uv's Snakemake, read with uv's DuckDB, cached in
+the scenario's cache/ and restored from it in a fresh clone."""
 
 from __future__ import annotations
 
 import json
 import shutil
 import threading
+import urllib.error
 import urllib.request
 from collections.abc import Iterator
 from pathlib import Path
@@ -20,306 +23,293 @@ from nock.studio import Studio
 from .conftest import git, nock
 
 TOY = Path(__file__).with_name("toy")
-EVERYTHING = {"bug": "*", "arm": "*", "rep": "*"}
+OUTPUTS = 1 + 2 + 12 + 3 + 6
+"""build, plant per bug, detect per arm, bug and rep, fix where found, score per bug and rep."""
 
 
 @pytest.fixture
 def toy(project: Project) -> Path:
-    """The toy scenario, committed in the project's evals/."""
+    """The toy scenario, scaffolded by `eval init` and filled with the toy's files, committed."""
+    assert nock(project.root, "eval", "init", "toy").returncode == 0
     directory = project.root / "evals" / "toy"
-    shutil.copytree(TOY, directory)
+    (directory / "steps/example.py").unlink()
+    shutil.copytree(TOY, directory, dirs_exist_ok=True)
     git(project.root, "add", "-A")
     git(project.root, "commit", "-qm", "The toy scenario")
     return directory
 
 
-def call(project: Project, *arguments: str) -> Any:
-    result = nock(project.root, "eval", *arguments, "--json")
-    assert result.returncode == 0, result.stderr
+def call(directory: Path, *arguments: str) -> Any:
+    result = nock(directory, "eval", *arguments, "--json")
+    assert result.returncode == 0, result.stderr + result.stdout
     return json.loads(result.stdout)
 
 
-def run(project: Project, assignment: dict[str, Any], *options: str) -> dict[str, Any]:
-    summary = call(project, "run", json.dumps(assignment), *options)
-    return json.loads((project.root / "evals/toy/runs" / summary["run"] / "run.json").read_text())
+def query(directory: Path, sql: str) -> list[dict[str, Any]]:
+    return call(directory, "query", sql)
 
 
-def snapshot(toy: Path, record: dict[str, Any], step: str, **values: Any) -> dict[str, Any]:
-    """The snapshot a run reached at `step` with these values."""
-    node = next(
-        node
-        for node in record["nodes"]
-        if node["step"] == step
-        and all(node["parameters"].get(key) == value for key, value in values.items())
-    )
-    return {
-        "hash": node["snapshot"],
-        "directory": toy / "snapshots" / node["snapshot"],
-        **json.loads((toy / "snapshots" / node["snapshot"] / "snapshot.json").read_text()),
-    }
+def metrics(toy: Path, path: str) -> dict[str, Any]:
+    return json.loads((toy / path / "metrics.json").read_text())
 
 
-def test_a_run_computes_each_snapshot_once_and_a_second_run_reuses_them(
+def test_a_run_forks_joins_skips_and_reads_a_checkpoint_and_a_second_computes_nothing(
     project: Project, toy: Path
 ) -> None:
-    first = run(project, EVERYTHING, "--parallel", "3")
-    assert len(first["snapshots"]["computed"]) == 15 and "reused" not in first["snapshots"]
-    assert first["cost_usd"] == pytest.approx(1.2) and first["finished"]
-    assert first["commit"]["sha"] == git(project.root, "rev-parse", "HEAD")
-    planted = snapshot(toy, first, "plant", bug="drop-banana")
-    # The snapshot before the fork holds the whole state every branch resumes from.
-    assert (planted["directory"] / "artefacts/words.txt").read_text() == "apple\ncherry\n"
-    assert planted["parameters"] == {"corpus": "fruit", "bug": "drop-banana"}
-    assert [entry["step"] for entry in planted["digests"]["steps"]] == ["build", "plant"]
-    leaf = snapshot(toy, first, "detect", bug="drop-banana", arm="toolbox", rep=2)
-    assert leaf["results"] == {"detected": True, "alarms": 1} and leaf["status"] == "computed"
-    assert {entry["path"] for entry in leaf["artefacts"]} == {"report.md", "words.txt"}
-    assert (leaf["directory"] / "artefacts/report.md").read_text() == "missing: 1\n"
+    first = call(project.root, "run")
+    assert (first["computed"], first["from_cache"]) == (OUTPUTS, 0), first
+    assert first["cost_usd"] == pytest.approx(1.2) and "failed" not in first
+    # The fork: both plants from the one build, its state (a git repository) carried in state.tar.
+    assert metrics(toy, "results/plant/bug=drop-banana") == {"dropped": 1, "words": 3}
+    assert metrics(toy, "results/plant/bug=none") == {"dropped": 0, "words": 3}
+    # The checkpoint and `when`: a fix only where the toolbox found the bug.
+    assert sorted(path.name for path in (toy / "results/fix/bug=drop-banana").iterdir()) == [
+        "rep=1",
+        "rep=2",
+        "rep=3",
+    ]
+    assert not (toy / "results/fix/bug=none").exists()
+    assert "+banana" in (toy / "results/fix/bug=drop-banana/rep=2/diff.patch").read_text()
+    # The join: a score reads both arms.
+    assert metrics(toy, "results/score/bug=drop-banana/rep=2") == {"gain": 1, "fixed": True}
+    assert metrics(toy, "results/score/bug=none/rep=1") == {"gain": 0, "fixed": False}
+    cost = json.loads((toy / "results/detect/arm=toolbox/bug=none/rep=1/cost.json").read_text())
+    assert cost["usd"] == 0.1 and cost["seconds"] >= 0
 
-    second = run(project, EVERYTHING)
-    assert len(second["snapshots"]["reused"]) == 15 and "computed" not in second["snapshots"]
-    assert second["cost_usd"] == 0
-
-    narrower = run(project, {"bug": "none", "arm": ["toolbox"], "rep": [1, 2]})
-    assert len(narrower["snapshots"]["reused"]) == 4
+    second = call(project.root, "run")
+    assert (second["computed"], second["cost_usd"]) == (0, 0)
+    assert call(project.root, "run", "--dry")["to_compute"] == 0
 
 
-def test_an_assignment_names_every_open_parameter_and_only_real_values(
+def test_a_fresh_clone_restores_every_output_from_the_committed_cache(
+    project: Project, toy: Path, tmp_path: Path
+) -> None:
+    call(project.root, "run")
+    status = git(project.root, "status", "--porcelain", "--untracked-files=all")
+    assert "evals/toy/cache/" in status and "results" not in status, status
+    git(project.root, "add", "-A")
+    git(project.root, "commit", "-qm", "The toy's cache")
+
+    clone = tmp_path / "clone"
+    git(tmp_path, "clone", "-q", str(project.root), str(clone))
+    shutil.copytree(project.root / ".nock/local", clone / ".nock/local")
+    dry = call(clone, "run", "--dry")
+    restored = [job for job in dry["jobs"] if job["does"] == "from cache"]
+    assert len(restored) >= 1 + 2 + 12, dry
+    rerun = call(clone, "run")
+    assert (rerun["computed"], rerun["from_cache"], rerun["cost_usd"]) == (0, OUTPUTS, 0)
+    assert metrics(clone / "evals/toy", "results/score/bug=drop-banana/rep=2")["gain"] == 1
+
+    # Every checked-out file is newer than the clone's results; only content counts.
+    plant = clone / "evals/toy/steps/plant.py"
+    plant.write_text(plant.read_text() + "\n# tuned\n")
+    jobs = call(clone, "run", "--dry")["jobs"]
+    plants = [job for job in jobs if job["job"].startswith("plant ")]
+    assert plants and all(job["does"].startswith("compute") for job in plants)
+    assert "Code has changed" in plants[0]["why"]
+    assert not any(job["job"].startswith("build ") for job in jobs)
+
+
+def test_a_dry_run_says_what_reruns_and_why_and_show_marks_the_stale(
     project: Project, toy: Path
 ) -> None:
-    for assignment, said in [
-        ({"bug": "*", "arm": "*"}, "leaves `rep` open"),
-        ({**EVERYTHING, "bugs": "none"}, "no parameter bugs"),
-        ({**EVERYTHING, "arm": "magic"}, "`arm` has no value magic"),
-        ({**EVERYTHING, "scenario": "other"}, "no scenario `other`"),
-    ]:
-        result = nock(project.root, "eval", "run", json.dumps(assignment))
-        assert result.returncode in (40, 44) and said in result.stderr
-
-
-def test_dry_prints_the_tree_with_what_is_reused_and_the_estimate_and_writes_nothing(
-    project: Project, toy: Path
-) -> None:
-    run(project, {"bug": "none", "arm": "*", "rep": "*"})
-    dry = nock(project.root, "eval", "run", json.dumps(EVERYTHING), "--dry")
-    assert dry.returncode == 0, dry.stderr
-    lines = dry.stdout.splitlines()
-    assert lines[0].startswith("build corpus=fruit  [") and lines[0].endswith("reused")
-    assert "  plant bug=drop-banana  [" in lines[1] and "] compute ~" in lines[1]
-    assert "    detect arm=control rep=1  [" in lines[2] and "compute ~" in lines[2]
-    assert "to_compute: 7" in dry.stdout and "reused: 8" in dry.stdout
-    assert "estimated_cost_usd: 0.6" in dry.stdout
-    assert len(list((toy / "runs").iterdir())) == 1
-
-
-def test_a_file_edit_stales_the_snapshots_that_read_it_and_a_run_computes_beside_them(
-    project: Project, toy: Path
-) -> None:
-    first = run(project, EVERYTHING)
+    call(project.root, "run")
     (toy / "parameters/bug/drop-banana.json").write_text('{"drop": "cherry"}\n')
-    shown = call(project, "show", "toy")
-    assert shown["snapshots"] == {"current": 8, "stale": 7, "failed": 0}
-    assert {item["why"] for item in shown["stale"]} == {"changed since: bug=drop-banana"}
-    second = run(project, EVERYTHING)
-    assert len(second["snapshots"]["computed"]) == 7 and len(second["snapshots"]["reused"]) == 8
-    old = snapshot(toy, first, "plant", bug="drop-banana")
-    assert old["directory"].is_dir(), "a stale snapshot is kept until pruned"
-    assert (
-        snapshot(toy, second, "plant", bug="drop-banana")["directory"] / "artefacts/words.txt"
-    ).read_text() == "apple\nbanana\n"
+    dry = call(project.root, "run", "--dry")
+    plant = next(job for job in dry["jobs"] if job["job"] == "plant bug=drop-banana")
+    assert plant["why"] == "Updated input files: parameters/bug/drop-banana.json"
+    assert not any(job["job"] == "plant bug=none" for job in dry["jobs"])
+    assert dry["estimated_cost_usd"] == pytest.approx(0.6)
+
+    shown = call(project.root, "show", "toy")
+    rules = {row["rule"]: row for row in shown["rules"]}
+    assert rules["plant"]["stale"] == 1 and rules["detect"]["stale"] == 6
+    assert rules["build"]["current"] == 1
+    why = {row["path"]: row["why"] for row in shown["stale"]}
+    assert why["results/plant/bug=drop-banana"] == plant["why"]
+    assert why["results/detect/arm=control/bug=drop-banana/rep=1"] == (
+        "Input files updated by another job: results/plant/bug=drop-banana"
+    )
+    assert call(project.root, "show")[0]["stale"] == 1 + 6 + 3 + 3
+
+
+def test_a_budget_refuses_a_run_estimated_to_cost_more(project: Project, toy: Path) -> None:
+    refused = nock(project.root, "eval", "run", "--budget", "0.5")
+    assert refused.returncode == 40 and "the estimate, $1.20 for" in refused.stderr
+    assert not (toy / "results").exists(), "nothing ran"
+    assert call(project.root, "run", "--budget", "2")["cost_usd"] == pytest.approx(1.2)
 
     (toy / "steps/detect.py").write_text((toy / "steps/detect.py").read_text() + "\n# tuned\n")
-    stale = call(project, "show", "toy")["stale"]
-    assert len(stale) == 7 + 12 and "changed since: step `detect`" in {
-        item["why"] for item in stale
-    }
+    again = nock(project.root, "eval", "run", "--budget", "0.5")
+    assert again.returncode == 40 and "$1.20 for" in again.stderr, "from what detect cost"
 
 
-def test_a_budget_stops_starting_steps_once_spent_and_estimated_would_pass_it(
-    project: Project, toy: Path
-) -> None:
-    record = run(project, {**EVERYTHING, "budget_usd": 0.35}, "--parallel", "1")
-    assert record["cost_usd"] == pytest.approx(0.3)
-    assert len(record["snapshots"]["computed"]) == 6
-    assert len(record["snapshots"]["over budget"]) == 9
-    assert record["assignment"]["budget_usd"] == 0.35
-    resumed = run(project, EVERYTHING)
-    assert len(resumed["snapshots"]["reused"]) == 6 and len(resumed["snapshots"]["computed"]) == 9
-
-
-def test_a_failed_step_is_a_result_with_its_log_and_prune_deletes_it_and_the_stale(
+def test_a_failed_step_is_a_cached_result_until_pruned(
     project: Project, toy: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv("TOY_FAIL", "control")
-    failing = run(project, EVERYTHING)
-    assert len(failing["snapshots"]["failed"]) == 6 and len(failing["snapshots"]["computed"]) == 9
-    broken = snapshot(toy, failing, "detect", bug="none", arm="control", rep=1)
-    assert broken["status"] == "failed" and broken["error"] == "RuntimeError: the detector broke"
-    assert "the detector broke" in (broken["directory"] / "log.txt").read_text()
-    shown = call(project, "show", broken["hash"][:6])
-    assert shown["error"] == broken["error"] and shown["log"].endswith("log.txt")
+    failing = call(project.root, "run")
+    assert len(failing["failed"]) == 6
+    error = json.loads((toy / "results/detect/arm=control/bug=none/rep=1/error.json").read_text())
+    assert error["error"] == "RuntimeError: the detector broke"
+    assert "Traceback" in error["traceback"]
     monkeypatch.delenv("TOY_FAIL")
-    assert len(run(project, EVERYTHING)["snapshots"]["failed"]) == 6, "a failure is a result: kept"
+    assert call(project.root, "run")["computed"] == 0, "a failure is a result: kept"
+    shown = call(project.root, "show", "toy")
+    assert {row["error"] for row in shown["failed"]} == {"RuntimeError: the detector broke"}
 
-    (toy / "parameters/corpus/fruit.txt").write_text("apple\nbanana\n")
-    dry = call(project, "prune", "--dry")
-    assert len(dry) == 15 and {row["why"] for row in dry} == {"stale: changed since: corpus=fruit"}
-    assert len(call(project, "prune", "--dry")) == 15
-    (toy / "parameters/corpus/fruit.txt").write_text("apple\nbanana\ncherry\n")
-    pruned = call(project, "prune")
-    assert len(pruned) == 6 and {row["why"] for row in pruned} == {"failed"}
-    assert not broken["directory"].exists()
-    again = run(project, EVERYTHING)
-    assert len(again["snapshots"]["computed"]) == 6
-    history = call(project, "show", failing["id"])
-    assert history["snapshots"] == {"computed": 9, "failed": 6}
-    assert len(history["leaves"]) == 12 and history["cost_usd"] == pytest.approx(0.6)
+    dry = call(project.root, "prune", "--dry")
+    assert {row["why"] for row in dry} == {"failed", "stale: computed from a failed output"}
+    assert len([row for row in dry if row["why"] == "failed"]) == 6
+    assert len(call(project.root, "prune", "--dry")) == len(dry), "a dry prune deletes nothing"
+    pruned = call(project.root, "prune")
+    assert len(pruned) == len(dry)
+    assert not (toy / "results/detect/arm=control/bug=none/rep=1").exists()
+    again = call(project.root, "run")
+    assert again["computed"] == len(dry) and "failed" not in again
+    assert metrics(toy, "results/score/bug=drop-banana/rep=1") == {"gain": 0, "fixed": True}
+    assert call(project.root, "prune") == "nothing to prune"
+
+    (toy / "steps/score.py").write_text((toy / "steps/score.py").read_text() + "\n# tuned\n")
+    call(project.root, "run")
+    stale = call(project.root, "prune")
+    assert len(stale) == 6 and all(row["why"].startswith("stale") for row in stale), stale
 
 
-def test_compare_groups_leaves_by_a_parameter_with_intervals_and_the_runs_behind(
+def test_query_reads_the_results_with_sql_and_nothing_else(project: Project, toy: Path) -> None:
+    call(project.root, "run")
+    # Comparing arms is a self-join on the parameters they share.
+    gains = query(
+        project.root,
+        "SELECT t.bug, t.rep, t.detected::INT - c.detected::INT AS gain FROM detect t"
+        " JOIN detect c USING (bug, rep) WHERE t.arm = 'toolbox' AND c.arm = 'control'"
+        " ORDER BY t.bug, t.rep",
+    )
+    assert [(row["bug"], row["rep"], row["gain"]) for row in gains] == [
+        ("drop-banana", 1, 0),
+        ("drop-banana", 2, 1),
+        ("drop-banana", 3, 1),
+        ("none", 1, 0),
+        ("none", 2, 0),
+        ("none", 3, 0),
+    ]
+    spent = query(
+        project.root,
+        "SELECT rule, count(*) AS outputs, round(sum(cost_usd), 2) AS usd FROM outputs"
+        " GROUP BY rule ORDER BY rule",
+    )
+    assert spent[1] == {"rule": "detect", "outputs": 12, "usd": 1.2}
+    detected = query(
+        project.root,
+        "SELECT parameters['arm'] AS arm, avg(value) AS rate FROM metrics"
+        " WHERE metric = 'detected' AND parameters['bug'] = 'drop-banana' GROUP BY 1 ORDER BY 1",
+    )
+    assert detected == [
+        {"arm": "control", "rate": pytest.approx(1 / 3)},
+        {"arm": "toolbox", "rate": 1.0},
+    ]
+    diffs = query(project.root, "SELECT rule, added, removed FROM diffs WHERE rule = 'plant'")
+    assert sorted((row["added"], row["removed"]) for row in diffs) == [(0, 0), (0, 1)]
+
+    for sql in ("COPY (SELECT 1) TO 'leak.csv'", "SELECT * FROM read_text('Snakefile')"):
+        refused = nock(project.root, "eval", "query", sql)
+        assert refused.returncode == 40, refused.stdout
+    assert not (toy / "leak.csv").exists()
+    wrong = nock(project.root, "eval", "query", "SELECT * FROM absent")
+    assert wrong.returncode == 40 and "the tables: outputs, metrics, diffs, build" in wrong.stderr
+
+
+def test_compare_groups_outputs_by_a_parameter_with_intervals_and_paired_differences(
     project: Project, toy: Path
 ) -> None:
-    record = run(project, EVERYTHING)
-    rows = call(project, "compare", json.dumps({"by": "arm", "metric": "detected"}))
+    call(project.root, "run")
+    asked = {"by": "arm", "metric": "detected", "step": "detect"}
+    rows = call(project.root, "compare", json.dumps(asked))
     by = {(row["bug"], row["arm"]): row for row in rows}
     control, toolbox = by[("drop-banana", "control")], by[("drop-banana", "toolbox")]
     assert control["n"] == 3 and control["mean"] == pytest.approx(1 / 3, abs=1e-3)
     assert control["low"] == 0 and control["high"] == 1 and control["difference"] is None
     assert toolbox["mean"] == 1 and toolbox["difference"] == pytest.approx(2 / 3, abs=1e-3)
-    assert toolbox["paired"] is True and toolbox["runs"] == record["id"]
-    assert by[("none", "toolbox")]["mean"] == 0
+    assert toolbox["paired"] is True and by[("none", "toolbox")]["mean"] == 0
 
     pooled = call(
-        project,
-        "compare",
-        json.dumps({"by": "arm", "metric": "detected", "unit": "bug", "baseline": "toolbox"}),
+        project.root, "compare", json.dumps({**asked, "unit": "bug", "baseline": "toolbox"})
     )
     assert [(row["arm"], row["n"]) for row in pooled] == [("control", 2), ("toolbox", 2)]
     assert pooled[0]["difference"] == pytest.approx(-1 / 3, abs=1e-3)
 
     narrowed = call(
-        project,
+        project.root,
         "compare",
-        json.dumps({"by": "rep", "metric": "alarms", "where": {"bug": "none"}, "over": []}),
+        json.dumps(
+            {**asked, "by": "rep", "metric": "alarms", "where": {"bug": "none"}, "over": []}
+        ),
     )
     assert {row["rep"] for row in narrowed} == {"1", "2", "3"}
-    missing = nock(project.root, "eval", "compare", json.dumps({"by": "arm", "metric": "nope"}))
-    assert missing.returncode == 40 and "their results have: alarms, detected" in missing.stderr
+    unnamed = nock(project.root, "eval", "compare", json.dumps({"by": "arm", "metric": "x"}))
+    assert unnamed.returncode == 40 and "the rules with metrics are build, detect" in unnamed.stderr
+    missing = nock(project.root, "eval", "compare", json.dumps({**asked, "metric": "nope"}))
+    assert missing.returncode == 40 and "their metrics: detected, alarms" in missing.stderr
 
 
-def test_the_check_holds_the_scenario_its_steps_and_committed_artefacts(
-    project: Project, toy: Path
+def test_init_scaffolds_a_scenario_that_runs_and_the_check_holds_its_rules(
+    project: Project,
 ) -> None:
+    written = call(project.root, "init", "smoke")
+    assert "evals/smoke/Snakefile" in written and "evals/smoke/profile/config.yaml" in written
+    directory = project.root / "evals/smoke"
+    assert "results/" in (directory / ".gitignore").read_text()
     assert nock(project.root, "check", "nock-eval").returncode == 0
-    record = run(project, {"bug": "none", "arm": "toolbox", "rep": 1})
-    git(project.root, "add", "-A")
-    git(project.root, "commit", "-qm", "Snapshots")
-    assert nock(project.root, "check", "nock-eval").returncode == 0
+    assert call(project.root, "run")["computed"] == 3
+    assert query(project.root, "SELECT rep FROM example ORDER BY rep") == [
+        {"rep": 1},
+        {"rep": 2},
+        {"rep": 3},
+    ]
+    assert nock(project.root, "eval", "init", "smoke").returncode == 40
 
-    leaf = snapshot(toy, record, "detect")
-    (leaf["directory"] / "artefacts/report.md").unlink()
+    snakefile = directory / "Snakefile"
+    original = snakefile.read_text()
+    unkeyed = original.replace(
+        "        keyed=lambda wildcards: dict(wildcards),\n", "        rate=1,\n"
+    )
+    snakefile.write_text(unkeyed)
     found = nock(project.root, "check", "nock-eval")
-    assert found.returncode == 1 and "its artefact report.md is missing" in found.stdout
-    (toy / ".gitignore").write_text("snapshots/*/artefacts/report.md\n")
-    assert nock(project.root, "check", "nock-eval").returncode == 0, (
-        "an ignored artefact is not committed"
-    )
-    (toy / ".gitignore").write_text("")
-
-    planted = snapshot(toy, record, "plant")
-    words = planted["directory"] / "artefacts/words.txt"
-    words.write_text("version https://git-lfs.github.com/spec/v1\noid sha256:00\nsize 99\n")
-    assert nock(project.root, "check", "nock-eval").returncode == 1, "report.md is still missing"
-    shown = call(project, "show", planted["hash"])
-    assert {
-        "path": "words.txt",
-        "bytes": 20,
-        "here": "in Git LFS, not fetched (git lfs pull)",
-    } in shown["artefacts"]
-    dry = nock(
-        project.root,
-        "eval",
-        "run",
-        json.dumps({"bug": "none", "arm": "control", "rep": 1}),
-        "--dry",
-    )
-    assert (
-        "lacks 1 artefact(s) here: words.txt (in Git LFS" in dry.stdout
-        and "blocked: 1" in dry.stdout
-    )
-
-    scenario = json.loads((toy / "scenario.json").read_text())
-    scenario["steps"][1]["reads"] = ["bug", "colour"]
-    scenario["steps"].append({"name": "score", "reads": []})
-    (toy / "scenario.json").write_text(json.dumps(scenario))
-    (toy / "steps/build.py").write_text(
-        (toy / "steps/build.py").read_text() + '\n\ndef peek(step):\n    return step.value("arm")\n'
-    )
-    problems = nock(project.root, "check", "nock-eval").stdout
-    assert "step `plant` reads colour, which scenario.json does not declare" in problems
-    assert "step `score` has no steps/score.py" in problems
-    assert (
-        "steps/build.py: line 8 reads `arm`, which neither this step nor one before it reads"
-        in problems
-    )
-    (toy / "scenario.json").write_text('{"steps": [], "parameters": {}, "extra": 1}')
-    assert "toy/scenario.json: " in nock(project.root, "check", "nock-eval").stdout
-
-
-def test_init_scaffolds_a_scenario_the_check_accepts(project: Project) -> None:
-    written = call(project, "init", "smoke")
-    assert "evals/smoke/scenario.json" in written and "evals/smoke/.gitattributes" in written
-    assert "# snapshots/*/artefacts/" in (project.root / "evals/smoke/.gitignore").read_text()
-    assert "filter=lfs" in (project.root / "evals/smoke/.gitattributes").read_text()
-    assert nock(project.root, "check", "nock-eval").returncode == 0
-    assert call(project, "show")[0]["scenario"] == "smoke"
-    again = nock(project.root, "eval", "init", "smoke")
-    assert again.returncode == 40
+    assert found.returncode == 1 and "keeps no wildcards in its params" in found.stdout
+    shutil.rmtree(directory / "results")
+    assert nock(project.root, "eval", "run", "results/example/rep=1").returncode == 0
+    shared = nock(project.root, "eval", "run", "--dry")
+    assert "would all be restored from one cache entry" in shared.stdout, shared.stdout
+    snakefile.write_text(original.replace('    cache: "omit-software"\n', ""))
+    assert "is not cached" in nock(project.root, "check", "nock-eval").stdout
+    snakefile.write_text(original + "\nrule broken\n")
+    assert "snakemake --list-rules failed" in nock(project.root, "check", "nock-eval").stdout
 
 
 def test_a_step_dispatches_an_agent_as_nock_does_with_the_allowlist_it_gives(
     project: Project, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv("FAKE_ARGUMENTS", str(project.root / "arguments.json"))
+    assert nock(project.root, "eval", "init", "agent").returncode == 0
     directory = project.root / "evals" / "agent"
-    (directory / "steps").mkdir(parents=True)
-    (directory / "scenario.json").write_text(
-        json.dumps(
-            {
-                "steps": [{"name": "ask", "reads": ["question"]}],
-                "parameters": {"question": {"values": ["why?"]}},
-            }
-        )
-    )
-    (directory / "steps/ask.py").write_text(
+    (directory / "steps/example.py").write_text(
+        "from nock.steps import Step\n\n\n"
         "def run(step):\n"
-        "    said = step.agent('Answer: ' + step.value('question'), allowed=['Write'])\n"
-        "    return {'said': said, 'wrote': (step.directory / 'answer.txt').read_text()}\n"
+        "    said = step.agent('Answer: why?', allowed=['Write'])\n"
+        "    return {'said': said, 'wrote': (step.directory / 'answer.txt').read_text()}\n\n\n"
+        "Step(snakemake).run(run)\n"
     )
-    result = nock(project.root, "eval", "run", '{"scenario": "agent"}', "--json")
+    result = nock(project.root, "eval", "run", "results/example/rep=1", "--json")
     assert result.returncode == 0, result.stderr
-    made = next((directory / "snapshots").glob("*/snapshot.json"))
-    data = json.loads(made.read_text())
-    assert data["results"] == {"said": "answered", "wrote": "Answer: why?"}, data
-    roles = project.store.rows("SELECT role FROM sessions")
-    assert {"role": "evaluated"} in roles
+    assert metrics(directory, "results/example/rep=1") == {
+        "said": "answered",
+        "wrote": "Answer: why?",
+    }
+    assert {"role": "evaluated"} in project.store.rows("SELECT role FROM sessions")
     arguments = json.loads(Path(project.root / "arguments.json").read_text())
     assert arguments[arguments.index("--permission-mode") + 1] == "dontAsk"
     assert arguments[arguments.index("--tools") + 1] == "Read,Grep,Glob,Bash"
     assert "Write" in arguments[arguments.index("--allowedTools") :]
-
-    (directory / "steps/ask.py").write_text(
-        "def run(step):\n"
-        "    step.agent('Answer: ' + step.value('question'), allowed=[])\n"
-        "    return {'refused': step.refused, 'wrote': (step.directory / 'answer.txt').exists()}\n"
-    )
-    assert nock(project.root, "eval", "run", '{"scenario": "agent"}').returncode == 0
-    refused = [
-        json.loads(path.read_text())["results"]
-        for path in (directory / "snapshots").glob("*/snapshot.json")
-        if "refused" in json.loads(path.read_text())["results"]
-    ]
-    assert refused == [{"refused": ["Write: answer.txt"], "wrote": False}], refused
 
 
 @pytest.fixture
@@ -339,32 +329,35 @@ def post(address: str, body: dict[str, Any]) -> Any:
         headers={"Content-Type": "application/json"},
         method="POST",
     )
-    with urllib.request.urlopen(request) as response:
-        return json.loads(response.read())
+    try:
+        with urllib.request.urlopen(request) as response:
+            return json.loads(response.read())
+    except urllib.error.HTTPError as error:
+        raise AssertionError(error.read().decode()) from error
 
 
-def test_the_studio_reads_the_files_and_weighs_a_draft_without_writing(
+def test_the_studio_reads_the_same_tables_and_weighs_a_run_without_running_it(
     project: Project, toy: Path, page: str
 ) -> None:
-    record = run(project, EVERYTHING)
-    git(project.root, "add", "-A")
-    git(project.root, "commit", "-qm", "Snapshots")
+    call(project.root, "run")
     with urllib.request.urlopen(f"{page}evals") as response:
         scenarios = json.loads(response.read())["scenarios"]
     toy_page = scenarios[0]
-    assert [step["new"] for step in toy_page["steps"]] == [["corpus"], ["bug"], ["arm", "rep"]]
-    assert len(toy_page["snapshots"]) == 15 and toy_page["runs"][0]["id"] == record["id"]
-    assert all(item["runs"] == [record["id"]] for item in toy_page["snapshots"])
-    assert "def run(step)" in toy_page["steps"][2]["code"]
-
-    code = (toy / "steps/plant.py").read_text() + "\n# a draft\n"
-    weighed = post(
-        f"{page}evals/toy/dry", {"assignment": EVERYTHING, "drafts": {"steps/plant.py": code}}
+    assert ["build", "plant"] in toy_page["graph"]["edges"]
+    assert ["detect", "fix"] in toy_page["graph"]["edges"]
+    assert len(toy_page["outputs"]) == OUTPUTS
+    leaf = next(
+        item for item in toy_page["outputs"] if item["path"].endswith("arm=toolbox/bug=none/rep=3")
     )
-    outcomes = {(node["step"], node["outcome"]) for node in weighed["nodes"]}
-    assert outcomes == {("build", "reused"), ("plant", "compute"), ("detect", "compute")}
-    assert weighed["summary"]["to_compute"] == 14
-    assert git(project.root, "status", "--porcelain") == "", "a draft writes nothing"
+    assert leaf["metrics"] == {"detected": 0.0, "alarms": 1.0} and leaf["state"] == "current"
 
-    compared = post(f"{page}evals/toy/compare", {"by": "arm", "metric": "detected"})
+    detect = toy / "steps/detect.py"
+    detect.write_text(detect.read_text() + "\n# a draft\n")
+    weighed = post(f"{page}evals/toy/dry", {"budget": 0.5})
+    assert weighed["summary"]["to_compute"] >= 12 and "passes the budget" in weighed["refused"]
+    assert len(list((toy / "cache").iterdir())) == OUTPUTS + 1, "a dry run computes nothing"
+
+    asked = {"by": "arm", "metric": "detected", "step": "detect"}
+    detect.write_text(detect.read_text().replace("\n# a draft\n", ""))
+    compared = post(f"{page}evals/toy/compare", asked)
     assert {row["arm"] for row in compared} == {"control", "toolbox"}

@@ -715,109 +715,99 @@ A round's summary is sent only with `nock share` and the owner's yes (see
 
 Does a change make the agents better? An evaluation answers it with real
 runs, and keeps every intermediate result so the next question costs only
-what changed. It lives in git beside the code:
+what changed. A scenario is a [Snakemake](https://snakemake.github.io/)
+workflow in git beside the code; nock adds a profile, a budget, the reasons
+a run reruns, pruning, and SQL over the results:
 
 ```
 evals/detect/
-  scenario.json            the steps in order, and the parameters each reads
-  parameters/bug/none.json one file per value (bug=none is the clean twin)
-  steps/plant.py           run(step) turns the snapshot before it into the next
-  snapshots/3f2a…/         snapshot.json (results, digests, manifest) and artefacts/
-  runs/20261031T2107-ab12/ run.json: the commit, assignment, what was reused and computed, time, cost
+  Snakefile                rules are steps, wildcards parameters
+  profile/config.yaml      nock's Snakemake profile (`eval init` writes it)
+  parameters/bug/none.json a parameter's values as files (bug=none is the clean twin)
+  steps/plant.py           Step(snakemake).run(run): metrics.json, cost.json, error.json
+  cache/3f2a…/             committed: each output, named by its provenance hash
+  results/plant/bug=none/  this checkout's links into cache/ (not committed)
 ```
 
-```json
-{
-  "steps": [
-    {"name": "build", "reads": ["code"]},
-    {"name": "plant", "reads": ["bug"]},
-    {"name": "detect", "reads": ["arm", "rep"], "estimate": {"seconds": 300, "cost_usd": 0.4}}
-  ],
-  "parameters": {
-    "code": {"values": {"current": ["/src/**"]}},
-    "bug": {"files": "parameters/bug/*"},
-    "arm": {"values": ["control", "toolbox"]},
-    "rep": {"values": [1, 2, 3, 4, 5]}
-  }
-}
+```python
+BUGS = glob_wildcards("parameters/bug/{bug}.json").bug
+
+rule all:
+    input: expand("results/score/bug={bug}/rep={rep}", bug=BUGS, rep=[1, 2, 3])
+
+checkpoint detect:
+    input: "results/plant/bug={bug}"
+    output: directory("results/detect/arm={arm}/bug={bug}/rep={rep}")
+    params: keyed=lambda wildcards: dict(wildcards)
+    cache: "omit-software"
+    resources: agents=1, estimate_cents=40
+    script: "steps/detect.py"
 ```
 
-- **A step** is `steps/NAME.py` with `run(step)`, returning its results (a
-  dict). It works in `step.directory`, a copy of the snapshot before it,
-  and what the directory holds afterwards are its artefacts. It reads
-  `step.value("arm")`, `step.file("bug")`, an earlier step's
-  `step.results("build")`; it counts what it spends with `step.spend(usd)`;
-  and `step.agent(brief, allowed=["Edit", "Bash(pytest:*)"])` dispatches a
+- **A step** is a rule whose output is a directory under
+  `results/RULE/NAME=VALUE/…`, its script wrapped in
+  `Step(snakemake).run(run)`: `run(step)` returns its numbers
+  (`metrics.json`); `step.spend(usd)` and the seconds it took go to
+  `cost.json`; a raise is `error.json`, a failed result. `step.value("arm")`
+  is a wildcard, `step.metrics("control")` an input's numbers, and
+  `step.agent(brief, allowed=["Edit", "Bash(pytest:*)"])` dispatches a
   headless agent as nock dispatches its own, in `dontAsk` with that
-  allowlist and nothing more, its cost counted. Each step runs in its own
-  process on the project's interpreter (`[environment]`), so it can import
-  the project's packages. A step that raises is a result too: `failed`,
-  with its log.
-- **A snapshot** is named by a short hash of its identity: the step, the
-  parameter values read up to it, and the content digests of those values'
-  files and of the steps' code (a step's `code` globs add to it). Content,
-  not commits, so code is just a parameter (`"/src/**"` is the working
-  tree's). Edit a value's file or a step and the snapshots that read it are
-  **stale**: kept and marked, and a run computes fresh ones beside them.
-  Every snapshot holds its whole state, so every branch of a fork resumes
-  from the snapshot before it. Order the steps so the expensive-to-vary
-  come first: a parameter read late keeps everything before it shared.
-- **Repetition is a parameter**, `rep`, so each repetition is its own
-  snapshot and more can be added later.
+  allowlist and nothing more, its cost counted. State the next step resumes
+  from is `state.tar` (`step.pack(directory)`, `.git` included;
+  `step.unpack()`), and a repository's change against the state before is
+  `diff.patch`.
+- **Forks, joins, `when`.** A fork is several jobs reading one output; a
+  join is a rule with several inputs; `when` is an input function that
+  returns `[]` or the branch to take, reading an earlier output's
+  metrics.json through a `checkpoint`.
+- **Memoisation is by content.** Every rule is `cache: "omit-software"`
+  with its wildcards in its params, so Snakemake names its output by a hash
+  of the rule's script, params and input files' content and the hashes of
+  the jobs before it. `cache/` is committed: a fresh clone, whose files all
+  have new mtimes, restores every output that matches and computes only the
+  rest. Order the rules so the expensive-to-vary come first.
 
 ```sh
 $ .nock/nock eval init detect                     # scaffold evals/detect/
-$ .nock/nock eval run '{"bug": "*", "arm": "*", "rep": "*"}' --dry
-build code=current  [c2ab56d0b65e] reused
-  plant bug=off-by-one  [738ff1597589] compute ~40s
-    detect arm=control rep=1  [a1574d3ba207] compute ~5m ~$0.40
-…
-$ .nock/nock eval run '{"bug": "*", "arm": "*", "rep": "*", "budget_usd": 20}'
-$ .nock/nock eval compare '{"by": "arm", "metric": "detected", "unit": "bug"}'
+$ .nock/nock eval run --dry                       # each job: from cache, or compute and why
+$ .nock/nock eval run --budget 20                 # refused if the estimate passes $20
+$ .nock/nock eval run results/score/bug=none/rep=1
+$ .nock/nock eval query "SELECT rule, state, sum(cost_usd) FROM outputs GROUP BY ALL"
+$ .nock/nock eval compare '{"by": "arm", "metric": "detected", "step": "detect", "unit": "bug"}'
 ```
 
-`eval run` takes an **assignment**: each parameter a value, a list or `"*"`
-(one with a single value needs no mention; `"scenario"` names the scenario
-when there are several). It runs up to `--parallel` steps at once (4), never
-recomputes a snapshot that exists, and is resumable: run it again. `--dry`
-prints the tree, what is reused and what computed, and the time and cost
-estimated from the snapshots each step made before (or its `estimate`). With
-`"budget_usd"` it stops starting steps once what it spent plus what is
-estimated would pass the budget. **`eval compare`** groups the leaves by one
-parameter, holding the others fixed and pooling `rep` (`over` pools others;
-`unit` averages within a unit, a bug say, and resamples units): each mean
-with a bootstrap confidence interval, the difference from the baseline,
-paired when both sides have the same units, and the runs behind each number.
-Comparisons are never steps: a clean run is just `bug=none`. **`eval show`**
-shows a scenario, a snapshot (a prefix of its hash) or a run: parameters,
-results, artefacts and those missing here, stale snapshots. **`eval prune`**
-(`--dry` first) deletes stale and failed snapshots and their artefacts; runs
-keep their own numbers, so history stays readable. A failed snapshot is
-reused as a result until it is pruned.
+`eval run` runs Snakemake with the profile (`--cores`, `keep-going`,
+per-resource limits such as `agents=2`), on the default target or the
+targets named. A dry run comes first: what reruns and why, in Snakemake's
+words, and the estimate from each rule's mean past `cost.json` (or its
+`resources: estimate_cents`); it refuses outputs that would share a cache
+entry, Git LFS pointers in the cache, and, with `--budget`, an estimate past
+it. **`eval query`** reads the result files with DuckDB (read-only, loaded
+fresh each time, no index): `outputs`, `metrics`, `diffs` and a table per
+rule with a column per wildcard and metric, so comparing arms is a
+self-join on the wildcards they share. **`eval compare`** groups a rule's
+current outputs by one parameter, holding the others fixed and pooling
+`rep`: each mean with a bootstrap interval and the difference from the
+baseline, paired when both sides have the same units. **`eval show`** gives
+each rule's outputs current, stale (and why) and failed. **`eval prune`**
+(`--dry` first) deletes the cache entries no current output is, and the
+failed with what was computed from them, so a run computes them again; a
+failed output is otherwise a result, restored rather than retried. The
+`nock-eval` check fails when a rule is not cached by its wildcards or the
+Snakefile does not read. Snakemake and DuckDB run through
+[uv](https://docs.astral.sh/uv/); nock imports neither.
 
-**Artefacts in git.** Small ones are committed with their snapshots. The
-scenario's `.gitattributes` and `.gitignore` (written commented by `eval
-init`) send big ones to Git LFS or leave them out. A clone that lacks some
-is told what it lacks (`eval show`; `--dry` marks the steps blocked on it),
-and never breaks. The `nock-eval` check fails when scenario.json is invalid,
-a step is missing or reads a parameter it does not declare, or a committed
-snapshot's artefact is neither where its manifest says nor ignored.
+**More machines.** Another machine is another checkout: it runs part of the
+targets, commits `cache/`, and pushes; entries merge as plain files, and the
+next run anywhere restores them.
 
-**More machines.** Steps run locally. Another machine is another checkout:
-it runs part of an assignment (`{"bug": ["off-by-one"], …}`), commits the
-snapshots and runs, and pushes; the snapshots merge as plain files, and the
-next run anywhere reuses them.
-
-**The studio's Evals tab** draws a scenario from these files, never running
-a step: a column per step, fanned out by the values of the parameters first
-read there. Hover a step for what it is, what it reads and the runs through
-it; select a run to highlight its path and see each step's results, cost and
-artefacts in it; pick a value where it forks to narrow what follows. Change
-values or edit a file there as a draft, nothing written, to see what would
-rerun and what is reused, with the `--dry` estimate; and compare by any
-parameter. `nock docs eval` has the rest, with the practice that keeps an
-evaluation honest: fix the inputs, keep the answers from what is scored,
-measure the outcome, run enough repetitions, write the comparison down first.
+**The studio's Evals tab** draws a scenario's rules from Snakemake's rule
+graph, each with its outputs current, stale and failed; select a rule for
+its outputs and their numbers and to compare them by a parameter; weigh a
+dry run with targets and a budget, nothing run. `nock docs eval` has the
+rest, with the practice that keeps an evaluation honest: fix the inputs,
+keep the answers from what is scored, measure the outcome, run enough
+repetitions, write the comparison down first.
 
 ## Reference
 
@@ -834,7 +824,7 @@ measure the outcome, run enough repetitions, write the comparison down first.
 | `nock decide JSON` | record a decision |
 | `nock decisions list [JSON]`, `show N`, `edit JSON`, `elaborate N` | the decisions: filtered, in full, changed or reviewed, elaborated |
 | `nock studio [JSON]` | the owner's page, a tab for each thing to look at: the decisions and questions, the evaluations |
-| `nock eval init NAME`, `run ASSIGNMENT [--dry]`, `show [NAME]`, `compare QUERY`, `prune [NAME] [--dry]` | evaluations: scaffold a scenario, run it reusing what matches, read it, compare its leaves, delete stale and failed snapshots |
+| `nock eval init NAME`, `run [TARGETS…] [--dry] [--budget USD]`, `show [NAME]`, `query SQL`, `compare QUERY`, `prune [NAME] [--dry]` | evaluations: scaffold a Snakemake scenario, run it restoring what the cache has, read it, query it with SQL, compare its outputs, delete stale and failed cache entries |
 | `nock consult JSON` | a fresh agent advises on a task: the decisions, tools, checks and docs that bear on it; the caller waits |
 | `nock advise JSON` | the consultant's advice, submitted; only a consultant nock dispatched runs it |
 | `nock usage` | what nock shares with its makers, and exactly what the next report carries |

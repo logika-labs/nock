@@ -1,9 +1,16 @@
 import json
 
+from nock.steps import Step
+
 
 def run(step):
-    bug = json.loads(step.file("bug").read_text())
-    words = (step.directory / "words.txt").read_text().split()
+    bug = json.loads(step.input("bug").read_text())
+    work = step.unpack("state")
+    words = (work / "words.txt").read_text().split()
     kept = [word for word in words if word != bug["drop"]]
-    (step.directory / "words.txt").write_text("\n".join(kept) + "\n")
-    return {"dropped": len(words) - len(kept)}
+    (work / "words.txt").write_text("\n".join(kept) + "\n")
+    step.pack(work)
+    return {"dropped": len(words) - len(kept), "words": len(words)}
+
+
+Step(snakemake).run(run)

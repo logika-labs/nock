@@ -1,6 +1,7 @@
 <style>
-/* The evals tab: a scenario's steps left to right, fanned out by the values forking at each;
-   a run's path highlighted; a draft weighed; a comparison. Everything is scoped under .evals. */
+/* The evals tab: a scenario's rules left to right in the order they run, each with its outputs
+   current, stale and failed; a rule's outputs and their numbers; a dry run; a comparison.
+   Everything is scoped under .evals. */
 .evals { padding-block: 20px 80px; display: grid; gap: 20px; }
 .evals .picker { display: flex; flex-wrap: wrap; gap: 8px; }
 .evals .chip {
@@ -10,38 +11,28 @@
 }
 .evals .chip:hover { background: var(--card); }
 .evals .chip[aria-pressed="true"] { border-color: var(--selection); color: var(--selection); background: var(--selection-tint); }
-.evals .chip:focus-visible, .evals .node:focus-visible, .evals .step-head:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+.evals .chip:focus-visible, .evals .node:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
 .evals .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 16px 18px; display: grid; gap: 10px; min-width: 0; }
 .evals .card > .label { color: var(--muted); }
-.evals .description { color: var(--muted); margin: 0; }
 .evals code, .evals pre { font: 12px/18px var(--mono); }
-.evals pre { margin: 0; background: var(--background); padding: 10px 12px; border-radius: 8px; overflow-x: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
+.evals pre { margin: 0; background: var(--background); padding: 10px 12px; border-radius: 8px; overflow-x: auto; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 24rem; }
 
-/* The graph: one column per step, scrolling sideways when the chain is long. */
+/* The graph: one column per depth, scrolling sideways when the chain is long. */
 .evals .graph { display: flex; gap: 28px; overflow-x: auto; padding: 4px 2px 10px; }
-.evals .column { flex: 0 0 auto; min-width: 9.5rem; display: grid; align-content: start; gap: 8px; position: relative; }
-.evals .column + .column::before {
-  content: ""; position: absolute; left: -22px; top: 52px; width: 16px; height: 1px; background: var(--input);
-}
-.evals .step-head { border: 0; background: none; padding: 0 0 4px; text-align: left; color: inherit; font: inherit; display: grid; gap: 2px; }
-.evals .step-head strong { font: 600 15px/22px var(--sans); }
-.evals .step-head span { color: var(--muted); font-size: 12px; }
+.evals .column { flex: 0 0 auto; min-width: 9rem; display: grid; align-content: start; gap: 8px; position: relative; }
+.evals .column + .column::before { content: ""; position: absolute; left: -22px; top: 22px; width: 16px; height: 1px; background: var(--input); }
 .evals .node {
   display: grid; gap: 4px; text-align: left; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border);
-  background: var(--card); color: inherit; font: 13px/18px var(--sans); transition: border-color .12s, background .12s;
+  background: var(--card); color: inherit; font: 13px/18px var(--sans);
 }
 .evals .node:hover { background: var(--hover); }
-.evals .node .values { font: 500 12px/18px var(--mono); overflow-wrap: anywhere; }
-.evals .node .counts { color: var(--muted); font-size: 12px; display: flex; flex-wrap: wrap; gap: 4px 8px; }
-.evals .node.dim { opacity: .38; }
-.evals .node.path { border-color: var(--selection); box-shadow: inset 3px 0 0 var(--selection); }
-.evals .node.narrowed { background: var(--selection-tint); }
-.evals .node .compute { color: var(--warning); }
-.evals .node .reuse { color: var(--ok); }
-.evals .node .bad { color: var(--error); }
+.evals .node strong { font: 600 14px/20px var(--sans); }
+.evals .node[aria-pressed="true"] { border-color: var(--selection); box-shadow: inset 3px 0 0 var(--selection); }
+.evals .counts { color: var(--muted); font-size: 12px; display: flex; flex-wrap: wrap; gap: 4px 8px; }
+.evals .ok { color: var(--ok); }
+.evals .warn { color: var(--warning); }
+.evals .bad { color: var(--error); }
 
-.evals .runs { display: flex; flex-wrap: wrap; gap: 8px; }
-.evals .detail { min-height: 3rem; }
 .evals table { border-collapse: collapse; width: 100%; font-size: 13px; }
 .evals th, .evals td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
 .evals th { font: 500 11px/16px var(--sans); letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
@@ -49,57 +40,27 @@
 .evals .bar { position: relative; height: 10px; min-width: 120px; background: var(--background); border-radius: 5px; }
 .evals .bar span { position: absolute; top: 0; bottom: 0; background: color-mix(in oklab, var(--selection) 35%, transparent); border-radius: 5px; }
 .evals .bar i { position: absolute; top: -2px; bottom: -2px; width: 2px; background: var(--selection); }
-.evals .draft { display: grid; gap: 14px; }
-.evals .draft fieldset { border: 0; padding: 0; margin: 0; display: grid; gap: 6px; }
-.evals .draft legend { font: 600 14px/20px var(--sans); padding: 0; }
-.evals .draft label { display: inline-flex; align-items: center; gap: 6px; margin-right: 14px; font-size: 13px; }
-.evals .draft details summary { cursor: pointer; font: 12px var(--mono); color: var(--muted); }
-.evals .draft textarea {
-  font: 12px/18px var(--mono); border: 1px solid var(--input); border-radius: 6px; padding: 8px; min-height: 6rem;
-  overflow: auto; resize: vertical; field-sizing: fixed;
-}
 .evals .row-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
 .evals .hint { color: var(--muted); font-size: 13px; }
 .evals .hint.error { color: var(--error); }
-.evals select { font: 13px var(--sans); padding: 4px 6px; border: 1px solid var(--input); border-radius: 6px; background: var(--card); color: var(--foreground); }
-.evals .tooltip {
-  position: fixed; z-index: 10; max-width: 22rem; background: var(--foreground); color: var(--background);
-  padding: 8px 10px; border-radius: 8px; font-size: 12px; line-height: 17px; pointer-events: none;
-}
-@media (max-width: 560px) {
-  .evals .column { min-width: 8rem; }
-}
+.evals input, .evals select { font: 13px var(--sans); padding: 4px 6px; border: 1px solid var(--input); border-radius: 6px; background: var(--card); color: var(--foreground); }
+.evals .scroll { overflow-x: auto; }
+@media (max-width: 560px) { .evals .column { min-width: 7.5rem; } }
 </style>
 <div class="frame evals" id="evals">
   <div class="picker" id="evals-picker" role="group" aria-label="Scenario"></div>
   <div id="evals-body"></div>
 </div>
-<div class="tooltip" id="evals-tooltip" hidden></div>
 <script>
 (() => {
-  const view = {
-    shown: false, scenarios: [], name: null, run: null, narrow: {}, hovered: null, weighed: null,
-    drafts: {}, chosen: {}, comparison: null, compareBy: null,
-  };
+  const view = { scenarios: [], name: null, rule: null, dry: null, comparison: null, by: null };
   const $ = id => document.getElementById(id);
   const escape = text => String(text ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
-  const key = value => typeof value === "string" ? value : JSON.stringify(value);
   const money = value => value == null ? "—" : `$${Number(value).toFixed(2)}`;
   const seconds = value => value == null ? "—" : value < 60 ? `${Number(value).toFixed(1)}s` : `${Math.round(value / 60)}m`;
-
-  function scenario() { return view.scenarios.find(item => item.name === view.name); }
-  // A step's node: the values of the parameters first read there, as one key.
-  function nodeKey(step, parameters) { return JSON.stringify(step.new.map(name => key(parameters[name]))); }
-  function nodes(step, current) {
-    const lists = step.new.map(name => current.parameters.find(item => item.name === name).values.map(value => value.key));
-    let combos = [[]];
-    for (const list of lists) combos = combos.flatMap(combo => list.map(value => [...combo, value]));
-    return combos.map(values => ({ key: JSON.stringify(values), values }));
-  }
-  function inView(parameters) {
-    return Object.entries(view.narrow).every(([name, value]) => !(name in parameters) || key(parameters[name]) === value);
-  }
-  function selectedRun(current) { return current.runs.find(run => run.id === view.run); }
+  const scenario = () => view.scenarios.find(item => item.name === view.name);
+  const post = (path, body) => fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
+    .then(async response => { const answer = await response.json(); if (!response.ok) throw new Error(answer.error); return answer; });
 
   function load() {
     fetch("evals").then(response => response.json()).then(data => {
@@ -109,9 +70,23 @@
     }).catch(() => studio.toast("Could not read the evaluations"));
   }
 
+  // Each rule's depth: how many rules run before it on the longest path.
+  function columns(graph) {
+    const depth = {};
+    const visit = rule => {
+      if (rule in depth) return depth[rule];
+      depth[rule] = 0;
+      const before = graph.edges.filter(([, to]) => to === rule).map(([from]) => visit(from) + 1);
+      return (depth[rule] = Math.max(0, ...before));
+    };
+    graph.rules.forEach(visit);
+    const found = [];
+    for (const rule of graph.rules) (found[depth[rule]] ??= []).push(rule);
+    return found.filter(Boolean);
+  }
+
   function render() {
-    const picker = $("evals-picker");
-    picker.innerHTML = view.scenarios.length > 1 ? view.scenarios.map(item =>
+    $("evals-picker").innerHTML = view.scenarios.length > 1 ? view.scenarios.map(item =>
       `<button type="button" class="chip" data-scenario="${escape(item.name)}" aria-pressed="${item.name === view.name}">${escape(item.name)}</button>`).join("") : "";
     const current = scenario();
     if (!current) {
@@ -123,218 +98,92 @@
       $("evals-body").innerHTML = `<div class="card"><span class="label">${escape(current.name)}</span><p class="hint error">${escape(current.problem)}</p></div>`;
       return;
     }
-    const stale = current.snapshots.filter(item => item.stale).length;
-    studio.summary("evals", `${current.name}: ${current.steps.length} steps, ${current.snapshots.length} snapshots${stale ? `, ${stale} stale` : ""}, ${current.runs.length} runs`);
-    for (const parameter of current.parameters) {
-      if (!view.chosen[parameter.name]) view.chosen[parameter.name] = new Set(parameter.values.map(value => value.key));
-    }
+    const of = rule => current.outputs.filter(item => item.rule === rule);
+    const stale = current.outputs.filter(item => item.state === "stale").length;
+    studio.summary("evals", `${current.name}: ${current.graph.rules.length} rules, ${current.outputs.length} outputs${stale ? `, ${stale} stale` : ""}`);
+    const graph = columns(current.graph).map(rules => `<div class="column">${rules.map(rule => {
+      const outputs = of(rule);
+      const count = state => outputs.filter(item => item.state === state).length;
+      return `<button type="button" class="node" data-rule="${escape(rule)}" aria-pressed="${rule === view.rule}"><strong>${escape(rule)}</strong>
+        <span class="counts"><span class="ok">${count("current")} current</span>${count("stale") ? `<span class="warn">${count("stale")} stale</span>` : ""}${count("failed") ? `<span class="bad">${count("failed")} failed</span>` : ""}</span></button>`;
+    }).join("")}</div>`).join("");
     $("evals-body").innerHTML = [
-      current.description ? `<p class="description">${escape(current.description)}</p>` : "",
-      `<div class="card"><span class="label">steps</span><div class="graph">${current.steps.map(step => column(current, step)).join("")}</div>
-        <div class="row-actions">${Object.keys(view.narrow).length ? '<button type="button" class="button ghost" data-clear>show every value</button>' : ""}
-        <span class="hint">${view.weighed ? escape(weighedSummary()) : "Select a run to see its path; pick a value where it forks to narrow what follows."}</span></div></div>`,
-      `<div class="card"><span class="label">runs</span><div class="runs">${current.runs.length ? current.runs.slice().reverse().map(run =>
-        `<button type="button" class="chip" data-run="${escape(run.id)}" aria-pressed="${run.id === view.run}" title="${escape(JSON.stringify(run.assignment))}">${escape(run.id)} · ${money(run.cost_usd)}</button>`).join("") : '<span class="hint">None yet: <code>.nock/nock eval run</code>.</span>'}</div></div>`,
-      `<div class="card detail" id="evals-detail"><span class="label">snapshots</span><span class="hint">Hover a step or a value for what it holds.</span></div>`,
-      draft(current),
-      compare(current),
+      `<div class="card"><span class="label">rules</span><div class="graph">${graph}</div></div>`,
+      view.rule ? outputs(current, view.rule) : '<p class="hint">Select a rule for its outputs.</p>',
+      dry(current),
+      `<details class="card"><summary class="label">Snakefile</summary><pre>${escape(current.snakefile)}</pre></details>`,
     ].join("");
-    if (view.hovered) detail(view.hovered.step, view.hovered.key);
   }
 
-  function column(current, step) {
-    const run = selectedRun(current);
-    const weighed = view.weighed;
-    const cells = nodes(step, current).map(node => {
-      const snapshots = current.snapshots.filter(item => item.step === step.name && nodeKey(step, item.parameters) === node.key && inView(item.parameters));
-      const fresh = snapshots.filter(item => !item.stale && item.status !== "failed").length;
-      const failed = snapshots.filter(item => !item.stale && item.status === "failed").length;
-      const old = snapshots.filter(item => item.stale).length;
-      const onPath = run && run.nodes.some(item => item.step === step.name && nodeKey(step, item.parameters) === node.key && inView(item.parameters));
-      const narrowed = step.new.length && step.new.every((name, index) => view.narrow[name] === node.values[index]);
-      const counts = [];
-      if (weighed) {
-        const planned = weighed.nodes.filter(item => item.step === step.name && nodeKey(step, item.parameters) === node.key && inView(item.parameters));
-        const compute = planned.filter(item => item.outcome === "compute").length;
-        const reuse = planned.filter(item => item.outcome === "reused").length;
-        const bad = planned.length - compute - reuse;
-        if (compute) counts.push(`<span class="compute">${compute} rerun</span>`);
-        if (reuse) counts.push(`<span class="reuse">${reuse} reused</span>`);
-        if (bad) counts.push(`<span class="bad">${bad} blocked or failed</span>`);
-      } else {
-        counts.push(`${fresh} current`);
-        if (failed) counts.push(`<span class="bad">${failed} failed</span>`);
-        if (old) counts.push(`${old} stale`);
-      }
-      const label = step.new.length ? step.new.map((name, index) => `${name}=${node.values[index]}`).join(" ") : "—";
-      const classes = ["node", onPath ? "path" : "", run && !onPath ? "dim" : "", narrowed ? "narrowed" : ""].join(" ");
-      return `<button type="button" class="${classes}" data-step="${escape(step.name)}" data-key="${escape(node.key)}" aria-pressed="${!!narrowed}">
-        <span class="values">${escape(label)}</span><span class="counts">${counts.join("")}</span></button>`;
-    }).join("");
-    return `<div class="column"><button type="button" class="step-head" data-head="${escape(step.name)}"><strong>${escape(step.name)}</strong>
-      <span>${step.reads.length ? `reads ${escape(step.reads.join(", "))}` : "reads nothing"}</span></button>${cells}</div>`;
+  function outputs(current, rule) {
+    const rows = current.outputs.filter(item => item.rule === rule);
+    const names = [...new Set(rows.flatMap(item => Object.keys(item.parameters || {})))];
+    const metrics = [...new Set(rows.flatMap(item => Object.keys(item.metrics)))];
+    const table = rows.length ? `<div class="scroll"><table><thead><tr>${names.map(name => `<th>${escape(name)}</th>`).join("")}<th>state</th>${metrics.map(name => `<th>${escape(name)}</th>`).join("")}<th>cost · time</th></tr></thead><tbody>${rows.map(item =>
+      `<tr>${names.map(name => `<td>${escape(item.parameters[name])}</td>`).join("")}
+      <td class="${item.state === "current" ? "ok" : item.state === "stale" ? "warn" : "bad"}" title="${escape(item.why || item.error || "")}">${escape(item.state)}</td>
+      ${metrics.map(name => `<td class="number">${escape(item.metrics[name] ?? "—")}</td>`).join("")}
+      <td class="number">${money(item.cost_usd)} · ${seconds(item.seconds)}</td></tr>`).join("")}</tbody></table></div>` : '<span class="hint">No outputs here yet.</span>';
+    const options = names.map(name => `<option${view.by === name ? " selected" : ""}>${escape(name)}</option>`).join("");
+    const choices = metrics.map(name => `<option${view.comparison?.metric === name ? " selected" : ""}>${escape(name)}</option>`).join("");
+    return `<div class="card"><span class="label">${escape(rule)}</span>${table}
+      <div class="row-actions"><span class="hint">compare by</span><select id="evals-by" aria-label="Parameter">${options}</select>
+      <select id="evals-metric" aria-label="Metric"><option value="">metric…</option>${choices}</select></div>
+      ${comparison()}</div>`;
   }
 
-  function detail(stepName, nodeKeyText) {
-    const current = scenario();
-    const step = current.steps.find(item => item.name === stepName);
-    const run = selectedRun(current);
-    let snapshots = current.snapshots.filter(item => item.step === stepName && (nodeKeyText == null || nodeKey(step, item.parameters) === nodeKeyText) && inView(item.parameters));
-    if (run) {
-      const hashes = new Set(run.nodes.map(item => item.snapshot));
-      snapshots = snapshots.filter(item => hashes.has(item.hash));
-    }
-    const rows = snapshots.slice(0, 40).map(item => {
-      const values = Object.entries(item.parameters).map(([name, value]) => `${name}=${key(value)}`).join(" ");
-      const state = item.stale ? `stale: ${item.stale}` : item.status;
-      const missing = item.missing.length ? ` · ${item.missing.length} missing here` : "";
-      return `<tr><td><code>${escape(item.hash)}</code></td><td>${escape(values)}</td><td>${escape(state)}</td>
-        <td><code>${escape(JSON.stringify(item.results))}</code></td><td class="number">${money(item.cost_usd)} · ${seconds(item.seconds)}</td>
-        <td>${item.artefacts.length} artefacts${escape(missing)}</td></tr>`;
-    }).join("");
-    $("evals-detail").innerHTML = `<span class="label">${escape(stepName)}${run ? ` in run ${escape(run.id)}` : ""}</span>
-      ${step.description ? `<p class="description">${escape(step.description)}</p>` : ""}
-      ${rows ? `<div style="overflow-x:auto"><table><thead><tr><th>snapshot</th><th>parameters</th><th>status</th><th>results</th><th>cost · time</th><th>artefacts</th></tr></thead><tbody>${rows}</tbody></table></div>`
-        : '<span class="hint">No snapshot here yet.</span>'}
-      ${snapshots.length > 40 ? `<span class="hint">and ${snapshots.length - 40} more</span>` : ""}`;
-  }
-
-  function draft(current) {
-    const parameters = current.parameters.map(parameter => `<fieldset><legend>${escape(parameter.name)}</legend>
-      <div>${parameter.values.map(value => `<label><input type="checkbox" data-choose="${escape(parameter.name)}" value="${escape(value.key)}" ${view.chosen[parameter.name].has(value.key) ? "checked" : ""}>${escape(value.key)}</label>`).join("")}</div>
-      ${parameter.values.flatMap(value => value.files.filter(file => file.text != null).map(file => editor(file.path, file.text))).join("")}
-      <div class="row-actions"><button type="button" class="button ghost" data-compare="${escape(parameter.name)}">compare by ${escape(parameter.name)}</button></div></fieldset>`).join("");
-    const steps = current.steps.filter(step => step.code != null).map(step => `<fieldset><legend>${escape(step.name)}</legend>${editor(step.file, step.code)}</fieldset>`).join("");
-    return `<div class="card draft"><span class="label">draft a run</span>
-      <span class="hint">Pick values and edit files here; nothing is written. Weigh it to see what would rerun and what is reused.</span>
-      ${parameters}${steps}
-      <div class="row-actions"><button type="button" class="button primary" data-weigh>Weigh</button>
-      ${view.weighed ? '<button type="button" class="button secondary" data-unweigh>Clear</button>' : ""}
-      <span class="hint" id="evals-weigh-hint">${view.weighed ? escape(weighedSummary()) : ""}</span></div></div>`;
-  }
-  function editor(path, text) {
-    const value = view.drafts[path] ?? text;
-    return `<details${path in view.drafts ? " open" : ""}><summary>${escape(path)}${path in view.drafts ? " (draft)" : ""}</summary><textarea data-draft="${escape(path)}" data-original="${escape(text)}" spellcheck="false">${escape(value)}</textarea></details>`;
-  }
-  function weighedSummary() {
-    const summary = view.weighed.summary;
-    return `would rerun ${summary.to_compute} of ${summary.snapshots} snapshots: ~${seconds(summary.estimated_seconds)}, ~${money(summary.estimated_cost_usd)}${summary.no_estimate_for ? ` (no estimate for ${summary.no_estimate_for.join(", ")})` : ""}`;
-  }
-  function weigh() {
-    const current = scenario();
-    const assignment = {};
-    for (const parameter of current.parameters) {
-      const chosen = parameter.values.filter(value => view.chosen[parameter.name].has(value.key)).map(value => value.value);
-      if (!chosen.length) { studio.toast(`Pick a value of ${parameter.name}`); return; }
-      assignment[parameter.name] = chosen;
-    }
-    fetch(`evals/${encodeURIComponent(current.name)}/dry`, {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ assignment, drafts: view.drafts }),
-    }).then(async response => {
-      const body = await response.json();
-      if (!response.ok) throw new Error(body.error);
-      view.weighed = body;
-      render();
-    }).catch(error => studio.toast(error.message || "Could not weigh it"));
-  }
-
-  function compare(current) {
-    if (!view.compareBy) return "";
-    const leaves = current.snapshots.filter(item => item.step === current.steps[current.steps.length - 1].name && !item.stale);
-    const metrics = [...new Set(leaves.flatMap(item => Object.entries(item.results || {}).filter(([, value]) => typeof value === "number" || typeof value === "boolean").map(([name]) => name)))];
-    const options = metrics.map(name => `<option${view.comparison?.metric === name ? " selected" : ""}>${escape(name)}</option>`).join("");
-    let table = '<span class="hint">Pick a result to compare.</span>';
+  function comparison() {
     const rows = view.comparison?.rows;
-    if (rows && rows.length) {
-      const fixed = Object.keys(rows[0]).filter(name => !["n", "mean", "low", "high", "difference", "difference_low", "difference_high", "paired", "failed", "runs"].includes(name));
-      const top = Math.max(1, ...rows.map(row => Math.max(row.high ?? row.mean, row.mean)));
-      const bottom = Math.min(0, ...rows.map(row => Math.min(row.low ?? row.mean, row.mean)));
-      const at = value => `${((value - bottom) / (top - bottom)) * 100}%`;
-      table = `<div style="overflow-x:auto"><table><thead><tr>${fixed.map(name => `<th>${escape(name)}</th>`).join("")}<th>n</th><th>mean [95% interval]</th><th></th><th>vs baseline</th><th>runs</th></tr></thead><tbody>${rows.map(row =>
-        `<tr>${fixed.map(name => `<td>${escape(row[name])}</td>`).join("")}<td class="number">${row.n}${row.failed ? ` (+${row.failed} failed)` : ""}</td>
-        <td class="number">${row.mean}${row.low != null ? ` [${row.low}, ${row.high}]` : ""}</td>
-        <td><div class="bar">${row.low != null ? `<span style="left:${at(row.low)};width:calc(${at(row.high)} - ${at(row.low)})"></span>` : ""}<i style="left:${at(row.mean)}"></i></div></td>
-        <td class="number">${row.difference == null ? "baseline" : `${row.difference > 0 ? "+" : ""}${row.difference}${row.difference_low != null ? ` [${row.difference_low}, ${row.difference_high}]` : ""}${row.paired ? " paired" : ""}`}</td>
-        <td><code>${escape(row.runs)}</code></td></tr>`).join("")}</tbody></table></div>`;
-    } else if (rows) table = '<span class="hint">Nothing to compare yet.</span>';
-    return `<div class="card"><span class="label">compare by ${escape(view.compareBy)}</span>
-      <div class="row-actions"><select id="evals-metric" aria-label="Result"><option value="">result…</option>${options}</select>
-      <button type="button" class="button ghost" data-close-compare>close</button></div>${table}</div>`;
-  }
-  function runCompare(metric) {
-    const current = scenario();
-    fetch(`evals/${encodeURIComponent(current.name)}/compare`, {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ by: view.compareBy, metric }),
-    }).then(async response => {
-      const body = await response.json();
-      if (!response.ok) throw new Error(body.error);
-      view.comparison = { metric, rows: body };
-      render();
-    }).catch(error => { view.comparison = { metric, rows: [] }; render(); studio.toast(error.message); });
+    if (!rows) return "";
+    if (!rows.length) return '<span class="hint">Nothing to compare yet.</span>';
+    const fixed = Object.keys(rows[0]).filter(name => !["n", "mean", "low", "high", "difference", "difference_low", "difference_high", "paired", "failed"].includes(name));
+    const top = Math.max(1, ...rows.map(row => Math.max(row.high ?? row.mean, row.mean)));
+    const bottom = Math.min(0, ...rows.map(row => Math.min(row.low ?? row.mean, row.mean)));
+    const at = value => `${((value - bottom) / (top - bottom)) * 100}%`;
+    return `<div class="scroll"><table><thead><tr>${fixed.map(name => `<th>${escape(name)}</th>`).join("")}<th>n</th><th>mean [95% interval]</th><th></th><th>vs baseline</th></tr></thead><tbody>${rows.map(row =>
+      `<tr>${fixed.map(name => `<td>${escape(row[name])}</td>`).join("")}<td class="number">${row.n}${row.failed ? ` (+${row.failed} failed)` : ""}</td>
+      <td class="number">${row.mean}${row.low != null ? ` [${row.low}, ${row.high}]` : ""}</td>
+      <td><div class="bar">${row.low != null ? `<span style="left:${at(row.low)};width:calc(${at(row.high)} - ${at(row.low)})"></span>` : ""}<i style="left:${at(row.mean)}"></i></div></td>
+      <td class="number">${row.difference == null ? "baseline" : `${row.difference > 0 ? "+" : ""}${row.difference}${row.difference_low != null ? ` [${row.difference_low}, ${row.difference_high}]` : ""}${row.paired ? " paired" : ""}`}</td></tr>`).join("")}</tbody></table></div>`;
   }
 
-  function tooltip(target, text) {
-    const element = $("evals-tooltip");
-    if (!text) { element.hidden = true; return; }
-    element.textContent = text;
-    element.hidden = false;
-    const box = target.getBoundingClientRect();
-    element.style.left = `${Math.min(box.left, innerWidth - 360)}px`;
-    element.style.top = `${box.bottom + 6}px`;
+  function dry(current) {
+    const answer = view.dry;
+    let body = '<span class="hint">What a run would compute, restore from the cache, and why.</span>';
+    if (answer) {
+      const summary = answer.summary;
+      body = `<span class="hint${answer.refused ? " error" : ""}">${escape(answer.refused || `${summary.to_compute} to compute (~${money(summary.estimated_cost_usd)}), ${summary.from_cache} from cache${summary.say ? ` — ${summary.say}` : ""}`)}</span>
+        ${answer.jobs.length ? `<div class="scroll"><table><thead><tr><th>job</th><th>does</th><th>why</th></tr></thead><tbody>${answer.jobs.map(job =>
+          `<tr><td><code>${escape(job.job)}</code></td><td>${escape(job.does)}</td><td>${escape(job.why || "")}</td></tr>`).join("")}</tbody></table></div>` : '<span class="hint">Nothing to do: every output is current.</span>'}`;
+    }
+    return `<div class="card"><span class="label">dry run</span><div class="row-actions">
+      <input id="evals-targets" placeholder="targets (default: all)" aria-label="Targets">
+      <input id="evals-budget" type="number" min="0" step="0.5" placeholder="budget USD" aria-label="Budget">
+      <button type="button" class="button secondary" data-dry>weigh</button></div>${body}</div>`;
   }
 
   const root = $("evals");
   root.addEventListener("click", event => {
     const target = event.target.closest("button");
     if (!target) return;
-    const current = scenario();
-    if (target.dataset.scenario) { view.name = target.dataset.scenario; view.run = null; view.narrow = {}; view.weighed = null; view.drafts = {}; view.chosen = {}; view.compareBy = null; render(); }
-    else if (target.dataset.run) { view.run = view.run === target.dataset.run ? null : target.dataset.run; render(); }
-    else if (target.dataset.key) {
-      const step = current.steps.find(item => item.name === target.dataset.step);
-      const values = JSON.parse(target.dataset.key);
-      const already = step.new.length && step.new.every((name, index) => view.narrow[name] === values[index]);
-      step.new.forEach((name, index) => { if (already) delete view.narrow[name]; else view.narrow[name] = values[index]; });
-      view.hovered = { step: step.name, key: target.dataset.key };
-      render();
+    if (target.dataset.scenario) { view.name = target.dataset.scenario; view.rule = null; view.dry = null; view.comparison = null; render(); }
+    else if (target.dataset.rule) { view.rule = view.rule === target.dataset.rule ? null : target.dataset.rule; view.comparison = null; render(); }
+    else if ("dry" in target.dataset) {
+      const targets = $("evals-targets").value.split(/\s+/).filter(Boolean);
+      const budget = parseFloat($("evals-budget").value);
+      post(`evals/${encodeURIComponent(view.name)}/dry`, { targets, ...(isNaN(budget) ? {} : { budget }) })
+        .then(answer => { view.dry = answer; render(); }).catch(error => studio.toast(error.message || "Could not weigh it"));
     }
-    else if (target.dataset.head) { view.hovered = { step: target.dataset.head, key: null }; detail(target.dataset.head, null); }
-    else if ("clear" in target.dataset) { view.narrow = {}; render(); }
-    else if ("weigh" in target.dataset) weigh();
-    else if ("unweigh" in target.dataset) { view.weighed = null; render(); }
-    else if (target.dataset.compare) { view.compareBy = target.dataset.compare; view.comparison = null; render(); }
-    else if ("closeCompare" in target.dataset) { view.compareBy = null; view.comparison = null; render(); }
   });
-  root.addEventListener("mouseover", event => {
-    const node = event.target.closest(".node, .step-head");
-    if (!node) return;
-    const current = scenario();
-    const name = node.dataset.step || node.dataset.head;
-    const step = current.steps.find(item => item.name === name);
-    const runs = new Set(current.runs.filter(run => run.nodes.some(item => item.step === name && (!node.dataset.key || nodeKey(step, item.parameters) === node.dataset.key))).map(run => run.id));
-    tooltip(node, `${step.name}${step.description ? `: ${step.description}` : ""} — reads ${step.reads.join(", ") || "nothing"}; ${runs.size} run(s) through it`);
-    detail(name, node.dataset.key ?? null);
-  });
-  root.addEventListener("mouseout", event => { if (event.target.closest(".node, .step-head")) tooltip(null, ""); });
   root.addEventListener("change", event => {
-    const target = event.target;
-    if (target.dataset.choose) {
-      const set = view.chosen[target.dataset.choose];
-      if (target.checked) set.add(target.value); else set.delete(target.value);
-    } else if (target.id === "evals-metric" && target.value) runCompare(target.value);
-  });
-  root.addEventListener("input", event => {
-    const target = event.target;
-    if (!target.dataset.draft) return;
-    if (target.value === target.dataset.original) delete view.drafts[target.dataset.draft];
-    else view.drafts[target.dataset.draft] = target.value;
+    if (event.target.id === "evals-by") { view.by = event.target.value; return; }
+    if (event.target.id !== "evals-metric" || !event.target.value) return;
+    const metric = event.target.value;
+    post(`evals/${encodeURIComponent(view.name)}/compare`, { by: (view.by = $("evals-by").value), metric, step: view.rule })
+      .then(rows => { view.comparison = { metric, rows }; render(); })
+      .catch(error => { view.comparison = { metric, rows: [] }; render(); studio.toast(error.message); });
   });
 
-  studio.register("evals", {
-    show() { view.shown = true; load(); },
-    hide() { view.shown = false; tooltip(null, ""); },
-  });
+  studio.register("evals", { show() { load(); }, hide() {} });
 })();
 </script>

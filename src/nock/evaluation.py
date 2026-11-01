@@ -1,147 +1,115 @@
-"""Evaluations (`nock eval`): a scenario in `evals/NAME/` is an ordered chain
-of steps, each turning the snapshot before it into the next while reading
-named parameters. A snapshot is named by a short hash of its identity — the
-step, the parameter values read up to it, and the content digests of those
-values' files and of the steps' code — so a run reuses every snapshot whose
-identity still matches and computes the rest; one whose digests no longer
-match is stale, kept and marked. Comparing leaves is `nock.comparison`; the
-step's own side, run in a process of its own, is `nock.steps`."""
+"""Evaluations (`nock eval`): a scenario in `evals/NAME/` is a Snakemake
+workflow — rules are steps, wildcards parameters, a rule's output a directory
+under `results/RULE/NAME=VALUE/…` — run with the profile `nock eval init`
+writes. Every rule is cached by Snakemake's provenance hash (its code, params
+and input contents, and those of the rules before it) in `cache/`, which is
+committed, so a fresh clone reuses what was computed anywhere; `results/` is
+what this checkout has materialised from it. nock adds what Snakemake lacks:
+a budget, the reasons a dry run reruns, which outputs are stale or failed,
+pruning, and reading the results with SQL (`nock.results`). The step's own
+side is `nock.steps`. Snakemake and DuckDB run through uv, never imported."""
 
 from __future__ import annotations
 
-import ast
-import hashlib
-import itertools
 import json
 import os
-import secrets
+import re
 import shutil
 import subprocess
-import sys
-import threading
 from collections.abc import Iterator
-from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
-from enum import StrEnum
-from functools import cached_property
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from nock.errors import NotFoundError, PreconditionError, UsageError
-from nock.git import Git, GitError
-from nock.processes import Supervisor
-from nock.schema import Validator
-from nock.utils import format_duration, now, read_json, write_json
+from nock.processes import Output, Supervisor
+from nock.steps import COST, ERROR
 
 if TYPE_CHECKING:
     from nock.project import Project
 
 SCENARIOS = "evals"
-HASH_LENGTH = 12
-# What an assignment may carry beside parameter values; no parameter takes these names.
-RESERVED = ("scenario", "budget_usd")
-# Never part of a digest or a manifest: caches and git's own bookkeeping.
-UNHASHED = ("__pycache__", ".git", ".DS_Store")
+SNAKEMAKE = "snakemake==9.27.1"
+RESULTS = "results"
+CACHE = "cache"
+PROFILE = "profile"
 LFS_POINTER = b"version https://git-lfs.github.com/spec/v1"
-# The names of the calls a step's code reads a parameter through.
-READERS = ("value", "file", "files")
-PARALLEL = 4
 
-GITATTRIBUTES = """\
-# Snapshot artefacts: small ones are committed as they are. Keep big ones in
-# Git LFS (`git lfs install` once per machine) by uncommenting a line:
-# snapshots/*/artefacts/** filter=lfs diff=lfs merge=lfs -text
-# snapshots/*/artefacts/**/*.tar filter=lfs diff=lfs merge=lfs -text
+SNAKEFILE = """\
+# A nock eval scenario: rules are steps, wildcards are parameters. Each rule's
+# output is a directory under results/RULE/NAME={NAME}/..., cached by content
+# (`cache: "omit-software"`) with its wildcards in its params, so every set of
+# values is its own snapshot. `nock docs eval.snakefile` has the conventions.
+
+REPS = [1, 2, 3]
+
+wildcard_constraints:
+    rep="[^/]+",
+
+
+rule all:
+    input:
+        expand("results/example/rep={rep}", rep=REPS),
+
+
+rule example:
+    output:
+        directory("results/example/rep={rep}"),
+    params:
+        keyed=lambda wildcards: dict(wildcards),
+    cache: "omit-software"
+    script:
+        "steps/example.py"
+"""
+EXAMPLE_STEP = '''\
+from nock.steps import Step
+
+
+def run(step):
+    """Return the step's numbers; spend with step.spend(usd)."""
+    return {"rep": int(step.value("rep"))}
+
+
+Step(snakemake).run(run)
+'''
+CONFIG = """\
+# nock eval's Snakemake profile. nock sets SNAKEMAKE_OUTPUT_CACHE to cache/,
+# where every rule marked `cache:` keeps its output by provenance hash.
+cores: 4
+cache: true
+keep-going: true
+rerun-incomplete: true
+printshellcmds: true
+# Limit what runs at once by resource: a rule takes `resources: agents=1`.
+resources:
+  - agents=2
 """
 GITIGNORE = """\
-# Or leave snapshot artefacts out of git, each machine keeping its own (results
-# and manifests are still committed; a clone is told what it lacks):
-# snapshots/*/artefacts/
+# What this checkout materialised from cache/, and Snakemake's own state.
+results/
+.snakemake/
+"""
+GITATTRIBUTES = """\
+# The cache is committed. Keep big entries in Git LFS (`git lfs install` once
+# per machine) by uncommenting a line:
+# cache/**/*.tar filter=lfs diff=lfs merge=lfs -text
 """
 
-ESTIMATE: dict[str, Any] = {
-    "type": "object",
-    "additionalProperties": False,
-    "properties": {"seconds": {"type": "number"}, "cost_usd": {"type": "number"}},
-}
-GLOBS: dict[str, Any] = {
-    "anyOf": [{"type": "string"}, {"type": "array", "items": {"type": "string"}}]
-}
-SCHEMA: dict[str, Any] = {
-    "type": "object",
-    "required": ["steps", "parameters"],
-    "additionalProperties": False,
-    "properties": {
-        "description": {"type": "string"},
-        "steps": {
-            "type": "array",
-            "items": {
-                "type": "object",
-                "required": ["name"],
-                "additionalProperties": False,
-                "properties": {
-                    "name": {"type": "string", "pattern": "^[a-z0-9][a-z0-9_-]*$"},
-                    "description": {"type": "string"},
-                    "reads": {"type": "array", "items": {"type": "string"}},
-                    "code": GLOBS,
-                    "deadline": {"type": "number"},
-                    "silence": {"type": "number"},
-                    "estimate": ESTIMATE,
-                },
-            },
-        },
-        "parameters": {
-            "type": "object",
-            "additionalProperties": {
-                "type": "object",
-                "additionalProperties": False,
-                "properties": {
-                    "description": {"type": "string"},
-                    "files": {"type": "string"},
-                    "values": {
-                        "anyOf": [
-                            {"type": "array"},
-                            {"type": "object", "additionalProperties": GLOBS},
-                        ]
-                    },
-                },
-            },
-        },
-    },
-}
+
+def uv() -> str:
+    found = shutil.which("uv")
+    if found is None:
+        raise PreconditionError(
+            "nock eval runs Snakemake and DuckDB through uv, which is not installed: "
+            "https://docs.astral.sh/uv/getting-started/installation/"
+        )
+    return found
 
 
-class Outcome(StrEnum):
-    """What became of a node in a plan or a run."""
-
-    REUSED = "reused"
-    COMPUTE = "compute"
-    COMPUTED = "computed"
-    FAILED = "failed"
-    """The step ran and failed, now or in an earlier run: a result, with its log."""
-    BLOCKED = "blocked"
-    """The snapshot before failed, or its artefacts are not in this checkout."""
-    OVER_BUDGET = "over budget"
-
-
-def digest_bytes(data: bytes) -> str:
-    return hashlib.sha256(data).hexdigest()
-
-
-def short_hash(identity: dict[str, Any]) -> str:
-    canonical = json.dumps(identity, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
-    return digest_bytes(canonical.encode())[:HASH_LENGTH]
-
-
-def files_under(path: Path) -> Iterator[Path]:
-    """`path` itself when it is a file; every file under it when a directory."""
-    if path.is_file():
-        yield path
-        return
-    for found in sorted(path.rglob("*")):
-        if found.is_file() and not any(part in UNHASHED for part in found.parts):
-            yield found
+def parameters_of(path: str) -> dict[str, str]:
+    """An output's parameters, from its path: `results/detect/arm=a/rep=1` → arm, rep."""
+    return dict(part.split("=", 1) for part in path.split("/") if "=" in part)
 
 
 def is_lfs_pointer(path: Path) -> bool:
@@ -152,994 +120,477 @@ def is_lfs_pointer(path: Path) -> bool:
         return False
 
 
-def manifest(directory: Path) -> list[dict[str, Any]]:
-    """Every artefact in `directory`: its path, digest and size."""
-    if not directory.is_dir():
-        return []
-    return [
-        {
-            "path": path.relative_to(directory).as_posix(),
-            "digest": digest_bytes(path.read_bytes()),
-            "bytes": path.stat().st_size,
-        }
-        for path in files_under(directory)
-    ]
-
-
-def value_key(value: Any) -> str:
-    """How a value is named in an assignment and on a page: `none`, `3`, `true`."""
-    return value if isinstance(value, str) else json.dumps(value)
-
-
 @dataclass
-class Value:
-    """One value a parameter takes: a literal, or a name and the files that are it."""
+class Job:
+    """One job of a dry run, as Snakemake describes it."""
 
-    value: Any
-    files: list[Path] = field(default_factory=list)
+    rule: str
+    checkpoint: bool = False
+    outputs: list[str] = field(default_factory=list)
+    wildcards: dict[str, str] = field(default_factory=dict)
+    reason: str = ""
+    resources: dict[str, str] = field(default_factory=dict)
+    cached: dict[str, str] = field(default_factory=dict)
+    """Output → the cache entry it will be restored from."""
 
     @property
-    def key(self) -> str:
-        return value_key(self.value)
+    def from_cache(self) -> bool:
+        return bool(self.outputs) and all(output in self.cached for output in self.outputs)
+
+    def label(self) -> str:
+        values = " ".join(f"{name}={value}" for name, value in self.wildcards.items())
+        return f"{self.rule} {values}".strip()
+
+
+JOB_HEAD = re.compile(r"^(local)?(rule|checkpoint) ([\w-]+):$")
+JOB_LINE = re.compile(r"^    (\w+): (.*)$")
+CACHED = re.compile(r"^Output file (.+) exists as (.+) in the cache\.$")
+
+
+def parse_jobs(text: str) -> list[Job]:
+    """The jobs a dry run (`-n --verbose`) lists, with the cache entries it would restore."""
+    jobs: list[Job] = []
+    current: Job | None = None
+    cached: dict[str, str] = {}
+    for line in text.splitlines():
+        head = JOB_HEAD.match(line)
+        if head:
+            current = Job(head.group(3), checkpoint=head.group(2) == "checkpoint")
+            jobs.append(current)
+            continue
+        found = CACHED.match(line)
+        if found:
+            cached[found.group(1)] = found.group(2)
+            continue
+        item = JOB_LINE.match(line)
+        if current is None or item is None:
+            current = None if not line.startswith("    ") else current
+            continue
+        key, value = item.groups()
+        if key == "output":
+            current.outputs = [part.strip() for part in value.split(", ")]
+        elif key == "wildcards":
+            current.wildcards = dict(
+                part.strip().split("=", 1) for part in value.split(", ") if "=" in part
+            )
+        elif key == "reason":
+            current.reason = value
+        elif key == "resources":
+            current.resources = dict(
+                part.strip().split("=", 1) for part in value.split(", ") if "=" in part
+            )
+    for job in jobs:
+        job.cached = {output: cached[output] for output in job.outputs if output in cached}
+    return [job for job in jobs if job.outputs]
 
 
 @dataclass
-class Parameter:
-    name: str
-    description: str
-    values: dict[str, Value]
-    from_files: bool
-    """Its values are files (or directories), so its identity is their content."""
-    problems: list[str] = field(default_factory=list)
+class Result:
+    """An output this checkout has under results/: a step's directory."""
 
+    path: str
+    rule: str
+    state: str = "current"
+    """current, stale or failed."""
+    why: str | None = None
+    entry: str | None = None
+    """The cache entry it is a link to."""
 
-@dataclass
-class Definition:
-    """A step as scenario.json declares it."""
-
-    name: str
-    description: str
-    reads: list[str]
-    code: list[str]
-    deadline: float | None
-    silence: float | None
-    estimate: dict[str, float]
+    @property
+    def parameters(self) -> dict[str, str]:
+        return parameters_of(self.path)
 
 
 class Scenario:
-    """One scenario: its steps, its parameters and the digests that name its
-    snapshots. `drafts` maps paths in the scenario's directory to text that
-    stands in for those files, so a change can be weighed before it is made."""
+    """One scenario's directory and the Snakemake that runs it."""
 
-    def __init__(self, project: Project, name: str, drafts: dict[str, str] | None = None) -> None:
+    def __init__(self, project: Project, name: str) -> None:
         self.project = project
         self.name = name
         self.directory = project.here / SCENARIOS / name
-        self.drafts = {key.removeprefix("./"): value for key, value in (drafts or {}).items()}
-        if not (self.directory / "scenario.json").is_file():
-            raise NotFoundError(f"no scenario `{name}`: {SCENARIOS}/{name}/scenario.json")
-        self.lock = threading.Lock()
-        self.digests: dict[str, str] = {}
+        if not (self.directory / "Snakefile").is_file():
+            raise NotFoundError(f"no scenario `{name}`: {SCENARIOS}/{name}/Snakefile")
 
     @property
-    def snapshots_directory(self) -> Path:
-        return self.directory / "snapshots"
+    def cache(self) -> Path:
+        return self.directory / CACHE
 
     @property
-    def runs_directory(self) -> Path:
-        return self.directory / "runs"
+    def results(self) -> Path:
+        return self.directory / RESULTS
 
-    def read_bytes(self, path: Path) -> bytes:
-        relative = path.relative_to(self.directory).as_posix() if self.inside(path) else None
-        if relative is not None and relative in self.drafts:
-            return self.drafts[relative].encode()
-        return path.read_bytes()
-
-    def inside(self, path: Path) -> bool:
-        return path.is_relative_to(self.directory)
-
-    @cached_property
-    def definition(self) -> dict[str, Any]:
-        text = self.read_bytes(self.directory / "scenario.json").decode()
-        try:
-            value = json.loads(text)
-        except json.JSONDecodeError as error:
-            raise PreconditionError(f"{self.name}/scenario.json is not JSON: {error}") from error
-        problems = Validator().problems(value, SCHEMA)
-        if problems:
-            raise PreconditionError(f"{self.name}/scenario.json: {'; '.join(problems)}")
-        return value
-
-    @cached_property
-    def steps(self) -> list[Definition]:
-        return [
-            Definition(
-                name=step["name"],
-                description=step.get("description", ""),
-                reads=list(step.get("reads", [])),
-                code=globs(step.get("code", [])),
-                deadline=step.get("deadline"),
-                silence=step.get("silence"),
-                estimate=dict(step.get("estimate", {})),
-            )
-            for step in self.definition["steps"]
-        ]
-
-    @cached_property
-    def parameters(self) -> dict[str, Parameter]:
+    def environment(self) -> dict[str, str]:
+        """Snakemake's: the cache, and nock on the path, so a step can import `nock.steps`."""
+        self.cache.mkdir(exist_ok=True)
+        core = str(Path(__file__).resolve().parent.parent)
+        path = os.environ.get("PYTHONPATH", "")
         return {
-            name: self.parameter(name, declared)
-            for name, declared in self.definition["parameters"].items()
+            **os.environ,
+            "SNAKEMAKE_OUTPUT_CACHE": str(self.cache.resolve()),
+            "PYTHONPATH": os.pathsep.join([core, path]) if path else core,
         }
 
-    def parameter(self, name: str, declared: dict[str, Any]) -> Parameter:
-        description = str(declared.get("description", ""))
-        if "files" in declared:
-            values: dict[str, Value] = {}
-            problems = []
-            for path in self.glob(str(declared["files"])):
-                if path.name.startswith("."):
-                    continue
-                named = path.name if path.is_dir() else path.stem
-                if named in values:
-                    problems.append(f"`{name}`: two files are the value `{named}`")
-                values[named] = Value(named, [path])
-            return Parameter(name, description, values, True, problems)
-        given = declared.get("values", [])
-        if isinstance(given, dict):
-            return Parameter(
-                name,
-                description,
-                {
-                    key: Value(
-                        key, [path for pattern in globs(patterns) for path in self.glob(pattern)]
-                    )
-                    for key, patterns in given.items()
-                },
-                True,
+    def command(self, *arguments: str) -> list[str]:
+        return [uv(), "tool", "run", SNAKEMAKE, "--profile", PROFILE, *arguments]
+
+    def snakemake(self, *arguments: str) -> str:
+        """A Snakemake that reads and writes nothing of the results (a dry
+        run, a summary): its output, or what went wrong."""
+        result = subprocess.run(
+            self.command(*arguments),
+            cwd=self.directory,
+            env=self.environment(),
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            said = (result.stderr or result.stdout).strip().splitlines()
+            raise PreconditionError(
+                f"snakemake {' '.join(arguments)} failed in {SCENARIOS}/{self.name}:\n"
+                + "\n".join(said[-15:])
             )
-        literals = {value_key(value): Value(value) for value in given}
-        return Parameter(name, description, literals, False)
+        return result.stdout + result.stderr
 
-    def glob(self, pattern: str) -> list[Path]:
-        """A pattern is the scenario directory's; one starting with `/` is the working tree's."""
-        base = self.project.here if pattern.startswith("/") else self.directory
-        pattern = pattern.lstrip("/")
-        if not pattern:
-            return [base]
-        return sorted(path for path in base.glob(pattern) if path.name not in UNHASHED)
+    def jobs(self, targets: list[str] | None = None, forced: list[str] | None = None) -> list[Job]:
+        """What a run of `targets` would do — with `forced` and what follows
+        them rerun — the jobs, why each runs, and those the cache has."""
+        arguments = ["-n", "--verbose", *(targets or [])]
+        if forced:
+            arguments += ["--forcerun", *forced]
+        return parse_jobs(self.snakemake(*arguments))
 
-    def step_index(self, name: str) -> int | None:
-        return next((index for index, step in enumerate(self.steps) if step.name == name), None)
+    def run(self, targets: list[str], cores: int | None) -> Output:
+        return Supervisor(
+            self.project,
+            self.command(*(["--cores", str(cores)] if cores else []), *targets),
+            directory=self.directory,
+            deadline=0,
+            silence=0,
+            environment=self.environment(),
+        ).run()
 
-    def reads_through(self, index: int) -> list[str]:
-        """The parameters read by the steps up to `index`, in the order first read."""
-        seen: list[str] = []
-        for step in self.steps[: index + 1]:
-            seen += [name for name in step.reads if name not in seen]
-        return seen
-
-    def step_file(self, step: Definition) -> Path:
-        return self.directory / "steps" / f"{step.name}.py"
-
-    def step_digest(self, step: Definition) -> str:
-        files = [
-            self.step_file(step),
-            *(path for pattern in step.code for path in self.glob(pattern)),
-        ]
-        return self.digest_of(f"step:{step.name}", files)
-
-    def value_digest(self, parameter: str, value: Value) -> str:
-        return self.digest_of(f"value:{parameter}={value.key}", value.files)
-
-    def digest_of(self, key: str, paths: list[Path]) -> str:
-        with self.lock:
-            if key in self.digests:
-                return self.digests[key]
-        hasher = hashlib.sha256()
-        for path in paths:
-            base = path if path.is_dir() else path.parent
-            for found in files_under(path) if path.exists() else []:
-                where = (
-                    self.relative(found) if path.is_file() else found.relative_to(base).as_posix()
-                )
-                hasher.update(f"{where}\0{digest_bytes(self.read_bytes(found))}\n".encode())
-        digest = hasher.hexdigest()[:16]
-        with self.lock:
-            self.digests[key] = digest
-        return digest
-
-    def relative(self, path: Path) -> str:
-        if self.inside(path):
-            return path.relative_to(self.directory).as_posix()
-        return "/" + path.relative_to(self.project.here).as_posix()
-
-    def identity(self, index: int, chosen: dict[str, Value]) -> dict[str, Any]:
-        """What names the snapshot after step `index` for these values."""
-        reads = self.reads_through(index)
-        return {
-            "step": self.steps[index].name,
-            "parameters": {name: chosen[name].value for name in reads},
-            "digests": {
-                "parameters": {
-                    name: self.value_digest(name, chosen[name])
-                    for name in reads
-                    if self.parameters[name].from_files
-                },
-                "steps": [
-                    {"step": step.name, "digest": self.step_digest(step)}
-                    for step in self.steps[: index + 1]
-                ],
-            },
-        }
-
-    # --- the check -------------------------------------------------------------
-
-    def problems(self) -> list[str]:
-        """What is wrong with the scenario itself: its file, its steps, what they read."""
-        try:
-            steps, parameters = self.steps, self.parameters
-        except PreconditionError as error:
-            return [str(error)]
-        problems = [
-            f"{self.name}: {problem}" for item in parameters.values() for problem in item.problems
-        ]
-        for name, parameter in parameters.items():
-            if name in RESERVED:
-                problems.append(
-                    f"{self.name}: `{name}` is reserved in an assignment; rename the parameter"
-                )
-            if not parameter.values:
-                problems.append(f"{self.name}: parameter `{name}` has no values")
-            for value in parameter.values.values():
-                if parameter.from_files and not value.files:
-                    problems.append(f"{self.name}: `{name}={value.key}` matches no file")
-        seen: set[str] = set()
-        for index, step in enumerate(steps):
-            if step.name in seen:
-                problems.append(f"{self.name}: two steps are named `{step.name}`")
-            seen.add(step.name)
-            undeclared = [name for name in step.reads if name not in parameters]
-            if undeclared:
-                problems.append(
-                    f"{self.name}: step `{step.name}` reads {', '.join(undeclared)}, which scenario.json does not declare"
-                )
-            path = self.step_file(step)
-            if not path.is_file():
-                problems.append(f"{self.name}: step `{step.name}` has no {self.relative(path)}")
-                continue
-            problems += [
-                f"{self.name}: {self.relative(path)}: {problem}"
-                for problem in code_problems(
-                    self.read_bytes(path).decode(), self.reads_through(index)
-                )
-            ]
-        read = {name for step in steps for name in step.reads}
-        problems += [
-            f"{self.name}: no step reads parameter `{name}`"
-            for name in parameters
-            if name not in read
-        ]
-        return problems
-
-    # --- assignments ------------------------------------------------------------
-
-    def choose(self, assignment: dict[str, Any]) -> dict[str, list[Value]]:
-        """Each parameter's values in this assignment: a value, a list, or `*`
-        for all; a parameter with one value needs no mention."""
-        unknown = [
-            name for name in assignment if name not in self.parameters and name not in RESERVED
-        ]
-        if unknown:
-            raise UsageError(
-                f"{self.name} has no parameter {', '.join(unknown)}; it has: {', '.join(self.parameters)}"
-            )
-        chosen: dict[str, list[Value]] = {}
-        for name, parameter in self.parameters.items():
-            if name not in assignment:
-                if len(parameter.values) != 1:
-                    raise UsageError(
-                        f'the assignment leaves `{name}` open: give a value, a list or "*" '
-                        f"(its values: {', '.join(parameter.values)})"
-                    )
-                chosen[name] = list(parameter.values.values())
-                continue
-            given = assignment[name]
-            if given == "*":
-                chosen[name] = list(parameter.values.values())
-                continue
-            picked = []
-            for item in given if isinstance(given, list) else [given]:
-                value = parameter.values.get(value_key(item)) or parameter.values.get(str(item))
-                if value is None:
-                    raise UsageError(
-                        f"`{name}` has no value {value_key(item)}; its values: {', '.join(parameter.values)}"
-                    )
-                if value not in picked:
-                    picked.append(value)
-            chosen[name] = picked
-        return chosen
-
-    def values_of(self, parameters: dict[str, Any]) -> dict[str, Value] | None:
-        """The `Value`s a snapshot's parameters name, or None when one is gone."""
+    def summary(self) -> dict[str, tuple[str, str, str]]:
+        """Every output of the default target: its rule, Snakemake's status and plan."""
         found = {}
-        for name, value in parameters.items():
-            parameter = self.parameters.get(name)
-            item = parameter.values.get(value_key(value)) if parameter else None
-            if item is None:
-                return None
-            found[name] = item
+        for line in self.snakemake("--summary").splitlines():
+            parts = line.split("\t")
+            if len(parts) >= 6 and parts[0] != "output_file":
+                found[parts[0]] = (parts[2], parts[4], parts[5])
         return found
 
+    def rulegraph(self) -> dict[str, Any]:
+        """The rules in the order they run, and which feeds which, from `--rulegraph`."""
+        names: dict[str, str] = {}
+        edges = []
+        for line in self.snakemake("--rulegraph").splitlines():
+            node = re.match(r'\s*(\d+)\[label = "([^"]+)"', line)
+            edge = re.match(r"\s*(\d+) -> (\d+)", line)
+            if node:
+                names[node.group(1)] = node.group(2)
+            elif edge:
+                edges.append((edge.group(1), edge.group(2)))
+        return {
+            "rules": sorted(names.values()),
+            "edges": [[names[a], names[b]] for a, b in edges if a in names and b in names],
+        }
 
-def globs(value: str | list[str]) -> list[str]:
-    return [value] if isinstance(value, str) else list(value)
-
-
-def code_problems(source: str, readable: list[str]) -> list[str]:
-    """A step's code: a `run(step)`, reading only the parameters read up to it
-    (`step.value("x")`, `step.file("x")`, `step.files("x")`, `step.parameters["x"]`)."""
-    try:
-        tree = ast.parse(source)
-    except SyntaxError as error:
-        return [f"does not parse: {error.msg} (line {error.lineno})"]
-    problems = []
-    if not any(isinstance(node, ast.FunctionDef) and node.name == "run" for node in tree.body):
-        problems.append("defines no `run(step)`")
-    for node in ast.walk(tree):
-        name = None
-        if (
-            isinstance(node, ast.Call)
-            and isinstance(node.func, ast.Attribute)
-            and node.func.attr in READERS
-            and node.args
-            and isinstance(node.args[0], ast.Constant)
-        ):
-            name = node.args[0].value
-        elif (
-            isinstance(node, ast.Subscript)
-            and isinstance(node.value, ast.Attribute)
-            and node.value.attr == "parameters"
-            and isinstance(node.slice, ast.Constant)
-        ):
-            name = node.slice.value
-        if isinstance(name, str) and name not in readable:
-            problems.append(
-                f"line {getattr(node, 'lineno', 0)} reads `{name}`, which neither this step nor one before it reads"
-            )
-    return problems
-
-
-class Snapshot:
-    """A snapshot on disk: `snapshots/HASH/snapshot.json`, and its artefacts beside it."""
-
-    def __init__(self, directory: Path, data: dict[str, Any]) -> None:
-        self.directory = directory
-        self.data = data
-
-    @property
-    def hash(self) -> str:
-        return self.directory.name
-
-    @property
-    def step(self) -> str:
-        return str(self.data.get("step", ""))
-
-    @property
-    def parameters(self) -> dict[str, Any]:
-        return dict(self.data.get("parameters", {}))
-
-    @property
-    def failed(self) -> bool:
-        return self.data.get("status") == Outcome.FAILED
-
-    @property
-    def artefacts(self) -> Path:
-        return self.directory / "artefacts"
-
-    def label(self) -> str:
-        values = " ".join(f"{name}={value_key(value)}" for name, value in self.parameters.items())
-        return f"{self.step} {values}".strip()
-
-    def missing(self) -> list[dict[str, str]]:
-        """The artefacts its manifest names that this checkout lacks, and why."""
-        found = []
-        for entry in self.data.get("artefacts", []):
-            path = self.artefacts / entry["path"]
-            if not path.is_file():
-                found.append({"path": entry["path"], "why": "absent"})
-            elif path.stat().st_size != entry["bytes"] and is_lfs_pointer(path):
-                found.append(
-                    {"path": entry["path"], "why": "in Git LFS, not fetched (git lfs pull)"}
-                )
-            elif path.stat().st_size != entry["bytes"]:
-                found.append({"path": entry["path"], "why": "changed since it was made"})
-        return found
-
-
-class Snapshots:
-    """A scenario's snapshots, and which of them are stale."""
-
-    def __init__(self, scenario: Scenario) -> None:
-        self.scenario = scenario
-
-    def all(self) -> list[Snapshot]:
-        found = []
-        directory = self.scenario.snapshots_directory
-        for path in sorted(directory.glob("*/snapshot.json")) if directory.is_dir() else []:
-            try:
-                found.append(Snapshot(path.parent, read_json(path)))
-            except PreconditionError:
-                found.append(Snapshot(path.parent, {}))
-        return found
-
-    def get(self, hash: str) -> Snapshot | None:
-        path = self.scenario.snapshots_directory / hash / "snapshot.json"
-        if not path.is_file():
-            return None
-        return Snapshot(path.parent, read_json(path))
-
-    def staleness(self, snapshot: Snapshot) -> str | None:
-        """Why the snapshot no longer matches the scenario, or None when it does."""
-        scenario = self.scenario
-        index = scenario.step_index(snapshot.step)
-        if index is None:
-            return f"the scenario has no step `{snapshot.step}` now"
-        reads = scenario.reads_through(index)
-        if sorted(reads) != sorted(snapshot.parameters):
-            return f"the steps up to `{snapshot.step}` read {', '.join(reads) or 'nothing'} now"
-        chosen = scenario.values_of(snapshot.parameters)
-        if chosen is None:
-            return "one of its parameter values is gone"
-        current = scenario.identity(index, chosen)
-        if short_hash(current) == snapshot.hash:
-            return None
-        recorded = snapshot.data.get("digests", {})
-        changed = [
-            f"{name}={value_key(snapshot.parameters[name])}"
-            for name, digest in current["digests"]["parameters"].items()
-            if recorded.get("parameters", {}).get(name) != digest
+    def rules(self) -> list[str]:
+        return [
+            line.strip()
+            for line in self.snakemake("--list-rules").splitlines()
+            if re.fullmatch(r"[\w-]+", line.strip())
         ]
-        was = {entry["step"]: entry["digest"] for entry in recorded.get("steps", [])}
-        steps = [entry["step"] for entry in current["digests"]["steps"]]
-        if steps != [entry["step"] for entry in recorded.get("steps", [])]:
-            return f"the steps up to `{snapshot.step}` are now {', '.join(steps)}"
-        changed += [
-            f"step `{entry['step']}`"
-            for entry in current["digests"]["steps"]
-            if was.get(entry["step"]) != entry["digest"]
-        ]
-        return (
-            f"changed since: {', '.join(changed)}" if changed else "its identity no longer matches"
+
+    def materialised(self) -> list[Result]:
+        """The outputs under results/: directories whose path below the rule is
+        all `NAME=VALUE`, and that a step wrote (`cost.json` or `error.json`)."""
+        found = []
+        if not self.results.is_dir():
+            return found
+        for rule in sorted(path for path in self.results.iterdir() if path.is_dir()):
+            for directory in walk(rule):
+                if (directory / COST).is_file() or (directory / ERROR).is_file():
+                    path = directory.relative_to(self.directory).as_posix()
+                    found.append(Result(path, rule.name, entry=self.entry(directory)))
+        return found
+
+    def entry(self, directory: Path) -> str | None:
+        """The cache entry an output is: the directory a link (after a run), or
+        its files' links (after a restore), point into."""
+        cache = self.cache.resolve()
+        links = (
+            [directory]
+            if directory.is_symlink()
+            else [child for child in directory.iterdir() if child.is_symlink()]
         )
+        for link in links:
+            target = link.resolve()
+            for candidate in (target, target.parent):
+                if candidate.parent == cache:
+                    return candidate.name
+        return None
 
-    def prunable(self) -> list[tuple[Snapshot, str]]:
-        """Stale and failed snapshots, with why."""
-        found = []
-        for snapshot in self.all():
-            stale = self.staleness(snapshot)
-            if stale:
-                found.append((snapshot, f"stale: {stale}"))
-            elif snapshot.failed:
-                found.append((snapshot, "failed"))
+    def states(self, jobs: list[Job] | None = None) -> list[Result]:
+        """Each materialised output: current; stale, in Snakemake's words, when
+        a run would compute it again (a rerun the cache answers with the same
+        entry is no change: Snakemake reruns a script whose file is newer); or
+        failed. `jobs` is a dry run of the default target, when one was made."""
+        with ThreadPoolExecutor(2) as pool:
+            summary = pool.submit(self.summary)
+            planned = pool.submit(self.jobs) if jobs is None else None
+            pending = {
+                output: job
+                for job in (planned.result() if planned else jobs or [])
+                for output in job.outputs
+            }
+            outputs = summary.result()
+        found = self.materialised()
+        for result in found:
+            job = pending.get(result.path)
+            if result.path not in outputs:
+                result.state, result.why = "stale", "no longer in the workflow"
+            elif job is not None and Path(job.cached.get(result.path, "")).name != result.entry:
+                result.state, result.why = "stale", job.reason
+            elif (self.directory / result.path / ERROR).is_file():
+                result.state = "failed"
         return found
 
     def problems(self) -> list[str]:
-        """Snapshots whose name no longer fits their identity, and committed
-        ones whose artefacts are not where their manifests say."""
+        """What is wrong with the scenario's files: the profile, rules not cached by their wildcards."""
         problems = []
-        snapshots = self.all()
-        tracked = tracked_files(self.scenario.project.here, self.scenario.snapshots_directory)
-        unaccounted: list[tuple[Snapshot, str, str]] = []
-        for snapshot in snapshots:
-            name = f"{self.scenario.name}: snapshot {snapshot.hash}"
-            if not snapshot.data:
-                problems.append(f"{name}: snapshot.json is not readable JSON")
+        if not (self.directory / PROFILE / "config.yaml").is_file():
+            problems.append(f"{self.name}: no {PROFILE}/config.yaml — `nock eval init` writes it")
+        for rule, body in rule_blocks((self.directory / "Snakefile").read_text()):
+            if not re.search(r"^\s+output:", body, re.MULTILINE):
                 continue
-            identity = {key: snapshot.data.get(key) for key in ("step", "parameters", "digests")}
-            if short_hash(identity) != snapshot.hash:
+            if not re.search(r"^\s+cache:", body, re.MULTILINE):
                 problems.append(
-                    f"{name}: its identity hashes to {short_hash(identity)}, not its name"
+                    f'{self.name}: rule `{rule}` is not cached (`cache: "omit-software"`), so its outputs never reach git'
                 )
-            if self.relative(snapshot.directory / "snapshot.json") not in tracked:
-                continue
-            for entry in snapshot.data.get("artefacts", []):
-                file = snapshot.artefacts / entry["path"]
-                path = self.relative(file)
-                if path not in tracked or not file.is_file():
-                    unaccounted.append((snapshot, entry["path"], path))
-        ignored = ignored_files(self.scenario.project.here, [path for _, _, path in unaccounted])
-        for snapshot, artefact, path in unaccounted:
-            if path in ignored:
-                continue
-            where = (
-                "is not committed" if (snapshot.artefacts / artefact).is_file() else "is missing"
-            )
-            problems.append(
-                f"{self.scenario.name}: snapshot {snapshot.hash} ({snapshot.label()}) is committed, "
-                f"but its artefact {artefact} {where}"
-            )
+            elif not re.search(r"^\s+params:[\s\S]*wildcards", body, re.MULTILINE):
+                problems.append(
+                    f"{self.name}: rule `{rule}` keeps no wildcards in its params "
+                    "(`keyed=lambda wildcards: dict(wildcards)`), so its values share one cache entry"
+                )
         return problems
 
-    def relative(self, path: Path) -> str:
-        return path.relative_to(self.scenario.project.here).as_posix()
+
+def rule_blocks(text: str) -> Iterator[tuple[str, str]]:
+    """Each `rule NAME:` or `checkpoint NAME:` block of a Snakefile, by its indentation."""
+    lines = text.splitlines()
+    for index, line in enumerate(lines):
+        head = re.match(r"^(rule|checkpoint) ([\w-]+):", line)
+        if not head:
+            continue
+        body = []
+        for following in lines[index + 1 :]:
+            if following and not following[0].isspace() and not following.startswith("#"):
+                break
+            body.append(following)
+        yield head.group(2), "\n".join(body)
 
 
-def tracked_files(root: Path, directory: Path) -> set[str]:
-    if not directory.is_dir():
-        return set()
-    try:
-        listed = Git(root)("ls-files", "-z", "--", str(directory.relative_to(root)))
-    except GitError:
-        return set()
-    return {path for path in listed.split("\0") if path}
-
-
-def ignored_files(root: Path, paths: list[str]) -> set[str]:
-    if not paths:
-        return set()
-    result = subprocess.run(
-        ["git", "check-ignore", "--no-index", "--stdin", "-z"],
-        cwd=root,
-        input="\0".join(paths),
-        capture_output=True,
-        text=True,
-    )
-    return {path for path in result.stdout.split("\0") if path}
-
-
-class Runs:
-    """A scenario's runs: `runs/ID/run.json`, each keeping its own numbers."""
-
-    def __init__(self, scenario: Scenario) -> None:
-        self.scenario = scenario
-
-    def all(self) -> list[dict[str, Any]]:
-        directory = self.scenario.runs_directory
-        found = []
-        for path in sorted(directory.glob("*/run.json")) if directory.is_dir() else []:
-            try:
-                found.append(read_json(path))
-            except PreconditionError:
-                continue
-        return found
-
-    def get(self, identifier: str) -> dict[str, Any] | None:
-        path = self.scenario.runs_directory / identifier / "run.json"
-        return read_json(path) if path.is_file() else None
-
-    def through(self) -> dict[str, list[str]]:
-        """Snapshot → the runs that reused or computed it."""
-        found: dict[str, list[str]] = {}
-        for run in self.all():
-            for node in run.get("nodes", []):
-                if node.get("outcome") in (Outcome.REUSED, Outcome.COMPUTED, Outcome.FAILED):
-                    found.setdefault(node["snapshot"], []).append(run["id"])
-        return found
-
-
-# --- plans and runs ---------------------------------------------------------------
-
-
-@dataclass
-class Node:
-    """One snapshot an assignment calls for: a step and the values read up to it."""
-
-    index: int
-    step: Definition
-    chosen: dict[str, Value]
-    hash: str
-    parent: Node | None
-    children: list[Node] = field(default_factory=list)
-    outcome: Outcome = Outcome.COMPUTE
-    why: str = ""
-    seconds: float | None = None
-    cost: float | None = None
-    results: dict[str, Any] | None = None
-
-    @property
-    def parameters(self) -> dict[str, Any]:
-        return {name: value.value for name, value in self.chosen.items()}
-
-    def label(self, new_only: bool = False) -> str:
-        reads = self.step.reads if new_only else list(self.chosen)
-        known = self.parent.chosen if new_only and self.parent else {}
-        values = " ".join(
-            f"{name}={self.chosen[name].key}"
-            for name in reads
-            if name in self.chosen and name not in known
-        )
-        return f"{self.step.name} {values}".strip()
-
-    def descendants(self) -> Iterator[Node]:
-        for child in self.children:
+def walk(directory: Path) -> Iterator[Path]:
+    """Directories under `directory` named `NAME=VALUE`, through links into the cache."""
+    for child in sorted(directory.iterdir()) if directory.is_dir() else []:
+        if child.is_dir() and "=" in child.name:
             yield child
-            yield from child.descendants()
+            yield from walk(child)
+
+
+# --- running ------------------------------------------------------------------------
 
 
 @dataclass
 class Estimate:
-    seconds: float
-    cost: float
-    known: bool
+    usd: float | None
+    seconds: float | None
 
 
-class Plan:
-    """The tree an assignment makes of a scenario: a node per snapshot, each
-    reused or to compute, with the estimate of what computing costs."""
+class Run:
+    """`nock eval run`: a dry run first — what reruns and why, what the cache
+    restores, what computing costs — then Snakemake with the profile, unless
+    the estimate passes the budget."""
 
-    def __init__(self, scenario: Scenario, assignment: dict[str, Any]) -> None:
+    def __init__(self, scenario: Scenario, targets: list[str], budget: float | None) -> None:
         self.scenario = scenario
-        self.assignment = assignment
-        budget = assignment.get("budget_usd")
-        if budget is not None and not isinstance(budget, (int, float)):
-            raise UsageError("`budget_usd` is a number of dollars")
-        self.budget: float | None = float(budget) if budget is not None else None
-        if not scenario.steps:
-            raise PreconditionError(f"{scenario.name} has no steps yet: add them to scenario.json")
-        self.chosen = scenario.choose(assignment)
-        self.snapshots = Snapshots(scenario)
-        self.roots = self.expand(0, {}, None)
-        self.nodes = [node for root in self.roots for node in [root, *root.descendants()]]
+        self.targets = targets
+        self.budget = budget
+        self.jobs = scenario.jobs(targets)
         self.estimates = self.history()
 
-    def expand(self, index: int, chosen: dict[str, Value], parent: Node | None) -> list[Node]:
-        step = self.scenario.steps[index]
-        new = [name for name in step.reads if name not in chosen]
-        nodes = []
-        for combination in itertools.product(*(self.chosen[name] for name in new)):
-            values = {**chosen, **dict(zip(new, combination, strict=True))}
-            hash = short_hash(self.scenario.identity(index, values))
-            node = Node(index, step, values, hash, parent)
-            existing = self.snapshots.get(hash)
-            if existing is not None:
-                node.outcome = Outcome.FAILED if existing.failed else Outcome.REUSED
-                node.seconds = existing.data.get("seconds")
-                node.cost = existing.data.get("cost_usd")
-                node.results = existing.data.get("results")
-            elif parent is not None and parent.outcome in (Outcome.FAILED, Outcome.BLOCKED):
-                node.outcome = Outcome.BLOCKED
-                node.why = f"`{parent.label()}` " + (
-                    "failed" if parent.outcome is Outcome.FAILED else "is blocked"
-                )
-            elif parent is not None and parent.outcome is Outcome.REUSED:
-                missing = self.snapshots.get(parent.hash)
-                lacking = missing.missing() if missing else []
-                if lacking:
-                    node.outcome = Outcome.BLOCKED
-                    node.why = (
-                        f"snapshot {parent.hash} lacks {len(lacking)} artefact(s) here: "
-                        + "; ".join(f"{item['path']} ({item['why']})" for item in lacking[:3])
-                    )
-            if index + 1 < len(self.scenario.steps):
-                node.children = self.expand(index + 1, values, node)
-            nodes.append(node)
-        return nodes
-
     def history(self) -> dict[str, Estimate]:
-        """Each step's mean time and cost over the snapshots it made, else its declared estimate."""
-        made: dict[str, list[Snapshot]] = {}
-        for snapshot in self.snapshots.all():
-            made.setdefault(snapshot.step, []).append(snapshot)
-        estimates = {}
-        for step in self.scenario.steps:
-            past = made.get(step.name, [])
-            if past:
-                estimates[step.name] = Estimate(
-                    sum(float(item.data.get("seconds") or 0) for item in past) / len(past),
-                    sum(float(item.data.get("cost_usd") or 0) for item in past) / len(past),
-                    True,
-                )
-            else:
-                estimates[step.name] = Estimate(
-                    float(step.estimate.get("seconds", 0)),
-                    float(step.estimate.get("cost_usd", 0)),
-                    bool(step.estimate),
-                )
-        return estimates
+        """Each rule's mean cost and time over the outputs it made here."""
+        spent: dict[str, list[dict[str, Any]]] = {}
+        for result in self.scenario.materialised():
+            path = self.scenario.directory / result.path / COST
+            if path.is_file():
+                try:
+                    spent.setdefault(result.rule, []).append(read(path))
+                except ValueError:
+                    continue
+        return {
+            rule: Estimate(
+                mean([float(item.get("usd") or 0) for item in items]),
+                mean([float(item.get("seconds") or 0) for item in items]),
+            )
+            for rule, items in spent.items()
+        }
 
-    def to_compute(self) -> list[Node]:
-        return [node for node in self.nodes if node.outcome is Outcome.COMPUTE]
+    def estimate(self, job: Job) -> Estimate:
+        known = self.estimates.get(job.rule)
+        if known is not None:
+            return known
+        declared = job.resources.get("estimate_cents")
+        return Estimate(int(declared) / 100 if declared and declared.isdigit() else None, None)
 
-    def summary(self, parallel: int) -> dict[str, Any]:
-        """What the run would do: counts, and the time and cost of computing."""
-        counts = {outcome.value: 0 for outcome in Outcome}
-        for node in self.nodes:
-            counts[node.outcome.value] += 1
-        computing = self.to_compute()
-        seconds = sum(self.estimates[node.step.name].seconds for node in computing)
-        longest = max(
-            (
-                sum(
-                    self.estimates[item.step.name].seconds
-                    for item in self.path(node)
-                    if item.outcome is Outcome.COMPUTE
-                )
-                for node in computing
-            ),
-            default=0.0,
-        )
-        cost = sum(self.estimates[node.step.name].cost for node in computing)
-        unknown = sorted(
-            {node.step.name for node in computing if not self.estimates[node.step.name].known}
-        )
+    def computing(self) -> list[Job]:
+        return [job for job in self.jobs if not job.from_cache]
+
+    def collisions(self) -> list[str]:
+        """Outputs that would share one cache entry: a rule whose params do not carry its wildcards."""
+        by_entry: dict[str, list[str]] = {}
+        for job in self.jobs:
+            for output, entry in job.cached.items():
+                by_entry.setdefault(entry, []).append(output)
+        return [
+            f"{', '.join(outputs)} would all be restored from one cache entry: their rule's params "
+            "must carry its wildcards (`keyed=lambda wildcards: dict(wildcards)`)"
+            for outputs in by_entry.values()
+            if len(outputs) > 1
+        ]
+
+    def pointers(self) -> list[str]:
+        """Cache entries a run would read that are Git LFS pointers, not their content."""
+        found = []
+        for job in self.jobs:
+            for entry in job.cached.values():
+                path = Path(entry)
+                files = [path] if path.is_file() else [p for p in path.rglob("*") if p.is_file()]
+                found += [str(p) for p in files if is_lfs_pointer(p)]
+        return found
+
+    def summary(self) -> dict[str, Any]:
+        computing = self.computing()
+        known = [self.estimate(job) for job in computing]
+        cost = sum(item.usd or 0 for item in known)
+        unknown = sorted({job.rule for job in computing if self.estimate(job).usd is None})
+        checkpoints = any(job.checkpoint for job in self.jobs)
         result: dict[str, Any] = {
             "scenario": self.scenario.name,
-            "snapshots": len(self.nodes),
-            "leaves": sum(1 for node in self.nodes if not node.children),
-            **{key: value for key, value in counts.items() if value and key != Outcome.COMPUTE},
-            "to_compute": counts[Outcome.COMPUTE],
-            "estimated_seconds": round(max(longest, seconds / max(1, parallel)), 1),
+            "to_compute": len(computing),
+            "from_cache": len(self.jobs) - len(computing),
             "estimated_cost_usd": round(cost, 4),
+            "estimated_seconds": round(sum(item.seconds or 0 for item in known), 1),
         }
         if unknown:
             result["no_estimate_for"] = unknown
+        if checkpoints:
+            result["say"] = (
+                "the jobs after a checkpoint are decided as it finishes: a dry run counts "
+                "those it cannot yet see into the cache as computed"
+            )
         if self.budget is not None:
             result["budget_usd"] = self.budget
-            if cost > self.budget:
-                result["say"] = "the estimate passes the budget: the run stops starting steps there"
         return result
 
-    def path(self, node: Node) -> list[Node]:
-        found = []
-        current: Node | None = node
-        while current is not None:
-            found.append(current)
-            current = current.parent
-        return found[::-1]
-
-    def tree(self) -> str:
-        """The tree, a line per snapshot: what it is, and whether it is reused or computed."""
-        lines = []
-        for node in self.nodes:
-            mark = node.outcome.value
-            if node.outcome is Outcome.COMPUTE:
-                estimate = self.estimates[node.step.name]
-                mark += (
-                    f" ~{format_duration(estimate.seconds)}" if estimate.known else " (no estimate)"
+    def lines(self) -> list[dict[str, Any]]:
+        """A row per job: what it is, and whether it is restored or computed, and why."""
+        rows = []
+        for job in self.jobs:
+            row: dict[str, Any] = {"job": job.label()}
+            if job.from_cache:
+                row["does"] = "from cache"
+            else:
+                estimate = self.estimate(job)
+                row["does"] = (
+                    "compute"
+                    + (f" ~${estimate.usd:.2f}" if estimate.usd else "")
+                    + (f" ~{estimate.seconds:.0f}s" if estimate.seconds else "")
                 )
-                if estimate.cost:
-                    mark += f" ~${estimate.cost:.2f}"
-            if node.why:
-                mark += f": {node.why}"
-            lines.append(f"{'  ' * node.index}{node.label(new_only=True)}  [{node.hash}] {mark}")
-        return "\n".join(lines)
+                row["why"] = job.reason
+            rows.append(row)
+        return rows
 
+    def refusal(self) -> str | None:
+        """Why the run must not start: shared cache entries, LFS pointers, or the budget."""
+        problems = self.collisions()
+        if problems:
+            return "; ".join(problems)
+        pointers = self.pointers()
+        if pointers:
+            return (
+                f"{len(pointers)} cache file(s) are Git LFS pointers, not their content "
+                f"(`git lfs pull`): {', '.join(pointers[:3])}"
+            )
+        if self.budget is None:
+            return None
+        summary = self.summary()
+        if summary["estimated_cost_usd"] > self.budget:
+            return (
+                f"the estimate, ${summary['estimated_cost_usd']:.2f} for {summary['to_compute']} "
+                f"job(s), passes the budget, ${self.budget:.2f}: narrow the targets, or raise it"
+            )
+        return None
 
-def run_identifier() -> str:
-    return datetime.now(UTC).strftime("%Y%m%dT%H%M%S") + "-" + secrets.token_hex(2)
-
-
-class Runner:
-    """Computes what a plan says to, up to `parallel` steps at once, each in
-    its own process; resumable, since each snapshot is written whole when its
-    step ends, and never computing a snapshot that already exists."""
-
-    def __init__(self, plan: Plan, parallel: int = PARALLEL) -> None:
-        self.plan = plan
-        self.scenario = plan.scenario
-        self.project = plan.scenario.project
-        self.parallel = max(1, parallel)
-        self.identifier = run_identifier()
-        self.started = now()
-        self.spent = 0.0
-        self.stopped = False
-        self.computed: set[str] = set()
-        """The snapshots this run made (and so paid for)."""
-
-    def run(self) -> dict[str, Any]:
-        plan = self.plan
-        ready = [
-            node
-            for node in plan.to_compute()
-            if node.parent is None or node.parent.outcome is Outcome.REUSED
+    def execute(self, cores: int | None) -> dict[str, Any]:
+        refused = self.refusal()
+        if refused:
+            raise UsageError(refused, self.summary())
+        entries = {path.name for path in self.scenario.cache.iterdir()}
+        before = {result.path: result.entry for result in self.scenario.materialised()}
+        output = self.scenario.run(self.targets, cores)
+        made = [
+            result
+            for result in self.scenario.materialised()
+            if result.path not in before or before[result.path] != result.entry
         ]
-        flying: dict[Future[None], Node] = {}
-        clock = datetime.now(UTC)
-        with ThreadPoolExecutor(max_workers=self.parallel) as pool:
-            while ready or flying:
-                while ready and len(flying) < self.parallel:
-                    node = ready.pop(0)
-                    if self.over_budget(node, flying.values()):
-                        self.stop(node)
-                        continue
-                    flying[pool.submit(self.compute, node)] = node
-                if not flying:
-                    break
-                finished, _ = wait(flying, return_when=FIRST_COMPLETED)
-                for future in finished:
-                    node = flying.pop(future)
-                    future.result()
-                    if node.hash in self.computed:
-                        self.spent += node.cost or 0
-                    if node.outcome in (Outcome.COMPUTED, Outcome.REUSED):
-                        ready += [
-                            child for child in node.children if child.outcome is Outcome.COMPUTE
-                        ]
-                    else:
-                        for child in node.descendants():
-                            if child.outcome is Outcome.COMPUTE:
-                                child.outcome = Outcome.BLOCKED
-                                child.why = f"`{node.label()}` failed"
-                self.record(None)
-        return self.record((datetime.now(UTC) - clock).total_seconds())
-
-    def over_budget(self, node: Node, flying: Any) -> bool:
-        budget = self.plan.budget
-        if budget is None:
-            return False
-        if self.stopped:
-            return True
-        estimates = self.plan.estimates
-        committed = self.spent + sum(estimates[item.step.name].cost for item in flying)
-        return committed + estimates[node.step.name].cost > budget
-
-    def stop(self, node: Node) -> None:
-        self.stopped = True
-        for item in [node, *node.descendants()]:
-            if item.outcome is Outcome.COMPUTE:
-                item.outcome = Outcome.OVER_BUDGET
-                item.why = f"${self.spent:.2f} spent of ${self.plan.budget:.2f}"
-
-    def compute(self, node: Node) -> None:
-        """Run one step in a copy of the snapshot before it; the snapshot is
-        moved into place whole, so a reader never sees half of one."""
-        scenario = self.scenario
-        with self.project.lock(f"eval-{scenario.name}-{node.hash}"):
-            existing = Snapshots(scenario).get(node.hash)
-            if existing is not None:
-                node.outcome = Outcome.FAILED if existing.failed else Outcome.REUSED
-                node.results = existing.data.get("results")
-                return
-            work = self.project.local / "eval" / scenario.name / f"{node.hash}.{os.getpid()}"
-            shutil.rmtree(work, ignore_errors=True)
-            artefacts = work / "artefacts"
-            parent = Snapshots(scenario).get(node.parent.hash) if node.parent else None
-            if parent is not None and parent.artefacts.is_dir():
-                shutil.copytree(parent.artefacts, artefacts, symlinks=True)
-            artefacts.mkdir(parents=True, exist_ok=True)
-            request = work / "request.json"
-            write_json(request, self.request(node, artefacts, work / "outcome.json"))
-            began = datetime.now(UTC)
-            output = Supervisor(
-                self.project,
-                [sys.executable, "-m", "nock.steps", str(request)],
-                directory=artefacts,
-                deadline=node.step.deadline,
-                silence=node.step.silence,
-                environment={
-                    **os.environ,
-                    "PYTHONPATH": os.pathsep.join(
-                        [
-                            str(Path(__file__).resolve().parent.parent),
-                            os.environ.get("PYTHONPATH", ""),
-                        ]
-                    ).rstrip(os.pathsep),
-                },
-            ).run()
-            seconds = round((datetime.now(UTC) - began).total_seconds(), 3)
-            outcome_path = work / "outcome.json"
-            outcome = read_json(outcome_path) if outcome_path.is_file() else {}
-            failed = not output.ok or "results" not in outcome
-            identity = scenario.identity(node.index, node.chosen)
-            data: dict[str, Any] = {
-                **identity,
-                "status": Outcome.FAILED.value if failed else Outcome.COMPUTED.value,
-                "results": outcome.get("results", {}),
-                "seconds": seconds,
-                "cost_usd": round(float(outcome.get("cost_usd") or 0), 6),
-                "created": now(),
-                "run": self.identifier,
-                "log": "log.txt",
-                "artefacts": manifest(artefacts),
-            }
-            if failed:
-                data["error"] = outcome.get("error") or output.note or f"exited {output.code}"
-            shutil.copyfile(output.log, work / "log.txt")
-            request.unlink()
-            outcome_path.unlink(missing_ok=True)
-            write_json(work / "snapshot.json", data)
-            target = scenario.snapshots_directory / node.hash
-            target.parent.mkdir(parents=True, exist_ok=True)
-            shutil.move(str(work), str(target))
-            node.outcome = Outcome.FAILED if failed else Outcome.COMPUTED
-            self.computed.add(node.hash)
-            node.why = str(data.get("error", ""))
-            node.seconds, node.cost, node.results = seconds, data["cost_usd"], data["results"]
-
-    def request(self, node: Node, artefacts: Path, outcome: Path) -> dict[str, Any]:
-        """What the step's process is told: who it is, its values, and the results before it."""
-        before = {}
-        for item in self.plan.path(node)[:-1]:
-            snapshot = Snapshots(self.scenario).get(item.hash)
-            before[item.step.name] = snapshot.data.get("results", {}) if snapshot else {}
-        return {
-            "scenario": str(self.scenario.directory),
-            "step": node.step.name,
-            "code": str(self.scenario.step_file(node.step)),
-            "repository": str(self.project.here),
-            "root": str(self.project.root),
-            "directory": str(artefacts),
-            "outcome": str(outcome),
-            "parameters": node.parameters,
-            "readable": self.scenario.reads_through(node.index),
-            "files": {
-                name: [str(path) for path in value.files]
-                for name, value in node.chosen.items()
-                if value.files
-            },
-            "before": before,
-        }
-
-    def record(self, seconds: float | None) -> dict[str, Any]:
-        """runs/ID/run.json: written as the run goes, so an interrupted run shows
-        what it did, and kept with its own numbers, so pruning loses no history."""
-        plan = self.plan
-        by: dict[str, list[str]] = {
-            outcome.value: [] for outcome in Outcome if outcome is not Outcome.COMPUTE
-        }
-        for node in plan.nodes:
-            if node.outcome is not Outcome.COMPUTE:
-                by[node.outcome.value].append(node.hash)
-        record = {
-            "id": self.identifier,
+        computed = [result for result in made if result.entry not in entries]
+        spent = 0.0
+        for result in computed:
+            path = self.scenario.directory / result.path / COST
+            if path.is_file():
+                spent += float(read(path).get("usd") or 0)
+        failed = [
+            result.path
+            for result in made
+            if (self.scenario.directory / result.path / ERROR).is_file()
+        ]
+        summary: dict[str, Any] = {
             "scenario": self.scenario.name,
-            "commit": self.commit(),
-            "assignment": plan.assignment,
-            "started": self.started,
-            "finished": now() if seconds is not None else None,
-            "seconds": round(seconds, 1) if seconds is not None else None,
-            "cost_usd": round(
-                sum(node.cost or 0 for node in plan.nodes if node.hash in self.computed), 6
-            ),
-            "snapshots": {key: value for key, value in by.items() if value},
-            "nodes": [
-                {
-                    "snapshot": node.hash,
-                    "step": node.step.name,
-                    "parameters": node.parameters,
-                    "parent": node.parent.hash if node.parent else None,
-                    "outcome": node.outcome.value,
-                    **({"why": node.why} if node.why else {}),
-                    "seconds": node.seconds,
-                    "cost_usd": node.cost,
-                    **(
-                        {"results": node.results}
-                        if not node.children and node.results is not None
-                        else {}
-                    ),
-                }
-                for node in plan.nodes
-            ],
+            "computed": len(computed),
+            "from_cache": len(made) - len(computed),
+            "cost_usd": round(spent, 6),
         }
-        write_json(self.scenario.runs_directory / self.identifier / "run.json", record)
-        return record
-
-    def commit(self) -> dict[str, Any]:
-        """The commit the scenario ran at, and whether its files differed from it."""
-        git = Git(self.project.here)
-        try:
-            head = git.head()
-        except GitError:
-            return {"sha": None, "dirty": True}
-        where = self.scenario.directory.relative_to(self.project.here).as_posix()
-        dirty = git(
-            "status",
-            "--porcelain",
-            "--",
-            where,
-            f":!{where}/snapshots",
-            f":!{where}/runs",
-            check=False,
+        if failed:
+            summary["failed"] = failed[:10]
+        if not output.ok:
+            summary["snakemake"] = (
+                f"exited {output.code}: a job broke outside its step (log: {output.log})"
+            )
+        summary["next"] = (
+            "`nock eval show` for what is current, stale and failed; `nock eval query` and "
+            f"`compare` to read it; commit {SCENARIOS}/{self.scenario.name}/cache/ to share it"
         )
-        return {"sha": head, "dirty": bool(dirty.strip())}
+        return summary
+
+
+def read(path: Path) -> dict[str, Any]:
+    value = json.loads(path.read_text())
+    if not isinstance(value, dict):
+        raise ValueError(f"{path} is not a JSON object")
+    return value
+
+
+def mean(values: list[float]) -> float | None:
+    return sum(values) / len(values) if values else None
 
 
 # --- every scenario ------------------------------------------------------------------
 
 
 class Evaluations:
-    """The project's scenarios, `evals/*/scenario.json` in the working tree."""
+    """The project's scenarios, `evals/*/Snakefile` in the working tree."""
 
     def __init__(self, project: Project) -> None:
         self.project = project
@@ -1148,15 +599,15 @@ class Evaluations:
     def names(self) -> list[str]:
         if not self.directory.is_dir():
             return []
-        return sorted(path.parent.name for path in self.directory.glob("*/scenario.json"))
+        return sorted(path.parent.name for path in self.directory.glob("*/Snakefile"))
 
-    def scenario(self, name: str | None, drafts: dict[str, str] | None = None) -> Scenario:
+    def scenario(self, name: str | None) -> Scenario:
         """The scenario named, or the only one there is."""
         names = self.names()
         if name is None:
             if len(names) != 1:
                 raise UsageError(
-                    'name the scenario (`"scenario": …`): '
+                    "name the scenario (`--scenario NAME`): "
                     + (", ".join(names) if names else "there are none yet — `nock eval init NAME`")
                 )
             name = names[0]
@@ -1164,23 +615,22 @@ class Evaluations:
             raise NotFoundError(
                 f"no scenario `{name}`; there are: {', '.join(names) or 'none — `nock eval init NAME`'}"
             )
-        return Scenario(self.project, name, drafts)
+        return Scenario(self.project, name)
 
     def init(self, name: str) -> list[str]:
         directory = self.directory / name
-        if (directory / "scenario.json").exists():
+        if (directory / "Snakefile").exists():
             raise UsageError(f"{SCENARIOS}/{name}/ exists already")
         if not name.replace("-", "").replace("_", "").isalnum() or name != name.lower():
             raise UsageError("a scenario's name is lowercase letters, digits, `-` and `_`")
         written = {
-            "scenario.json": json.dumps(
-                {"description": "", "steps": [], "parameters": {}}, indent=2
-            )
-            + "\n",
+            "Snakefile": SNAKEFILE,
+            "steps/example.py": EXAMPLE_STEP,
+            f"{PROFILE}/config.yaml": CONFIG,
             "parameters/.gitkeep": "",
-            "steps/.gitkeep": "",
-            ".gitattributes": GITATTRIBUTES,
+            f"{CACHE}/.gitkeep": "",
             ".gitignore": GITIGNORE,
+            ".gitattributes": GITATTRIBUTES,
         }
         for path, text in written.items():
             (directory / path).parent.mkdir(parents=True, exist_ok=True)
@@ -1192,183 +642,17 @@ class Evaluations:
         for name in self.names():
             scenario = Scenario(self.project, name)
             found = scenario.problems()
-            problems += found
             if not found:
-                problems += Snapshots(scenario).problems()
+                try:
+                    scenario.rules()
+                except PreconditionError as error:
+                    found.append(f"{name}: {error}")
+            problems += found
         return problems
 
-    def find(self, word: str) -> tuple[Scenario, str, Any]:
-        """What `nock eval show WORD` names: a scenario, a run, or a snapshot (a hash's prefix will do)."""
-        if word in self.names():
-            return Scenario(self.project, word), "scenario", None
-        for name in self.names():
-            scenario = Scenario(self.project, name)
-            run = Runs(scenario).get(word)
-            if run is not None:
-                return scenario, "run", run
-        matches = [
-            (Scenario(self.project, name), path.name)
-            for name in self.names()
-            for path in (self.directory / name / "snapshots").glob(f"{word}*")
-            if (path / "snapshot.json").is_file()
-        ]
-        if len(matches) > 1:
-            raise UsageError(f"`{word}` starts {len(matches)} snapshots' names; give more of it")
-        if matches:
-            scenario, hash = matches[0]
-            return scenario, "snapshot", Snapshots(scenario).get(hash)
-        raise NotFoundError(
-            f"`{word}` names no scenario, run or snapshot; the scenarios: {', '.join(self.names()) or 'none'}"
-        )
-
-    # --- what `show` says ----------------------------------------------------------
-
-    def overview(self) -> list[dict[str, Any]]:
-        rows = []
-        for name in self.names():
-            scenario = Scenario(self.project, name)
-            try:
-                steps = scenario.steps
-                parameters = scenario.parameters
-            except PreconditionError as error:
-                rows.append({"scenario": name, "problem": str(error)})
-                continue
-            counts = self.counts(scenario)
-            runs = Runs(scenario).all()
-            rows.append(
-                {
-                    "scenario": name,
-                    "steps": " → ".join(step.name for step in steps),
-                    "parameters": " ".join(
-                        f"{key}({len(item.values)})" for key, item in parameters.items()
-                    ),
-                    **counts,
-                    "runs": len(runs),
-                    "last_run": runs[-1]["id"] if runs else None,
-                }
-            )
-        return rows
-
-    def counts(self, scenario: Scenario) -> dict[str, int]:
-        snapshots = Snapshots(scenario)
-        counts = {"current": 0, "stale": 0, "failed": 0}
-        for snapshot in snapshots.all():
-            if snapshots.staleness(snapshot):
-                counts["stale"] += 1
-            elif snapshot.failed:
-                counts["failed"] += 1
-            else:
-                counts["current"] += 1
-        return counts
-
-    def show_scenario(self, scenario: Scenario) -> dict[str, Any]:
-        snapshots = Snapshots(scenario)
-        stale = []
-        missing = []
-        for snapshot in snapshots.all():
-            why = snapshots.staleness(snapshot)
-            if why:
-                stale.append({"snapshot": snapshot.hash, "is": snapshot.label(), "why": why})
-            lacking = snapshot.missing()
-            if lacking and not why:
-                missing.append(
-                    {
-                        "snapshot": snapshot.hash,
-                        "is": snapshot.label(),
-                        "lacks": "; ".join(f"{item['path']} ({item['why']})" for item in lacking),
-                    }
-                )
-        result: dict[str, Any] = {
-            "scenario": scenario.name,
-            "description": scenario.definition.get("description") or None,
-            "steps": [
-                {
-                    "step": step.name,
-                    "reads": " ".join(step.reads),
-                    "description": step.description,
-                }
-                for step in scenario.steps
-            ],
-            "parameters": {
-                name: ", ".join(parameter.values) for name, parameter in scenario.parameters.items()
-            },
-            "snapshots": self.counts(scenario),
-            "runs": [
-                {
-                    "run": run["id"],
-                    "assignment": json.dumps(run.get("assignment", {})),
-                    "computed": len(run.get("snapshots", {}).get("computed", [])),
-                    "reused": len(run.get("snapshots", {}).get("reused", [])),
-                    "failed": len(run.get("snapshots", {}).get("failed", [])),
-                    "cost_usd": run.get("cost_usd"),
-                    "seconds": run.get("seconds"),
-                }
-                for run in Runs(scenario).all()[-10:]
-            ],
-        }
-        if stale:
-            result["stale"] = stale
-            result["say"] = (
-                "a run computes fresh snapshots beside the stale; `nock eval prune` deletes them"
-            )
-        if missing:
-            result["missing_here"] = missing
-        return result
-
-    def show_snapshot(self, scenario: Scenario, snapshot: Snapshot) -> dict[str, Any]:
-        lacking = {item["path"]: item["why"] for item in snapshot.missing()}
-        data = snapshot.data
-        result: dict[str, Any] = {
-            "scenario": scenario.name,
-            "snapshot": snapshot.hash,
-            "step": snapshot.step,
-            "parameters": snapshot.parameters,
-            "status": data.get("status"),
-            "stale": Snapshots(scenario).staleness(snapshot),
-            "results": data.get("results"),
-            "seconds": data.get("seconds"),
-            "cost_usd": data.get("cost_usd"),
-            "created": data.get("created"),
-            "artefacts": [
-                {
-                    "path": entry["path"],
-                    "bytes": entry["bytes"],
-                    "here": lacking.get(entry["path"], "yes"),
-                }
-                for entry in data.get("artefacts", [])
-            ],
-            "runs": Runs(scenario).through().get(snapshot.hash, []),
-        }
-        if data.get("status") == Outcome.FAILED:
-            result["error"] = data.get("error")
-            result["log"] = str((snapshot.directory / "log.txt").relative_to(self.project.here))
-        return result
-
-    def show_run(self, run: dict[str, Any]) -> dict[str, Any]:
-        leaves = [node for node in run.get("nodes", []) if "results" in node]
-        return {
-            "run": run["id"],
-            "scenario": run.get("scenario"),
-            "commit": run.get("commit"),
-            "assignment": run.get("assignment"),
-            "started": run.get("started"),
-            "finished": run.get("finished") or "not finished: interrupted, or still running",
-            "seconds": run.get("seconds"),
-            "cost_usd": run.get("cost_usd"),
-            "snapshots": {key: len(value) for key, value in run.get("snapshots", {}).items()},
-            "leaves": [
-                {
-                    "snapshot": node["snapshot"],
-                    **{name: value_key(value) for name, value in node["parameters"].items()},
-                    "outcome": node["outcome"],
-                    "results": json.dumps(node.get("results"), sort_keys=True),
-                }
-                for node in leaves
-            ],
-        }
-
     def prune(self, name: str | None, dry: bool) -> list[dict[str, Any]]:
-        """Delete stale and failed snapshots with their artefacts (or, `dry`, say which)."""
+        """Stale and failed outputs: the cache entries no current output of the
+        default target is, and the failed ones; deleted with their links unless `dry`."""
         scenarios = (
             [self.scenario(name)]
             if name
@@ -1376,115 +660,65 @@ class Evaluations:
         )
         rows = []
         for scenario in scenarios:
-            for snapshot, why in Snapshots(scenario).prunable():
-                rows.append(
-                    {
-                        "scenario": scenario.name,
-                        "snapshot": snapshot.hash,
-                        "is": snapshot.label(),
-                        "why": why,
-                    }
-                )
-                if not dry:
-                    shutil.rmtree(snapshot.directory)
+            rows += self.prunable(scenario)
+        if not dry:
+            for row in rows:
+                scenario = Scenario(self.project, row["scenario"])
+                entry = scenario.cache / row["entry"]
+                if entry.is_dir() and not entry.is_symlink():
+                    shutil.rmtree(entry)
+                else:
+                    entry.unlink(missing_ok=True)
+                if row.get("output"):
+                    link = scenario.directory / row["output"]
+                    if link.is_symlink():
+                        link.unlink()
         return rows
 
-    # --- the studio's page ---------------------------------------------------------
-
-    def page(self) -> list[dict[str, Any]]:
-        """Everything the Evals tab draws, read from the files."""
-        return [self.page_scenario(name) for name in self.names()]
-
-    def page_scenario(self, name: str) -> dict[str, Any]:
-        scenario = Scenario(self.project, name)
-        try:
-            steps, parameters = scenario.steps, scenario.parameters
-        except PreconditionError as error:
-            return {"name": name, "problem": str(error)}
-        snapshots = Snapshots(scenario)
-        through = Runs(scenario).through()
-        seen: list[str] = []
-        listed_steps = []
-        for step in steps:
-            forks = [item for item in step.reads if item not in seen]
-            seen += forks
-            path = scenario.step_file(step)
-            listed_steps.append(
+    def prunable(self, scenario: Scenario) -> list[dict[str, Any]]:
+        if not scenario.cache.is_dir():
+            return []
+        jobs = scenario.jobs()
+        pending = [job.label() for job in jobs if job.checkpoint and job.from_cache]
+        if pending:
+            raise PreconditionError(
+                f"{scenario.name}: the cache holds checkpoints this checkout has not restored "
+                f"({', '.join(pending[:3])}), so what follows them cannot be judged: "
+                "`nock eval run` restores them first"
+            )
+        states = scenario.states(jobs)
+        failed = {
+            result.entry: result for result in states if result.state == "failed" and result.entry
+        }
+        # What was computed from a failed output is keyed by its provenance, not its content:
+        # once the failure is computed again, it would be restored as it was.
+        after: set[str] = set()
+        if failed:
+            for job in scenario.jobs(forced=[result.path for result in failed.values()]):
+                after |= set(job.outputs)
+        for result in states:
+            if result.state == "current" and result.path in after and result.entry:
+                result.state, result.why = "stale", "computed from a failed output"
+        keep = {Path(entry).name for job in jobs for entry in job.cached.values()}
+        keep |= {result.entry for result in states if result.state == "current" and result.entry}
+        linked = {result.entry: result for result in states if result.entry}
+        rows = []
+        for entry in sorted(scenario.cache.iterdir()):
+            if entry.name.startswith(".") or entry.name in keep:
+                continue
+            name = entry.name
+            key = name.split(".")[0].split("_")[0]
+            result = failed.get(name) or failed.get(key) or linked.get(name) or linked.get(key)
+            rows.append(
                 {
-                    "name": step.name,
-                    "description": step.description,
-                    "reads": step.reads,
-                    "new": forks,
-                    "file": scenario.relative(path),
-                    "code": path.read_text() if path.is_file() else None,
+                    "scenario": scenario.name,
+                    "entry": name,
+                    "output": result.path if result else None,
+                    "why": "failed"
+                    if result is not None and result.state == "failed"
+                    else f"stale: {result.why}"
+                    if result is not None and result.why
+                    else "stale: no output of the workflow is it now",
                 }
             )
-        return {
-            "name": name,
-            "description": scenario.definition.get("description", ""),
-            "steps": listed_steps,
-            "parameters": [
-                {
-                    "name": key,
-                    "description": parameter.description,
-                    "values": [
-                        {
-                            "value": value.value,
-                            "key": value.key,
-                            "files": [
-                                {"path": scenario.relative(path), "text": small_text(path)}
-                                for path in value.files
-                                if path.is_file()
-                            ],
-                        }
-                        for value in parameter.values.values()
-                    ],
-                }
-                for key, parameter in parameters.items()
-            ],
-            "snapshots": [
-                {
-                    "hash": snapshot.hash,
-                    "step": snapshot.step,
-                    "parameters": snapshot.parameters,
-                    "status": snapshot.data.get("status"),
-                    "stale": snapshots.staleness(snapshot),
-                    "results": snapshot.data.get("results"),
-                    "seconds": snapshot.data.get("seconds"),
-                    "cost_usd": snapshot.data.get("cost_usd"),
-                    "artefacts": snapshot.data.get("artefacts", []),
-                    "missing": snapshot.missing(),
-                    "runs": through.get(snapshot.hash, []),
-                }
-                for snapshot in snapshots.all()
-            ],
-            "runs": Runs(scenario).all(),
-        }
-
-    def dry(self, name: str, assignment: dict[str, Any], drafts: dict[str, str]) -> dict[str, Any]:
-        """What a run of `assignment` would reuse and compute, were the drafts the files."""
-        plan = Plan(self.scenario(name, drafts), assignment)
-        return {
-            "summary": plan.summary(PARALLEL),
-            "nodes": [
-                {
-                    "snapshot": node.hash,
-                    "step": node.step.name,
-                    "parameters": node.parameters,
-                    "parent": node.parent.hash if node.parent else None,
-                    "outcome": node.outcome.value,
-                    "why": node.why,
-                }
-                for node in plan.nodes
-            ],
-        }
-
-
-def small_text(path: Path, limit: int = 20_000) -> str | None:
-    """A value file's text, for drafting on the page; None when big or binary."""
-    if path.stat().st_size > limit:
-        return None
-    try:
-        return path.read_text()
-    except UnicodeDecodeError:
-        return None
+        return rows
