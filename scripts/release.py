@@ -1,7 +1,7 @@
 """Cut a nock release: on a clean tree whose pyproject.toml declares VERSION
 (bump it in a commit first), with no tag vVERSION here or on the remote, create
 the annotated tag and push it, which starts the release workflow
-(.github/workflows/release.yml), only when the owner says yes on the terminal.
+(.github/workflows/release.yaml), only when the owner says yes on the terminal.
 Standard library only.
 
     python3 scripts/release.py VERSION [--remote REMOTE]

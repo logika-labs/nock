@@ -902,7 +902,7 @@ A release goes:
 2. `python3 scripts/release.py VERSION`: on a clean tree whose
    `pyproject.toml` declares VERSION, with no tag `vVERSION` here or on
    `origin`, it asks y/N, then creates the annotated tag and pushes it.
-3. The tag starts `.github/workflows/release.yml`: the gate on the tagged
+3. The tag starts `.github/workflows/release.yaml`: the gate on the tagged
    commit, a check that the tag names the package's version, the sdist and
    the wheel built, published to PyPI through trusted publishing (environment
    `pypi`), and attached with their SHA-256 sums to a GitHub release

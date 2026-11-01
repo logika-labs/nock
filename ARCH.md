@@ -661,7 +661,7 @@ silent on any failure.
 Nothing in `.github/workflows/` runs on an ordinary push. `gate.yml` (ruff
 check, ruff format --check, basedpyright, and the suite on Python 3.12 and
 3.14) runs only by hand (`gh workflow run gate --ref BRANCH`) or when
-`release.yml` calls it. `release.yml` runs on a pushed tag `vX.Y.Z`, which
+`release.yaml` calls it. `release.yaml` runs on a pushed tag `vX.Y.Z`, which
 `scripts/release.py` creates and pushes once the owner says yes: it runs the
 gate on the tagged commit, checks the tag names the package's version, builds
 the sdist and the wheel, publishes them to PyPI as `nock` through trusted

@@ -20,7 +20,7 @@ Schema subset in `schema.py`.
 - Nothing in CI runs automatically: the gate (`.github/workflows/gate.yml`)
   runs by hand, `gh workflow run gate --ref BRANCH`, or when a release calls
   it. A release is a tag `vVERSION` that `python3 scripts/release.py VERSION`
-  creates and pushes after asking the owner; `release.yml` then gates the
+  creates and pushes after asking the owner; `release.yaml` then gates the
   tagged commit and publishes to PyPI (README, "Developing nock"). Never push,
   tag or publish without the owner's word.
 - Tests use real git repositories and real processes; the dispatched agents
