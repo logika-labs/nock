@@ -266,6 +266,11 @@ the one it has. Variables git sets when it runs nock (`GIT_DIR`,
 `GIT_INDEX_FILE`, …) never reach a command `sh` runs, so a repository a test
 creates is its own.
 
+Two variables choose how `.nock/nock` starts nock itself: `NOCK_PYTHON` the
+interpreter (`python3`), and `NOCK_SOURCE` the directory nock's code is
+imported from (`.nock/core`). `NOCK_SOURCE=/path/to/nock/src` runs a project
+on a checkout of nock without vendoring it again.
+
 ### Long-running and interactive commands
 
 `sh(command, stream=True)` says the command line on stderr and prints the

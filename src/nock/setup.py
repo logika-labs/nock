@@ -31,8 +31,9 @@ SHIM = """\
 #!/bin/sh
 # nock, vendored: the code is in .nock/core and belongs to this project.
 # It needs Python 3.12 or newer and nothing else; NOCK_PYTHON picks the interpreter.
+# NOCK_SOURCE runs nock from elsewhere, such as a checkout's src/.
 here="$(cd "$(dirname "$0")" && pwd -P)"
-PYTHONPATH="$here/core${PYTHONPATH:+:$PYTHONPATH}" exec "${NOCK_PYTHON:-python3}" -m nock "$@"
+PYTHONPATH="${NOCK_SOURCE:-$here/core}${PYTHONPATH:+:$PYTHONPATH}" exec "${NOCK_PYTHON:-python3}" -m nock "$@"
 """
 
 CONFIG = """\
