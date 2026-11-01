@@ -64,8 +64,8 @@ src/nock/
   status.py          Standing: a round due, decisions waiting, rejected ones to rework, answered
                      questions, an unshared summary
   share.py           Sharing: a round's summary, held to naming nothing, sent on the owner's word
-  usage.py           Usage: the anonymous report shared with nock's makers (`share`), the
-                     project's random id, the disclosure that comes first, the weekly send
+  usage.py           Usage: the report shared with nock's makers on the owner's yes (`share`),
+                     the question asked once, the project's random id, the weekly send
   consult.py         Consultant: a fresh agent advises on a task, submitting through `nock advise`
   dispatch.py        Dispatcher: launch a headless `claude -p` session and ingest it
   hooks.py           `nock hook EVENT`: nock's own handlers, then the project's
@@ -527,19 +527,27 @@ changed (validate, path, timeout, rule, invariant, error), and commits
 `logika.json` too. The round itself reads Logika's docs through the
 `logika` CLI rather than copying them.
 
-`usage.Usage` keeps `.nock/local/usage.json`: when this machine told the
-owner what is shared (`disclose`, called by a round's start, `studio` — the
-page shows it under the title — and the owner's first review or note through `decisions
-edit`), and the reports sent. `report` is the next one, built from
-`Reflection.metrics` over the window since the last report (or the
-disclosure), nock's own commands' calls and failures, the toolbox's counts,
-versions and switches, and the project's anonymous id. `identity` reads it
+`usage.Usage` keeps `.nock/local/usage.json`: when this machine asked the
+owner whether nock shares (`ask`, called by a round's start, `studio` and
+the owner's first review or note through `decisions edit`, only while
+`share` is unanswered; the page asks under the title, with buttons posting
+to `POST /usage`, until it is answered), the answer (`answer`, from `nock
+usage share yes|no` or the page: `share` written with `with_setting` into
+the main checkout's config and committed, or the local config that already
+sets it, and a worktree's copy that sets it; when, where and the question's
+version in the state), and the reports sent. `share` unset is unanswered
+(`sharing` falls back to this machine's recorded answer, so a worktree reads
+it before its branch has the config); a `share = true` already in a config is
+a yes whose counting starts the first time `send` sees it. `report` is the
+next one, built from `Reflection.metrics` over the window since the last
+report (or the answer), nock's own commands' calls and failures, the
+toolbox's counts, versions and switches, and the project's random id. `identity` reads it
 from the main checkout's committed `.nock/project.json`, or — as the first
-report is sent, which is after the disclosure — makes a random UUID4 under a
+report is sent, which is after the yes — makes a random UUID4 under a
 lock, writes it there and commits that file alone (left uncommitted if git
 refuses), so every clone and worktree reports the same id. A report built
 only to be shown (`nock usage`) never makes it: it shows `UNMADE` instead. `send` posts the report to
-`endpoints.usage` when the owner was told, `share` is true and a week has
+`endpoints.usage` when the answer is yes and a week has
 passed (a day after a failed try), with a three-second timeout. `nock usage`
 shows it all. `sharing` reads an earlier nock's `[share]` table too:
 `level = "none"` as false, anything else as true, with a note.

@@ -120,7 +120,14 @@ button:not(:disabled), label[for] { cursor: pointer; }
 .band .wordmark { opacity: .85; }
 .band h1 { margin: 0; font: 700 32px/40px var(--sans); letter-spacing: -.02em; }
 .band p { margin: 0; font-size: 16px; opacity: .92; }
-.band p.notice { margin-top: 8px; max-width: 72ch; font-size: 13px; opacity: .8; }
+.band .notice { margin-top: 8px; max-width: 72ch; display: grid; gap: 8px; }
+.band .notice p { font-size: 13px; opacity: .9; }
+.band .notice button {
+  font: 500 13px/20px var(--sans); padding: 4px 12px; border-radius: 6px;
+  border: 1px solid var(--field-foreground); background: transparent; color: inherit;
+}
+.band .notice button[data-share="true"] { background: var(--field-foreground); color: var(--field); }
+.band .notice button:focus-visible { outline: 2px solid var(--field-foreground); outline-offset: 2px; }
 .empty { text-align: center; padding: 64px 16px; color: var(--muted); display: grid; gap: 6px; justify-items: center; }
 .empty strong { color: var(--foreground); font: 700 17px/24px var(--sans); }
 .empty code { font: 13px var(--mono); background: var(--card); padding: 1px 5px; border-radius: 4px; }
@@ -211,6 +218,16 @@ const studio = {
 <!-- nock:panels -->
 <div class="toast" id="toast" role="status"></div>
 <script>
+// The owner's answer to whether nock shares its usage report, asked until given.
+for (const button of document.querySelectorAll("#usage [data-share]")) {
+  button.addEventListener("click", async () => {
+    const share = button.dataset.share === "true";
+    const response = await fetch("/usage", { method: "POST", body: JSON.stringify({ share }) });
+    if (!response.ok) { studio.toast((await response.json()).error); return; }
+    document.getElementById("usage").remove();
+    studio.toast(share ? "nock will share its weekly usage report" : "nock shares nothing");
+  });
+}
 addEventListener("hashchange", () => studio.open());
 studio.open();
 </script>

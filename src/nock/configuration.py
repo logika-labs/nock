@@ -81,11 +81,10 @@ DEFAULTS: dict[str, Any] = {
         "check": True,
         "index": "https://pypi.org/pypi/nock",
     },
-    # Whether nock shares an anonymous usage report with its makers (counts and
-    # categories, and a random id for the project), weekly; false sends nothing at
-    # all, summaries included. Nothing is sent before this machine has shown the
-    # owner what is shared.
-    "share": True,
+    # `share`, whether nock shares a usage report with its makers (counts and
+    # categories, and a random id for the project), weekly, has no default: unset
+    # is unanswered and sends nothing until the owner says yes (`nock usage share
+    # yes|no` writes it); false sends nothing at all, summaries included.
     "endpoints": {
         # Where `nock share` sends a round's summary, when the owner says so.
         "reflections": "https://api.nock.dev/reflections",

@@ -9,7 +9,7 @@ import shlex
 import subprocess
 import sys
 from pathlib import Path
-from typing import Annotated, Any, NotRequired, TypedDict
+from typing import Annotated, Any, Literal, NotRequired, TypedDict
 
 from nock.checks import Checks
 from nock.commands import Option
@@ -45,7 +45,7 @@ from nock.studio import Studio
 from nock.telemetry import UNRECORDED_VARIABLE
 from nock.templates import SYNTAX
 from nock.tools import NATIVE_EVENTS, check, command
-from nock.usage import Moment, Usage
+from nock.usage import QUESTION, Moment, Usage
 
 
 class StudioOptions(TypedDict):
@@ -245,10 +245,9 @@ def studio(
     """Serve the owner's page, a tab for each thing to look at — the
     decisions and questions to review — until stopped (port 8765 unless
     OPTIONS say otherwise)."""
-    disclosure = Usage(project).disclose(Moment.STUDIO)
-    if disclosure:
-        print(f"nock: {disclosure}", flush=True)
-    Studio(project, options.get("port", 8765), disclosure).run(options.get("open", False))
+    if Usage(project).ask(Moment.STUDIO):
+        print(f"nock: {QUESTION} The page asks too; answer there.", flush=True)
+    Studio(project, options.get("port", 8765)).run(options.get("open", False))
 
 
 # --- decisions ---------------------------------------------------------------------
@@ -326,15 +325,16 @@ def decisions_edit(project: Project, change: Change) -> dict[str, Any]:
     if problem:
         result["not_committed"] = problem
     if "review" in change or "note" in change:
-        disclose(project, result, Moment.REVIEW)
+        ask(project, result, Moment.REVIEW)
     return result
 
 
-def disclose(project: Project, result: dict[str, Any], moment: Moment) -> None:
-    """What nock shares, told the owner the first time they engage with it here."""
-    disclosure = Usage(project).disclose(moment)
-    if disclosure:
-        result["tell_the_owner"] = disclosure
+def ask(project: Project, result: dict[str, Any], moment: Moment) -> None:
+    """Whether nock may share its usage report, asked of the owner the first
+    time they engage with it here, while nobody has answered."""
+    question = Usage(project).ask(moment)
+    if question:
+        result["ask_the_owner"] = question
 
 
 @command(name="elaborate", group="decisions")
@@ -386,7 +386,7 @@ def reflect_finish(project: Project, record: Record) -> dict[str, Any]:
 
 def started(project: Project, kind: Round) -> dict[str, Any]:
     begun = kind.start()
-    disclose(project, begun, Moment.ROUND)
+    ask(project, begun, Moment.ROUND)
     return begun
 
 
@@ -430,10 +430,18 @@ def share(
 
 @command
 def usage(project: Project) -> dict[str, Any]:
-    """What nock shares with its makers (`share`): whether this machine
-    has told the owner, the reports sent, when the next goes, and exactly what
-    it would carry."""
+    """What nock shares with its makers (`share`): the owner's answer
+    (unanswered, yes or no), when this machine asked and recorded it, the
+    reports sent, when the next goes, and exactly what it would carry."""
     return Usage(project).standing()
+
+
+@command(name="share", group="usage")
+def usage_share(project: Project, answer: Literal["yes", "no"]) -> dict[str, Any]:
+    """Record the owner's answer to whether nock shares its weekly usage
+    report: `share` in .nock/config.toml, committed, with when it was given.
+    Only what the owner said, when they said it."""
+    return Usage(project).answer(answer == "yes", "command")
 
 
 # --- generators -----------------------------------------------------------------------

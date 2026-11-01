@@ -47,10 +47,12 @@ branch = "main"
 # reviews, the decisions behind an edited file. false: silent unless asked.
 reminders = true
 
-# Whether nock shares an anonymous usage report with its makers, weekly: counts
-# and categories, and a random id for the project, never code, paths, names or
-# text. false sends nothing at all. `.nock/nock usage` shows exactly what would be sent.
-share = true
+# Whether nock shares a usage report with its makers, weekly: counts and
+# categories, and a random id for the project, never code, paths, names or
+# text. Unset until the owner answers nock's question, and nothing is sent
+# unless it is true; false sends nothing at all. `.nock/nock usage` shows
+# exactly what would be sent.
+# share = false
 
 # Checks `.nock/nock check` runs besides the @nock.check functions in
 # .nock/tools/. Exit 0 passes, 1 fails (the code is wrong), anything else

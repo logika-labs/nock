@@ -80,8 +80,8 @@ captures. Set aside whatever this session was doing.
    that started the round cannot end its turn with it open: nock says what
    it still needs, once (`.nock/nock docs reflection.kinds`).
 9. Tell the owner in a few lines what changed, what is waiting on them, and
-   where the report is. If `reflect logika` gave `tell_the_owner`, tell them
-   that too, in its words: it is what nock shares with its makers, said
-   once. Production data is judged against the new rules, and measured by
+   where the report is. If `reflect logika` gave `ask_the_owner`, ask them
+   that too, in its words, and record exactly their answer with `.nock/nock
+   usage share yes` or `no` (nothing if they don't answer). Production data is judged against the new rules, and measured by
    the new declarations, only after `logika sync` deploys the ledger. Run it
    only when the owner says so.

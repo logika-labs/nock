@@ -1,19 +1,24 @@
 """The usage report nock shares with its makers, to improve nock: counts and
 categories, and a random id for the project so they can count projects
-without knowing which, never the project's code, paths, names or text. The
-owner is told what is shared, once per machine, the first time they engage
-with nock (a reflection round, the page, their word on a decision); nothing
-is sent before that, nor at all when `share` is false."""
+without knowing which, never the project's code, paths, names or text. Only
+with the owner's yes: `share` unset is unanswered, and nothing is sent. nock
+asks once per machine, the first time the owner engages with it (a
+reflection round, the page, their word on a decision), and their answer is
+written to `share` in the config, with when they gave it and which question
+they answered kept in the machine's state."""
 
 from __future__ import annotations
 
 import json
+import re
 import sys
+import tomllib
 import urllib.error
 import urllib.request
 import uuid
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from nock.checks import Checks
@@ -46,38 +51,60 @@ UNMADE = "(created when the first report is sent)"
 
 
 class Moment(StrEnum):
-    """When the owner engages with nock enough to be told what it shares."""
+    """When the owner engages with nock enough to be asked whether it shares."""
 
     ROUND = "round"
     STUDIO = "studio"
     REVIEW = "review"
 
 
-DISCLOSURE = (
-    "nock shares an anonymous usage report with its makers, to improve nock: counts and"
-    " categories only (sessions, calls to nock's own commands and how they ended, how many"
+class Answer(StrEnum):
+    """The owner's answer to whether nock shares its usage report."""
+
+    UNANSWERED = "unanswered"
+    YES = "yes"
+    NO = "no"
+
+
+# The words the owner is asked; a new version is a new number, and an answer
+# records the version it answered.
+QUESTION_VERSION = 1
+QUESTION = (
+    "May nock share a weekly usage report with its makers, to improve nock? It holds counts"
+    " and categories only (sessions, calls to nock's own commands and how they ended, how many"
     " tools, checks and decisions there are, the versions of nock and Python) and a random id"
-    " for this project, committed in .nock/project.json so its clones share it, which lets"
-    " nock's makers count projects without knowing which; never code, paths, names, prompts,"
-    " arguments or what decisions say. Nothing has been sent yet: the first report goes in a"
-    " week, then at most weekly. `.nock/nock usage` shows exactly what would be sent. To send"
-    " nothing at all, set `share = false` in .nock/config.toml (or .nock/local/config.toml,"
-    " for this machine only)."
+    " for this project, made when the first report is sent and committed in .nock/project.json"
+    " so its clones share it; never code, paths, names, prompts, arguments or what decisions"
+    " say. Nothing is sent unless you say yes; the first report would go a week after, then at"
+    " most weekly, and `.nock/nock usage` shows exactly what it would carry. You can change your"
+    " answer at any time with `share` in .nock/config.toml."
+)
+# How the agent who asked records the answer.
+RECORD = (
+    "Ask the owner this in its words, and record exactly what they answer with"
+    " `.nock/nock usage share yes` or `.nock/nock usage share no`; without an answer nothing"
+    " is sent."
 )
 
 
-def sharing(project: Project) -> tuple[bool, str | None]:
-    """Whether nock shares, and a note when the setting is an earlier nock's
-    `[share]` table: `level = "none"` reads as false, anything else as true,
-    which now shares only the anonymous report."""
+def sharing(project: Project) -> tuple[Answer, str | None]:
+    """The owner's answer, and a note when the setting is an earlier nock's
+    `[share]` table: `level = "none"` reads as no, anything else as yes,
+    which now shares only the report. `share` unset is the answer this
+    machine recorded, if any; else unanswered."""
     value = project.configuration.get("share")
+    if value is None:
+        answered = Usage(project).state().get("answered")
+        if isinstance(answered, dict) and isinstance(answered.get("share"), bool):
+            return (Answer.YES if answered["share"] else Answer.NO), None
+        return Answer.UNANSWERED, None
     if isinstance(value, bool):
-        return value, None
+        return (Answer.YES if value else Answer.NO), None
     if not isinstance(value, dict):
         raise PreconditionError(f"`share` is {value!r}: it is true or false")
     shared = value.get("level") != "none"
     said = f"`share.level = {json.dumps(value['level'])}`" if "level" in value else "`[share]`"
-    return shared, (
+    return (Answer.YES if shared else Answer.NO), (
         f"{said} is an earlier nock's setting and reads as `share = {str(shared).lower()}`;"
         " write `share = true` or `share = false` at the top of .nock/config.toml instead"
         " (the endpoints are now under [endpoints])."
@@ -85,7 +112,30 @@ def sharing(project: Project) -> tuple[bool, str | None]:
 
 
 def shares(project: Project) -> bool:
-    return sharing(project)[0]
+    return sharing(project)[0] is Answer.YES
+
+
+def with_setting(text: str, key: str, value: bool) -> str:
+    """A TOML file's text with a top-level `key = value`: its line replaced,
+    or a commented `# key = …` line taken over, or one added before the
+    first table."""
+    lines = text.splitlines(keepends=True)
+    tables = [index for index, line in enumerate(lines) if line.lstrip().startswith("[")]
+    top = tables[0] if tables else len(lines)
+    if any(line.strip() == f"[{key}]" for line in lines):
+        raise PreconditionError(
+            f"an earlier nock's `[{key}]` table is in the config: remove it, then answer again"
+        )
+    setting = f"{key} = {str(value).lower()}\n"
+    for pattern in (rf"^{key}\s*=", rf"^#\s*{key}\s*="):
+        for index in range(top):
+            if re.match(pattern, lines[index]):
+                lines[index] = setting
+                return "".join(lines)
+    if top and lines[top - 1].strip():
+        setting = "\n" + setting
+    lines.insert(top, setting + ("\n" if tables else ""))
+    return "".join(lines)
 
 
 class Usage:
@@ -101,15 +151,55 @@ class Usage:
         except PreconditionError:
             return {}
 
-    def disclose(self, moment: Moment) -> str | None:
-        """What to tell the owner, the first time on this machine they engage
-        with nock while it shares; nothing after that, or when it does not."""
+    def ask(self, moment: Moment) -> str | None:
+        """What to ask the owner, the first time on this machine they engage
+        with nock while nobody has answered; nothing after that."""
         state = self.state()
-        if not shares(self.project) or state.get("disclosed"):
+        if sharing(self.project)[0] is not Answer.UNANSWERED or state.get("asked"):
             return None
-        state["disclosed"] = {"moment": str(moment), "at": now()}
+        state["asked"] = {"moment": str(moment), "at": now(), "prompt": QUESTION_VERSION}
         write_json(self.path, state)
-        return DISCLOSURE
+        return f"{QUESTION}\n\n{RECORD}"
+
+    def answer(self, share: bool, via: str) -> dict[str, Any]:
+        """The owner's answer, written to `share` in the main checkout's
+        config (committed there) or, where the machine's own config already
+        sets it, in that; when and how it was given, and to which question,
+        kept in this machine's state."""
+        local = self.project.local / "config.toml"
+        committed = self.project.root / ".nock" / "config.toml"
+        setting = local if sets(local, "share") else committed
+        # A worktree reads its own copy: one that sets `share` follows too, so a
+        # no is a no from every checkout at once.
+        working = self.project.code_path("config.toml")
+        for path in {setting, working} if sets(working, "share") else {setting}:
+            text = path.read_text() if path.is_file() else ""
+            path.write_text(with_setting(text, "share", share))
+        self.project.__dict__.pop("configuration", None)
+        state = self.state()
+        state["answered"] = {"share": share, "at": now(), "via": via, "prompt": QUESTION_VERSION}
+        write_json(self.path, state)
+        if setting == committed:
+            relative = f".nock/{committed.name}"
+            try:
+                git = Git(self.project.root)
+                git("add", "--", relative)
+                git(
+                    "commit", "--quiet", "--no-verify", "--only", "-m",
+                    f"nock: the owner's answer on sharing nock's usage report, share = {str(share).lower()}",
+                    "--", relative,
+                )  # fmt: skip
+            except GitError:
+                pass  # left for the owner to commit with the rest; the answer holds either way
+        return self.standing()
+
+    def counting(self) -> None:
+        """Where counting starts for a yes this machine has not recorded (a
+        `share = true` already in the config): now, the first time it is seen."""
+        state = self.state()
+        if shares(self.project) and self.since() is None:
+            state["answered"] = {"share": True, "at": now(), "via": "config", "prompt": None}
+            write_json(self.path, state)
 
     def identity(self) -> str:
         """The project's anonymous id: random, made as the first report is sent
@@ -144,14 +234,17 @@ class Usage:
             return None
 
     def since(self) -> str | None:
-        """Where the next report starts: the last one's end, else the
-        disclosure — nothing from before the owner was told is counted."""
+        """Where the next report starts: the last one's end, else the owner's
+        answer (or, from an earlier nock, when they were told) — nothing from
+        before is counted."""
         state = self.state()
         sent = state.get("sent") or []
         if sent:
             return sent[-1]["until"]
-        disclosed = state.get("disclosed")
-        return disclosed["at"] if disclosed else None
+        for key in ("answered", "disclosed"):
+            if isinstance(state.get(key), dict) and state[key].get("at"):
+                return state[key]["at"]
+        return None
 
     def report(self, sending: bool = False) -> dict[str, Any]:
         """Exactly what the next send carries. Only a send makes the project's
@@ -202,12 +295,12 @@ class Usage:
         }
 
     def due(self) -> bool:
-        """Shared, told, and a week since the last report (a day since a failed try)."""
+        """A yes, and a week since it or the last report (a day since a failed try)."""
         if not shares(self.project):
             return False
         state = self.state()
         start = parse_moment(self.since())
-        if not state.get("disclosed") or start is None:
+        if start is None:
             return False
         moment = datetime.now(UTC)
         tried = parse_moment(state.get("tried"))
@@ -217,6 +310,7 @@ class Usage:
 
     def send(self) -> bool:
         """Send the report when one is due; whether it went. Silent on any failure."""
+        self.counting()
         if not self.due():
             return False
         report = self.report(sending=True)
@@ -244,9 +338,12 @@ class Usage:
         return True
 
     def standing(self) -> dict[str, Any]:
-        """Whether nock shares, whether this machine has told the owner, when
-        reports went and when the next goes, and the next one exactly."""
-        shared, note = sharing(self.project)
+        """The owner's answer (unanswered, yes or no) and when this machine
+        asked and recorded it, the reports sent, when the next goes, and the
+        next one exactly."""
+        answer, note = sharing(self.project)
+        shared = answer is Answer.YES
+        offered = answer is not Answer.NO
         state = self.state()
         start = parse_moment(self.since())
         due = (
@@ -254,17 +351,30 @@ class Usage:
             .replace(microsecond=0)
             .isoformat()
             .replace("+00:00", "Z")
-            if start and shared and state.get("disclosed")
+            if start and shared
             else None
         )
         standing: dict[str, Any] = {
-            "share": shared,
-            "disclosed": state.get("disclosed"),
+            "share": str(answer),
+            "asked": state.get("asked"),
+            "answered": state.get("answered"),
             "sent": state.get("sent") or [],
             "next": due,
-            "to": str(self.project.configuration.get("endpoints.usage")) if shared else None,
-            "would_send": self.report() if shared else None,
+            # Shown while unanswered too, so the owner sees what they are asked about.
+            "to": str(self.project.configuration.get("endpoints.usage")) if offered else None,
+            "would_send": self.report() if offered else None,
         }
+        if answer is Answer.UNANSWERED:
+            standing["question"] = QUESTION
+            standing["record"] = RECORD
         if note:
             standing["note"] = note
         return standing
+
+
+def sets(path: Path, key: str) -> bool:
+    """Whether the TOML file at `path` sets `key` at its top level."""
+    try:
+        return key in tomllib.loads(path.read_text())
+    except (tomllib.TOMLDecodeError, OSError):
+        return False

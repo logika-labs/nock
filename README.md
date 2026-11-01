@@ -107,8 +107,8 @@ uvx nock init
 Commit the result. From then on, every agent session in the repository starts
 with the project's tools listed, and is recorded when it ends. nock speaks up
 unasked only a little, and `reminders = false` silences it (see [What agents
-see](#what-agents-see)); it shares an anonymous usage report once you have
-been told (see [What nock shares](#what-nock-shares)).
+see](#what-agents-see)); it shares a usage report only if you say yes when it
+asks (see [What nock shares](#what-nock-shares)).
 
 To upgrade, `.nock/nock upgrade`. It merges the latest release from PyPI into
 the vendored core, keeping any local edits to it (a three-way merge against
@@ -705,11 +705,13 @@ edits a file. A refused call is reported, not worked around.
 ## What nock shares
 
 nock tells its makers how it is used, so they can improve it ([privacy
-policy](https://nock.dev/privacy/)). `share` in
-`.nock/config.toml` (or, for one machine, `.nock/local/config.toml`) turns it
-on or off:
+policy](https://nock.dev/privacy/)), but only with the owner's yes. `share` in
+`.nock/config.toml` (or, for one machine, `.nock/local/config.toml`) is their
+answer, and has no default:
 
-- **`share = true`** (the default): a weekly anonymous usage report, counts
+- **unset**: unanswered. Nothing is sent and no id is made until the owner
+  answers (below).
+- **`share = true`**: a weekly usage report, counts
   and categories only. Each report carries nock's version, Python's (`3.12`)
   and the platform (`darwin`, `linux`); whether reminders and the consultant
   are on and whether it is a Logika project; the window's numbers that a
@@ -723,12 +725,14 @@ on or off:
   generators the toolbox has and how many failed to load; and how many
   rounds have run. Never code, paths, file or tool names, prompts, command
   arguments, what decisions say, or anything else written in the project.
-  It also carries the project's anonymous id: a random UUID, committed in
+  It also carries the project's id: a random UUID, committed in
   `.nock/project.json` so every clone of the project sends the same one. It
-  is made only as the first report is sent, after the owner was told (until
+  is made only as the first report is sent, after the owner said yes (until
   then `nock usage` shows "(created when the first report is sent)" in its
   place), is derived from nothing — not the path, the remote or any name —
-  and lets nock's makers count projects without knowing which. Nothing is published.
+  and lets nock's makers count projects without knowing which; since every
+  report of a project carries it, the reports are pseudonymous rather than
+  anonymous. Nothing is published.
 - **`share = false`**: nothing is ever sent — no report, no id is made, and
   `nock share` won't send a summary either.
 
@@ -737,15 +741,24 @@ An earlier nock's `[share]` table with `level` still reads: `"none"` as
 anonymous report, never tool names); `nock usage` notes it until the table
 is replaced.
 
-Nothing is sent from a machine until the owner has been told, once, the
-first time they engage with nock there: the first reflection round, opening
-the studio (`nock studio`), or their first review or note on a decision. The
-page shows it at the top; the round and `/nock-triage` say it in the
-session. Counting starts then. The first report goes a week later, as a
-session ends, then at most weekly, to `endpoints.usage`, with a
-three-second timeout; a failure is silent and tried again a day later.
-`.nock/nock usage` shows whether nock shares, when the owner was told, the reports
-sent and exactly what the next would carry.
+nock asks the owner once on a machine, while nobody has answered, the first
+time they engage with nock there: the first reflection round, opening the
+studio (`nock studio`), or their first review or note on a decision. The
+page shows the question under the title with **Share** and **Don't share**
+until it is answered; the round and `/nock-triage` ask it in the session
+(`ask_the_owner`), and the agent records exactly what the owner says with
+`.nock/nock usage share yes` or `.nock/nock usage share no`. Either writes
+`share` to the main checkout's `.nock/config.toml` and commits it (or to
+`.nock/local/config.toml` when that already sets it), and keeps when the
+answer was given, where, and the version of the question in
+`.nock/local/usage.json`, so the consent can be shown. A `share = true` or
+`share = false` already in a config is an answer, and is never asked about.
+Counting starts at the yes. The first report goes a week later, as a
+session ends, then at most weekly, to `endpoints.usage`, with a three-second
+timeout; a failure is silent and tried again a day later. `.nock/nock usage`
+shows the answer (unanswered, yes or no), when it was asked and given, the
+reports sent and exactly what the next would carry (while unanswered too, so
+the owner sees what they are asked about).
 
 A round's summary is sent only with `nock share` and the owner's yes (see
 [Reflection](#reflection)).
@@ -866,7 +879,8 @@ repetitions, write the comparison down first.
 | `nock eval init NAME`, `run [TARGETS…] [--dry] [--budget USD]`, `show [NAME]`, `query SQL`, `compare QUERY`, `prune [NAME] [--dry]` | evaluations: scaffold a Snakemake scenario, run it restoring what the cache has, read it, query it with SQL, compare its outputs, delete stale and failed cache entries |
 | `nock consult JSON` | a fresh agent advises on a task: the decisions, tools, checks and docs that bear on it; the caller waits |
 | `nock advise JSON` | the consultant's advice, submitted; only a consultant nock dispatched runs it |
-| `nock usage` | what nock shares with its makers, and exactly what the next report carries |
+| `nock usage` | what nock shares with its makers, the owner's answer, and exactly what the next report carries |
+| `nock usage share yes\|no` | records the owner's answer on sharing the usage report |
 | `nock reflect [KIND]`, `nock reflect [KIND] finish JSON` | a reflection round: nock's own (`/nock-reflect`), or another kind, `logika` (`/nock-reflect-logika`) |
 | `nock share [JSON]` | a round's summary as it would be sent, and sending it (asks the owner) |
 | `nock gen write`, `new`, `add`, `set`, `rm`, `show`, `bind`, `unbind` | generators |
@@ -914,7 +928,7 @@ one machine.
 | `agent.command`, `agent.model`, `agent.deadline` | `claude`, —, 1800 | the headless agent nock dispatches (elaborate, consult, share); it may not bypass or set permissions (see [What nock's agents may do](#what-nocks-agents-may-do)) |
 | `consult.enabled`, `consult.deadline` | true, 600 | whether the consultant runs and the primer asks for it; seconds a consultation may take |
 | `upgrade.check`, `upgrade.index` | true, PyPI's `nock` | whether a session start says a newer nock is out, and where releases are looked up |
-| `share` | true | whether nock sends its makers the anonymous usage report (false sends nothing, summaries included; see [What nock shares](#what-nock-shares)) |
+| `share` | — (unanswered) | the owner's answer to whether nock sends its makers the weekly usage report: unset sends nothing until they answer, false sends nothing, summaries included (see [What nock shares](#what-nock-shares)) |
 | `endpoints.reflections`, `endpoints.usage` | `https://api.nock.dev/reflections`, `https://api.nock.dev/usage` | where `nock share` sends a summary, and where the usage reports go |
 | `environment.python`, `setup`, `path`, `dotenv` | —, —, `[]`, — | what tools run in: the project's interpreter and how to make it, PATH entries, a dotenv file |
 | `pricing.fetch`, `pricing.table` | true, LiteLLM's `model_prices_and_context_window.json` on GitHub | whether nock fetches the public price table (at most daily) to cost sessions at API prices, and from where |

@@ -46,5 +46,6 @@ material, not from memory.
    makers learn how nock does in real projects:
    `.nock/nock share` shows what would be sent (only nock's makers read it;
    nothing is published). Send it (`'{"send": true}'`) only on their yes. If `reflect` gave
-   `tell_the_owner`, tell them that too, in its words: it is what nock
-   shares with its makers, said once.
+   `ask_the_owner`, ask them that too, in its words: whether nock may share
+   its weekly usage report, asked once. Record exactly their answer with
+   `.nock/nock usage share yes` or `no`; nothing if they don't answer.

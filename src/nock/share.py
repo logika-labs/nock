@@ -19,7 +19,7 @@ from nock.git import GitError
 from nock.reflect import SHARE, Reflection, commit
 from nock.render import Problem
 from nock.templates import Library
-from nock.usage import shares
+from nock.usage import Answer, sharing
 from nock.utils import now, read_json, write_json
 
 if TYPE_CHECKING:
@@ -99,7 +99,7 @@ class Sharing:
         return result
 
     def share(self, request: Request) -> dict[str, Any]:
-        if request.get("send") and not shares(self.project):
+        if request.get("send") and sharing(self.project)[0] is Answer.NO:
             raise PolicyError(
                 "`share` is false here, so nock sends nothing — set `share = true` in"
                 " .nock/config.toml to send the summary"

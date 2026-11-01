@@ -5,7 +5,9 @@ reviewed in place, and the evaluations, read from their files. Local, and only w
 A tab is a `Tab` in `TABS`: its name is its address on the page (`#NAME`) and
 its routes on the server (`/NAME/…`); its page is the fragment
 `pages/NAME.html` (markup, style and a script that registers it with the
-studio, `pages/studio.html`)."""
+studio, `pages/studio.html`). While nobody has answered whether nock shares
+its usage report, the page asks under the title, and `POST /usage` records
+the owner's answer."""
 
 from __future__ import annotations
 
@@ -26,6 +28,7 @@ from nock.evaluation import Evaluations, Run
 from nock.project import Project
 from nock.results import Results
 from nock.schema import validate
+from nock.usage import QUESTION, Answer, Usage, sharing
 
 PAGES = Path(__file__).resolve().with_name("pages")
 SHELL = PAGES / "studio.html"
@@ -158,12 +161,34 @@ class EvalsTab(Tab):
 TABS: tuple[type[Tab], ...] = (DecisionsTab, EvalsTab)
 
 
+class Choice(TypedDict):
+    """The owner's answer on the page to whether nock shares its usage report."""
+
+    share: bool
+
+
 class Studio(ThreadingHTTPServer):
-    def __init__(self, project: Project, port: int, notice: str | None = None) -> None:
+    def __init__(self, project: Project, port: int) -> None:
         super().__init__(("127.0.0.1", port), Handler)
+        self.project = project
         self.tabs = {tab.name: tab(project) for tab in TABS}
-        # Said under the title: what nock shares, the first time the owner opens the studio.
-        self.notice = notice
+
+    def question(self) -> str:
+        """Under the title while nobody has answered: the question, with Share
+        and Don't share."""
+        if sharing(self.project)[0] is not Answer.UNANSWERED:
+            return ""
+        return (
+            '    <div class="notice" id="usage">\n'
+            f"      <p>{html.escape(QUESTION)}</p>\n"
+            '      <p class="choices"><button type="button" data-share="true">Share</button>'
+            ' <button type="button" data-share="false">Don\'t share</button></p>\n'
+            "    </div>"
+        )
+
+    def answer(self, body: Any) -> dict[str, Any]:
+        validate(body, schema_of(Choice))
+        return Usage(self.project).answer(body["share"], "studio")
 
     @property
     def address(self) -> str:
@@ -183,10 +208,7 @@ class Studio(ThreadingHTTPServer):
         return (
             shell.replace("<!-- nock:tabs -->", links)
             .replace("<!-- nock:panels -->", panels)
-            .replace(
-                "<!-- nock:notice -->",
-                f'    <p class="notice">{html.escape(self.notice)}</p>' if self.notice else "",
-            )
+            .replace("<!-- nock:notice -->", self.question())
             .encode()
         )
 
@@ -203,7 +225,8 @@ class Studio(ThreadingHTTPServer):
 
 
 class Handler(BaseHTTPRequestHandler):
-    """`GET /` the page; `/NAME/ROUTE` goes to the tab named."""
+    """`GET /` the page; `POST /usage` the owner's answer on sharing; `/NAME/ROUTE`
+    goes to the tab named."""
 
     @property
     def studio(self) -> Studio:
@@ -221,6 +244,12 @@ class Handler(BaseHTTPRequestHandler):
             body = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))))
         except json.JSONDecodeError as error:
             self.send_json(HTTPStatus.BAD_REQUEST, {"error": str(error)})
+            return
+        if self.path == "/usage":
+            try:
+                self.send_json(HTTPStatus.OK, self.studio.answer(body))
+            except Error as error:
+                self.send_json(HTTPStatus.BAD_REQUEST, {"error": str(error)})
             return
         self.answer(lambda tab, route: tab.post(route, body))
 
