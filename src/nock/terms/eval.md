@@ -1,7 +1,7 @@
 ---
 term: eval
-aliases: [evals, evaluation, evaluations]
-description: nock eval: scenarios of steps, snapshots reused by content, leaves compared
+aliases: [evals, evaluation, evaluations, snakemake]
+description: nock eval: a Snakemake workflow per scenario, cached by content, read with SQL
 ---
 
-An evaluation is a scenario in `evals/NAME/`: an ordered chain of steps, each turning the snapshot before it into the next, reading named parameters. `.nock/nock eval init NAME` starts one; `eval run` computes what an assignment needs and reuses every snapshot that still matches; `eval show` and the studio's Evals tab read the files; `eval compare` reads across leaves. Comparisons are never steps. The `nock-eval` check holds it all to its files.
+An evaluation is `evals/NAME/Snakefile`: rules are steps, wildcards parameters. `.nock/nock eval init NAME` scaffolds it with nock's profile; `eval run` runs Snakemake, restoring from `cache/` (committed) every output whose code, params and inputs match one computed anywhere; `eval query`, `show` and `compare` read the result files with DuckDB, as does the studio's Evals tab. Comparisons are never rules. Snakemake and DuckDB run through uv.

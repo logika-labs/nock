@@ -1,7 +1,7 @@
 ---
 term: eval.parameters
-aliases: [parameter, parameters, assignment]
-description: A named value a step reads: files beside the scenario, or literals; an assignment picks values
+aliases: [parameter, parameters, wildcard, wildcards, assignment]
+description: Parameters are wildcards: in the output path, their values listed or globbed
 ---
 
-A parameter's values are files (`"files": "parameters/bug/*"`, one value per file or directory, named by its stem), literals (`"values": [1, 2]`), or names for globs (`"values": {"current": ["/src/**"]}`, so code is a parameter). An assignment, `{"bug": "*", "arm": ["control"], "rep": [1, 2], "budget_usd": 5}`, gives each a value, a list or `*`; one with a single value needs no mention, and `"scenario"` names the scenario.
+A parameter is a wildcard, `NAME=VALUE` in an output's path: `results/detect/arm={arm}/bug={bug}/rep={rep}`. Its values are a list (`ARMS = ["control", "toolbox"]`), or files (`BUGS = glob_wildcards("parameters/bug/{bug}.json").bug`, the file an input), expanded in the first rule. Constrain each to one path part (`wildcard_constraints: bug="[^/]+"`). Narrow a run by naming targets: `nock eval run results/score/bug=none/rep=1`.

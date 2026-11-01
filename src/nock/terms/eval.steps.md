@@ -1,7 +1,7 @@
 ---
 term: eval.steps
-aliases: [step, steps]
-description: steps/STEP.py: run(step) turns the snapshot before into the next
+aliases: [step, steps, step-helper]
+description: steps/RULE.py: Step(snakemake).run(run) writes metrics.json, cost.json, error.json
 ---
 
-`steps/STEP.py` defines `run(step)` and returns its results, a dict. `step.directory` is the state (the cwd), a copy of the snapshot before; what it holds after is the artefacts. `step.value("arm")`, `step.file("bug")`, `step.files(...)`, `step.results("build")`, `step.spend(usd)`, `step.agent(brief, allowed=["Edit"])` (dispatched in `dontAsk` with that allowlist, its cost spent). A raise is a failed result, with its log. Each runs in its own process, on `[environment]`'s interpreter.
+`Step(snakemake).run(run)`: `run(step)` returns its numbers (metrics.json); `step.value("arm")` is a wildcard, `step.input("bug")` an input, `step.metrics("control")` an input's numbers, `step.spend(usd)` goes to cost.json with the seconds taken, `step.agent(brief, allowed=["Edit"])` dispatches in `dontAsk` with that allowlist. A raise is error.json: a failed result, cached. `step.unpack()`/`pack(dir)` carry state.

@@ -1,7 +1,7 @@
 ---
 term: eval.runs
-aliases: [runs, dry, budget, resume]
-description: nock eval run: compute what an assignment needs, in parallel, resumable, within a budget
+aliases: [runs, dry, budget, cost, estimate, resources]
+description: nock eval run: a dry run's reasons, a budget from past cost.json, Snakemake with the profile
 ---
 
-`.nock/nock eval run 'ASSIGNMENT'` runs up to `--parallel` steps at once (4), never recomputing a snapshot that exists; run it again to resume. `--dry` prints the tree, what is reused and computed, and the time and cost estimated from earlier snapshots (else a step's `estimate`). `budget_usd` stops starting steps once spent plus estimated would pass it. `runs/ID/run.json` keeps commit, assignment, outcomes, time, cost. Another machine is another checkout: run part, commit, push.
+`.nock/nock eval run [TARGETS…]` runs the default target, or output paths and rule names. `--dry` lists each job: from cache, or compute and Snakemake's reason (code, params, inputs changed). `--budget USD` refuses to start when the jobs to compute, at each rule's mean past cost.json (else its `resources: estimate_cents=N`), would cost more. Limit concurrency with `resources: agents=1` and the profile's `resources`. Rerun to resume.

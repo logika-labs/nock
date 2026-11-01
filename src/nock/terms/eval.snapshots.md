@@ -1,7 +1,7 @@
 ---
 term: eval.snapshots
-aliases: [snapshot, snapshots, stale, identity]
-description: The state after a step for one set of values, named by a hash of its identity
+aliases: [snapshot, snapshots, eval-cache, stale, provenance, clone]
+description: An output is cached by provenance: its code, params, inputs' content and the steps before
 ---
 
-`snapshots/HASH/snapshot.json`: step, parameters read so far, digests of those values' files and of the steps' code, results, cost, time and the artefact manifest. Identity is content, not commits: any digest that changes makes the snapshot stale, kept and marked, and a run computes a fresh one beside it. The snapshot before a fork is whole, since every branch resumes from it; so is every other.
+Snakemake names each cache entry by a hash of the rule's script, its params, its input files' content and the hashes of the jobs before it. A fresh clone has no results/, so a run restores every match from `cache/` and computes the rest; mtimes never decide. An output is stale when a run would compute it again: `eval show` says why in Snakemake's words. Code a script imports is not hashed: make it an input or a param.

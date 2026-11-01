@@ -1,7 +1,7 @@
 ---
 term: eval.scenario
-aliases: [scenario, scenario-json]
-description: evals/NAME/scenario.json: the steps in order and the parameters they read
+aliases: [scenario, snakefile, profile, layout]
+description: evals/NAME/: Snakefile, profile/, steps/, parameters/, cache/ committed, results/ not
 ---
 
-`scenario.json`: `{"steps": [{"name": "plant", "reads": ["bug"], "code": ["steps/lib/*.py"], "estimate": {"seconds": 60, "cost_usd": 0.2}, "deadline": 1800}], "parameters": {"bug": {"files": "parameters/bug/*"}, "arm": {"values": ["control", "toolbox"]}, "rep": {"values": [1, 2, 3]}}}`. A glob is the scenario directory's, or with a leading `/` the working tree's. Only `name` is required of a step; `code` adds files to its code digest.
+A rule's output is `directory("results/RULE/NAME={NAME}/...")`, one `NAME=VALUE` per wildcard; it has `cache: "omit-software"` and `params: keyed=lambda wildcards: dict(wildcards)` (or each value would share one cache entry), and `script: "steps/RULE.py"`. Parameter files are inputs. The first rule names everything (`expand`). `cache/` is committed; `results/` is each checkout's links into it. The `nock-eval` check holds rules to this.

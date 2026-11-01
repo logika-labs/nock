@@ -91,11 +91,12 @@ src/nock/
   builtin.py         nock's own commands and checks, as tools
 
   # evaluations
-  evaluation.py      Scenario (scenario.json, parameters, digests, identity), Snapshots (stale,
-                     prunable, the check), Plan (the tree an assignment makes; --dry), Runner
-                     (steps in parallel, each in its own process), Runs, Evaluations (show, page)
-  steps.py           Step, what a step's `run(step)` gets; `python -m nock.steps REQUEST`
-  comparison.py      Comparison: leaves grouped by one parameter, bootstrap intervals, pairing
+  evaluation.py      Scenario (a Snakefile run through uv's Snakemake: dry runs, summary, rule
+                     graph, materialised outputs and their states, the check), Run (the dry
+                     pass, estimates, budget, refusals; then Snakemake), Evaluations (init, prune)
+  results.py         Results: DuckDB through uv over the result files, tables loaded per call
+  steps.py           Step, what a rule's script wraps itself in: metrics, cost, error, state
+  comparison.py      Comparison: a rule's outputs by one parameter, bootstrap intervals, pairing
 
   # plumbing
   project.py         Project: the hub (places, configuration, git, registry, store, locks)
@@ -109,7 +110,8 @@ tests/               real git repositories and processes; no mocks
   conftest.py        a fresh repository with nock installed, per test; the `nock()` runner
   fake_agent.py      the scripted stand-in for the dispatched agents (elaborator, consultant, sharer,
                      an evaluation step's agent)
-  toy/               the toy scenario test_eval.py runs: a word list, a planted bug, a detector
+  toy/               the toy Snakefile test_eval.py runs: a word list, a planted bug (a fork), a
+                     detector (a checkpoint), a fix when found, a score joining the arms
 scripts/release.py   cut a release: checks, asks, then tags vVERSION and pushes it (standard library)
 evals/               does reflection pay? real sessions, with and without a toolbox
 web/                 nock.dev, never vendored or packaged: site/ (the pages), build.py (docs/
@@ -386,9 +388,9 @@ listed in `TABS`, and a fragment whose script calls
 `studio.summary` (the line under the title) and `studio.toast`. Fragments
 share the page's scripts and styles, so a tab keeps its script in a closure
 and its style under its own class. Two tabs: `DecisionsTab`, and `EvalsTab`,
-which reads `evaluation.Evaluations.page` and answers `POST
-/evals/NAME/dry` (a `Plan` over a `Scenario` whose `drafts` stand in for
-files, nothing written) and `POST /evals/NAME/compare`.
+which reads `Scenario.rulegraph` and the `results.Results` tables and
+answers `POST /evals/NAME/dry` (a `Run`'s dry pass, nothing run) and `POST
+/evals/NAME/compare`.
 
 ### Dispatch
 
@@ -528,47 +530,52 @@ commits; it refuses to send, before vetting, when `share` is false.
 
 ## Evaluations
 
-`nock eval` lives in `evaluation.py`, `steps.py` and `comparison.py`, over
-files in the working tree's `evals/NAME/` (README, "Evaluations").
+`nock eval` lives in `evaluation.py`, `results.py`, `steps.py` and
+`comparison.py`, over the working tree's `evals/NAME/` (README,
+"Evaluations"). Snakemake (`SNAKEMAKE`, pinned) runs as `uv tool run`, and
+DuckDB (`DUCKDB`, pinned) as `uv run --with`, so nock imports neither; no
+uv is exit 42.
 
-- **Identity.** `Scenario.identity(index, values)` is the step, the values
-  of the parameters read up to it, the digests of those values' files
-  (`files` globs, or `values` naming globs) and the ordered digests of the
-  steps' code up to it (`steps/STEP.py` and the step's `code` globs). Its
-  canonical JSON's SHA-256, cut to 12 characters, names the snapshot
-  directory. Digests skip `__pycache__` and `.git`, and are cached per call.
-  `Snapshots.staleness` recomputes a snapshot's identity from the scenario
-  as it is and says what changed.
-- **Plan.** `Plan` expands the steps in order: each node's children are
-  the product of the assignment's values of the parameters first read by
-  the next step (a fork when there are several). A node whose snapshot
-  exists is reused (or failed); one under a failed node, or under a
-  snapshot whose artefacts this checkout lacks (absent, or a Git LFS
-  pointer), is blocked. Estimates are each step's mean time and cost over
-  the snapshots it made, else its `estimate`.
-- **Runner.** A thread pool of `--parallel` workers. A node starts once the
-  snapshot before it exists; under `budget_usd` none starts once spent plus
-  in flight plus its estimate would pass it. Each computes under a lock on
-  its hash, in `.nock/local/eval/SCENARIO/HASH.PID/`: the parent's artefacts
-  copied in, `python -m nock.steps` run there under a `Supervisor` (on the
-  interpreter `[environment]` re-executed nock on, the vendored core on
-  `PYTHONPATH`), its log kept, then the directory moved into `snapshots/`
-  whole. `runs/ID/run.json` is rewritten after each step, so an interrupted
-  run shows what it did, and keeps every node's outcome and the leaves'
-  results, so pruning loses no history.
-- **The step's process.** `steps.main` reads the request (the values, the
-  value files, the results of the steps before on this path), imports the
-  step's module and writes `outcome.json`: results and cost, or the error.
-- **The check.** `nock-eval` validates scenario.json against `SCHEMA`
-  (`schema.py`), that each step's file exists and defines `run`, and, by
-  its syntax tree, that it reads (`step.value`, `step.file`, `step.files`,
-  `step.parameters[…]`) only parameters read up to it; then that each
-  snapshot's name is its identity's hash and that a committed snapshot's
-  artefacts are present and tracked, or ignored by git.
-- **Compare.** `Comparison.compare` reads the current snapshots of one step
-  (the last by default), groups them by `by` with the other parameters
-  fixed, pools `over` (default `rep`), and resamples units 2000 times with
-  a fixed seed; a difference is paired when both sides have the same units.
+- **Memoisation.** The profile turns on Snakemake's between-workflow cache;
+  nock points `SNAKEMAKE_OUTPUT_CACHE` at the scenario's `cache/`, which is
+  committed. A cached rule's entry is named by Snakemake's provenance hash:
+  its script's source, its params (the wildcards, by convention, which the
+  hash would otherwise leave out), its input files' content and the hashes
+  of the jobs before it. A finished job's output becomes a link to its
+  entry; a restored directory, a directory of links into it. Snakemake
+  still reruns a script newer than its output (its code trigger for scripts
+  is the mtime), but such a rerun is answered from the cache, so nock
+  counts an output stale only when a dry run would not restore it from the
+  entry it is now. `benchmark:` cannot be used with the cache, so a step's
+  seconds go to its `cost.json`.
+- **States.** `Scenario.states` runs `--summary` (every output of the
+  default target) and `-n --verbose` (the jobs, their reasons and the
+  entries `exists as … in the cache`) side by side: an output under
+  `results/` missing from the summary is no longer in the workflow; one a
+  job would compute is stale, with the job's reason; one with `error.json`
+  is failed.
+- **Run.** `Run` parses the dry run into `Job`s, estimates each to compute
+  from its rule's mean `cost.json` over the outputs here (else
+  `resources: estimate_cents`), and refuses outputs restored from one entry
+  (wildcards missing from params), Git LFS pointers among the entries it
+  would restore, and an estimate past `--budget`. Then Snakemake runs under
+  a `Supervisor` with no deadline or silence bound; computed outputs are
+  those whose entry is new.
+- **Results.** `Results.setup` loads `outputs` (the states, `cost.json`,
+  `error.json`; parameters parsed from the path), `metrics` (each key of
+  `metrics.json`, through `read_json_objects`), `diffs` (`read_text` of
+  `diff.patch`) and a table per rule (`read_json` with hive partitioning,
+  so a wildcard is a typed column), from file lists nock walks itself, since
+  DuckDB's `**` does not follow the links. Then it turns off external
+  access and locks the configuration before the query runs.
+- **Prune.** The entries kept are those current outputs link to and those
+  the dry run would restore; a failed output's entry goes, and so does
+  every output a `--forcerun` of the failed would recompute, since their
+  provenance would still match. Pruning refuses while a checkpoint is only
+  in the cache, since what follows it cannot be judged.
+- **The check.** `nock-eval` wants the profile, every rule with an output
+  `cache:`d and with `wildcards` in its params (read from the Snakefile's
+  text), and a Snakefile `--list-rules` reads.
 
 ## Extension points
 
