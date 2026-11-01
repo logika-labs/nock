@@ -1,86 +1,132 @@
-"""A step's side of `nock eval run`: the process one step runs in, started as
-`python -m nock.steps REQUEST` in a copy of the snapshot before it, on the
-project's interpreter (`[environment]`), so a step can import the project's
-packages. The step's module defines `run(step)`, which gets a `Step` and
-returns its results, a dict of JSON values."""
+"""A step's side of `nock eval`: a Snakemake rule's script, run in the
+interpreter Snakemake runs on with nock on its path, wraps its work in
+`Step(snakemake).run(function)`. The rule's output is a directory; the
+function's numbers become its `metrics.json`, what it spent and how long it
+took its `cost.json` (Snakemake's `benchmark:` cannot be used with its cache),
+and a raise its `error.json` — a failed result, cached like any other until
+`nock eval prune` deletes it. Saved state is `state.tar` in the output
+(`pack`, `unpack`), and a repository's changes against the state before are
+`diff.patch` beside it."""
 
 from __future__ import annotations
 
-import importlib.util
 import json
-import sys
+import subprocess
+import tarfile
+import tempfile
+import time
 import traceback
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
 from nock.dispatch import READING, Dispatcher, Seat
 from nock.errors import UsageError
 from nock.project import Project
-from nock.utils import read_json, write_json
 
 ROLE = "evaluated"
+METRICS = "metrics.json"
+COST = "cost.json"
+ERROR = "error.json"
+STATE = "state.tar"
+DIFF = "diff.patch"
+# What a repository's first state is diffed against.
+EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
 
 
 class Step:
-    """What a step reads and where it writes: `directory` is the state, which
-    starts as the snapshot before it and becomes this snapshot's artefacts."""
+    """One job of a rule: its parameters (the wildcards), its inputs, and its
+    output directory, where whatever it leaves is the snapshot."""
 
-    def __init__(self, request: dict[str, Any]) -> None:
-        self.request = request
-        self.name: str = request["step"]
-        self.scenario = Path(request["scenario"])
-        self.repository = Path(request["repository"])
-        self.directory = Path(request["directory"])
-        self.parameters: dict[str, Any] = dict(request["parameters"])
-        """The values read by this step and those before it, by name."""
+    def __init__(self, snakemake: Any) -> None:
+        self.snakemake = snakemake
+        self.rule: str = snakemake.rule
+        self.directory = Path(snakemake.output[0]).resolve()
         self.cost_usd = 0.0
         self.refused: list[str] = []
         """What Claude Code refused this step's agents."""
 
-    def value(self, name: str) -> Any:
-        """A parameter's value: a literal, or the name of a file-valued one's value."""
-        if name not in self.parameters:
+    def value(self, name: str) -> str:
+        """A parameter's value: the wildcard of that name."""
+        wildcards = dict(self.snakemake.wildcards.items())
+        if name not in wildcards:
             raise UsageError(
-                f"step `{self.name}` reads only {', '.join(self.parameters) or 'nothing'}: "
-                f"declare `{name}` in its `reads` in scenario.json"
+                f"rule `{self.rule}` has no wildcard `{name}`: it has {', '.join(wildcards) or 'none'}"
             )
-        return self.parameters[name]
+        return str(wildcards[name])
 
-    def files(self, name: str) -> list[Path]:
-        """The files that are a parameter's value."""
-        self.value(name)
-        return [Path(path) for path in self.request["files"].get(name, [])]
+    def input(self, name: str | None = None) -> Path:
+        """An input by its name in the rule, or the first."""
+        inputs = self.snakemake.input
+        if name is None:
+            return Path(inputs[0]).resolve()
+        if name not in dict(inputs.items()):
+            raise UsageError(f"rule `{self.rule}` has no input named `{name}`")
+        return Path(inputs[name]).resolve()
 
-    def file(self, name: str) -> Path:
-        """The one file (or directory) that is a parameter's value."""
-        found = self.files(name)
-        if len(found) != 1:
-            raise UsageError(f"`{name}` is {len(found)} files, not one: use `step.files`")
-        return found[0]
-
-    def results(self, step: str | None = None) -> dict[str, Any]:
-        """An earlier step's results on this path; by default the one just before."""
-        before: dict[str, Any] = self.request["before"]
-        if not before:
-            return {}
-        name = step or list(before)[-1]
-        if name not in before:
-            raise UsageError(f"no step `{name}` before `{self.name}`: {', '.join(before)}")
-        return before[name]
+    def metrics(self, name: str | None = None) -> dict[str, Any]:
+        """An earlier step's numbers: the `metrics.json` of an input."""
+        path = self.input(name) / METRICS
+        return json.loads(path.read_text()) if path.is_file() else {}
 
     def spend(self, usd: float) -> None:
-        """Count what the step spent (an API call, say) toward the run's cost and budget."""
+        """Count what the step spent (an API call, say) into its `cost.json`."""
         self.cost_usd += usd
+
+    def unpack(self, name: str | None = None) -> Path:
+        """The state an input saved (`state.tar`), extracted into a fresh directory to work in."""
+        directory = Path(tempfile.mkdtemp(prefix=f"nock-{self.rule}-"))
+        with tarfile.open(self.input(name) / STATE) as archive:
+            archive.extractall(directory, filter="tar")
+        return directory
+
+    def pack(self, directory: Path) -> None:
+        """Save `directory` whole (a repository's `.git` too) as this step's
+        `state.tar`; when it is a git repository, its changes against its
+        HEAD — the state before, committed — go to `diff.patch`."""
+        self.directory.mkdir(parents=True, exist_ok=True)
+        if (directory / ".git").exists():
+            subprocess.run(["git", "add", "-A", "-N"], cwd=directory, check=True)
+            head = subprocess.run(
+                ["git", "rev-parse", "--verify", "-q", "HEAD"], cwd=directory, capture_output=True
+            )
+            diff = subprocess.run(
+                ["git", "diff", "--binary", "HEAD" if head.returncode == 0 else EMPTY_TREE],
+                cwd=directory,
+                check=True,
+                capture_output=True,
+            ).stdout
+            (self.directory / DIFF).write_bytes(diff)
+            subprocess.run(["git", "add", "-A"], cwd=directory, check=True)
+            subprocess.run(
+                [
+                    "git",
+                    "-c",
+                    "user.name=nock",
+                    "-c",
+                    "user.email=nock@localhost",
+                    "commit",
+                    "-q",
+                    "--allow-empty",
+                    "-m",
+                    f"nock eval: {self.rule}",
+                ],
+                cwd=directory,
+                check=True,
+            )
+        with tarfile.open(self.directory / STATE, "w") as archive:
+            archive.add(directory, arcname=".")
 
     @property
     def project(self) -> Project:
-        return Project(Path(self.request["root"]), self.repository)
+        return Project.discover(Path.cwd())
 
     def agent(
         self,
         brief: str,
         *,
         allowed: tuple[str, ...] | list[str],
+        directory: Path | None = None,
         tools: tuple[str, ...] | list[str] = READING,
         denied: tuple[str, ...] | list[str] = (),
         deadline: float | None = None,
@@ -88,13 +134,13 @@ class Step:
         """A headless agent, dispatched as nock dispatches its own — in
         `dontAsk`, with only `tools` and the `allowed` rules (Claude Code's
         rule syntax: `Edit`, `Bash(pytest:*)`), everything else refused —
-        working in this step's directory; its session's cost is spent.
-        Returns its last message; what was refused is in `step.refused`."""
+        working in `directory` (the output by default); its session's cost
+        is spent. Returns its last message; what was refused is in `refused`."""
         project = self.project
         seat = Seat(tuple(tools), tuple(allowed), tuple(denied))
-        session = Dispatcher(project).launch(
-            ROLE, brief, self.directory, deadline=deadline, seat=seat
-        )
+        where = directory or self.directory
+        where.mkdir(parents=True, exist_ok=True)
+        session = Dispatcher(project).launch(ROLE, brief, where, deadline=deadline, seat=seat)
         rows = project.store.rows("SELECT cost FROM sessions WHERE id = ?", (session.id,))
         self.spend(float(rows[0]["cost"] or 0) if rows else 0.0)
         self.refused += session.denied
@@ -102,32 +148,29 @@ class Step:
             raise RuntimeError(f"the agent exited {session.exit_code} (log: {session.log})")
         return session.result
 
-
-def main(arguments: list[str]) -> int:
-    request = read_json(Path(arguments[0]))
-    outcome = Path(request["outcome"])
-    step = Step(request)
-    try:
-        specification = importlib.util.spec_from_file_location(
-            f"nock_steps.{step.name}", request["code"]
-        )
-        assert specification is not None and specification.loader is not None
-        module = importlib.util.module_from_spec(specification)
-        specification.loader.exec_module(module)
-        results = module.run(step)
-        if results is None:
-            results = {}
-        if not isinstance(results, dict):
-            raise TypeError(f"run() returned {type(results).__name__}: a step returns a dict")
-        json.dumps(results)
-    except BaseException as error:
-        traceback.print_exc()
-        message = f"{type(error).__name__}: {error}"
-        write_json(outcome, {"error": message, "cost_usd": step.cost_usd})
-        return 1
-    write_json(outcome, {"results": results, "cost_usd": step.cost_usd})
-    return 0
-
-
-if __name__ == "__main__":
-    sys.exit(main(sys.argv[1:]))
+    def run(self, function: Callable[[Step], dict[str, Any] | None]) -> None:
+        """Run the step: its numbers to `metrics.json`, its spending to
+        `cost.json` with its seconds, a raise to `error.json` with its traceback."""
+        self.directory.mkdir(parents=True, exist_ok=True)
+        began = time.monotonic()
+        try:
+            metrics = function(self) or {}
+            if not isinstance(metrics, dict):
+                raise TypeError(
+                    f"the step returned {type(metrics).__name__}: a step returns a dict"
+                )
+            (self.directory / METRICS).write_text(json.dumps(metrics, indent=2) + "\n")
+        except Exception as error:
+            traceback.print_exc()
+            (self.directory / ERROR).write_text(
+                json.dumps(
+                    {
+                        "error": f"{type(error).__name__}: {error}",
+                        "traceback": traceback.format_exc(),
+                    },
+                    indent=2,
+                )
+                + "\n"
+            )
+        spent = {"usd": round(self.cost_usd, 6), "seconds": round(time.monotonic() - began, 3)}
+        (self.directory / COST).write_text(json.dumps(spent) + "\n")

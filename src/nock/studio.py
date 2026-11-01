@@ -22,8 +22,9 @@ from nock.commands import schema_of
 from nock.comparison import Comparison, Query
 from nock.decisions import Change, Decisions, Review
 from nock.errors import Error, NotFoundError
-from nock.evaluation import Evaluations
+from nock.evaluation import Evaluations, Run
 from nock.project import Project
+from nock.results import Results
 from nock.schema import validate
 
 PAGES = Path(__file__).resolve().with_name("pages")
@@ -85,18 +86,18 @@ class DecisionsTab(Tab):
 
 
 class Draft(TypedDict):
-    """A run weighed on the page: its assignment, and text standing in for
-    files of the scenario (by their path in its directory), nothing written."""
+    """A dry run asked for on the page: its targets and budget, nothing run."""
 
-    assignment: dict[str, Any]
-    drafts: NotRequired[dict[str, str]]
+    targets: NotRequired[list[str]]
+    budget: NotRequired[float]
 
 
 class EvalsTab(Tab):
-    """`GET /evals` every scenario as its files have it — steps, parameters,
-    snapshots, runs; `POST /evals/NAME/dry` what a draft would rerun and
-    reuse; `POST /evals/NAME/compare` a comparison. Nothing here runs a step
-    or writes a file."""
+    """`GET /evals` every scenario as Snakemake and its result files have it —
+    the rule graph, each rule's outputs current, stale and failed, their
+    numbers; `POST /evals/NAME/dry` what a run would compute and restore, and
+    why; `POST /evals/NAME/compare` a comparison. Nothing here runs a step or
+    writes a file."""
 
     name = "evals"
     title = "Evals"
@@ -108,7 +109,32 @@ class EvalsTab(Tab):
     def get(self, route: str) -> Any:
         if route:
             raise NotFoundError("no such page")
-        return {"scenarios": self.evaluations.page()}
+        return {"scenarios": [self.page(name) for name in self.evaluations.names()]}
+
+    def page(self, name: str) -> dict[str, Any]:
+        scenario = self.evaluations.scenario(name)
+        try:
+            graph = scenario.rulegraph()
+            outputs, metrics = Results(scenario).run(
+                [
+                    "SELECT rule, path, parameters, state, why, cost_usd, seconds, error"
+                    " FROM outputs ORDER BY rule, path",
+                    "SELECT path, metric, value FROM metrics",
+                ]
+            )
+        except Error as error:
+            return {"name": name, "problem": str(error)}
+        numbers: dict[str, dict[str, float]] = {}
+        for row in metrics.get("rows", []):
+            numbers.setdefault(row["path"], {})[row["metric"]] = row["value"]
+        return {
+            "name": name,
+            "snakefile": (scenario.directory / "Snakefile").read_text(),
+            "graph": graph,
+            "outputs": [
+                {**row, "metrics": numbers.get(row["path"], {})} for row in outputs.get("rows", [])
+            ],
+        }
 
     def post(self, route: str, body: Any) -> Any:
         name, _, action = route.partition("/")
@@ -116,7 +142,13 @@ class EvalsTab(Tab):
             raise NotFoundError(f"no scenario {name}")
         if action == "dry":
             validate(body, schema_of(Draft))
-            return self.evaluations.dry(name, body["assignment"], body.get("drafts", {}))
+            plan = Run(self.evaluations.scenario(name), body.get("targets", []), body.get("budget"))
+            refused = plan.refusal()
+            return {
+                "jobs": plan.lines(),
+                "summary": plan.summary(),
+                **({"refused": refused} if refused else {}),
+            }
         if action == "compare":
             validate(body, schema_of(Query))
             return Comparison(self.project).compare(Query(**{**body, "scenario": name}))

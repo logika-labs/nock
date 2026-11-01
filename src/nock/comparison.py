@@ -1,17 +1,20 @@
-"""Comparing an evaluation's leaves (`nock eval compare`): the current
-snapshots of one step, grouped by one parameter while the others are held
-fixed, pooled over the repetitions (or any parameters named), each mean with
-a bootstrap confidence interval and the runs behind it. A difference from the
-baseline is paired when both sides have the same units."""
+"""Comparing an evaluation's outputs (`nock eval compare`): one rule's
+current outputs, grouped by one parameter while the others are held fixed,
+pooled over the repetitions (or any parameters named), each mean with a
+bootstrap confidence interval. DuckDB averages each unit (`nock.results`);
+a difference from the baseline is paired — a join on the units both sides
+share — when both have the same units."""
 
 from __future__ import annotations
 
+import json
 import random
 from typing import Any, NotRequired, TypedDict
 
 from nock.errors import UsageError
-from nock.evaluation import Evaluations, Runs, Snapshots, value_key
+from nock.evaluation import Evaluations
 from nock.project import Project
+from nock.results import Results, identifier, literal
 
 RESAMPLES = 2000
 SEED = 0
@@ -22,7 +25,7 @@ class Query(TypedDict):
     by: str
     """The parameter whose values are compared."""
     metric: str
-    """A result's key; a dotted path reaches into nested results. True counts 1, false 0."""
+    """A key of the outputs' metrics.json. True counts 1, false 0."""
     scenario: NotRequired[str]
     """The scenario; the only one there is by default."""
     where: NotRequired[dict[str, Any]]
@@ -32,7 +35,7 @@ class Query(TypedDict):
     unit: NotRequired[str]
     """Average within each of this parameter's values first, and resample those (the bugs, say)."""
     step: NotRequired[str]
-    """Compare this step's snapshots instead of the last step's."""
+    """The rule whose outputs are compared; the only one with metrics by default."""
     baseline: NotRequired[Any]
     """The value of `by` the others are measured against; its first by default."""
 
@@ -82,20 +85,38 @@ def bootstrap_difference(
     )
 
 
+def natural(value: str) -> tuple[int, float, str]:
+    """Numbers in their order, before words in theirs."""
+    try:
+        return (0, float(value), "")
+    except ValueError:
+        return (1, 0.0, value)
+
+
+def value_key(value: Any) -> str:
+    """How a value is named in a query: `none`, `3`, `true`."""
+    return value if isinstance(value, str) else json.dumps(value)
+
+
 class Comparison:
     def __init__(self, project: Project) -> None:
         self.project = project
 
     def compare(self, query: Query) -> list[dict[str, Any]]:
         scenario = Evaluations(self.project).scenario(query.get("scenario"))
-        steps = scenario.steps
-        name = query.get("step") or (steps[-1].name if steps else None)
-        index = scenario.step_index(name) if name else None
-        if index is None:
+        results = Results(scenario)
+        measured = results.rows("SELECT DISTINCT rule FROM metrics ORDER BY rule")
+        rules = [row["rule"] for row in measured]
+        name = query.get("step") or (rules[0] if len(rules) == 1 else None)
+        if name is None or name not in results.rules():
             raise UsageError(
-                f"no step `{name}`; the steps: {', '.join(step.name for step in steps)}"
+                f'name the rule to compare (`"step": …`): the rules with metrics are {", ".join(rules) or "none yet — run the scenario first"}'
+                if name is None
+                else f"no rule `{name}` has outputs; the rules: {', '.join(results.rules())}"
             )
-        reads = scenario.reads_through(index)
+        reads = sorted(
+            {key for result in results.states if result.rule == name for key in result.parameters}
+        )
         by = query["by"]
         where = query.get("where", {})
         over = list(query.get("over", ["rep"] if "rep" in reads else []))
@@ -103,67 +124,68 @@ class Comparison:
         for parameter in [by, *where, *over, *([unit] if unit else [])]:
             if parameter not in reads:
                 raise UsageError(
-                    f"`{name}`'s snapshots have no parameter `{parameter}`; they have: {', '.join(reads)}"
+                    f"`{name}`'s outputs have no parameter `{parameter}`; they have: {', '.join(reads)}"
                 )
         if by in over or by == unit:
             raise UsageError(f"`{by}` is compared, so it cannot be pooled too")
         if unit and unit not in over:
             over.append(unit)
         fixed = [parameter for parameter in reads if parameter != by and parameter not in over]
-        snapshots = Snapshots(scenario)
-        through = Runs(scenario).through()
-        # fixed values → value of `by` → unit → the metric's values; and the snapshots behind them.
-        cells: dict[tuple[str, ...], dict[str, dict[tuple[str, ...], list[float]]]] = {}
-        behind: dict[tuple[tuple[str, ...], str], list[str]] = {}
-        failed: dict[tuple[tuple[str, ...], str], int] = {}
-        keys: set[str] = set()
-        for snapshot in snapshots.all():
-            parameters = snapshot.parameters
-            if snapshot.step != name or snapshots.staleness(snapshot):
-                continue
-            if any(
-                value_key(parameters.get(key)) != value_key(value) for key, value in where.items()
-            ):
-                continue
-            row = tuple(value_key(parameters[key]) for key in fixed)
-            group = value_key(parameters[by])
-            if snapshot.failed:
-                failed[(row, group)] = failed.get((row, group), 0) + 1
-                continue
-            results = snapshot.data.get("results") or {}
-            keys |= set(results)
-            measured = metric_of(results, query["metric"])
-            if measured is None:
-                continue
-            member = (
-                (value_key(parameters[unit]),)
-                if unit
-                else tuple(value_key(parameters[key]) for key in over)
-            )
-            cells.setdefault(row, {}).setdefault(group, {}).setdefault(member, []).append(measured)
-            behind.setdefault((row, group), []).append(snapshot.hash)
-        if not cells:
+        members = [unit] if unit else over
+        table = identifier(results.table(name))
+        text = {key: f"CAST({identifier(key)} AS VARCHAR)" for key in reads}
+        narrowed = "".join(
+            f" AND {text[key]} = {literal(value_key(value))}" for key, value in where.items()
+        )
+        grouped = [*(text[key] for key in fixed), text[by], *(text[key] for key in members)]
+        metric = identifier(query["metric"])
+        units, failures, columns = results.run(
+            [
+                f"SELECT {', '.join(grouped)}, avg(CAST({metric} AS DOUBLE)) AS measured"
+                f" FROM {table} WHERE state = 'current' AND {metric} IS NOT NULL{narrowed}"
+                f" GROUP BY ALL ORDER BY ALL",
+                f"SELECT {', '.join([*(text[key] for key in fixed), text[by]])}, count(*) AS failed"
+                f" FROM {table} WHERE state = 'failed'{narrowed} GROUP BY ALL",
+                f"SELECT column_name FROM (DESCRIBE {table})",
+            ]
+        )
+        known = [row["column_name"] for row in columns.get("rows", [])]
+        if "error" in units or not units["rows"]:
+            metrics = [
+                column
+                for column in known
+                if column not in reads
+                and column not in ("state", "why", "cost_usd", "seconds", "error", "path")
+            ]
             raise UsageError(
-                f"no current `{name}` snapshot has a number at `{query['metric']}`"
+                f"no current `{name}` output has a number at `{query['metric']}`"
                 + (
-                    f"; their results have: {', '.join(sorted(keys))}"
-                    if keys
+                    f"; their metrics: {', '.join(metrics)}"
+                    if metrics
                     else "; run the scenario first"
                 )
             )
-        order = list(scenario.parameters[by].values)
+        # fixed values → value of `by` → unit → its mean.
+        cells: dict[tuple[str, ...], dict[str, dict[tuple[str, ...], float]]] = {}
+        for row in units["rows"]:
+            values = list(row.values())
+            key = tuple(values[: len(fixed)])
+            group = values[len(fixed)]
+            member = tuple(values[len(fixed) + 1 : -1])
+            cells.setdefault(key, {}).setdefault(group, {})[member] = float(row["measured"])
+        failed = {
+            (tuple(list(row.values())[: len(fixed)]), list(row.values())[len(fixed)]): row["failed"]
+            for row in failures.get("rows", [])
+        }
         baseline = value_key(query["baseline"]) if "baseline" in query else None
         generator = random.Random(SEED)
         rows = []
         for row, groups in sorted(cells.items()):
-            values = sorted(
-                groups, key=lambda value: order.index(value) if value in order else len(order)
-            )
+            values = sorted(groups, key=natural)
             first = baseline if baseline in groups else values[0]
-            base_units = {member: mean(found) for member, found in groups[first].items()}
+            base_units = groups[first]
             for value in values:
-                units = {member: mean(found) for member, found in groups[value].items()}
-                numbers = list(units.values())
+                numbers = list(groups[value].values())
                 spread = bootstrap(numbers, generator)
                 entry: dict[str, Any] = {
                     **dict(zip(fixed, row, strict=True)),
@@ -174,16 +196,13 @@ class Comparison:
                     "high": round(spread[1], 4) if spread else None,
                 }
                 entry.update(
-                    self.difference(base_units, units, generator)
+                    self.difference(base_units, groups[value], generator)
                     if value != first
                     else dict.fromkeys(
                         ("difference", "difference_low", "difference_high", "paired")
                     )
                 )
                 entry["failed"] = failed.get((row, value), 0)
-                entry["runs"] = " ".join(
-                    sorted({run for hash in behind[(row, value)] for run in through.get(hash, [])})
-                )
                 rows.append(entry)
         return rows
 
