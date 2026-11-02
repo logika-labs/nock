@@ -42,6 +42,13 @@ propose those again.
 - **A milestone**: the time from one event to another, for the same
   identity: how long until someone first does X after Y.
 - **A view**: the panels the owner would open first, grouped by flow.
+  Give each panel a plain `title` naming the question it answers, in the
+  owner's words ("How fast checkout is", "Who comes back"), and an
+  `answer`, the sentence the console opens it with, filled from the data
+  through the panel kind's placeholders (`logika docs ledger.views`):
+  "{total} checkouts {range} · {change}". Write them from what the owner
+  said they care about; a panel without them is worded from its event's
+  description, which reads like a report, not an answer.
 
 ## 3. Check it against real captures
 
@@ -75,6 +82,6 @@ answer.
 ## What you change
 
 Only `logika.json`: params' `identity` and `dimension` flags, `funnels`,
-`milestones` and `views`. Change nothing else, not the code and not
+`milestones` and `views`, each panel with its `title` and `answer`. Change nothing else, not the code and not
 `.nock/`, except by recording decisions, questions and todos. Commit
 nothing: `.nock/nock reflect logika finish` commits.
