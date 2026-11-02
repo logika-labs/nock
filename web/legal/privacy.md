@@ -19,18 +19,16 @@ nock.dev is a static site. It sets no cookies, keeps nothing in your browser, ru
 
 ## 3. The usage report
 
-The first time you engage with nock on a machine (your first reflection round, opening `nock studio`, or your first review of a decision), nock asks once whether to share a weekly usage report. Nothing is sent before you answer, and your choice is written to `share` in `.nock/config.toml`; change it there at any time (or per machine in `.nock/local/config.toml`). While sharing is on, nock sends a usage report from your machine once a week to `api.nock.dev`.
+The first time you engage with nock on a machine (your first reflection round, opening `nock studio`, or your first review of or note on a decision), nock asks once whether to share a weekly usage report. Nothing is sent before you answer, and your choice is written to `share` in `.nock/config.toml`; change it there at any time (or per machine in `.nock/local/config.toml`). While sharing is on, nock sends a usage report from your machine once a week to `api.nock.dev`.
 
 A report holds:
 
 - nock's version, Python's version and your platform (`darwin`, `linux`);
 - whether reminders and the consultant are on, and whether the project uses Logika;
-- counts over the week: sessions (and, apart, headless `claude -p` runs), requests, tool calls and failures, tokens by kind, their API-equivalent cost and how many sessions could not be priced, commits, decisions by status, nock's own commands by how they ended, how many tools, checks and hooks the project has, and how many reflection rounds ran;
+- counts of how nock was used over the week: sessions, tool calls, tokens and their cost, commands, decisions and reflection rounds;
 - the project's identifier: a random UUID, made when the first report is sent and kept in `.nock/project.json`, derived from nothing about you or the project.
 
 It never holds code, file paths, file or tool names, prompts, command arguments, what your decisions say, or anything else written in your project. Reports carry no name, email or address, but each project's reports share one random identifier, so we treat them as pseudonymous rather than calling them anonymous. `nock usage` shows exactly what the next report would carry.
-
-To cost sessions, nock also downloads, at most once a day, LiteLLM's public price table from GitHub (`raw.githubusercontent.com`). That request sends nothing about you or the project; GitHub receives your IP address, as for any download. `pricing.fetch = false` turns it off.
 
 We use reports to learn how nock is used and to improve it, on the basis of your consent (GDPR Art. 6(1)(a)). You can withdraw it at any time by setting `share = false`; nothing further is sent, and withdrawal does not affect what was lawfully sent before. You can also ask us to delete your project's earlier reports, quoting the id from `.nock/project.json`.
 
