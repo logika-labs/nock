@@ -1,6 +1,7 @@
 """The owner's page (`nock studio`): one local server, a tab for each thing
 nock keeps for the owner: the decisions and questions agents recorded,
-reviewed in place, and the evaluations, read from their files. Local, and only while `nock studio` runs.
+reviewed in place, and the evaluations, explored as a graph of their runs
+(`nock.explorer`). Local, and only while `nock studio` runs.
 
 A tab is a `Tab` in `TABS`: its name is its address on the page (`#NAME`) and
 its routes on the server (`/NAME/…`); its page is the fragment
@@ -13,6 +14,7 @@ from __future__ import annotations
 
 import html
 import json
+import threading
 import webbrowser
 from collections.abc import Callable
 from http import HTTPStatus
@@ -25,8 +27,8 @@ from nock.comparison import Comparison, Query
 from nock.decisions import Change, Decisions, Review
 from nock.errors import Error, NotFoundError
 from nock.evaluation import Evaluations, Run
+from nock.explorer import Explorer, View
 from nock.project import Project
-from nock.results import Results
 from nock.schema import validate
 from nock.usage import QUESTION, Answer, Usage, sharing
 
@@ -96,12 +98,20 @@ class Draft(TypedDict):
     budget: NotRequired[float]
 
 
+class Asked(TypedDict):
+    """One run on the page (`output`), or one of its files (`name`)."""
+
+    output: str
+    name: NotRequired[str]
+
+
 class EvalsTab(Tab):
-    """`GET /evals` every scenario as Snakemake and its result files have it —
-    the rule graph, each rule's outputs current, stale and failed, their
-    numbers; `POST /evals/NAME/dry` what a run would compute and restore, and
-    why; `POST /evals/NAME/compare` a comparison. Nothing here runs a step or
-    writes a file."""
+    """`GET /evals` every scenario in a line; `POST /evals/NAME/explore` the
+    graph a `View` asks for (`explorer.Explorer`: the jobs as Snakemake described
+    them, kept and refreshed in the background, statuses read live); `POST
+    /evals/NAME/run` one run and its files, `/file` one file's text, `/dry` what
+    a run would compute and restore and why, `/compare` a comparison. Nothing
+    here runs a step or writes a file outside `.nock/local/`."""
 
     name = "evals"
     title = "Evals"
@@ -109,41 +119,45 @@ class EvalsTab(Tab):
     def __init__(self, project: Project) -> None:
         super().__init__(project)
         self.evaluations = Evaluations(project)
+        self.explorers: dict[str, Explorer] = {}
+        # Read every scenario once now, so the tab opens on a warm reading.
+        threading.Thread(target=self.warm, daemon=True).start()
+
+    def fragment(self) -> str:
+        return f"<style>\n{(PAGES / 'evals.css').read_text()}</style>\n" + super().fragment()
+
+    def explorer(self, name: str) -> Explorer:
+        if name not in self.explorers:
+            self.explorers[name] = Explorer(
+                self.evaluations.scenario(name), self.project.local / "evals"
+            )
+        return self.explorers[name]
+
+    def warm(self) -> None:
+        for name in self.evaluations.names():
+            try:
+                self.explorer(name).summary()
+            except Error:
+                continue
 
     def get(self, route: str) -> Any:
         if route:
             raise NotFoundError("no such page")
-        return {"scenarios": [self.page(name) for name in self.evaluations.names()]}
-
-    def page(self, name: str) -> dict[str, Any]:
-        scenario = self.evaluations.scenario(name)
-        try:
-            graph = scenario.rulegraph()
-            outputs, metrics = Results(scenario).run(
-                [
-                    "SELECT rule, path, parameters, state, why, cost_usd, seconds, error"
-                    " FROM outputs ORDER BY rule, path",
-                    "SELECT path, metric, value FROM metrics",
-                ]
-            )
-        except Error as error:
-            return {"name": name, "problem": str(error)}
-        numbers: dict[str, dict[str, float]] = {}
-        for row in metrics.get("rows", []):
-            numbers.setdefault(row["path"], {})[row["metric"]] = row["value"]
-        return {
-            "name": name,
-            "snakefile": (scenario.directory / "Snakefile").read_text(),
-            "graph": graph,
-            "outputs": [
-                {**row, "metrics": numbers.get(row["path"], {})} for row in outputs.get("rows", [])
-            ],
-        }
+        return {"scenarios": [self.explorer(name).summary() for name in self.evaluations.names()]}
 
     def post(self, route: str, body: Any) -> Any:
         name, _, action = route.partition("/")
         if name not in self.evaluations.names():
             raise NotFoundError(f"no scenario {name}")
+        if action == "explore":
+            validate(body, schema_of(View))
+            return self.explorer(name).explore(body)
+        if action == "run":
+            validate(body, schema_of(Asked))
+            return self.explorer(name).detail(body["output"])
+        if action == "file":
+            validate(body, schema_of(Asked))
+            return self.explorer(name).file_text(body["output"], body.get("name", ""))
         if action == "dry":
             validate(body, schema_of(Draft))
             plan = Run(self.evaluations.scenario(name), body.get("targets", []), body.get("budget"))

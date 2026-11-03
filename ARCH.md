@@ -61,7 +61,8 @@ src/nock/
   studio.py          the owner's page (`nock studio`): a local server, a Tab per tab
   pages/             studio.html, the shell (band with the title and the menu, routing by
                      `#NAME/ROUTE`); studio.css, its look, put in the shell;
-                     NAME.html, each tab's fragment (markup, style, a script registering it)
+                     NAME.html, each tab's fragment (markup, style, a script registering it);
+                     evals.css, the Evals tab's own look, put before its fragment
   status.py          Standing: a round due, decisions waiting, rejected ones to rework, answered
                      questions, an unshared summary
   share.py           Sharing: a round's summary, held to naming nothing, sent on the owner's word
@@ -97,6 +98,10 @@ src/nock/
                      graph, materialised outputs and their states, the check), Run (the dry
                      pass, estimates, budget, refusals; then Snakemake), Evaluations (init, prune)
   results.py         Results: DuckDB through uv over the result files, tables loaded per call
+  explorer.py        the studio's Evals tab: Graph (every job, as Snakemake describes it, kept
+                     in .nock/local/evals/ under a fingerprint), Monitor (a run's lock, log and
+                     incomplete markers), Reader (each output's facts), Exploration (columns,
+                     rows, groups, narrowing, what a change reruns, comparisons in counts)
   steps.py           Step, what a rule's script wraps itself in: metrics, cost, error, state
   comparison.py      Comparison: a rule's outputs by one parameter, bootstrap intervals, pairing
 
@@ -425,10 +430,48 @@ listed in `TABS`, and a fragment whose script calls
 `studio.register(NAME, {show(route), hide()})`; the studio gives it
 `studio.summary` (the counts under the title) and `studio.toast`. Fragments
 share the page's scripts and styles, so a tab keeps its script in a closure
-and its style under its own class. Two tabs: `DecisionsTab`, and `EvalsTab`,
-which reads `Scenario.rulegraph` and the `results.Results` tables and
-answers `POST /evals/NAME/dry` (a `Run`'s dry pass, nothing run) and `POST
-/evals/NAME/compare`.
+and its style under its own class. Two tabs: `DecisionsTab`, and `EvalsTab`
+(below), which also answers `POST /evals/NAME/dry` (a `Run`'s dry pass,
+nothing run) and `POST /evals/NAME/compare`.
+
+### The evaluation explorer
+
+`EvalsTab` keeps an `explorer.Explorer` per scenario. Deriving the jobs is
+what costs (a dry run's time, half a minute on a scenario of 900 steps), so it
+happens once: `GRAPH`, a script in uv's Snakemake, loads the workflow as
+`--list-untracked` would with every target rule as a target, and prints each
+job — rule, output, the jobs before it (`first`, its main input), the input
+files no job makes, its params flattened (`node.versions.cli`), its script and
+its cache entry (Snakemake's provenance hash). The `Graph` is kept in
+`.nock/local/evals/NAME-<hash of the directory>.json` with a fingerprint of
+the scenario's files (not `results/`, `cache/`, `.snakemake/` or
+`studio.json`), the checkout's commit and uncommitted changes (a Snakefile may
+read the repository) and the checkpoints done; a background thread checks the
+fingerprint every 15 seconds, or at once when a checkpoint finishes, and
+derives again only when it changed, the page meanwhile served the kept one.
+
+Statuses are read from files on each request (shared for 2 seconds): an
+output under `results/` with `cost.json` is done — stale when the cache entry
+it links to is not the job's — with `error.json` failed; an output only in
+the cache under the job's entry is done (the next run restores it); while
+`.snakemake/locks/` holds a lock, a job the log started and did not finish, or
+with an incomplete marker (Snakemake's records are url-safe base64 of the
+path, cut into directory names), is running. The `Monitor` reads the log
+incrementally; the `Reader` re-reads an output only when its directory or the
+job's entry changed. Why an output is stale compares its params with those
+Snakemake recorded in `.snakemake/metadata/` when it was made.
+
+An `Exploration` is one view: the target's jobs (the run going on's, by
+default), columns in the order rules run, rows by the earliest parameter that
+forks the runs (a parameter some of a rule's jobs lack forks too; one a whole
+rule lacks does not), a group split on request by the next forking parameter
+down to runs; a selection narrows every column to its right to its
+descendants, and marks its lineage to the left; a change — a parameter's
+value, an input the params carry, a script or input file — reruns what it
+touches and everything made from it, estimated by each rule's median cost
+and time. Comparisons are `studio.json`'s `analyses`, counted as x of y, or
+one suggested per rule. Wires join groups through each job's main input; a
+wire that leaps a column, or joins another input, shows on hover.
 
 ### Dispatch
 

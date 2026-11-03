@@ -1,0 +1,24 @@
+{
+  "rules": {
+    "detect": {
+      "title": "Detection",
+      "means": "A detector looks at the planted list once, in an arm.",
+      "metrics": ["detected", "alarms"],
+      "highlights": ["Detected the bug: {detected}, with {alarms} alarms.", "Never said: {nothing}."]
+    }
+  },
+  "parameters": {
+    "bug": {"label": "Planted bug", "values": {"none": "no bug (the clean twin)"}},
+    "arm": {"label": "Arm"}
+  },
+  "analyses": [
+    {
+      "name": "Does the toolbox find the planted bug?",
+      "step": "detect",
+      "by": "arm",
+      "metric": "detected",
+      "where": {"bug": "drop-banana"},
+      "baseline": "control"
+    }
+  ]
+}
