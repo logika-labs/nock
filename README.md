@@ -877,9 +877,10 @@ Snakefile does not read. Snakemake and DuckDB run through
 targets, commits `cache/`, and pushes; entries merge as plain files, and the
 next run anywhere restores them.
 
-**The studio's Evals tab** draws a scenario's rules from Snakemake's rule
-graph, each with its outputs current, stale and failed; select a rule for
-its outputs and their numbers and to compare them by a parameter; weigh a
+**The studio's Evaluations tab** (`#evals` or `#evaluations`) draws a
+scenario's rules from Snakemake's rule graph, each with its outputs current,
+stale and failed; select a rule for its outputs and their numbers and to
+compare them by a parameter; weigh a
 dry run with targets and a budget, nothing run. `nock docs eval` has the
 rest, with the practice that keeps an evaluation honest: fix the inputs,
 keep the answers from what is scored, measure the outcome, run enough

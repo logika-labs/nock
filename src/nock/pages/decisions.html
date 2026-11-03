@@ -9,7 +9,7 @@ nav.reviews { display: flex; flex-wrap: wrap; align-items: center; gap: 0 24px; 
 .search input[type="search"] { padding-left: 24px; font-size: 14px; }
 .search input::-webkit-search-cancel-button { filter: grayscale(1); }
 /* Priority chips: toggles, several at once, each with how many it would show. */
-.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chips { display: grid; gap: 10px; flex: 1 1 100%; }
 .chip {
   display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 11px; border-radius: 999px;
   border: 1px solid var(--input); background: transparent; color: var(--foreground);
@@ -19,7 +19,11 @@ nav.reviews { display: flex; flex-wrap: wrap; align-items: center; gap: 0 24px; 
 .chip:hover { background: var(--card); }
 .chip { --tone: var(--foreground); }
 .chip[data-tag="important"] { --tone: var(--warning); }
-.chips .divider { width: 1px; align-self: stretch; margin: 4px 2px; background: var(--border); }
+.chip-group { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; flex-basis: 100%; }
+.chip-group > .label { color: var(--muted); min-width: 4.5rem; font-size: 11px; }
+.applies { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; font-size: 13px; color: var(--muted); }
+.applies .label { font-size: 11px; margin-right: 2px; }
+.applies code { font: 12px var(--mono); background: var(--background); color: var(--foreground); padding: 1px 5px; border-radius: 4px; overflow-wrap: anywhere; }
 .chip[aria-pressed="true"] { border-color: var(--tone); color: var(--tone); background: color-mix(in oklab, var(--tone) 10%, var(--card)); }
 .chip[aria-pressed="true"] .count { color: inherit; }
 .chip:disabled { opacity: .4; cursor: default; background: transparent; }
@@ -293,6 +297,7 @@ const AFTER = {
 
 function body(decision) {
   const parts = [`<div class="context">${markdown(decision.summary)}</div>`];
+  if (decision.touches.length) parts.push(`<div class="applies"><span class="label">Applies to</span> ${decision.touches.map(path => `<code>${escape(path)}</code>`).join(" ")}</div>`);
   parts.push(section("evidence", decision.evidence.map(line => `<li>${inline(line)}</li>`)));
   parts.push(section(decision.status === "question" ? "other answers" : "considered instead", decision.alternatives.map(item =>
     `<li class="alternative"><span class="option">${inline(item.option)}</span> — <span class="why">${inline(item.why_not)}</span></li>`)));
@@ -320,7 +325,6 @@ function body(decision) {
     </div>`);
   }
   const links = [];
-  if (decision.touches.length) links.push(`<span><span class="label">governs</span> ${decision.touches.map(path => `<code>${escape(path)}</code>`).join(" ")}</span>`);
   if (decision.supersedes.length) links.push(`<span><span class="label">supersedes</span> ${decision.supersedes.map(number => `<button type="button" class="reference" data-open="${number}">${number}</button>`).join(" ")}</span>`);
   if (decision.superseded_by) links.push(`<span><span class="label">superseded by</span> <button type="button" class="reference" data-open="${decision.superseded_by}">${decision.superseded_by}</button></span>`);
   const tags = decision.tags.filter(tag => tag !== "important");
@@ -367,7 +371,8 @@ function drawChips() {
   const counted = Object.keys(state.tags_in_use).map(tag => [tag, tab.filter(decision => decision.tags.includes(tag)).length]);
   const tags = counted.filter(([tag, count]) => count || state.tags.has(tag)).sort((left, right) => right[1] - left[1]).slice(0, SHOWN_TAGS)
     .map(([tag, count]) => chip("tag", tag, count));
-  document.getElementById("chips").innerHTML = statuses.join("") + (tags.length ? '<span class="divider" aria-hidden="true"></span>' + tags.join("") : "");
+  const group = (label, chips) => `<div class="chip-group" role="group" aria-label="${label}"><span class="label">${label}</span>${chips.join("")}</div>`;
+  document.getElementById("chips").innerHTML = group("Status", statuses) + (tags.length ? group("Tags", tags) : "");
 }
 
 function draw() {
