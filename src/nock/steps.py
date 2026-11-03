@@ -4,13 +4,17 @@ interpreter Snakemake runs on with nock on its path, wraps its work in
 function's numbers become its `metrics.json`, what it spent and how long it
 took its `cost.json` (Snakemake's `benchmark:` cannot be used with its cache),
 and a raise its `error.json` — a failed result, cached like any other until
-`nock eval prune` deletes it. Saved state is `state.tar` in the output
-(`pack`, `unpack`), and a repository's changes against the state before are
-`diff.patch` beside it."""
+`nock eval prune` deletes it or `nock eval run --retry` computes it again, when
+the step can read what the failed attempt left (`previous`). A step one of
+whose inputs failed fails without running. Saved state is `state.tar` in the
+output (`pack`, `unpack`), and a repository's changes against the state before
+are `diff.patch` beside it."""
 
 from __future__ import annotations
 
+import hashlib
 import json
+import os
 import subprocess
 import tarfile
 import tempfile
@@ -30,8 +34,15 @@ COST = "cost.json"
 ERROR = "error.json"
 STATE = "state.tar"
 DIFF = "diff.patch"
+# Inside the cache: each retried output's last failed attempt.
+ATTEMPTS = ".attempts"
 # What a repository's first state is diffed against.
 EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
+
+
+def attempts_of(cache: Path, output: str) -> Path:
+    """Where an output's last failed attempt is kept when it is retried."""
+    return cache / ATTEMPTS / hashlib.sha256(output.encode()).hexdigest()[:16]
 
 
 class Step:
@@ -43,6 +54,7 @@ class Step:
         self.rule: str = snakemake.rule
         self.directory = Path(snakemake.output[0]).resolve()
         self.cost_usd = 0.0
+        self.tokens = 0
         self.refused: list[str] = []
         """What Claude Code refused this step's agents."""
 
@@ -69,9 +81,24 @@ class Step:
         path = self.input(name) / METRICS
         return json.loads(path.read_text()) if path.is_file() else {}
 
-    def spend(self, usd: float) -> None:
+    def spend(self, usd: float, tokens: int = 0) -> None:
         """Count what the step spent (an API call, say) into its `cost.json`."""
         self.cost_usd += usd
+        self.tokens += tokens
+
+    @property
+    def previous(self) -> Path | None:
+        """What this output's last failed attempt left, when `nock eval run
+        --retry` computes it again (an agent's work worth keeping, say); else None."""
+        cache = os.environ.get("SNAKEMAKE_OUTPUT_CACHE")
+        if not cache:
+            return None
+        attempt = attempts_of(Path(cache), str(self.snakemake.output[0]))
+        return attempt if attempt.is_dir() else None
+
+    def failed_inputs(self) -> list[str]:
+        """The inputs that are failed outputs: those with an `error.json`."""
+        return [str(path) for path in self.snakemake.input if (Path(path) / ERROR).is_file()]
 
     def unpack(self, name: str | None = None) -> Path:
         """The state an input saved (`state.tar`), extracted into a fresh directory to work in."""
@@ -135,31 +162,47 @@ class Step:
         `dontAsk`, with only `tools` and the `allowed` rules (Claude Code's
         rule syntax: `Edit`, `Bash(pytest:*)`), everything else refused —
         working in `directory` (the output by default); its session's cost
-        is spent. Returns its last message; what was refused is in `refused`."""
+        and tokens are spent. Returns its last message; what was refused is in `refused`."""
         project = self.project
         seat = Seat(tuple(tools), tuple(allowed), tuple(denied))
         where = directory or self.directory
         where.mkdir(parents=True, exist_ok=True)
         session = Dispatcher(project).launch(ROLE, brief, where, deadline=deadline, seat=seat)
-        rows = project.store.rows("SELECT cost FROM sessions WHERE id = ?", (session.id,))
-        self.spend(float(rows[0]["cost"] or 0) if rows else 0.0)
+        rows = project.store.rows(
+            "SELECT cost, coalesce(input_tokens, 0) + coalesce(output_tokens, 0) AS tokens"
+            " FROM sessions WHERE id = ?",
+            (session.id,),
+        )
+        if rows:
+            self.spend(float(rows[0]["cost"] or 0), int(rows[0]["tokens"] or 0))
         self.refused += session.denied
         if session.exit_code != 0:
             raise RuntimeError(f"the agent exited {session.exit_code} (log: {session.log})")
         return session.result
 
-    def run(self, function: Callable[[Step], dict[str, Any] | None]) -> None:
+    def run(
+        self, function: Callable[[Step], dict[str, Any] | None], *, despite_failures: bool = False
+    ) -> None:
         """Run the step: its numbers to `metrics.json`, its spending to
-        `cost.json` with its seconds, a raise to `error.json` with its traceback."""
+        `cost.json` with its seconds, a raise to `error.json` with its traceback.
+        When an input failed the step fails too, without running, unless it runs
+        `despite_failures` (a summary over every result, say)."""
         self.directory.mkdir(parents=True, exist_ok=True)
         began = time.monotonic()
         try:
+            failed = self.failed_inputs()
+            if failed and not despite_failures:
+                raise InputFailed(f"an input failed: {', '.join(failed)}")
             metrics = function(self) or {}
             if not isinstance(metrics, dict):
                 raise TypeError(
                     f"the step returned {type(metrics).__name__}: a step returns a dict"
                 )
             (self.directory / METRICS).write_text(json.dumps(metrics, indent=2) + "\n")
+        except InputFailed as error:
+            (self.directory / ERROR).write_text(
+                json.dumps({"error": str(error), "skipped": True}, indent=2) + "\n"
+            )
         except Exception as error:
             traceback.print_exc()
             (self.directory / ERROR).write_text(
@@ -172,5 +215,14 @@ class Step:
                 )
                 + "\n"
             )
-        spent = {"usd": round(self.cost_usd, 6), "seconds": round(time.monotonic() - began, 3)}
+        spent: dict[str, Any] = {
+            "usd": round(self.cost_usd, 6),
+            "seconds": round(time.monotonic() - began, 3),
+        }
+        if self.tokens:
+            spent["tokens"] = self.tokens
         (self.directory / COST).write_text(json.dumps(spent) + "\n")
+
+
+class InputFailed(Exception):
+    """A step's input is a failed output, so the step does not run."""

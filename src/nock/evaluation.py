@@ -3,10 +3,12 @@ workflow — rules are steps, wildcards parameters, a rule's output a directory
 under `results/RULE/NAME=VALUE/…` — run with the profile `nock eval init`
 writes. Every rule is cached by Snakemake's provenance hash (its code, params
 and input contents, and those of the rules before it) in `cache/`, which is
-committed, so a fresh clone reuses what was computed anywhere; `results/` is
-what this checkout has materialised from it. nock adds what Snakemake lacks:
-a budget, the reasons a dry run reruns, which outputs are stale or failed,
-pruning, and reading the results with SQL (`nock.results`). The step's own
+committed, so a fresh clone reuses what was computed anywhere (or, with
+`eval.cache` set, in a directory outside git, for outputs too big to commit);
+`results/` is what this checkout has materialised from it. nock adds what
+Snakemake lacks: a budget, the reasons a dry run reruns, which outputs are
+stale or failed, retrying the failed, pruning, importing outputs computed
+elsewhere, and reading the results with SQL (`nock.results`). The step's own
 side is `nock.steps`. Snakemake and DuckDB run through uv, never imported."""
 
 from __future__ import annotations
@@ -16,15 +18,17 @@ import os
 import re
 import shutil
 import subprocess
+import sys
+import tempfile
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, NotRequired, TypedDict
 
 from nock.errors import NotFoundError, PreconditionError, UsageError
 from nock.processes import Output, Supervisor
-from nock.steps import COST, ERROR
+from nock.steps import COST, ERROR, METRICS, attempts_of
 
 if TYPE_CHECKING:
     from nock.project import Project
@@ -35,6 +39,34 @@ RESULTS = "results"
 CACHE = "cache"
 PROFILE = "profile"
 LFS_POINTER = b"version https://git-lfs.github.com/spec/v1"
+# Runs in uv's interpreter with Snakemake: loads the workflow as `--list-untracked`
+# would, with the profile and the targets, and prints each cached output's entry
+# in the cache (its provenance hash, and the extension Snakemake keeps) instead.
+PROVENANCE = r"""
+import json, sys
+from snakemake.cli import main
+from snakemake import workflow
+from snakemake.caching import AbstractOutputFileCache
+from snakemake.caching.hash import ProvenanceHashMap
+
+
+def entries(self, *arguments, **keywords):
+    self._prepare_dag(forceall=False, ignore_incomplete=True, lock_warn_only=True)
+    self._build_dag()
+    hashes = ProvenanceHashMap()
+    found = {}
+    for job in self.dag.jobs:
+        if not job.rule.cache or not job.output:
+            continue
+        provenance = self.async_run(hashes.get_provenance_hash(job))
+        for output, extension in AbstractOutputFileCache.get_outputfiles(None, job):
+            found[str(output)] = provenance + extension
+    print("NOCK-ENTRIES " + json.dumps(found), flush=True)
+
+
+workflow.Workflow.list_untracked = entries
+main(sys.argv[1:])
+"""
 
 SNAKEFILE = """\
 # A nock eval scenario: rules are steps, wildcards are parameters. Each rule's
@@ -213,7 +245,18 @@ class Scenario:
 
     @property
     def cache(self) -> Path:
-        return self.directory / CACHE
+        """`cache/` beside the Snakefile, committed; or, with `eval.cache` set, that
+        directory's NAME, outside git."""
+        configured = str(self.project.configuration.get("eval.cache") or "")
+        if not configured:
+            return self.directory / CACHE
+        base = Path(configured).expanduser()
+        return (base if base.is_absolute() else self.project.here / base) / self.name
+
+    @property
+    def committed(self) -> bool:
+        """Whether the cache is the scenario's `cache/`, kept in git."""
+        return self.cache == self.directory / CACHE
 
     @property
     def results(self) -> Path:
@@ -221,7 +264,7 @@ class Scenario:
 
     def environment(self) -> dict[str, str]:
         """Snakemake's: the cache, and nock on the path, so a step can import `nock.steps`."""
-        self.cache.mkdir(exist_ok=True)
+        self.cache.mkdir(parents=True, exist_ok=True)
         core = str(Path(__file__).resolve().parent.parent)
         path = os.environ.get("PYTHONPATH", "")
         return {
@@ -259,15 +302,51 @@ class Scenario:
             arguments += ["--forcerun", *forced]
         return parse_jobs(self.snakemake(*arguments))
 
-    def run(self, targets: list[str], cores: int | None) -> Output:
+    def run(self, targets: list[str], cores: int | None, limits: list[str] | None = None) -> Output:
+        arguments = ["--cores", str(cores)] if cores else []
+        if limits:
+            arguments += ["--resources", *limits]
         return Supervisor(
             self.project,
-            self.command(*(["--cores", str(cores)] if cores else []), *targets),
+            self.command(*arguments, *targets),
             directory=self.directory,
             deadline=0,
             silence=0,
             environment=self.environment(),
         ).run()
+
+    def entries(self, targets: list[str] | None = None) -> dict[str, str]:
+        """Each cached output of a run of `targets` and the cache entry it is
+        kept under, computed or not: Snakemake's provenance hash of its job."""
+        result = subprocess.run(
+            [
+                uv(),
+                "run",
+                "--no-project",
+                "--quiet",
+                "--with",
+                SNAKEMAKE,
+                "python",
+                "-c",
+                PROVENANCE,
+                "--profile",
+                PROFILE,
+                "--list-untracked",
+                *(targets or []),
+            ],
+            cwd=self.directory,
+            env=self.environment(),
+            capture_output=True,
+            text=True,
+        )
+        for line in result.stdout.splitlines():
+            if line.startswith("NOCK-ENTRIES "):
+                return json.loads(line.removeprefix("NOCK-ENTRIES "))
+        said = (result.stderr or result.stdout).strip().splitlines()
+        raise PreconditionError(
+            f"snakemake could not name the cache entries in {SCENARIOS}/{self.name}:\n"
+            + "\n".join(said[-15:])
+        )
 
     def summary(self) -> dict[str, tuple[str, str, str]]:
         """Every output of the default target: its rule, Snakemake's status and plan."""
@@ -375,6 +454,45 @@ class Scenario:
         return problems
 
 
+class Imported(TypedDict):
+    output: str
+    """Its path, `results/RULE/NAME=VALUE/…`: a job of the targets."""
+    source: NotRequired[str]
+    """A directory whose files the output is, cloned (copy-on-write where the
+    filesystem can), never moved or changed."""
+    metrics: NotRequired[dict[str, Any]]
+    """Its numbers, written as its metrics.json."""
+    cost: NotRequired[dict[str, Any]]
+    """What it spent: usd, seconds and tokens, written as its cost.json."""
+    error: NotRequired[str]
+    """What went wrong, when it is a failed output: its error.json."""
+
+
+class Import(TypedDict):
+    outputs: list[Imported]
+    """The outputs, each where the scenario's Snakefile puts it."""
+    scenario: NotRequired[str]
+    """The scenario; the only one there is by default."""
+    targets: NotRequired[list[str]]
+    """The targets whose jobs the outputs are; the default target's by default."""
+
+
+def clone(source: Path, destination: Path) -> None:
+    """`source` copied whole to `destination`, sharing the blocks where the
+    filesystem can (APFS clones, Btrfs and XFS reflinks), so a large import
+    costs little disk."""
+    if sys.platform == "darwin":
+        command = ["cp", "-R", "-p", "-c", str(source), str(destination)]
+    elif sys.platform.startswith("linux"):
+        command = ["cp", "-R", "-p", "--reflink=auto", str(source), str(destination)]
+    else:
+        shutil.copytree(source, destination, symlinks=True)
+        return
+    if subprocess.run(command, capture_output=True).returncode != 0:
+        shutil.rmtree(destination, ignore_errors=True)
+        shutil.copytree(source, destination, symlinks=True)
+
+
 def rule_blocks(text: str) -> Iterator[tuple[str, str]]:
     """Each `rule NAME:` or `checkpoint NAME:` block of a Snakefile, by its indentation."""
     lines = text.splitlines()
@@ -462,7 +580,9 @@ class Run:
 
     def pointers(self) -> list[str]:
         """Cache entries a run would read that are Git LFS pointers, not their content."""
-        found = []
+        found: list[str] = []
+        if not self.scenario.committed:
+            return found
         for job in self.jobs:
             for entry in job.cached.values():
                 path = Path(entry)
@@ -533,24 +653,26 @@ class Run:
             )
         return None
 
-    def execute(self, cores: int | None) -> dict[str, Any]:
+    def execute(self, cores: int | None, limits: list[str] | None = None) -> dict[str, Any]:
         refused = self.refusal()
         if refused:
             raise UsageError(refused, self.summary())
         entries = {path.name for path in self.scenario.cache.iterdir()}
         before = {result.path: result.entry for result in self.scenario.materialised()}
-        output = self.scenario.run(self.targets, cores)
+        output = self.scenario.run(self.targets, cores, limits)
         made = [
             result
             for result in self.scenario.materialised()
             if result.path not in before or before[result.path] != result.entry
         ]
         computed = [result for result in made if result.entry not in entries]
-        spent = 0.0
+        spent, tokens = 0.0, 0
         for result in computed:
             path = self.scenario.directory / result.path / COST
             if path.is_file():
-                spent += float(read(path).get("usd") or 0)
+                cost = read(path)
+                spent += float(cost.get("usd") or 0)
+                tokens += int(cost.get("tokens") or 0)
         failed = [
             result.path
             for result in made
@@ -562,6 +684,8 @@ class Run:
             "from_cache": len(made) - len(computed),
             "cost_usd": round(spent, 6),
         }
+        if tokens:
+            summary["tokens"] = tokens
         if failed:
             summary["failed"] = failed[:10]
         if not output.ok:
@@ -570,7 +694,13 @@ class Run:
             )
         summary["next"] = (
             "`nock eval show` for what is current, stale and failed; `nock eval query` and "
-            f"`compare` to read it; commit {SCENARIOS}/{self.scenario.name}/cache/ to share it"
+            "`compare` to read it"
+            + (
+                f"; commit {SCENARIOS}/{self.scenario.name}/cache/ to share it"
+                if self.scenario.committed
+                else ""
+            )
+            + ("; `nock eval run --retry` computes the failed again" if failed else "")
         )
         return summary
 
@@ -663,17 +793,100 @@ class Evaluations:
             rows += self.prunable(scenario)
         if not dry:
             for row in rows:
-                scenario = Scenario(self.project, row["scenario"])
-                entry = scenario.cache / row["entry"]
-                if entry.is_dir() and not entry.is_symlink():
-                    shutil.rmtree(entry)
-                else:
-                    entry.unlink(missing_ok=True)
-                if row.get("output"):
-                    link = scenario.directory / row["output"]
-                    if link.is_symlink():
-                        link.unlink()
+                self.remove(Scenario(self.project, row["scenario"]), row, keep=False)
         return rows
+
+    def remove(self, scenario: Scenario, row: dict[str, Any], keep: bool) -> None:
+        """A cache entry gone, or kept as its output's failed attempt (`keep`), and
+        the output this checkout materialised from it."""
+        entry = scenario.cache / row["entry"]
+        if keep and row.get("output") and entry.is_dir():
+            attempt = attempts_of(scenario.cache, row["output"])
+            attempt.parent.mkdir(parents=True, exist_ok=True)
+            shutil.rmtree(attempt, ignore_errors=True)
+            entry.rename(attempt)
+        elif entry.is_dir() and not entry.is_symlink():
+            shutil.rmtree(entry)
+        else:
+            entry.unlink(missing_ok=True)
+        if row.get("output"):
+            output = scenario.directory / row["output"]
+            if output.is_symlink():
+                output.unlink()
+            elif output.is_dir():
+                # Restored from the cache: a directory of links into it.
+                shutil.rmtree(output)
+
+    def retry(self, scenario: Scenario) -> list[dict[str, Any]]:
+        """The failed outputs, and what was computed from them, out of the cache
+        so a run computes them again; each failed one kept as its attempt, which
+        its step reads as `step.previous`."""
+        rows = [
+            row
+            for row in self.prunable(scenario)
+            if row["why"] in ("failed", "stale: computed from a failed output")
+        ]
+        for row in rows:
+            self.remove(scenario, row, keep=row["why"] == "failed")
+        return rows
+
+    def load(self, record: Import) -> dict[str, Any]:
+        """Outputs computed elsewhere, put into the scenario's cache under the
+        entries their jobs would have, so a run restores them as if it had
+        computed them: each output's files cloned from `source` (never moved or
+        changed), with its metrics, cost and, for a failed one, its error."""
+        scenario = self.scenario(record.get("scenario"))
+        entries = scenario.entries(record.get("targets"))
+        unknown = [item["output"] for item in record["outputs"] if item["output"] not in entries]
+        if unknown:
+            raise UsageError(
+                f"{len(unknown)} output(s) are no cached job of "
+                f"{' '.join(record.get('targets') or []) or 'the default target'}: "
+                + ", ".join(unknown[:5])
+            )
+        sources = [item.get("source") for item in record["outputs"]]
+        missing = [source for source in sources if source and not Path(source).is_dir()]
+        if missing:
+            raise NotFoundError(
+                f"{len(missing)} source(s) are no directory: {', '.join(missing[:5])}"
+            )
+        cache = scenario.cache
+        cache.mkdir(parents=True, exist_ok=True)
+        wanted = [
+            item for item in record["outputs"] if not (cache / entries[item["output"]]).exists()
+        ]
+
+        def put(item: Imported) -> None:
+            staging = Path(tempfile.mkdtemp(prefix=".import-", dir=cache))
+            payload = staging / "output"
+            try:
+                source = item.get("source")
+                if source:
+                    clone(Path(source), payload)
+                else:
+                    payload.mkdir()
+                if "metrics" in item:
+                    (payload / METRICS).write_text(json.dumps(item["metrics"], indent=2) + "\n")
+                cost = {"usd": 0.0, "seconds": 0.0, **item.get("cost", {})}
+                (payload / COST).write_text(json.dumps(cost) + "\n")
+                error = item.get("error")
+                if error:
+                    (payload / ERROR).write_text(
+                        json.dumps({"error": error, "imported": True}, indent=2) + "\n"
+                    )
+                payload.rename(cache / entries[item["output"]])
+            finally:
+                shutil.rmtree(staging, ignore_errors=True)
+
+        with ThreadPoolExecutor(8) as pool:
+            list(pool.map(put, wanted))
+        return {
+            "scenario": scenario.name,
+            "imported": len(wanted),
+            "present": len(record["outputs"]) - len(wanted),
+            "failed": sum(1 for item in wanted if item.get("error")),
+            "next": "`nock eval run --dry` restores them from the cache; `nock eval run` materialises them",
+        }
 
     def prunable(self, scenario: Scenario) -> list[dict[str, Any]]:
         if not scenario.cache.is_dir():

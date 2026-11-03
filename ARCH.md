@@ -605,11 +605,28 @@ uv is exit 42.
   would restore, and an estimate past `--budget`. Then Snakemake runs under
   a `Supervisor` with no deadline or silence bound; computed outputs are
   those whose entry is new.
+- **Elsewhere.** `eval.cache` moves a scenario's cache out of git
+  (`Scenario.cache`, `committed`); only a committed cache is checked for Git
+  LFS pointers, since walking a large one costs minutes.
+- **Retry.** `Evaluations.retry` takes the failed outputs and what was
+  computed from them out of the cache as `prune` would, but moves each
+  failed entry to `.attempts/<hash of its output path>` in the cache, which
+  `Step.previous` finds by the same hash; a step whose input has an
+  `error.json` writes its own without running (`InputFailed`).
+- **Import.** `Scenario.entries` names each cached job's entry without
+  running it: a short script in uv's Snakemake loads the workflow as
+  `--list-untracked` would, then asks Snakemake's own `ProvenanceHashMap`
+  for every job's hash (and keeps the extension its cache adds).
+  `Evaluations.load` clones each source (`cp -c` on APFS, `--reflink=auto`
+  on Linux, a plain copy elsewhere) into a staging directory in the cache,
+  writes metrics.json, cost.json and error.json, and renames it into place.
 - **Results.** `Results.setup` loads `outputs` (the states, `cost.json`,
   `error.json`; parameters parsed from the path), `metrics` (each key of
   `metrics.json`, through `read_json_objects`), `diffs` (`read_text` of
   `diff.patch`) and a table per rule (`read_json` with hive partitioning,
-  so a wildcard is a typed column), from file lists nock walks itself, since
+  so a wildcard is a typed column; outputs whose paths name different
+  parameters are read in groups joined `UNION ALL BY NAME`, since DuckDB
+  refuses mismatched partitions), from file lists nock walks itself, since
   DuckDB's `**` does not follow the links. Then it turns off external
   access and locks the configuration before the query runs.
 - **Prune.** The entries kept are those current outputs link to and those

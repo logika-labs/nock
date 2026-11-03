@@ -1,7 +1,7 @@
 ---
 term: eval.runs
-aliases: [runs, dry, budget, cost, estimate, resources]
-description: nock eval run: a dry run's reasons, a budget from past cost.json, Snakemake with the profile
+aliases: [runs, dry, budget, cost, estimate, resources, retry, limit]
+description: nock eval run: a dry run's reasons, a budget, resource limits, retrying the failed
 ---
 
-`.nock/nock eval run [TARGETS…]` runs the default target, or output paths and rule names. `--dry` lists each job: from cache, or compute and Snakemake's reason (code, params, inputs changed). `--budget USD` refuses to start when the jobs to compute, at each rule's mean past cost.json (else its `resources: estimate_cents=N`), would cost more. Limit concurrency with `resources: agents=1` and the profile's `resources`. Rerun to resume.
+`.nock/nock eval run [TARGETS…]`: the default target, or outputs and rule names. `--dry` lists each job: from cache, or compute and why. `--budget USD` refuses an estimate past it (each rule's mean past cost.json, else `resources: estimate_cents=N`). A rule takes `resources: stacks=1`; the profile's `resources`, or `--limit stacks=6`, caps them. `--retry` computes the failed again. Rerun to resume.

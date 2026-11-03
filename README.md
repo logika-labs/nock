@@ -806,8 +806,9 @@ checkpoint detect:
 - **A step** is a rule whose output is a directory under
   `results/RULE/NAME=VALUE/…`, its script wrapped in
   `Step(snakemake).run(run)`: `run(step)` returns its numbers
-  (`metrics.json`); `step.spend(usd)` and the seconds it took go to
-  `cost.json`; a raise is `error.json`, a failed result. `step.value("arm")`
+  (`metrics.json`); `step.spend(usd, tokens)` and the seconds it took go
+  to `cost.json`; a raise is `error.json`, a failed result, and a step one
+  of whose inputs failed fails without running. `step.value("arm")`
   is a wildcard, `step.metrics("control")` an input's numbers, and
   `step.agent(brief, allowed=["Edit", "Bash(pytest:*)"])` dispatches a
   headless agent as nock dispatches its own, in `dontAsk` with that
@@ -825,12 +826,18 @@ checkpoint detect:
   the jobs before it. `cache/` is committed: a fresh clone, whose files all
   have new mtimes, restores every output that matches and computes only the
   rest. Order the rules so the expensive-to-vary come first.
+- **A cache outside git.** When outputs are too big to commit (whole
+  repositories, databases), `[eval] cache = "~/.cache/my-evals"` in
+  `.nock/config.toml` keeps each scenario's cache in that directory's
+  `NAME/` instead; everything else works the same, on that machine.
 
 ```sh
 $ .nock/nock eval init detect                     # scaffold evals/detect/
 $ .nock/nock eval run --dry                       # each job: from cache, or compute and why
 $ .nock/nock eval run --budget 20                 # refused if the estimate passes $20
 $ .nock/nock eval run results/score/bug=none/rep=1
+$ .nock/nock eval run --limit agents=1 --retry      # one agent at a time; the failed again
+$ .nock/nock eval import outputs.json              # outputs computed elsewhere, into the cache
 $ .nock/nock eval query "SELECT rule, state, sum(cost_usd) FROM outputs GROUP BY ALL"
 $ .nock/nock eval compare '{"by": "arm", "metric": "detected", "step": "detect", "unit": "bug"}'
 ```
@@ -851,7 +858,17 @@ baseline, paired when both sides have the same units. **`eval show`** gives
 each rule's outputs current, stale (and why) and failed. **`eval prune`**
 (`--dry` first) deletes the cache entries no current output is, and the
 failed with what was computed from them, so a run computes them again; a
-failed output is otherwise a result, restored rather than retried. The
+failed output is otherwise a result, restored rather than retried.
+**`eval run --retry`** does that for the failed alone and runs, keeping
+each failed attempt for its step to read (`step.previous`: an agent's work
+worth keeping when only what followed it broke). `--limit NAME=N`
+overrides a resource's limit, so a run takes at most N of what its rules
+declare (`resources: stacks=1`). **`eval import`** puts outputs computed
+elsewhere (another pipeline's results) into the cache under the entries
+their jobs would have, each cloned from its source (copy-on-write where
+the filesystem can, never moved) with its metrics, cost or error, so a run
+restores them instead of computing them; jobs after a checkpoint are known
+once it is restored, so such outputs are imported in rounds. The
 `nock-eval` check fails when a rule is not cached by its wildcards or the
 Snakefile does not read. Snakemake and DuckDB run through
 [uv](https://docs.astral.sh/uv/); nock imports neither.
@@ -883,7 +900,7 @@ repetitions, write the comparison down first.
 | `nock decide JSON` | record a decision |
 | `nock decisions list [JSON]`, `show N`, `edit JSON`, `elaborate N` | the decisions: filtered, in full, changed or reviewed, elaborated |
 | `nock studio [JSON]` | the owner's page, a tab for each thing to look at: the decisions and questions, the evaluations |
-| `nock eval init NAME`, `run [TARGETS…] [--dry] [--budget USD]`, `show [NAME]`, `query SQL`, `compare QUERY`, `prune [NAME] [--dry]` | evaluations: scaffold a Snakemake scenario, run it restoring what the cache has, read it, query it with SQL, compare its outputs, delete stale and failed cache entries |
+| `nock eval init NAME`, `run [TARGETS…] [--dry] [--budget USD] [--limit NAME=N] [--retry]`, `import JSON`, `show [NAME]`, `query SQL`, `compare QUERY`, `prune [NAME] [--dry]` | evaluations: scaffold a Snakemake scenario, run it restoring what the cache has (or the failed again), import outputs computed elsewhere, read it, query it with SQL, compare its outputs, delete stale and failed cache entries |
 | `nock consult JSON` | a fresh agent advises on a task: the decisions, tools, checks and docs that bear on it; the caller waits |
 | `nock advise JSON` | the consultant's advice, submitted; only a consultant nock dispatched runs it |
 | `nock usage` | what nock shares with its makers, the owner's answer, and exactly what the next report carries |

@@ -149,24 +149,32 @@ def test_a_failed_step_is_a_cached_result_until_pruned(
 ) -> None:
     monkeypatch.setenv("TOY_FAIL", "control")
     failing = call(project.root, "run")
-    assert len(failing["failed"]) == 6
+    assert len(failing["failed"]) == 10, "the first ten named"
     error = json.loads((toy / "results/detect/arm=control/bug=none/rep=1/error.json").read_text())
     assert error["error"] == "RuntimeError: the detector broke"
     assert "Traceback" in error["traceback"]
+    # A step one of whose inputs failed fails too, without running.
+    skipped = json.loads((toy / "results/score/bug=none/rep=1/error.json").read_text())
+    assert skipped == {
+        "error": "an input failed: results/detect/arm=control/bug=none/rep=1",
+        "skipped": True,
+    }
     monkeypatch.delenv("TOY_FAIL")
     assert call(project.root, "run")["computed"] == 0, "a failure is a result: kept"
     shown = call(project.root, "show", "toy")
-    assert {row["error"] for row in shown["failed"]} == {"RuntimeError: the detector broke"}
+    assert len(shown["failed"]) == 12
+    assert "RuntimeError: the detector broke" in {row["error"] for row in shown["failed"]}
 
     dry = call(project.root, "prune", "--dry")
-    assert {row["why"] for row in dry} == {"failed", "stale: computed from a failed output"}
-    assert len([row for row in dry if row["why"] == "failed"]) == 6
+    assert {row["why"] for row in dry} == {"failed"}
+    assert len(dry) == 12
     assert len(call(project.root, "prune", "--dry")) == len(dry), "a dry prune deletes nothing"
     pruned = call(project.root, "prune")
     assert len(pruned) == len(dry)
     assert not (toy / "results/detect/arm=control/bug=none/rep=1").exists()
     again = call(project.root, "run")
     assert again["computed"] == len(dry) and "failed" not in again
+    assert "resumed" not in metrics(toy, "results/detect/arm=control/bug=none/rep=1"), "pruned"
     assert metrics(toy, "results/score/bug=drop-banana/rep=1") == {"gain": 0, "fixed": True}
     assert call(project.root, "prune") == "nothing to prune"
 
@@ -174,6 +182,124 @@ def test_a_failed_step_is_a_cached_result_until_pruned(
     call(project.root, "run")
     stale = call(project.root, "prune")
     assert len(stale) == 6 and all(row["why"].startswith("stale") for row in stale), stale
+
+
+def test_retry_computes_the_failed_again_and_a_step_reads_its_failed_attempt(
+    project: Project, toy: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("TOY_FAIL", "control")
+    call(project.root, "run")
+    monkeypatch.delenv("TOY_FAIL")
+    assert call(project.root, "run", "--retry", "--dry")["retry"] == 12
+    assert len(call(project.root, "show", "toy")["failed"]) == 12, "a dry run changes nothing"
+    again = call(project.root, "run", "--retry")
+    assert (again["retried"], again["computed"]) == (12, 12) and "failed" not in again, again
+    assert metrics(toy, "results/detect/arm=control/bug=none/rep=1") == {
+        "detected": False,
+        "alarms": 0,
+        "resumed": True,
+    }
+    assert "resumed" not in metrics(toy, "results/detect/arm=toolbox/bug=none/rep=1")
+    assert "failed" not in call(project.root, "show", "toy")
+    assert call(project.root, "run", "--retry")["computed"] == 0, "nothing failed"
+
+
+def test_a_cache_outside_git_holds_the_outputs_and_takes_outputs_imported_into_it(
+    project: Project, toy: Path, tmp_path: Path
+) -> None:
+    outside = tmp_path / "outside"
+    settings = project.root / ".nock/config.toml"
+    settings.write_text(settings.read_text() + f'\n[eval]\ncache = "{outside}"\n')
+    first = call(project.root, "run")
+    assert first["computed"] == OUTPUTS and "commit" not in first["next"]
+    assert first["tokens"] == 1200
+    assert len([entry for entry in (outside / "toy").iterdir()]) == OUTPUTS
+    assert [entry.name for entry in (toy / "cache").iterdir()] == [".gitkeep"]
+    assert query(
+        project.root, "SELECT sum(tokens) AS tokens FROM outputs WHERE rule = 'detect'"
+    ) == [{"tokens": 1200}]
+
+    # What another pipeline computed: each output's files, numbers and cost.
+    elsewhere = tmp_path / "elsewhere"
+    record = []
+    for row in query(project.root, "SELECT path FROM outputs ORDER BY path"):
+        source = elsewhere / row["path"]
+        shutil.copytree(toy / row["path"], source)
+        numbers = {
+            name: json.loads((source / name).read_text()) for name in ("metrics.json", "cost.json")
+        }
+        for name in numbers:
+            (source / name).unlink()
+        item = {"output": row["path"], "source": str(source)}
+        record.append(item | {"metrics": numbers["metrics.json"], "cost": numbers["cost.json"]})
+    shutil.rmtree(outside)
+    shutil.rmtree(toy / "results")
+    assert call(project.root, "run", "--dry")["from_cache"] == 0
+
+    # The jobs after a checkpoint are known once it is restored: import in two rounds.
+    early = [
+        item for item in record if not item["output"].startswith(("results/fix/", "results/score/"))
+    ]
+    detects = [item["output"] for item in early if item["output"].startswith("results/detect/")]
+    imported = call(project.root, "import", json.dumps({"outputs": early, "targets": detects}))
+    assert (imported["imported"], imported["present"]) == (len(early), 0)
+    restored = call(project.root, "run", *detects)
+    assert (restored["computed"], restored["from_cache"]) == (0, len(early))
+    late = [item for item in record if item not in early]
+    failed = next(item for item in late if item["output"] == "results/score/bug=none/rep=1")
+    failed["error"] = "it broke elsewhere"
+    again = call(project.root, "import", json.dumps({"outputs": record}))
+    assert (again["imported"], again["present"], again["failed"]) == (len(late), len(early), 1)
+    rerun = call(project.root, "run")
+    assert (rerun["computed"], rerun["cost_usd"]) == (0, 0), rerun
+    assert metrics(toy, "results/score/bug=drop-banana/rep=2") == {"gain": 1, "fixed": True}
+    assert (toy / "results/plant/bug=drop-banana/state.tar").is_file()
+    shown = call(project.root, "show", "toy")
+    assert shown["failed"] == [
+        {"path": "results/score/bug=none/rep=1", "error": "it broke elsewhere"}
+    ]
+    assert (elsewhere / "results/build/corpus=fruit/state.tar").is_file(), "sources stay"
+
+    unknown = nock(
+        project.root, "eval", "import", json.dumps({"outputs": [{"output": "results/nope/x=1"}]})
+    )
+    assert unknown.returncode == 40 and "no cached job" in unknown.stderr
+
+
+SHAPES = """\
+rule all:
+    input:
+        "results/example/tree=plain",
+        "results/example/tree=instrumented/setup=logika",
+
+
+rule example:
+    output:
+        directory("results/example/{where}"),
+    wildcard_constraints:
+        where=".+",
+    params:
+        keyed=lambda wildcards: dict(wildcards),
+    cache: "omit-software"
+    script:
+        "steps/example.py"
+"""
+
+
+def test_a_rule_whose_outputs_differ_in_their_parameters_reads_as_one_table(
+    project: Project,
+) -> None:
+    call(project.root, "init", "shapes")
+    directory = project.root / "evals/shapes"
+    (directory / "Snakefile").write_text(SHAPES)
+    (directory / "steps/example.py").write_text(
+        "from nock.steps import Step\n\nStep(snakemake).run(lambda step: {'ok': 1})\n"
+    )
+    assert call(project.root, "run")["computed"] == 2
+    assert query(project.root, "SELECT tree, setup, ok FROM example ORDER BY tree") == [
+        {"tree": "instrumented", "setup": "logika", "ok": 1},
+        {"tree": "plain", "setup": None, "ok": 1},
+    ]
 
 
 def test_query_reads_the_results_with_sql_and_nothing_else(project: Project, toy: Path) -> None:

@@ -55,6 +55,13 @@ DEFAULTS: dict[str, Any] = {
         # "allow" lets the agent run it, when the owner's request calls for it.
         "confirm": "ask",
     },
+    "eval": {
+        # Where each evaluation scenario's cache lives. Empty is evals/NAME/cache/,
+        # committed beside the code; a directory (`~` expanded, a relative path
+        # from the working tree) holds it as DIRECTORY/NAME instead, outside git,
+        # for outputs too big to commit (whole repositories, databases).
+        "cache": "",
+    },
     "checks": {
         # How many check suites may run at once on this machine.
         "concurrency": 2,

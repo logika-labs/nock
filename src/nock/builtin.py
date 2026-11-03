@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shlex
 import subprocess
 import sys
@@ -19,7 +20,7 @@ from nock.consult import Advice, Consultant, Consultation
 from nock.decisions import TAGS, Change, Decisions, Draft, Filter, row
 from nock.docs import Docs
 from nock.errors import Error, ExitCode, Failed, UsageError
-from nock.evaluation import SCENARIOS, Evaluations, Run, Scenario
+from nock.evaluation import SCENARIOS, Evaluations, Import, Run, Scenario
 from nock.fixtures import Shell
 from nock.generators import Catalogs, Generators
 from nock.kinds import DEFAULT, KINDS
@@ -712,14 +713,34 @@ def eval_run(
         float | None, Option(help="Refuse to start when computing is estimated to cost more (USD).")
     ] = None,
     cores: Annotated[int | None, Option(help="Override the profile's cores.")] = None,
+    limit: Annotated[
+        list[str] | None,
+        Option(help="Override a resource's limit, NAME=N (repeat): `--limit stacks=6`."),
+    ] = None,
+    retry: Annotated[
+        bool,
+        Option(
+            help="Compute the failed outputs again, and what was computed from them; "
+            "each step can read its failed attempt (`step.previous`)."
+        ),
+    ] = False,
 ) -> Any:
     """Run a scenario's Snakefile with nock's profile — its default target, or
     TARGETS (output paths or rule names) — restoring from cache/ every output
     whose code, params and inputs match one computed anywhere, and computing
     the rest. A dry run first: what reruns and why, and the estimate from
     each rule's past cost.json; it refuses outputs that would share a cache
-    entry, Git LFS pointers, and an estimate past the budget."""
-    plan = Run(Evaluations(project).scenario(scenario), targets or [], budget)
+    entry, Git LFS pointers, and an estimate past the budget. `--retry` takes
+    the failed out of the cache first (a dry run only says how many)."""
+    evaluations = Evaluations(project)
+    chosen = evaluations.scenario(scenario)
+    if limit and any(not re.fullmatch(r"[\w-]+=\d+", item) for item in limit):
+        raise UsageError("a limit is NAME=N, a resource and how much of it runs at once")
+    if retry and dry:
+        failed = [row for row in evaluations.prunable(chosen) if row["why"] == "failed"]
+        return {"retry": len(failed), "say": "without --dry, they and what follows them run again"}
+    retried = evaluations.retry(chosen) if retry else []
+    plan = Run(chosen, targets or [], budget)
     if dry:
         refused = plan.refusal()
         return {
@@ -735,7 +756,21 @@ def eval_run(
             file=sys.stderr,
             flush=True,
         )
-    return plan.execute(cores)
+    done = plan.execute(cores, limit)
+    if retried:
+        done["retried"] = sum(1 for row in retried if row["why"] == "failed")
+    return done
+
+
+@command(name="import", group="eval")
+def eval_import(project: Project, record: Import) -> dict[str, Any]:
+    """Put outputs computed elsewhere (another pipeline's results, say) into a
+    scenario's cache, each under the entry its job would have, so a run
+    restores them rather than computing them: its files cloned from a source
+    directory, which is never moved or changed, with its metrics, cost and,
+    for a failed output, its error. Refused when an output is no cached job of
+    the targets; an output already in the cache is left as it is."""
+    return Evaluations(project).load(record)
 
 
 @command(name="show", group="eval")

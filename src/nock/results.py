@@ -4,12 +4,13 @@ call loads the tables fresh from the files, then turns off DuckDB's access to
 files and settings before the query runs, so a query only reads:
 
 - `outputs`: a row per step output — rule, path, parameters (a map), state
-  (current, stale, failed), why it is stale, cost_usd, seconds, error;
+  (current, stale, failed), why it is stale, cost_usd, seconds, tokens, error;
 - `metrics`: a row per number in an output's metrics.json (true is 1);
 - `diffs`: an output's diff.patch against the state before it: bytes, files,
   lines added and removed;
-- a table per rule, named by it: a column per parameter (typed from the path)
-  and per metric, with state, cost_usd, seconds, error and path."""
+- a table per rule, named by it: a column per parameter (typed from the path;
+  empty where an output lacks it) and per metric, with state, cost_usd,
+  seconds, tokens, error and path."""
 
 from __future__ import annotations
 
@@ -18,10 +19,11 @@ import subprocess
 from typing import Any
 
 from nock.errors import UsageError
-from nock.evaluation import Result, Scenario, uv
+from nock.evaluation import Result, Scenario, parameters_of, uv
 from nock.steps import COST, DIFF, ERROR, METRICS
 
 DUCKDB = "duckdb==2.0.0"
+COSTS = "{usd: 'DOUBLE', seconds: 'DOUBLE', tokens: 'BIGINT'}"
 TABLES = ("outputs", "metrics", "diffs")
 
 # Runs in uv's interpreter, with duckdb; reads the request on stdin, writes JSON on stdout.
@@ -100,10 +102,11 @@ class Results:
         statements.append(
             "CREATE TABLE costs AS "
             + (
-                f"SELECT parse_dirpath(filename) AS path, usd, seconds FROM read_json({files(costs)},"
-                " filename = true, union_by_name = true, columns = {usd: 'DOUBLE', seconds: 'DOUBLE'})"
+                f"SELECT parse_dirpath(filename) AS path, usd, seconds, tokens FROM read_json({files(costs)},"
+                f" filename = true, union_by_name = true, columns = {COSTS})"
                 if costs
-                else "SELECT NULL::VARCHAR AS path, NULL::DOUBLE AS usd, NULL::DOUBLE AS seconds WHERE false"
+                else "SELECT NULL::VARCHAR AS path, NULL::DOUBLE AS usd, NULL::DOUBLE AS seconds,"
+                " NULL::BIGINT AS tokens WHERE false"
             )
         )
         statements.append(
@@ -119,7 +122,7 @@ class Results:
         statements.append(
             "CREATE TABLE outputs AS SELECT s.rule, s.path,"
             f" map(regexp_extract_all(s.path, {pattern}, 1), regexp_extract_all(s.path, {pattern}, 2))"
-            " AS parameters, s.state, s.why, c.usd AS cost_usd, c.seconds, e.error"
+            " AS parameters, s.state, s.why, c.usd AS cost_usd, c.seconds, c.tokens, e.error"
             " FROM states s LEFT JOIN costs c USING (path) LEFT JOIN errors e USING (path)"
         )
         metrics = self.present(METRICS)
@@ -167,10 +170,18 @@ class Results:
         """A rule's outputs, a column per parameter (from the path) and per metric."""
         costs = [path for path in self.present(COST) if path.split("/")[1] == rule]
         metrics = [path for path in self.present(METRICS) if path.split("/")[1] == rule]
+        # DuckDB reads hive partitions only when every file has the same names,
+        # so the outputs are read in groups by their parameters' names, then joined.
+        shapes: dict[tuple[str, ...], list[str]] = {}
+        for path in costs:
+            shapes.setdefault(tuple(sorted(parameters_of(path.rsplit("/", 1)[0]))), []).append(path)
         source = (
-            f"SELECT * EXCLUDE (filename, usd, seconds), parse_dirpath(filename) AS path FROM"
-            f" read_json({files(costs)}, filename = true, hive_partitioning = true,"
-            " union_by_name = true, columns = {usd: 'DOUBLE', seconds: 'DOUBLE'})"
+            " UNION ALL BY NAME ".join(
+                f"SELECT * EXCLUDE (filename, usd, seconds, tokens), parse_dirpath(filename) AS path"
+                f" FROM read_json({files(group)}, filename = true, hive_partitioning = true,"
+                f" union_by_name = true, columns = {COSTS})"
+                for group in shapes.values()
+            )
             if costs
             else "SELECT NULL::VARCHAR AS path WHERE false"
         )
@@ -184,7 +195,7 @@ class Results:
         return (
             f"CREATE TABLE {identifier(self.table(rule))} AS SELECT h.* EXCLUDE (path),"
             + (" m.* EXCLUDE (path)," if metrics else "")
-            + " o.state, o.why, o.cost_usd, o.seconds, o.error, o.path"
+            + " o.state, o.why, o.cost_usd, o.seconds, o.tokens, o.error, o.path"
             f" FROM ({source}) h {measured} JOIN outputs o ON o.path = h.path"
         )
 
