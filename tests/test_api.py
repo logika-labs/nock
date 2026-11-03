@@ -1,10 +1,12 @@
 """api.nock.dev (`web/api/reflections.py`), run for real on a free port with a
-real SQLite database: what it keeps, and every body it refuses."""
+real SQLite database: what it keeps, every body it refuses, and its rate
+limit on a virtual clock."""
 
 from __future__ import annotations
 
 import importlib.util
 import json
+import socket
 import sqlite3
 import threading
 import urllib.error
@@ -35,26 +37,41 @@ def load() -> ModuleType:
 API = load()
 
 
+class Clock:
+    def __init__(self) -> None:
+        self.now = 1000.0
+
+    def __call__(self) -> float:
+        return self.now
+
+
 class Api:
     def __init__(self, database: Path) -> None:
         self.database = database
-        self.server = API.Server(database, 0)
+        self.clock = Clock()
+        self.server = API.Server(database, 0, self.clock)
         self.address = f"http://127.0.0.1:{self.server.server_address[1]}"
         threading.Thread(target=self.server.serve_forever, daemon=True).start()
 
-    def post(self, path: str, body: Any) -> tuple[int, dict[str, Any]]:
+    def post(self, path: str, body: Any, sender: str | None = None) -> tuple[int, dict[str, Any]]:
+        status, answer, _ = self.exchange(path, body, sender)
+        return status, answer
+
+    def exchange(
+        self, path: str, body: Any, sender: str | None = None
+    ) -> tuple[int, dict[str, Any], dict[str, str]]:
         data = body if isinstance(body, bytes) else json.dumps(body).encode()
+        headers = {"Content-Type": "application/json"}
+        if sender is not None:
+            headers["X-Forwarded-For"] = sender
         request = urllib.request.Request(
-            self.address + path,
-            data=data,
-            headers={"Content-Type": "application/json"},
-            method="POST",
+            self.address + path, data=data, headers=headers, method="POST"
         )
         try:
             with urllib.request.urlopen(request, timeout=10) as response:
-                return response.status, json.loads(response.read())
+                return response.status, json.loads(response.read()), dict(response.headers)
         except urllib.error.HTTPError as error:
-            return error.code, json.loads(error.read() or b"{}")
+            return error.code, json.loads(error.read() or b"{}"), dict(error.headers)
 
     def rows(self, table: str) -> list[dict[str, Any]]:
         with sqlite3.connect(self.database) as connection:
@@ -145,3 +162,70 @@ def test_a_summary_is_kept_without_anything_about_its_sender(api: Api) -> None:
     assert refused == 400 and "unexpected fields: visibility" in said["error"]
     assert api.post("/reflections", {"summary": "  "})[0] == 400
     assert len(api.rows("reflections")) == 1
+
+
+def answer_to(api: Api, head: bytes) -> bytes:
+    """The status code for a request of headers only: a body announced is never sent,
+    so an answer at all shows it was refused unread."""
+    with socket.create_connection(api.server.server_address, timeout=10) as connection:
+        connection.sendall(head + b"\r\n")
+        return connection.recv(64).split(b" ")[1]
+
+
+def test_bodies_past_the_proxy_s_cap_or_without_a_length_are_refused_unread(api: Api) -> None:
+    for path in (b"/usage", b"/reflections"):
+        head = b"POST " + path + b" HTTP/1.1\r\nHost: x\r\nContent-Length: 131072\r\n"
+        assert answer_to(api, head) == b"413"
+    negative = b"POST /usage HTTP/1.1\r\nHost: x\r\nContent-Length: -1\r\n"
+    assert answer_to(api, negative) == b"400"
+    assert answer_to(api, b"POST /usage HTTP/1.1\r\nHost: x\r\n") == (b"411")
+    assert api.rows("usage") == [] and api.rows("reflections") == []
+
+
+def test_an_address_gets_a_burst_of_five_then_six_a_minute_across_both_endpoints(
+    api: Api,
+) -> None:
+    sender = "203.0.113.7"
+    for path in ("/usage", "/reflections", "/usage", "/reflections", "/usage"):
+        assert api.post(path, REPORT if path == "/usage" else {"summary": "Hi."}, sender)[0] == 201
+    status, answer, headers = api.exchange("/reflections", {"summary": "Hi."}, sender)
+    assert status == 429 and "a minute" in answer["error"]
+    assert headers["Retry-After"] == "10"
+    assert api.post("/usage", REPORT, sender)[0] == 429
+    assert api.post("/usage", REPORT, "198.51.100.4")[0] == 201
+    api.clock.now += 9
+    assert api.post("/usage", REPORT, sender)[0] == 429
+    api.clock.now += 1
+    assert api.post("/usage", REPORT, sender)[0] == 201
+    assert api.post("/usage", REPORT, sender)[0] == 429
+    api.clock.now += 60
+    assert [api.post("/usage", REPORT, sender)[0] for _ in range(6)] == [201] * 5 + [429]
+    assert len(api.rows("usage")) == 3 + 1 + 1 + 5
+
+
+def test_the_first_forwarded_address_is_the_sender(api: Api) -> None:
+    for index in range(5):
+        assert api.post("/usage", REPORT, f"203.0.113.9, 10.0.0.{index}")[0] == 201
+    assert api.post("/usage", REPORT, "203.0.113.9")[0] == 429
+    assert api.post("/usage", REPORT, "10.0.0.1")[0] == 201
+
+
+def test_addresses_are_held_in_memory_only_and_forgotten_once_idle(
+    api: Api, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    for index in range(4):
+        assert api.post("/usage", REPORT, f"203.0.113.{index}")[0] == 201
+    assert list(api.server.limit.buckets) == [f"203.0.113.{index}" for index in range(4)]
+    api.clock.now += 9
+    api.post("/usage", REPORT, "203.0.113.0")
+    api.clock.now += 1
+    api.post("/usage", REPORT, "198.51.100.1")
+    assert list(api.server.limit.buckets) == ["203.0.113.0", "198.51.100.1"]
+    api.clock.now += 15
+    api.post("/usage", REPORT, "198.51.100.2")
+    assert list(api.server.limit.buckets) == ["198.51.100.2"]
+    monkeypatch.setattr(API, "MOST_ADDRESSES", 3)
+    for index in range(6):
+        api.post("/usage", REPORT, f"192.0.2.{index}")
+    assert list(api.server.limit.buckets) == ["192.0.2.3", "192.0.2.4", "192.0.2.5"]
+    assert b"203.0.113" not in api.database.read_bytes()

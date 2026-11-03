@@ -2,10 +2,11 @@
 reflection round's summary that `nock share` sends on the owner's word;
 `POST /usage` keeps a weekly anonymous usage report. Both are kept in SQLite
 with the moment they arrived and nothing about the sender, and answer with
-the id. A body with a field it should not have is refused whole. Nothing is
-shown anywhere yet. Standard library only.
+the id. A body with a field it should not have is refused whole. Each client
+address may post 6 times a minute with a burst of 5, counted in memory only.
+Nothing is shown anywhere yet. Standard library only.
 
-    python3 reflections.py --database /srv/nock-api/reflections.db --port 8610
+    python3 reflections.py --database /var/lib/nock-api/reflections.db --port 8610
 """
 
 from __future__ import annotations
@@ -15,7 +16,11 @@ import json
 import math
 import re
 import sqlite3
+import threading
+import time
 import uuid
+from collections import OrderedDict
+from collections.abc import Callable
 from datetime import UTC, datetime
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -50,6 +55,12 @@ COMMAND = re.compile(r"[a-z][a-z0-9-]*( [a-z][a-z0-9-]*){0,3}")
 VERSION = re.compile(r"\d{1,4}(\.\d{1,4}){1,3}([a-z0-9.+-]{0,20})")
 PYTHON = re.compile(r"\d\.\d{1,3}")
 PLATFORM = re.compile(r"[a-z][a-z0-9]{0,19}")
+# One limit per client address across both endpoints: a project sends a usage
+# report at most weekly (a retry at most daily) and a summary per round.
+BURST = 5
+PER_SECOND = 6 / 60
+# The most addresses held at once; past it the longest idle is forgotten first.
+MOST_ADDRESSES = 50_000
 SETTINGS = ("reminders", "consult", "logika")
 TOOLBOX = ("tools", "checks", "hooks", "generators", "load_failures")
 COUNT = ("calls", "failures")
@@ -163,10 +174,49 @@ def reflection(sent: Any) -> tuple[str, str | None]:
     return summary.strip(), round
 
 
+class Limit:
+    """A token bucket per client address, in memory only and never stored or
+    logged: an address is forgotten once its bucket has refilled, under a
+    minute after its last request."""
+
+    def __init__(self, clock: Callable[[], float]) -> None:
+        self.clock = clock
+        # address -> (tokens, when they were counted), least recently seen first
+        self.buckets: OrderedDict[str, tuple[float, float]] = OrderedDict()
+        self.lock = threading.Lock()
+
+    def take(self, address: str) -> float:
+        """0 when this address may post now, else the seconds until it may."""
+        with self.lock:
+            now = self.clock()
+            self.forget(now)
+            tokens, counted = self.buckets.pop(address, (BURST, now))
+            tokens = min(BURST, tokens + (now - counted) * PER_SECOND)
+            if tokens >= 1:
+                self.buckets[address] = (tokens - 1, now)
+                return 0
+            self.buckets[address] = (tokens, now)
+            return (1 - tokens) / PER_SECOND
+
+    def forget(self, now: float) -> None:
+        """Drop the full buckets, which mean what no bucket means. The least
+        recently seen is the first to fill, so the sweep stops at one that is
+        not full, unless there are too many addresses."""
+        while self.buckets:
+            address, (tokens, counted) = next(iter(self.buckets.items()))
+            full = tokens + (now - counted) * PER_SECOND >= BURST
+            if not full and len(self.buckets) < MOST_ADDRESSES:
+                return
+            del self.buckets[address]
+
+
 class Server(ThreadingHTTPServer):
-    def __init__(self, database: Path, port: int) -> None:
+    def __init__(
+        self, database: Path, port: int, clock: Callable[[], float] = time.monotonic
+    ) -> None:
         super().__init__(("127.0.0.1", port), Handler)
         self.database = database
+        self.limit = Limit(clock)
         with sqlite3.connect(database) as connection:
             connection.executescript(SCHEMA)
 
@@ -192,14 +242,33 @@ class Handler(BaseHTTPRequestHandler):
         else:
             self.answer(HTTPStatus.NOT_FOUND, {"error": "nothing here"})
 
+    def client(self) -> str:
+        """The sender's address: Caddy's, on this box, says whom it forwards for."""
+        peer = self.client_address[0]
+        forwarded = self.headers.get("X-Forwarded-For", "").split(",")[0].strip()
+        return forwarded if peer == "127.0.0.1" and forwarded else peer
+
     def do_POST(self) -> None:
+        wait = self.store.limit.take(self.client())
+        if wait:
+            self.answer(
+                HTTPStatus.TOO_MANY_REQUESTS,
+                {"error": f"at most {BURST} at once and 6 a minute; try again later"},
+                {"Retry-After": str(math.ceil(wait))},
+            )
+            return
         path = self.path.rstrip("/")
         largest = {"/reflections": LONGEST * 4, "/usage": LARGEST_REPORT}.get(path)
         if largest is None:
             self.answer(HTTPStatus.NOT_FOUND, {"error": "nothing here"})
             return
         try:
-            length = int(self.headers.get("Content-Length", 0))
+            if "Content-Length" not in self.headers:
+                self.answer(HTTPStatus.LENGTH_REQUIRED, {"error": "Content-Length is required"})
+                return
+            length = int(self.headers["Content-Length"])
+            if length < 0:
+                raise Refused("Content-Length is a whole number of at least 0")
             if length > largest:
                 self.answer(
                     HTTPStatus.REQUEST_ENTITY_TOO_LARGE, {"error": f"at most {largest} bytes"}
@@ -223,11 +292,13 @@ class Handler(BaseHTTPRequestHandler):
             return
         self.answer(HTTPStatus.CREATED, {"id": identity})
 
-    def answer(self, status: HTTPStatus, value: Any) -> None:
+    def answer(self, status: HTTPStatus, value: Any, headers: dict[str, str] | None = None) -> None:
         body = json.dumps(value).encode()
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
+        for name, header in (headers or {}).items():
+            self.send_header(name, header)
         self.end_headers()
         self.wfile.write(body)
 
