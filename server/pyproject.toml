@@ -1,0 +1,58 @@
+[project]
+name = "nock-api"
+version = "1.0.0"
+description = "api.nock.dev: where nock sends its makers a round's shared summary and the weekly usage report. Private, never published."
+requires-python = ">=3.14"
+dependencies = [
+    "fastapi>=0.162",
+    "uvicorn>=0.54",
+    "psycopg[binary,pool]>=3.3",
+    "opentelemetry-api>=1.45",
+    "logika-otel>=0.0.2",
+]
+
+[project.scripts]
+nock-api = "nock_api.__main__:main"
+
+[dependency-groups]
+dev = [
+    "basedpyright>=1.31",
+    "pytest>=8.4",
+    "ruff>=0.14",
+    # The tests read the server's spans through the real SDK.
+    "opentelemetry-sdk>=1.45",
+    # The usage report the compatibility test sends is the one nock itself builds.
+    "nock",
+]
+
+[tool.uv.sources]
+nock = { path = "..", editable = true }
+
+[build-system]
+requires = ["uv_build>=0.9.5,<0.10"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = "nock_api"
+module-root = ""
+
+[tool.ruff]
+line-length = 100
+target-version = "py314"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF"]
+ignore = ["E501", "RUF001", "RUF002", "RUF003"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["nock_api", "tests"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = ["-q", "--import-mode=importlib", "-p", "no:cacheprovider"]
+pythonpath = ["."]
+
+[tool.basedpyright]
+include = ["nock_api", "tests", "deploy"]
+pythonVersion = "3.14"
+typeCheckingMode = "standard"

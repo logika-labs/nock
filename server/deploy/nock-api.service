@@ -1,0 +1,36 @@
+# /etc/systemd/system/nock-api.service: api.nock.dev (server/ in github.com/logika-labs/nock) on Logika's
+# box 1, behind Caddy (deploy/nock-api.caddy). Installed by deploy/install.sh. The release in
+# /opt/nock-api/current is root's, read-only to the service, which writes nowhere: what it keeps is in
+# Postgres (the nock database). DATABASE_URL and, to send its spans to Logika, OTEL_EXPORTER_OTLP_HEADERS
+# come from the environment file; the ledger is logika.json in the working directory.
+[Unit]
+Description=api.nock.dev: shared reflection summaries and usage reports
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=nock-api
+Group=nock-api
+EnvironmentFile=/etc/nock-api/nock-api.env
+WorkingDirectory=/opt/nock-api/current
+ExecStart=/opt/nock-api/current/venv/bin/nock-api serve --host 127.0.0.1 --port 8610
+Restart=on-failure
+RestartSec=2
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+CapabilityBoundingSet=
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

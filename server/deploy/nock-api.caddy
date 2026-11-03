@@ -1,0 +1,18 @@
+# api.nock.dev on Logika's box: /etc/caddy/sites/nock-api.caddy (installed by deploy/install.sh), imported
+# by the box's Caddyfile. Caddy terminates TLS and caps bodies; the server (nock-api.service, 127.0.0.1:8610)
+# rate-limits per client address from the X-Forwarded-For Caddy sets. No `log` directive: no access log is
+# written.
+api.nock.dev {
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options nosniff
+		X-Frame-Options DENY
+		Referrer-Policy no-referrer
+		Content-Security-Policy "default-src 'none'; frame-ancestors 'none'"
+		-Server
+	}
+	request_body {
+		max_size 128KB
+	}
+	reverse_proxy 127.0.0.1:8610
+}

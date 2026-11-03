@@ -116,7 +116,10 @@ tests/               real git repositories and processes; no mocks
 scripts/release.py   cut a release: checks, asks, then tags vVERSION and pushes it (standard library)
 evals/               does reflection pay? real sessions, with and without a toolbox
 web/                 nock.dev, never vendored or packaged: site/ (the pages), build.py (docs/
-                     from this README), publish.py (to GitHub Pages), api/ (api.nock.dev)
+                     from this README), publish.py (to GitHub Pages)
+server/              api.nock.dev, where `nock share` and the usage reports post: a distribution of
+                     its own (`nock-api`, Python 3.14, FastAPI, Postgres), never vendored or
+                     published, with its own lock, tests and deploy (server/README.md)
 ```
 
 ## The layers

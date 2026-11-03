@@ -25,6 +25,11 @@ Schema subset in `schema.py`.
   tag or publish without the owner's word.
 - Tests use real git repositories and real processes; the dispatched agents
   are `tests/fake_agent.py`, configured as `agent.command`. No mocks.
+- `server/` is api.nock.dev, a separate distribution (Python 3.14, FastAPI,
+  Postgres) that is never vendored or published, so it may have dependencies:
+  `cd server && uv run pytest` (Docker, for Postgres), `uv run ruff check`,
+  `uv run ruff format --check`, `uv run basedpyright` — green too before a
+  commit that touches it. Its README has the deploy and the provisioning.
 - The README is the product's documentation; keep it true when behavior
   changes; nock.dev's docs page is built from it (`web/`, the site, outside
   the vendored core: `web/README.md`). `terms/` is the agents' documentation

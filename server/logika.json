@@ -1,0 +1,61 @@
+{
+  "ledger": "nock_api",
+  "params": {
+    "bytes": {"type": "int"},
+    "http_status": {"type": "int", "dimension": true},
+    "reason": {"type": "str", "dimension": true},
+    "row_id": {"type": "int"},
+    "schema": {"type": "int", "dimension": true},
+    "commands": {"type": "int"},
+    "metrics": {"type": "int"},
+    "summary_chars": {"type": "int"},
+    "dated": {"type": "bool", "dimension": true},
+    "retry_after": {"type": "int"},
+    "migration": {"type": "str"}
+  },
+  "events": [
+    {
+      "name": "reflection",
+      "message": "A round's summary of {bytes} bytes",
+      "params": ["bytes?"],
+      "span": {},
+      "children": [
+        {"name": "kept", "message": "Kept summary {row_id} of {summary_chars} characters", "params": ["row_id", "summary_chars", "dated"]},
+        {"name": "refused", "message": "Refused with {http_status} ({reason})", "params": ["http_status", "reason"]}
+      ]
+    },
+    {
+      "name": "usage",
+      "message": "A usage report of {bytes} bytes",
+      "params": ["bytes?"],
+      "span": {},
+      "children": [
+        {"name": "kept", "message": "Kept usage report {row_id} (schema {schema}, {commands} commands)", "params": ["row_id", "schema", "commands", "metrics"]},
+        {"name": "refused", "message": "Refused with {http_status} ({reason})", "params": ["http_status", "reason"]}
+      ]
+    },
+    {"name": "limited", "message": "A sender past the rate limit, told to retry in {retry_after} s", "params": ["retry_after"]},
+    {
+      "name": "migrate",
+      "message": "Schema migrations",
+      "span": {},
+      "children": [
+        {"name": "applied", "message": "Applied {migration}", "params": ["migration"]}
+      ]
+    }
+  ],
+  "map": {
+    "components": [
+      {
+        "name": "server",
+        "paths": ["nock_api/"],
+        "languages": ["python"],
+        "init": ["nock_api/telemetry.py"],
+        "version": "pyproject.toml: project.version",
+        "instrumented": true,
+        "strategy": "Plain OTel spans on nock_api.telemetry.tracer, the enhancer installed by the entry point when the SDK key is set. Each POST is a `reflection` or `usage` operation whose outcome is a `kept` or `refused` child; the rate limit a `limited` moment; migrations a `migrate` operation. Counts, outcomes, schema versions and ids of our own rows only: never an address, a header or what a body says."
+      }
+    ],
+    "exclude": ["tests/**", "deploy/**", "migrations/**"]
+  }
+}
