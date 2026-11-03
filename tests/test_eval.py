@@ -202,6 +202,8 @@ def test_retry_computes_the_failed_again_and_a_step_reads_its_failed_attempt(
     assert "resumed" not in metrics(toy, "results/detect/arm=toolbox/bug=none/rep=1")
     assert "failed" not in call(project.root, "show", "toy")
     assert call(project.root, "run", "--retry")["computed"] == 0, "nothing failed"
+    limited = call(project.root, "run", "results/score/bug=none/rep=1", "--limit", "agents=1")
+    assert limited["computed"] == 0 and "snakemake" not in limited, limited
 
 
 def test_a_cache_outside_git_holds_the_outputs_and_takes_outputs_imported_into_it(

@@ -308,7 +308,8 @@ class Scenario:
             arguments += ["--resources", *limits]
         return Supervisor(
             self.project,
-            self.command(*arguments, *targets),
+            # Targets first: `--resources` takes every word after it.
+            self.command(*targets, *arguments),
             directory=self.directory,
             deadline=0,
             silence=0,
