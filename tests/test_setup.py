@@ -271,6 +271,54 @@ def test_a_command_that_needs_the_owner_s_word_is_asked_for_in_claude_code(
     assert json.loads(settings.read_text())["permissions"]["ask"] == OWN_ASKED
 
 
+def test_with_confirm_allowed_init_allows_the_owner_s_commands_and_asks_for_none(
+    project: Project,
+) -> None:
+    settings = project.root / ".claude" / "settings.json"
+    config = project.root / ".nock" / "config.toml"
+    write_tool(project, "owner", OWNER_TOOLS)
+    assert nock(project.root, "init").returncode == 0
+    assert 'confirm = "ask"' in config.read_text()
+    config.write_text(config.read_text().replace('confirm = "ask"', 'confirm = "allow"'))
+    stale = nock(project.root, "check", "nock-wiring")
+    assert stale.returncode == 1
+    assert 'Claude Code asks before `deploy` although `permissions.confirm` is "allow"' in (
+        stale.stdout
+    )
+    assert nock(project.root, "init").returncode == 0
+    permissions = json.loads(settings.read_text())["permissions"]
+    assert "ask" not in permissions
+    assert {
+        *OWN_ASKED,
+        "Bash(.nock/nock deploy:*)",
+        "Bash(.nock/nock release publish:*)",
+    } <= {*permissions["allow"]}
+    assert "Bash(.nock/nock run:*)" not in permissions["allow"]
+    assert nock(project.root, "check", "nock-wiring").returncode == 0
+    listed = nock(project.root).stdout
+    assert (
+        "deploy HOST — Deploy to a live box (only when the owner's request calls for it)" in listed
+    )
+    assert "asks the owner" not in listed
+    config.write_text(config.read_text().replace('confirm = "allow"', 'confirm = "ask"'))
+    assert nock(project.root, "init").returncode == 0
+    permissions = json.loads(settings.read_text())["permissions"]
+    assert permissions["ask"] == [
+        *OWN_ASKED,
+        "Bash(.nock/nock deploy:*)",
+        "Bash(.nock/nock release publish:*)",
+    ]
+    assert not {*permissions["ask"]} & {*permissions["allow"]}
+
+
+def test_an_unknown_confirm_setting_is_refused(project: Project) -> None:
+    config = project.root / ".nock" / "config.toml"
+    config.write_text(config.read_text().replace('confirm = "ask"', 'confirm = "never"'))
+    refused = nock(project.root, "init")
+    assert refused.returncode == 42
+    assert 'permissions.confirm is \'never\'; it is "ask" or "allow"' in refused.stderr
+
+
 def test_init_in_a_worktree_installs_there_and_leaves_the_main_checkout_alone(
     repository: Path,
 ) -> None:

@@ -357,11 +357,17 @@ listens to. `setup.wanted_permissions` makes the rules, one per command
 before `allow`, so an agent's call waits on the owner; every other command
 an `allow` rule, except `run` (`setup.UNLISTED`), which runs any command
 and so gets none; and `.nock/nock` bare is allowed, for the listing.
+With `permissions.confirm = "allow"` (`Configuration.confirm`, a
+`configuration.Confirm`) the `confirm=True` commands get `allow` rules and
+nothing is asked, since an `ask` rule prompts even in bypass mode; the
+toolbox's listings then mark them `tools.CONFIRM_NOTES[ALLOW]`, for when the
+owner's request calls for them, instead of "asks the owner".
 `wire_claude` replaces nock's own rules (any `Bash(.nock/nock …)`) and the
 retired blanket `Bash(.nock/nock:*)`, and keeps the rest. The
 `nock-wiring` check fails when a hook exists for an event that isn't wired,
-a `confirm` command has no ask rule, a command has no allow rule yet, or
-the blanket is still there.
+a `confirm` command has no ask rule (or, with `confirm = "allow"`, nock
+still has one), a command has no allow rule yet, or the blanket is still
+there.
 
 ### Decisions
 
@@ -668,7 +674,8 @@ worktree's install is that branch's change, never the main checkout's):
   checkout, its commit in `.nock/core/VERSION.json`;
 - imports `@.nock/context.md` into CLAUDE.md;
 - wires `.claude/settings.json`: the hooks, an `allow` rule per command but
-  `run`, and an `ask` rule per `confirm=True` command;
+  `run`, and an `ask` rule per `confirm=True` command (an `allow` rule with
+  `permissions.confirm = "allow"`);
 - writes the `/nock-reflect` and `/nock-triage` skills, and in a Logika
   project (`logika.json` at the root) `/nock-reflect-logika`, with their
   parts' subagent types in `.claude/agents/`.

@@ -34,7 +34,7 @@ material, not from memory.
 5. Finish with the toolbox part's changes and verdicts. It runs nock's checks
    and refuses while one fails: fix it, or have the part fix it, and finish
    again. A command the part added fails `nock-wiring` until
-   `.nock/nock init` allows it; Claude Code asks the owner for that. It commits `.nock/`; commit a generated file outside it yourself.
+   `.nock/nock init` allows it; Claude Code asks the owner for that (unless `permissions.confirm` is "allow"). It commits `.nock/`; commit a generated file outside it yourself.
 
        .nock/nock reflect finish '{"summary": "the round in a sentence or two",
          "changes": [{"kind": "add", "target": "failures", "why": "…", "expect": "…"}],

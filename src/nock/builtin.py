@@ -14,6 +14,7 @@ from typing import Annotated, Any, Literal, NotRequired, TypedDict
 from nock.checks import Checks
 from nock.commands import Option
 from nock.comparison import Comparison, Query
+from nock.configuration import Confirm
 from nock.consult import Advice, Consultant, Consultation
 from nock.decisions import TAGS, Change, Decisions, Draft, Filter, row
 from nock.docs import Docs
@@ -34,6 +35,7 @@ from nock.setup import (
     RETIRED_PERMISSIONS,
     Installer,
     Upgrader,
+    ours,
     permission_rules,
     wanted_permissions,
     wired_events,
@@ -649,12 +651,13 @@ def summary_names_nothing(project: Project) -> list[Problem]:
 @check(name="nock-wiring")
 def hooks_wired(project: Project) -> list[str]:
     """Every event a hook listens to is wired into Claude Code; Claude Code
-    asks the owner before an agent runs a command that needs their word,
-    allows each of the toolbox's other commands, and allows nothing broader."""
+    asks the owner before an agent runs a command that needs their word
+    (unless `permissions.confirm` is "allow"), allows each of the toolbox's
+    other commands, and allows nothing broader."""
     wired = wired_events(project.here)
     asked = permission_rules(project.here, "ask")
     allowed = permission_rules(project.here, "allow")
-    wanted, _ = wanted_permissions(project)
+    wanted, wanted_asked = wanted_permissions(project)
     return (
         [
             f"a hook listens to {entry.event} ({entry.source}) but Claude Code does not send it — `.nock/nock init` wires it"
@@ -664,7 +667,13 @@ def hooks_wired(project: Project) -> list[str]:
         + [
             f"`{tool.command.path}` needs the owner's word ({tool.source}) but Claude Code would run it unasked — `.nock/nock init` wires it"
             for tool in project.registry.tools
-            if tool.confirm and PERMISSION.format(path=tool.command.path) not in asked
+            if PERMISSION.format(path=tool.command.path) in wanted_asked
+            and PERMISSION.format(path=tool.command.path) not in asked
+        ]
+        + [
+            f'Claude Code asks before `{rule.removeprefix("Bash(.nock/nock ").removesuffix(":*)")}` although `permissions.confirm` is "allow" — `.nock/nock init` allows it'
+            for rule in sorted(asked)
+            if ours(rule) and project.configuration.confirm() is Confirm.ALLOW
         ]
         + [
             f"Claude Code allows `{rule}`, which lets `.nock/nock run` take any command unasked — `.nock/nock init` narrows it"

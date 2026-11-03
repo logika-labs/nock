@@ -15,15 +15,16 @@ from typing import Any
 
 from nock import hooks
 from nock.commands import FRESH_FLAG, FULL_FLAG, JSON_FLAG, Command, Group
+from nock.configuration import Confirm
 from nock.environment import Environment
-from nock.errors import Error, Exit, ExitCode, UsageError
+from nock.errors import Error, Exit, ExitCode, PreconditionError, UsageError
 from nock.fixtures import Call, Scope
 from nock.processes import Output
 from nock.project import Project
 from nock.releases import VERSION
 from nock.render import PACKAGE_INTERNAL, as_json, capped, crash, plain, render
 from nock.telemetry import UNRECORDED_VARIABLE, Cache, Calls, digest, tree_state
-from nock.tools import BUILT_IN_SOURCE, Registry, Tool
+from nock.tools import BUILT_IN_SOURCE, CONFIRM_NOTES, Registry, Tool
 
 # Commands that work without a project.
 PROJECTLESS = ("init",)
@@ -60,19 +61,19 @@ def build(registry: Registry) -> Group:
     return root
 
 
-def listing(registry: Registry) -> str:
+def listing(registry: Registry, confirm: Confirm = Confirm.ASK) -> str:
     """The toolbox in a line per command, the project's own first."""
     sections = []
     own = registry.project_tools()
     if own:
-        sections.append("Project tools:\n" + "\n".join(f"  {line(tool)}" for tool in own))
+        sections.append("Project tools:\n" + "\n".join(f"  {line(tool, confirm)}" for tool in own))
     built_in = [tool for tool in registry.tools if tool.source == BUILT_IN_SOURCE]
-    sections.append("nock:\n" + "\n".join(f"  {line(tool)}" for tool in built_in))
+    sections.append("nock:\n" + "\n".join(f"  {line(tool, confirm)}" for tool in built_in))
     return "\n\n".join([*sections, FOOTER])
 
 
-def line(tool: Tool) -> str:
-    summary = tool.command.summary + (" (asks the owner)" if tool.confirm else "")
+def line(tool: Tool, confirm: Confirm) -> str:
+    summary = tool.command.summary + (CONFIRM_NOTES[confirm] if tool.confirm else "")
     return f"{tool.command.usage()}" + (f" — {summary}" if summary else "")
 
 
@@ -108,7 +109,7 @@ class Invocation:
         for failure in registry.failures:
             sys.stderr.write(f"nock: a tool did not load — {failure}\n")
         if self.arguments in ([], ["--help"]):
-            print(listing(registry))
+            print(listing(registry, self.confirm()))
             return ExitCode.SUCCESS
         if self.arguments == ["--version"]:
             print(f"nock {VERSION}")
@@ -136,7 +137,15 @@ class Invocation:
 
     def group_listing(self, registry: Registry, group: Group) -> str:
         tools = [registry.tool(command.path) for command in group.commands()]
-        return "\n".join(line(tool) for tool in tools if tool is not None)
+        return "\n".join(line(tool, self.confirm()) for tool in tools if tool is not None)
+
+    def confirm(self) -> Confirm:
+        """How the listing marks a `confirm=True` command; a bad setting lists
+        them as asking, and `nock init` and `nock-wiring` say what is wrong."""
+        try:
+            return self.project.configuration.confirm() if self.project else Confirm.ASK
+        except PreconditionError:
+            return Confirm.ASK
 
     def words(self, command: Command) -> list[str]:
         """The arguments after the words that name the command."""

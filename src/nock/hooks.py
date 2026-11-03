@@ -29,7 +29,7 @@ from nock.primer import refresh
 from nock.project import NOCK_DIRECTORY, Project
 from nock.sessions import Sessions
 from nock.status import Standing
-from nock.tools import NATIVE_EVENTS, Event
+from nock.tools import CONFIRM_NOTES, NATIVE_EVENTS, Event
 from nock.usage import Usage
 
 EVENTS = {native: event for event, native in NATIVE_EVENTS.items()}
@@ -118,10 +118,10 @@ class HookRunner:
         lines = []
         own = registry.project_tools()
         if own:
+            note = CONFIRM_NOTES[self.project.configuration.confirm()]
             lines.append("This project's nock tools (`.nock/nock NAME --help` for usage):")
             lines += [
-                f"- {tool.command.usage()}: {tool.command.summary}"
-                + (" (asks the owner)" if tool.confirm else "")
+                f"- {tool.command.usage()}: {tool.command.summary}" + (note if tool.confirm else "")
                 for tool in own
             ]
         if registry.failures:

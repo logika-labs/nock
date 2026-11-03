@@ -17,12 +17,18 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from nock.commands import Command, command_name
+from nock.configuration import Confirm
 from nock.errors import PreconditionError
 
 if TYPE_CHECKING:
     from nock.project import Project
 
 BUILT_IN_SOURCE = "nock"
+# What the toolbox says of a `confirm=True` command, by `permissions.confirm`.
+CONFIRM_NOTES = {
+    Confirm.ASK: " (asks the owner)",
+    Confirm.ALLOW: " (only when the owner's request calls for it)",
+}
 
 
 class Event(StrEnum):
@@ -146,8 +152,10 @@ def command(
     - `pinned`: reflection keeps it however rarely it is used.
     - `confirm`: it acts on the world in a way only the owner may set off (a
       deploy, a release, a payment): Claude Code asks the owner before an
-      agent's call runs it (`nock init` wires the rule), and the toolbox says
-      so. The owner typing it is their word."""
+      agent's call runs it (`nock init` wires the rule; with
+      `permissions.confirm = "allow"` it is allowed, for when the owner's
+      request calls for it), and the toolbox says so. The owner typing it is
+      their word."""
 
     def decorate(target: Callable[..., Any]) -> Callable[..., Any]:
         globs = cache.split() if isinstance(cache, str) else list(cache or [])

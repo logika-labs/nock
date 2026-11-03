@@ -237,7 +237,11 @@ Claude Code `ask` rule for it, so an agent's call waits for the owner to
 approve it although the toolbox's other commands are allowed, and the
 toolbox lists it as asking the owner. The `nock-wiring` check fails while
 the rule is missing. A new tool is asked about until `nock init` allows it
-(`nock-wiring` says so), and `nock init` itself asks the owner.
+(`nock-wiring` says so), and `nock init` itself asks the owner. An owner
+who runs Claude Code with bypassed permissions and wants no prompts at all
+sets `permissions.confirm = "allow"`: `nock init` then allows these commands
+too, the toolbox lists them as for when the owner's request calls for them,
+and an agent runs them only then.
 
 **Caching.** With `cache="src/**"`, a call with the same arguments replays the
 last result as long as those files and the tool's own code are unchanged.
@@ -659,7 +663,10 @@ runs arbitrary shell:
   run the project's own committed tools and checks;
 - `ask`: every `confirm=True` command, the project's and nock's own:
   `init` (it rewrites these rules), `upgrade` (it fetches and merges code)
-  and `share` (it sends a summary out);
+  and `share` (it sends a summary out). Claude Code asks about these even
+  in bypass mode; `permissions.confirm = "allow"` in `.nock/config.toml`
+  moves them to `allow` and leaves nock no `ask` rule, and the agents are
+  told to run them only when the owner's request calls for them;
 - no rule for `run`, which runs any command: Claude Code asks about it as
   it would about the command itself.
 
@@ -926,6 +933,7 @@ one machine.
 | `reflect.sessions`, `reflect.days` | 15, 7 | when a round is due, whichever comes first |
 | `reflect.logika.days` | 30 | in a Logika project, days after a logika round before the next is offered (once the ledger has changed) |
 | `agent.command`, `agent.model`, `agent.deadline` | `claude`, —, 1800 | the headless agent nock dispatches (elaborate, consult, share); it may not bypass or set permissions (see [What nock's agents may do](#what-nocks-agents-may-do)) |
+| `permissions.confirm` | `ask` | how Claude Code treats a `confirm=True` command: `ask` has the owner approve each call (even in bypass mode); `allow` lets the agent run it, which it does only when the owner's request calls for it (see [What nock's agents may do](#what-nocks-agents-may-do)); `nock init` rewrites the rules after a change |
 | `consult.enabled`, `consult.deadline` | true, 600 | whether the consultant runs and the primer asks for it; seconds a consultation may take |
 | `upgrade.check`, `upgrade.index` | true, PyPI's `nock` | whether a session start says a newer nock is out, and where releases are looked up |
 | `share` | — (unanswered) | the owner's answer to whether nock sends its makers the weekly usage report: unset sends nothing until they answer, false sends nothing, summaries included (see [What nock shares](#what-nock-shares)) |

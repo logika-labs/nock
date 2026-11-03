@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import copy
 import tomllib
+from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
@@ -47,6 +48,12 @@ DEFAULTS: dict[str, Any] = {
         "setup": "",
         "path": [],
         "dotenv": "",
+    },
+    "permissions": {
+        # How Claude Code treats a `confirm=True` command (`nock init` writes the
+        # rules): "ask" has the owner approve each call, even in bypass mode;
+        # "allow" lets the agent run it, when the owner's request calls for it.
+        "confirm": "ask",
     },
     "checks": {
         # How many check suites may run at once on this machine.
@@ -103,6 +110,13 @@ DEFAULTS: dict[str, Any] = {
 }
 
 
+class Confirm(StrEnum):
+    """What Claude Code does when an agent calls a `confirm=True` command."""
+
+    ASK = "ask"
+    ALLOW = "allow"
+
+
 def merged(base: dict[str, Any], overlay: dict[str, Any]) -> dict[str, Any]:
     result = copy.deepcopy(base)
     for key, value in overlay.items():
@@ -132,6 +146,15 @@ class Configuration:
                 return default
             value = value[part]
         return value
+
+    def confirm(self) -> Confirm:
+        value = self.get("permissions.confirm")
+        try:
+            return Confirm(value)
+        except ValueError:
+            raise PreconditionError(
+                f'permissions.confirm is {value!r}; it is "ask" or "allow"'
+            ) from None
 
     def section(self, key: str) -> dict[str, Any]:
         value = self.get(key, {})

@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from nock.configuration import Confirm
 from nock.decisions import MAP
 from nock.errors import ConflictError, NotFoundError, PreconditionError
 from nock.git import Git, GitError
@@ -76,6 +77,13 @@ model = ""
 [consult]
 # Whether agents are asked to consult nock's consultant before changing code.
 enabled = true
+
+[permissions]
+# How Claude Code treats a command only the owner may set off (confirm=True):
+# "ask" has the owner approve each call, even in bypass mode; "allow" lets the
+# agent run it, when the owner's request calls for it. `nock init` rewrites
+# the rules after a change.
+confirm = "ask"
 """
 
 GITIGNORE = "local/\n"
@@ -103,7 +111,8 @@ HOOK_COMMAND = '"$CLAUDE_PROJECT_DIR"/.nock/nock hook {event}'
 #   committed toolbox and checks.
 # - `ask`: each `confirm=True` command, nock's own (`init` rewrites these
 #   rules, `upgrade` fetches and merges code, `share` sends a summary out) and
-#   the project's. Claude Code puts `ask` before `allow`.
+#   the project's. Claude Code puts `ask` before `allow`, and asks even in
+#   bypass mode, so `permissions.confirm = "allow"` puts them under `allow`.
 # - no rule for `run`, which runs any command: Claude Code treats it as it
 #   would the command itself.
 PERMISSION = "Bash(.nock/nock {path}:*)"
@@ -126,13 +135,14 @@ def permission_rules(root: Path, kind: str) -> set[str]:
 def wanted_permissions(project: Project) -> tuple[list[str], list[str]]:
     """The allow and ask rules nock wants for this toolbox."""
     tools = project.registry.tools
+    asking = project.configuration.confirm() is Confirm.ASK
     allowed = [*LISTING]
     allowed += [
         PERMISSION.format(path=tool.command.path)
         for tool in tools
-        if not tool.confirm and tool.command.path not in UNLISTED
+        if not (tool.confirm and asking) and tool.command.path not in UNLISTED
     ]
-    asked = [PERMISSION.format(path=tool.command.path) for tool in tools if tool.confirm]
+    asked = [PERMISSION.format(path=tool.command.path) for tool in tools if tool.confirm and asking]
     return allowed, asked
 
 
