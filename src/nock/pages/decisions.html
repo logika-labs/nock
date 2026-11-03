@@ -2,14 +2,26 @@
 /* The decisions tab: the controls — review tabs, sort, search and filters — then the decisions; one opens in place. */
 nav.reviews { display: flex; flex-wrap: wrap; align-items: center; gap: 0 24px; border-bottom: 1px solid var(--border); margin-top: 8px; }
 
-/* Search and filters: one line under the tabs, every control a bare field with a bottom border. */
+/* Search and the status chips on one line under the tabs; every tag in use on one scrolling line below. */
 .tools { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px; padding-top: 20px; }
 .search { position: relative; flex: 1 1 16rem; min-width: 0; display: flex; align-items: center; }
 .search svg { position: absolute; left: 0; width: 15px; height: 15px; color: var(--muted); pointer-events: none; }
 .search input[type="search"] { padding-left: 24px; font-size: 14px; }
 .search input::-webkit-search-cancel-button { filter: grayscale(1); }
-/* Priority chips: toggles, several at once, each with how many it would show. */
-.chips { display: grid; gap: 10px; flex: 1 1 100%; }
+/* Chips: toggles, several at once, each with how many it would show. */
+.chips { display: flex; gap: 8px; }
+.tags {
+  margin-top: 12px; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; scroll-padding-inline: 16px;
+  --start: 0px; --end: 0px;
+  -webkit-mask-image: linear-gradient(to right, transparent 0, #000 var(--start), #000 calc(100% - var(--end)), transparent 100%);
+  mask-image: linear-gradient(to right, transparent 0, #000 var(--start), #000 calc(100% - var(--end)), transparent 100%);
+}
+/* An edge fades only where there is more to scroll to. */
+.tags.more-before { --start: 24px; }
+.tags.more-after { --end: 32px; }
+.tags::-webkit-scrollbar { display: none; }
+.tags .chips { width: max-content; padding: 2px; }
+.chip { flex: none; white-space: nowrap; }
 .chip {
   display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 11px; border-radius: 999px;
   border: 1px solid var(--input); background: transparent; color: var(--foreground);
@@ -19,8 +31,6 @@ nav.reviews { display: flex; flex-wrap: wrap; align-items: center; gap: 0 24px; 
 .chip:hover { background: var(--card); }
 .chip { --tone: var(--foreground); }
 .chip[data-tag="important"] { --tone: var(--warning); }
-.chip-group { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; flex-basis: 100%; }
-.chip-group > .label { color: var(--muted); min-width: 4.5rem; font-size: 11px; }
 .applies { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; font-size: 13px; color: var(--muted); }
 .applies .label { font-size: 11px; margin-right: 2px; }
 .applies code { font: 12px var(--mono); background: var(--background); color: var(--foreground); padding: 1px 5px; border-radius: 4px; overflow-wrap: anywhere; }
@@ -167,7 +177,6 @@ kbd {
     <button type="button" role="tab" data-review="accepted" aria-selected="false">accepted <span class="count" id="count-accepted"></span></button>
     <button type="button" role="tab" data-review="rejected" aria-selected="false">rejected <span class="count" id="count-rejected"></span></button>
     <div class="sort" role="group" aria-label="Sort">
-      <span class="label">sort</span>
       <button type="button" data-sort="oldest" aria-pressed="true">oldest</button>
       <button type="button" data-sort="newest" aria-pressed="false">newest</button>
     </div>
@@ -177,17 +186,17 @@ kbd {
       <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="7" cy="7" r="4.75" stroke="currentColor" stroke-width="1.5"/><path d="m10.5 10.5 3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
       <input type="search" id="search" placeholder="search" autocomplete="off" aria-label="Search decisions">
     </label>
-    <div class="chips" id="chips" role="group" aria-label="Filter"></div>
+    <div class="chips" id="statuses" role="group" aria-label="Status"></div>
   </div>
+  <div class="tags" id="tag-row"><div class="chips" id="tags" role="group" aria-label="Tags"></div></div>
   </div>
   <main><section id="list" aria-live="polite"></section></main>
 <script>
 const CHEVRON = '<svg class="chevron" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M6 3.5 10.5 8 6 12.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 const MAC = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
-// The chips: done/todo/question, then the tags in use, the fixed ones first.
+// The chips: done/todo/question beside the search, then every tag in use.
 const STATUSES = ["done", "todo", "question"];
-const SHOWN_TAGS = 6;
-const state = { shown: false, link: null, search: "", statuses: new Set(), tags: new Set(), sort: "oldest", review: "unreviewed", decisions: [], tags_in_use: {}, expanded: new Set(), notes: new Map(), active: null, seen: "" };
+const state = { shown: false, link: null, search: "", statuses: new Set(), tags: new Set(), sort: "oldest", review: "unreviewed", decisions: [], expanded: new Set(), notes: new Map(), active: null, seen: "" };
 
 function escape(text) {
   return String(text).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
@@ -368,12 +377,27 @@ function chip(kind, value, count) {
 function drawChips() {
   const tab = state.decisions.filter(inTab);
   const statuses = STATUSES.map(status => chip("status", status, tab.filter(decision => decision.status === status).length));
-  const counted = Object.keys(state.tags_in_use).map(tag => [tag, tab.filter(decision => decision.tags.includes(tag)).length]);
-  const tags = counted.filter(([tag, count]) => count || state.tags.has(tag)).sort((left, right) => right[1] - left[1]).slice(0, SHOWN_TAGS)
+  // Every tag on any decision (and any chosen), counted in this tab, the most used first.
+  const names = new Set([...state.decisions.flatMap(decision => decision.tags), ...state.tags]);
+  const tags = [...names].map(tag => [tag, tab.filter(decision => decision.tags.includes(tag)).length])
+    .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))
     .map(([tag, count]) => chip("tag", tag, count));
-  const group = (label, chips) => `<div class="chip-group" role="group" aria-label="${label}"><span class="label">${label}</span>${chips.join("")}</div>`;
-  document.getElementById("chips").innerHTML = group("Status", statuses) + (tags.length ? group("Tags", tags) : "");
+  document.getElementById("statuses").innerHTML = statuses.join("");
+  // Redrawn as the owner types: the row keeps where it was scrolled to.
+  const row = document.getElementById("tag-row");
+  const scrolled = row.scrollLeft;
+  document.getElementById("tags").innerHTML = tags.join("");
+  row.hidden = !tags.length;
+  row.scrollLeft = scrolled;
+  fade(row);
 }
+
+function fade(row) {
+  row.classList.toggle("more-before", row.scrollLeft > 2);
+  row.classList.toggle("more-after", row.scrollLeft + row.clientWidth < row.scrollWidth - 2);
+}
+document.getElementById("tag-row").addEventListener("scroll", event => fade(event.currentTarget), { passive: true });
+addEventListener("resize", () => fade(document.getElementById("tag-row")));
 
 function draw() {
   const standing = state.decisions.filter(decision => !decision.superseded_by);
@@ -443,7 +467,6 @@ async function load() {
     state.seen = text;
     const data = JSON.parse(text);
     state.decisions = data.decisions;
-    state.tags_in_use = data.tags;
     // The address's decision opens (`#decisions/7`, or `#7`); otherwise the first in the tab.
     const linked = state.link !== null && find(state.link);
     state.link = null;

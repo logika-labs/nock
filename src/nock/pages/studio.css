@@ -35,7 +35,6 @@
   /* The offset shadow in two foil colours: what is chosen, and what to do. */
   --one: var(--cyan);
   --two: var(--pink);
-  --offset: 2px;
   --glass: rgb(255 255 255 / .9);
 }
 :root body { background: #e9e2ff; }
@@ -125,33 +124,41 @@
 :root .controls nav.reviews { margin-top: 0; }
 :root .controls .tools { padding-top: 14px; }
 
-/* --- what is chosen: black, with the two-colour offset shadow --------------------------------- */
+/* Hover never moves or resizes a control: it only adds a glow or a tint. */
+
+/* --- what is chosen or to be done: black, with the two-colour offset shadow ------------------ */
 
 :root .menu a[aria-current="page"],
-:root .chip[aria-pressed="true"],
-:root .evals .chip[aria-pressed="true"],
 :root .button.primary,
 :root .notice button[data-share="true"] {
   background: #111116; color: #fff; border-color: #111116;
-  box-shadow: var(--offset) var(--offset) 0 0 var(--one), calc(-1 * var(--offset)) calc(-1 * var(--offset)) 0 0 var(--two);
-  transition: transform .18s cubic-bezier(.3, 1.6, .5, 1), box-shadow .18s ease, background-color .18s;
+  box-shadow: 2px 2px 0 0 var(--one), -2px -2px 0 0 var(--two);
+  transition: box-shadow .18s ease, background-color .18s;
 }
-:root .chip[data-tag="important"][aria-pressed="true"] { color: var(--yellow); }
-:root .chip[aria-pressed="true"] .count { color: #fff; }
 :root .menu a[aria-current="page"]:hover,
-:root .chip[aria-pressed="true"]:hover,
-:root .evals .chip[aria-pressed="true"]:hover,
 :root .button.primary:not(:disabled):hover,
 :root .notice button[data-share="true"]:hover {
-  --offset: 4px; transform: scale(1.06); background: #111116;
+  background: #23232b;
+  box-shadow: 2px 2px 0 0 var(--one), -2px -2px 0 0 var(--two), 0 8px 20px -6px var(--one), 0 -6px 18px -8px var(--two);
 }
-:root .button.primary:not(:disabled):active { --offset: 1px; transform: scale(.98); }
 :root .button { border-radius: 12px; }
 
-/* --- everything else: on hover a slight lift and a soft shadow in a mellow tint of its own ---- */
+/* --- chips: quiet; a faint tint on hover, a soft lavender one when chosen --------------------- */
 
-:root .chip:not([aria-pressed="true"]),
-:root .evals .chip:not([aria-pressed="true"]),
+:root .chip, :root .evals .chip {
+  background: rgb(255 255 255 / .9); border-color: rgb(17 17 22 / .18); color: var(--foreground);
+  transition: background-color .15s, border-color .15s, color .15s;
+}
+:root .chip:not(:disabled):hover, :root .evals .chip:hover { background: rgb(185 166 255 / .12); border-color: rgb(17 17 22 / .3); }
+:root .chip[aria-pressed="true"], :root .evals .chip[aria-pressed="true"] {
+  background: rgb(185 166 255 / .26); border-color: rgb(75 47 208 / .55); color: #2a1d78;
+}
+:root .chip[aria-pressed="true"]:hover, :root .evals .chip[aria-pressed="true"]:hover { background: rgb(185 166 255 / .34); }
+:root .chip[aria-pressed="true"] .count { color: inherit; }
+:root .chip[data-tag="important"][aria-pressed="true"] { background: rgb(255 226 122 / .35); border-color: rgb(138 79 0 / .55); color: var(--warning); }
+
+/* --- other buttons: a soft shadow in a mellow tint of their own on hover ---------------------- */
+
 :root .button.secondary,
 :root .button.ghost,
 :root .menu a:not([aria-current]),
@@ -159,15 +166,11 @@
 :root .gear,
 :root .evals .node,
 :root .evals [data-dry] {
-  --tint: rgb(185 166 255 / .55);
-  transition: transform .18s ease, box-shadow .18s ease, border-color .18s, background-color .18s;
+  --tint: rgb(255 184 150 / .6);
+  transition: box-shadow .18s ease, border-color .18s, background-color .18s;
 }
-:root .chip:not([aria-pressed="true"]) { background: rgb(255 255 255 / .9); border-color: rgb(17 17 22 / .2); }
-:root .button.secondary, :root .button.ghost, :root .notice button[data-share="false"] { --tint: rgb(255 184 150 / .6); }
 :root .menu a:not([aria-current]), :root .gear { --tint: rgb(130 225 190 / .55); }
 :root .evals .node, :root .evals [data-dry] { --tint: rgb(150 215 255 / .6); }
-:root .chip:not([aria-pressed="true"]):not(:disabled):hover,
-:root .evals .chip:not([aria-pressed="true"]):hover,
 :root .button.secondary:not(:disabled):hover,
 :root .button.ghost:not(:disabled):hover,
 :root .menu a:not([aria-current]):hover,
@@ -175,7 +178,7 @@
 :root .gear:hover, :root .gear[aria-expanded="true"],
 :root .evals .node:hover,
 :root .evals [data-dry]:hover {
-  transform: translateY(-2px); background-color: #fff; border-color: rgb(17 17 22 / .3);
+  background-color: #fff; border-color: rgb(17 17 22 / .3);
   box-shadow: 0 8px 18px -6px var(--tint), 0 2px 6px -2px var(--tint);
 }
 :root .menu a:not([aria-current]):hover, :root .gear:hover { background-color: rgb(255 255 255 / .85); }
