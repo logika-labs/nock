@@ -273,6 +273,7 @@ rule all:
     input:
         "results/example/tree=plain",
         "results/example/tree=instrumented/setup=logika",
+        "results/example/tree=fixed/setup=none/tree=again",
 
 
 rule example:
@@ -297,11 +298,16 @@ def test_a_rule_whose_outputs_differ_in_their_parameters_reads_as_one_table(
     (directory / "steps/example.py").write_text(
         "from nock.steps import Step\n\nStep(snakemake).run(lambda step: {'ok': 1})\n"
     )
-    assert call(project.root, "run")["computed"] == 2
+    assert call(project.root, "run")["computed"] == 3
+    # A name repeated in a path keeps its first value.
     assert query(project.root, "SELECT tree, setup, ok FROM example ORDER BY tree") == [
+        {"tree": "fixed", "setup": "none", "ok": 1},
         {"tree": "instrumented", "setup": "logika", "ok": 1},
         {"tree": "plain", "setup": None, "ok": 1},
     ]
+    assert query(
+        project.root, "SELECT parameters['tree'] AS tree FROM outputs WHERE path LIKE '%again'"
+    ) == [{"tree": "fixed"}]
 
 
 def test_query_reads_the_results_with_sql_and_nothing_else(project: Project, toy: Path) -> None:

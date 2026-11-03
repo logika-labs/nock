@@ -61,6 +61,11 @@ def identifier(name: str) -> str:
     return '"' + name.replace('"', '""') + '"'
 
 
+def mapping(values: dict[str, str]) -> str:
+    keys = ", ".join(literal(key) for key in values)
+    return f"map([{keys}]::VARCHAR[], [{', '.join(literal(value) for value in values.values())}]::VARCHAR[])"
+
+
 def files(paths: list[str]) -> str:
     return "[" + ", ".join(literal(path) for path in paths) + "]"
 
@@ -91,11 +96,12 @@ class Results:
         """The statements that load the tables from the files."""
         states = ", ".join(
             f"({literal(result.rule)}, {literal(result.path)}, {literal(result.state)}, "
-            f"{literal(result.why) if result.why else 'NULL'})"
+            f"{literal(result.why) if result.why else 'NULL'}, {mapping(result.parameters)})"
             for result in self.states
         )
         statements = [
-            "CREATE TABLE states (rule VARCHAR, path VARCHAR, state VARCHAR, why VARCHAR)",
+            "CREATE TABLE states (rule VARCHAR, path VARCHAR, state VARCHAR, why VARCHAR,"
+            " parameters MAP(VARCHAR, VARCHAR))",
             *([f"INSERT INTO states VALUES {states}"] if states else []),
         ]
         costs, errors = self.present(COST), self.present(ERROR)
@@ -118,11 +124,8 @@ class Results:
                 else "SELECT NULL::VARCHAR AS path, NULL::VARCHAR AS error WHERE false"
             )
         )
-        pattern = literal("([^/=]+)=([^/]+)")
         statements.append(
-            "CREATE TABLE outputs AS SELECT s.rule, s.path,"
-            f" map(regexp_extract_all(s.path, {pattern}, 1), regexp_extract_all(s.path, {pattern}, 2))"
-            " AS parameters, s.state, s.why, c.usd AS cost_usd, c.seconds, c.tokens, e.error"
+            "CREATE TABLE outputs AS SELECT s.rule, s.path, s.parameters, s.state, s.why, c.usd AS cost_usd, c.seconds, c.tokens, e.error"
             " FROM states s LEFT JOIN costs c USING (path) LEFT JOIN errors e USING (path)"
         )
         metrics = self.present(METRICS)

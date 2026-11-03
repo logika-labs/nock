@@ -140,8 +140,14 @@ def uv() -> str:
 
 
 def parameters_of(path: str) -> dict[str, str]:
-    """An output's parameters, from its path: `results/detect/arm=a/rep=1` → arm, rep."""
-    return dict(part.split("=", 1) for part in path.split("/") if "=" in part)
+    """An output's parameters, from its path: `results/detect/arm=a/rep=1` → arm, rep.
+    A name repeated in the path keeps its first value, as DuckDB's hive partitions do."""
+    found: dict[str, str] = {}
+    for part in path.split("/"):
+        if "=" in part:
+            name, value = part.split("=", 1)
+            found.setdefault(name, value)
+    return found
 
 
 def is_lfs_pointer(path: Path) -> bool:
