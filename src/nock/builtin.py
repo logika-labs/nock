@@ -234,8 +234,8 @@ def sessions(project: Project, *, limit: int = 15) -> list[dict[str, Any]]:
 @command
 def status(project: Project) -> dict[str, Any]:
     """Where the project stands with nock: whether a reflection round is due,
-    the decisions by status and review, the rejected ones to rework, the
-    questions the owner answered, a round summary not yet shared, and whether
+    the decisions by status and review, the rejected ones to rework, those
+    tagged important and not yet reviewed, a round summary not yet shared, and whether
     a newer nock is out."""
     return Standing(project).collect()
 
@@ -246,7 +246,7 @@ def studio(
     options: StudioOptions = {},  # noqa: B006
 ) -> None:
     """Serve the owner's page, a tab for each thing to look at — the
-    decisions and questions to review — until stopped (port 8765 unless
+    decisions to review — until stopped (port 8765 unless
     OPTIONS say otherwise)."""
     if Usage(project).ask(Moment.STUDIO):
         print(f"nock: {QUESTION} The page asks too; answer there.", flush=True)
@@ -261,9 +261,10 @@ def decide(project: Project, decision: Draft) -> dict[str, Any]:
     """Record a decision as you make it — a non-trivial choice between ways
     that could each work, a deliberate simplification, a reading of something
     ambiguous — or, as a todo, something that should be done and is not yet
-    (tag a possible improvement `improvement`), or, as a question, what only
-    the owner can settle when they are not there to ask: the answer you
-    propose as the title, the other answers as alternatives. Not what has one
+    (tag a possible improvement `improvement`). What only the owner can
+    settle, when they are not there to ask, is a decision tagged `important`:
+    the answer you propose as the title, the other answers as alternatives,
+    and carry on with it; they accept or reject it. Not what has one
     obvious right way. Write it for someone who knows what the system does,
     not how it is built; give only alternatives you really weighed. The owner
     reviews it later; keep going meanwhile."""
@@ -313,8 +314,8 @@ def decisions_show(project: Project, number: int) -> dict[str, Any]:
 
 @command(name="edit", group="decisions")
 def decisions_edit(project: Project, change: Change) -> dict[str, Any]:
-    """Change a decision: rework one the owner rejected, or mark a todo or an
-    answered question done and say what was done. A change to what it says asks for a fresh review.
+    """Change a decision: rework one the owner rejected, act on the owner's
+    note, or mark a todo done and say what was done. A change to what it says asks for a fresh review.
     `review` (accepted, rejected), `note` and `elaborate` are the owner's
     word: set them only when the owner says so."""
     decisions = Decisions(project)

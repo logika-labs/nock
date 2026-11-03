@@ -128,5 +128,5 @@ possible. The rule itself waits for a later round.
 Only `logika.json`: params, events (`validate`, `span.timeout`,
 `span.paths`, whether a param is optional), `rules` and `invariants`.
 Change nothing else, not the code and not `.nock/`, except by recording
-decisions, questions and todos. Commit
+decisions and todos. Commit
 nothing: `.nock/nock reflect logika finish` commits.

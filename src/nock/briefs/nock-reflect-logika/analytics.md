@@ -76,5 +76,5 @@ answer.
 
 Only `logika.json`: params' `identity` and `dimension` flags, `funnels`,
 `milestones` and `views`. Change nothing else, not the code and not
-`.nock/`, except by recording decisions, questions and todos. Commit
+`.nock/`, except by recording decisions and todos. Commit
 nothing: `.nock/nock reflect logika finish` commits.

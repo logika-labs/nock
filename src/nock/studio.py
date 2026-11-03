@@ -1,5 +1,5 @@
 """The owner's page (`nock studio`): one local server, a tab for each thing
-nock keeps for the owner: the decisions and questions agents recorded,
+nock keeps for the owner: the decisions agents recorded,
 reviewed in place, and the evaluations, read from their files. Local, and only while `nock studio` runs.
 
 A tab is a `Tab` in `TABS`: its name is its address on the page (`#NAME`) and

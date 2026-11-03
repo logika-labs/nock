@@ -1,6 +1,6 @@
-"""Decisions: what agents decided while they worked, what they think should
-be done later, and what they ask the owner — one committed file per decision
-in the main checkout's
+"""Decisions: what agents decided while they worked — the owner's calls among
+them, tagged `important` — and what they think should be done later, one
+committed file per decision in the main checkout's
 `.nock/decisions/`, each with its reasoning, the alternatives that lost, the
 files it governs (`touches`) and the decisions it overturns (`supersedes`).
 The owner reviews them, on the page (`nock studio`) or in a session: accepts,
@@ -49,16 +49,18 @@ class Status(StrEnum):
     """Decided and carried out."""
     TODO = "todo"
     """Should be done, and is not yet."""
-    QUESTION = "question"
-    """Asks the owner: the title is the answer the agent proposes, the
-    alternatives the other answers it sees; the review is the owner's answer."""
+
+
+# A status earlier nocks wrote: a question for the owner, read now as a
+# decision done and tagged important, its review kept.
+QUESTION = "question"
 
 
 class Review(StrEnum):
     UNREVIEWED = "unreviewed"
     ACCEPTED = "accepted"
     REJECTED = "rejected"
-    """Done: rework it. Todo: do not do it. Question: no — the note says what holds."""
+    """Done: rework it. Todo: do not do it."""
 
 
 class Alternative(TypedDict):
@@ -69,17 +71,18 @@ class Alternative(TypedDict):
 class Draft(TypedDict):
     title: str
     """What was decided, as a statement: "The sweep requeues dead charges only";
-    for a question, the answer you propose: "Refunds never exceed the charge"."""
+    for the owner's call, the answer you propose and carry on with: "Refunds
+    never exceed the charge"."""
     status: Status
     summary: str
     """Markdown, for someone who knows what the system does but not how it is built."""
     evidence: NotRequired[list[str]]
     """What you read, measured or found that bears on it, a line each."""
     alternatives: NotRequired[list[Alternative]]
-    """What you seriously considered instead, and why not (for a question, the
-    other answers); none is a fine answer."""
+    """What you seriously considered instead, and why not; none is a fine answer."""
     tags: NotRequired[list[str]]
-    """important, technical, product, improvement, and your own (a component, a subject)."""
+    """important (only the owner can settle it: they accept or reject it),
+    technical, product, improvement, and your own (a component, a subject)."""
     touches: NotRequired[list[str]]
     """The files it governs, as paths or globs: `src/pricing.py`, `migrations/**`."""
     supersedes: NotRequired[list[int]]
@@ -125,6 +128,16 @@ def live(decision: dict[str, Any]) -> bool:
     return not decision.get("superseded_by")
 
 
+def upgraded(decision: dict[str, Any]) -> dict[str, Any]:
+    """A decision as this nock reads it: an earlier nock's question is a
+    decision done and tagged important, reviewed as it was; saving it
+    rewrites the file so."""
+    if decision.get("status") == QUESTION:
+        decision["status"] = str(Status.DONE)
+        decision["tags"] = sorted({*decision.get("tags", []), "important"})
+    return decision
+
+
 def row(decision: dict[str, Any]) -> dict[str, Any]:
     """A decision in a line, as lists show it."""
     keys = ("number", "title", "status", "review", "tags")
@@ -146,13 +159,13 @@ class Decisions:
     def all(self) -> list[dict[str, Any]]:
         if not self.directory.is_dir():
             return []
-        return [read_json(path) for path in sorted(self.directory.glob("[0-9]*.json"))]
+        return [upgraded(read_json(path)) for path in sorted(self.directory.glob("[0-9]*.json"))]
 
     def get(self, number: int) -> dict[str, Any]:
         path = self.path(number)
         if not path.is_file():
             raise NotFoundError(f"no decision {number} — `.nock/nock decisions list` lists them")
-        return read_json(path)
+        return upgraded(read_json(path))
 
     def save(self, decision: dict[str, Any]) -> None:
         decision["updated"] = now()
@@ -323,14 +336,10 @@ class Decisions:
         """Done, and rejected: the owner wants it redone."""
         return self.matching({"status": Status.DONE, "review": Review.REJECTED})
 
-    def answered(self) -> list[dict[str, Any]]:
-        """Questions the owner answered — yes, no, or in a note — that no agent
-        has acted on yet (acting on one edits it to done)."""
-        return [
-            decision
-            for decision in self.matching({"status": Status.QUESTION})
-            if decision["review"] != Review.UNREVIEWED or decision["note"]
-        ]
+    def important(self) -> list[dict[str, Any]]:
+        """Tagged important and not yet reviewed: the owner's calls, which an
+        agent proposed an answer to and carried on with."""
+        return self.matching({"tag": "important", "review": Review.UNREVIEWED})
 
     def tags(self) -> dict[str, int]:
         """Every tag in use, the most used first; the fixed ones always."""

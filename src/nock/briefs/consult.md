@@ -28,14 +28,14 @@ your answer. Look through the repository; change nothing.
        .nock/nock docs decisions.review decisions.map           # how decisions and the map work
 
    An accepted decision is the owner's; an unreviewed one is an agent's call
-   so far; a rejected one says what not to do, and its note says why. A
-   question the owner answered says what holds.
+   so far (one tagged `important` is the owner's call, proposed); a
+   rejected one says what not to do, and its note says why.
 2. If nothing in nock bears on the work, submit advice saying so in a
    sentence (step 5) and stop. That is a fine answer.
 3. Otherwise write advice that tells the agent, in a few lines each:
    - **what the decisions mean for this work**: what it must keep to, and
      where; an option the owner rejected that the work would bring back, and
-     what would make it viable; a todo or answered question it could close
+     what would make it viable; a todo it could close
      on the way. If the intent goes against an accepted decision, say so
      first, plainly, and what the decision says instead;
    - **the tools that do its steps**: the exact invocation, rather than the

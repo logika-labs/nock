@@ -62,8 +62,8 @@ src/nock/
   pages/             studio.html, the shell (band with the title and the menu, routing by
                      `#NAME/ROUTE`); studio.css, its look, put in the shell;
                      NAME.html, each tab's fragment (markup, style, a script registering it)
-  status.py          Standing: a round due, decisions waiting, rejected ones to rework, answered
-                     questions, an unshared summary
+  status.py          Standing: a round due, decisions waiting, rejected ones to rework, important
+                     ones unreviewed, an unshared summary
   share.py           Sharing: a round's summary, held to naming nothing, sent on the owner's word
   usage.py           Usage: the report shared with nock's makers on the owner's yes (`share`),
                      the question asked once, the project's random id, the weekly send
@@ -329,10 +329,10 @@ else and hands it to `hooks.run`, which:
      otherwise (`primer.refresh`), then returns the project's tools, any
      load failures, and, for a session the human started, `status.Standing`'s
      short lines (the first few items of each kind): a round due, decisions
-     waiting on review, rejected ones to rework, answered questions, and —
+     waiting on review, rejected ones to rework, important ones unreviewed, and —
      once per round — an unshared summary. The standing is said once a day,
      keyed in `nudged` by the date and a digest of what calls (a round due,
-     the rejected and answered decisions, an unshared summary, a newer nock,
+     the rejected decisions, an unshared summary, a newer nock,
      a logika round), so something new is said at once and the same thing
      not again that day. What calls for the human is said to them too, as
      `systemMessage`;
@@ -383,10 +383,11 @@ or mid-rebase. `decide` and `edit` take the `Draft` and `Change` records;
 `edit` is also the owner's review (`review`, `note`, `elaborate`), from the
 studio's Decisions tab (`studio.DecisionsTab`, which accepts only those
 three) or from a session. A
-change to a field in `SUBSTANCE` resets the review. A question
-(`status: question`) is a decision whose review is the owner's answer;
-`answered` lists those answered and not yet edited to done, for
-`status.Standing`. "Elaborate" starts
+change to a field in `SUBSTANCE` resets the review. The owner's call is a
+decision tagged `important`, the agent's proposed answer as its title;
+`important` lists those unreviewed, for `status.Standing`. A file an earlier
+nock wrote with `status: question` is read (`upgraded`) as done and tagged
+`important`, its review kept, and saved so on its next write. "Elaborate" starts
 `nock decisions elaborate N` as a detached process, which dispatches the
 elaborator; the decision's `elaborating` flag holds until an edit changes
 it, or the elaborator ends without one.

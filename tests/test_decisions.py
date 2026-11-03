@@ -290,38 +290,53 @@ def test_every_studio_tab_has_its_panel_and_its_routes_only(page: str) -> None:
     assert malformed.value.code == 400
 
 
-def test_a_question_waits_on_the_owner_and_its_answer_waits_on_an_agent(
+def test_the_owner_s_call_is_listed_at_session_start_until_reviewed(
     project: Project, page: str
 ) -> None:
-    asked = decide(
+    call = decide(
         project.root,
         {
             "title": "Refunds never exceed the charge",
-            "status": "question",
+            "status": "done",
             "summary": "A rule would flag every refund larger than its charge.",
             "alternatives": [{"option": "Goodwill refunds may", "why_not": "none in the data"}],
-            "tags": ["logika"],
+            "tags": ["logika", "important"],
         },
     )
+    asked = nock(project.root, "decide", json.dumps({**DRAFT, "status": "question"}))
+    assert asked.returncode == 40 and "status" in asked.stderr
     begun = start(project, "s1")
-    assert "1 question(s)" in begun["systemMessage"]
-    status, _ = post(page, asked["number"], {"review": "rejected", "note": "Up to 110%."})
+    assert "1 important" in begun["systemMessage"]
+    assert "important decisions awaiting review" in begun["systemMessage"]
+    context = begun["hookSpecificOutput"]["additionalContext"]
+    assert f"- [D{call['number']}] Refunds never exceed the charge" in context
+    standing = json.loads(nock(project.root, "status", "--json").stdout)
+    assert [item["number"] for item in standing["important"]] == [call["number"]]
+    status, _ = post(page, call["number"], {"review": "rejected", "note": "Up to 110%."})
     assert status == 200
     context = start(project, "s2")["hookSpecificOutput"]["additionalContext"]
-    assert "questions the owner answered — act on each" in context
+    assert "important decisions awaiting review" not in context
     assert (
-        f"- [D{asked['number']}] Refunds never exceed the charge — no — the owner: Up to 110%."
+        f"- rework [D{call['number']}] Refunds never exceed the charge — the owner: Up to 110%."
         in context
     )
-    assert "what the owner said about decisions lately" not in context
-    standing = json.loads(nock(project.root, "status", "--json").stdout)
-    assert standing["answered"][0]["answer"] == "rejected"
-    acted = edit(
-        project.root,
-        {"number": asked["number"], "status": "done", "summary": "The rule allows 110%."},
-    )
-    assert acted["status"] == "done" and acted["review"] == "unreviewed"
-    assert json.loads(nock(project.root, "status", "--json").stdout)["answered"] == []
+    assert json.loads(nock(project.root, "status", "--json").stdout)["important"] == []
+
+
+def test_an_earlier_nock_s_question_reads_as_an_important_decision(project: Project) -> None:
+    number = decide(project.root)["number"]
+    path = Decisions(project).path(number)
+    written = json.loads(path.read_text())
+    path.write_text(json.dumps({**written, "status": "question", "review": "accepted"}))
+    read = Decisions(project).get(number)
+    assert read["status"] == "done" and read["review"] == "accepted"
+    assert read["tags"] == ["important", "storage", "technical"]
+    listed = json.loads(nock(project.root, "decisions", "list", "--json").stdout)
+    assert listed["counts"]["done"]["accepted"] == 1 and "question" not in listed["counts"]
+    edit(project.root, {"number": number, "note": "Fine."})
+    rewritten = json.loads(path.read_text())
+    assert rewritten["status"] == "done" and "important" in rewritten["tags"]
+    assert rewritten["review"] == "accepted"
 
 
 def test_the_edit_hook_is_wired_for_edits_only(project: Project) -> None:

@@ -1,6 +1,7 @@
 """Where the project stands with nock, in one place: whether a reflection round
 is due, the decisions by status and review, those rejected and waiting to be
-redone, the questions the owner answered, a round summary not yet shared, a
+redone, those tagged important that wait on the owner's review, a round
+summary not yet shared, a
 newer nock, and whether another kind of round (a logika round, in a Logika
 project) is worth offering. `nock status` prints it; a
 session the human starts begins with it."""
@@ -21,10 +22,6 @@ if TYPE_CHECKING:
 
 def brief(decision: dict[str, Any]) -> dict[str, Any]:
     return {"number": decision["number"], "title": decision["title"], "note": decision["note"]}
-
-
-# What the owner's review of a question means.
-ANSWERS = {Review.ACCEPTED: "yes", Review.REJECTED: "no", Review.UNREVIEWED: "answered in a note"}
 
 
 # The most items of a kind the session start lists; `nock status` has them all.
@@ -59,16 +56,13 @@ class Standing:
                     {"status": Status.TODO, "review": Review.ACCEPTED}
                 )
             ],
-            "answered": [
-                {**brief(decision), "answer": decision["review"]}
-                for decision in decisions.answered()
-            ],
+            # The owner's calls, each answered as the agent proposed until they review it.
+            "important": [brief(decision) for decision in decisions.important()],
             "notes": [
                 brief(decision)
                 for decision in decisions.matching({})
                 if decision["note"]
                 and decision["review"] != Review.REJECTED
-                and decision["status"] != Status.QUESTION
                 and decision["updated"] > (window.since or "")
             ],
             "unshared": Sharing(self.project).unshared(),
@@ -92,7 +86,7 @@ class Standing:
             lines.append(f"nock: {due} — offer the human `/nock-reflect`, which runs one.")
         counts = standing["decisions"]
         waiting = [
-            f"{counts[Status.QUESTION][Review.UNREVIEWED]} question(s)",
+            f"{len(standing['important'])} important",
             f"{counts[Status.TODO][Review.UNREVIEWED]} todo(s)",
             f"{counts[Status.DONE][Review.UNREVIEWED]} done unreviewed",
             f"{counts[Status.DONE][Review.REJECTED]} rejected to rework",
@@ -109,17 +103,19 @@ class Standing:
         ]
         if len(rework) > SHOWN:
             lines.append(f"- and {len(rework) - SHOWN} more — `.nock/nock status` lists them")
-        answered = standing["answered"]
-        if answered:
+        important = standing["important"]
+        if important:
             lines.append(
-                "nock: questions the owner answered — act on each, then edit it to done saying what you did:"
+                "nock: important decisions awaiting review — agents carry on with each as"
+                " proposed until it is accepted or rejected:"
             )
             lines += [
-                f"- [D{item['number']}] {item['title']} — {ANSWERS[item['answer']]}{said(item)}"
-                for item in answered[:SHOWN]
+                f"- [D{item['number']}] {item['title']}{said(item)}" for item in important[:SHOWN]
             ]
-            if len(answered) > SHOWN:
-                lines.append(f"- and {len(answered) - SHOWN} more — `.nock/nock status` lists them")
+            if len(important) > SHOWN:
+                lines.append(
+                    f"- and {len(important) - SHOWN} more — `.nock/nock status` lists them"
+                )
         notes = [item for item in standing["notes"] if item not in standing["backlog"]]
         if standing["backlog"] or notes:
             parts = [
