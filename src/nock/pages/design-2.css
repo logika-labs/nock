@@ -1,0 +1,123 @@
+/* Design 2, chrome: a light silver base in brushed metal and grain, a polished steel rail for the
+   menu, cards like machined plates, and iridescent foil as the highlight on what is chosen, open or
+   focused. Text is dark ink on near-white plates. */
+:root[data-design="2"] {
+  --background: #eceef2;
+  --foreground: #16181d;
+  --card: #fbfbfc;
+  --muted: #4f5561;
+  --border: #cfd3da;
+  --input: #aeb3bd;
+  --hover: #f2f3f6;
+  --selection: #1d2027;
+  --selection-foreground: #ffffff;
+  --selection-tint: #e3e4ee;
+  --ring: #4b3bd6;
+  --link: #3f30c4;
+  --ok: #17703e;
+  --ok-tint: #e5f2ea;
+  --warning: #8f5300;
+  --error: #b0151b;
+  --info: #155f9c;
+  --display: "Michroma", var(--sans);
+  --steel: linear-gradient(180deg, #fdfdfe 0%, #e3e6eb 45%, #c4c9d1 55%, #eef0f3 100%);
+  --dark-steel: linear-gradient(180deg, #4a4f59 0%, #22252c 48%, #121418 52%, #2e323a 100%);
+  --plate-shadow: inset 0 1px 0 #fff, inset 0 -1px 0 rgb(0 0 0 / .06), 0 1px 2px rgb(20 24 32 / .08), 0 4px 14px rgb(20 24 32 / .06);
+  color-scheme: light;
+}
+/* Brushed metal: the grain stretched sideways into streaks. */
+[data-design="2"] body {
+  background:
+    var(--noise) 0 0 / 1400px 80px,
+    radial-gradient(38rem 26rem at 100% 0%, rgb(195 178 255 / .35), rgb(143 233 255 / .18) 45%, transparent 70%),
+    radial-gradient(30rem 20rem at 60% 110%, rgb(255 154 213 / .18), transparent 70%),
+    linear-gradient(180deg, #f1f2f5 0%, #dde0e5 100%);
+  background-attachment: scroll, fixed, fixed, fixed;
+  background-blend-mode: overlay, normal, normal, normal;
+}
+
+/* The rail: polished steel down the left on a wide screen, a steel bar on top on a narrow one. */
+[data-design="2"] .bar {
+  background: var(--noise) 0 0 / 1400px 120px, linear-gradient(90deg, #d5d9df, #f4f5f7 45%, #c9cdd4);
+  background-blend-mode: soft-light, normal;
+  border-bottom: 1px solid #b7bcc5; box-shadow: inset 0 -1px 0 #fff;
+}
+[data-design="2"] .brand .wordmark { font: 400 13px/1 var(--display); letter-spacing: .08em; text-transform: uppercase; }
+[data-design="2"] .menu a { font: 400 11px/16px var(--display); letter-spacing: .1em; text-transform: uppercase; color: #3a3f49; border-radius: 10px; }
+[data-design="2"] .menu a:hover { background: rgb(255 255 255 / .6); }
+[data-design="2"] .menu a[aria-current="page"] {
+  color: #fff; background: var(--dark-steel);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / .25), 0 2px 6px rgb(0 0 0 / .25);
+  position: relative;
+}
+[data-design="2"] .menu a[aria-current="page"]::after {
+  content: ""; position: absolute; left: 10px; right: 10px; bottom: 3px; height: 2px; border-radius: 2px; background: var(--holo);
+}
+@media (min-width: 960px) {
+  [data-design="2"] body { padding-left: 232px; }
+  [data-design="2"] .bar { position: fixed; top: 0; bottom: 0; left: 0; width: 232px; border-bottom: 0; border-right: 1px solid #b7bcc5; box-shadow: inset -1px 0 0 #fff; }
+  [data-design="2"] .bar-inner { flex-direction: column; align-items: stretch; gap: 28px; padding: 24px 16px; }
+  [data-design="2"] .brand { padding: 4px 6px; }
+  [data-design="2"] .menu { flex-direction: column; align-items: stretch; gap: 6px; }
+  [data-design="2"] .menu a { padding: 12px 14px; }
+  [data-design="2"] .menu a[aria-current="page"]::after { left: 0; right: auto; top: 10px; bottom: 10px; width: 3px; height: auto; }
+}
+
+/* The band: a machined plate with an iridescent edge and four screws; the title etched in dark steel. */
+[data-design="2"] .band { padding-top: 24px; }
+[data-design="2"] .band .frame { position: relative; padding: 28px 32px 22px; }
+[data-design="2"] .band .frame::before {
+  content: ""; position: absolute; inset: 0 16px; z-index: -1; border-radius: 16px;
+  background:
+    radial-gradient(circle at 14px 14px, #9aa0aa 0 2.5px, #f5f6f8 3px 4px, transparent 4.5px),
+    radial-gradient(circle at calc(100% - 14px) 14px, #9aa0aa 0 2.5px, #f5f6f8 3px 4px, transparent 4.5px),
+    radial-gradient(circle at 14px calc(100% - 14px), #9aa0aa 0 2.5px, #f5f6f8 3px 4px, transparent 4.5px),
+    radial-gradient(circle at calc(100% - 14px) calc(100% - 14px), #9aa0aa 0 2.5px, #f5f6f8 3px 4px, transparent 4.5px),
+    var(--noise) 0 0 / 900px 90px, var(--steel);
+  background-blend-mode: normal, normal, normal, normal, soft-light, normal;
+  box-shadow: var(--plate-shadow), 0 0 0 1px #c3c8d0;
+}
+[data-design="2"] .band .frame::after {
+  content: ""; position: absolute; left: 32px; right: 32px; top: 0; height: 3px; z-index: -1; border-radius: 0 0 3px 3px; background: var(--holo);
+}
+[data-design="2"] .band h1 {
+  font: 400 24px/1.3 var(--display); letter-spacing: .02em; text-transform: uppercase;
+  background: var(--dark-steel); -webkit-background-clip: text; background-clip: text; color: transparent;
+  filter: drop-shadow(0 1px 0 #fff);
+}
+[data-design="2"] .band #summary { color: var(--foreground); }
+
+/* Chips, tabs and buttons: dark steel when chosen, foil underneath. */
+[data-design="2"] .chip, [data-design="2"] .evals .chip { background: var(--steel); border-color: var(--border); box-shadow: inset 0 1px 0 #fff; }
+[data-design="2"] .chip[aria-pressed="true"], [data-design="2"] .evals .chip[aria-pressed="true"] {
+  background: var(--dark-steel); color: #fff; border-color: #121418; box-shadow: inset 0 -2px 0 0 #c3b2ff, inset 0 1px 0 rgb(255 255 255 / .2);
+}
+[data-design="2"] .chip[aria-pressed="true"] .count { color: #d9dbe3; }
+[data-design="2"] .chip[data-tag="important"][aria-pressed="true"] { color: #ffd36b; }
+[data-design="2"] .reviews [role="tab"][aria-selected="true"] { border-image: var(--holo) 1; }
+[data-design="2"] .button.primary { background: var(--dark-steel); border-color: #121418; box-shadow: inset 0 1px 0 rgb(255 255 255 / .25), inset 0 -2px 0 #8fe9ff; }
+[data-design="2"] .button.primary:hover { background: var(--dark-steel); filter: brightness(1.2); }
+[data-design="2"] .button.secondary { background: var(--steel); border-color: var(--input); box-shadow: inset 0 1px 0 #fff; }
+
+/* Cards: plates with a bevel; the open one gets a foil edge on the left. */
+[data-design="2"] .decision, [data-design="2"] .evals .card {
+  background: linear-gradient(180deg, #ffffff, #f6f7f9); border-color: #c9cdd4; box-shadow: var(--plate-shadow); border-radius: 14px;
+}
+[data-design="2"] .decision.open { box-shadow: inset 4px 0 0 0 transparent, var(--plate-shadow); position: relative; }
+[data-design="2"] .decision.open::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: var(--holo); }
+[data-design="2"] .decision { position: relative; }
+[data-design="2"] .row .number { font-family: var(--mono); }
+[data-design="2"] .panel.agent, [data-design="2"] .evals pre { background: #eef0f3; }
+[data-design="2"] .evals .node { background: var(--steel); box-shadow: inset 0 1px 0 #fff; }
+[data-design="2"] .evals .node[aria-pressed="true"] { border-color: #121418; box-shadow: inset 3px 0 0 #b9a8ff, inset 0 1px 0 #fff; }
+[data-design="2"] .evals .bar span { background: var(--holo); }
+[data-design="2"] .evals .bar i { background: #16181d; }
+
+[data-design="2"] .designs { background: var(--dark-steel); color: #fff; }
+
+@media (max-width: 560px) {
+  [data-design="2"] .band { padding-top: 16px; }
+  [data-design="2"] .band .frame { padding: 24px 24px 18px; }
+  [data-design="2"] .band h1 { font-size: 19px; }
+  [data-design="2"] .menu a { padding: 8px 10px; letter-spacing: .05em; }
+}

@@ -1,0 +1,105 @@
+/* Design 1, halftone night: a near-black base, holographic foil only where something is chosen or
+   to be done, halftone dot fields in foil colours, the title in brushed metal. Text always sits on
+   solid dark surfaces. */
+:root[data-design="1"] {
+  --background: #0a0a0f;
+  --foreground: #ececf2;
+  --card: #13131b;
+  --muted: #a3a5b5;
+  --border: #262634;
+  --input: #3a3a4c;
+  --hover: #1a1a25;
+  --selection: #b9a8ff;
+  --selection-foreground: #0a0a0f;
+  --selection-tint: #221f36;
+  --ring: #8fe9ff;
+  --link: #8fe9ff;
+  --ok: #7fe0a8;
+  --ok-tint: #12261c;
+  --warning: #ffd36b;
+  --error: #ff8fa3;
+  --info: #8fd0ff;
+  --display: "Space Grotesk", var(--sans);
+  --metal: linear-gradient(180deg, #ffffff 0%, #d9dbe3 38%, #8a8f9c 52%, #f2f3f7 70%, #a7acb8 100%);
+  color-scheme: dark;
+}
+[data-design="1"] body {
+  background:
+    radial-gradient(60rem 22rem at 85% -6rem, rgb(195 178 255 / .16), transparent 70%),
+    radial-gradient(40rem 18rem at 10% -4rem, rgb(143 233 255 / .1), transparent 70%),
+    var(--background);
+}
+[data-design="1"] body::after {
+  content: ""; position: fixed; inset: 0; z-index: 2; pointer-events: none;
+  background: var(--noise); opacity: .07; mix-blend-mode: screen;
+}
+
+/* The bar: dark glass with a foil hairline. */
+[data-design="1"] .bar { background: rgb(10 10 15 / .82); backdrop-filter: blur(14px) saturate(1.2); -webkit-backdrop-filter: blur(14px) saturate(1.2); }
+[data-design="1"] .bar::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 1px; background: var(--holo); opacity: .7; }
+[data-design="1"] .bar-inner { max-width: calc(var(--column) + 32px); margin: 0 auto; }
+[data-design="1"] .menu { margin-left: auto; padding: 3px; border-radius: 999px; background: #15151e; border: 1px solid var(--border); }
+[data-design="1"] .menu a { color: var(--muted); }
+[data-design="1"] .menu a:hover { color: var(--foreground); background: #1d1d29; }
+[data-design="1"] .menu a[aria-current="page"] { color: #0a0a0f; background: var(--holo); background-size: 200% 100%; animation: d1-sheen 9s ease-in-out infinite alternate; }
+
+/* The band: a dark panel with a foil halftone field fading in from the right; the title in metal. */
+[data-design="1"] .band .frame { padding-top: 24px; }
+[data-design="1"] .band .frame {
+  position: relative;
+}
+[data-design="1"] .band .frame::before {
+  content: ""; position: absolute; inset: 12px 16px -4px; z-index: -1; border-radius: 20px;
+  background: #101017; border: 1px solid var(--border);
+}
+[data-design="1"] .band .frame::after {
+  content: ""; position: absolute; top: 13px; bottom: -3px; right: 17px; width: 55%; z-index: -1; border-radius: 0 19px 19px 0;
+  background: var(--holo-conic);
+  -webkit-mask: radial-gradient(circle, #000 42%, transparent 48%) 0 0 / 7px 7px, linear-gradient(to left, #000 0%, rgb(0 0 0 / .45) 35%, transparent 85%);
+  -webkit-mask-composite: source-in; mask-composite: intersect;
+  mask: radial-gradient(circle, #000 42%, transparent 48%) 0 0 / 7px 7px, linear-gradient(to left, #000 0%, rgb(0 0 0 / .45) 35%, transparent 85%);
+  mask-composite: intersect;
+}
+[data-design="1"] .band .frame { padding: 36px 40px 24px; }
+[data-design="1"] .band h1 {
+  font-size: 36px; background: var(--metal); -webkit-background-clip: text; background-clip: text; color: transparent;
+  filter: drop-shadow(0 1px 0 rgb(0 0 0 / .6));
+}
+[data-design="1"] .band #summary { color: var(--foreground); background: #0a0a0f; padding: 2px 10px; border-radius: 999px; border: 1px solid var(--border); }
+[data-design="1"] .notice { background: #0a0a0f; border: 1px solid var(--border); padding: 8px 12px; border-radius: 12px; width: fit-content; max-width: 100%; }
+[data-design="1"] .notice button[data-share="true"] { background: var(--holo); color: #0a0a0f; border-color: transparent; }
+
+/* Chips, buttons and tabs: foil marks what is chosen and what to do. */
+[data-design="1"] .chip[aria-pressed="true"], [data-design="1"] .evals .chip[aria-pressed="true"] {
+  background: var(--holo); color: #0a0a0f; border-color: transparent;
+}
+[data-design="1"] .chip[aria-pressed="true"] .count { color: #0a0a0f; }
+[data-design="1"] .reviews [role="tab"][aria-selected="true"] { border-image: var(--holo) 1; border-bottom-width: 2px; }
+[data-design="1"] .button.primary { background: var(--holo); border: 0; color: #0a0a0f; font-weight: 600; }
+[data-design="1"] .button.primary:hover { filter: brightness(1.08) saturate(1.1); background: var(--holo); }
+[data-design="1"] .button.secondary { background: #1b1b26; }
+
+/* Cards: solid and dark; the open one framed in foil. */
+[data-design="1"] .decision, [data-design="1"] .evals .card { border-radius: 16px; }
+[data-design="1"] .decision.open {
+  border: 1px solid transparent;
+  background: linear-gradient(var(--card), var(--card)) padding-box, var(--holo) border-box;
+}
+[data-design="1"] .decision.open .body { border-top-color: var(--border); }
+[data-design="1"] .row .number { font-family: var(--mono); }
+[data-design="1"] .row .title { font-family: var(--display); font-weight: 500; letter-spacing: 0; }
+[data-design="1"] .panel.agent { background: #0e0e15; }
+[data-design="1"] .evals .node[aria-pressed="true"] { border-color: transparent; box-shadow: none; background: linear-gradient(#1a1a25, #1a1a25) padding-box, var(--holo) border-box; }
+[data-design="1"] .evals .bar span { background: var(--holo); opacity: .55; }
+[data-design="1"] .evals .bar i { background: #fff; }
+[data-design="1"] .evals pre, [data-design="1"] .evals .bar { background: #0a0a0f; }
+
+[data-design="1"] .designs { background: #ececf2; color: #0a0a0f; }
+
+@keyframes d1-sheen { from { background-position: 0% 50%; } to { background-position: 100% 50%; } }
+@media (max-width: 560px) {
+  [data-design="1"] .band .frame { padding: 28px 28px 20px; }
+  [data-design="1"] .band .frame::after { width: 45%; }
+  [data-design="1"] .band .frame { padding: 28px 24px 18px; }
+  [data-design="1"] .band h1 { font-size: 28px; }
+}
