@@ -164,19 +164,17 @@
 :root .menu a:not([aria-current]),
 :root .notice button[data-share="false"],
 :root .gear,
-:root .evals .node,
 :root .evals [data-dry] {
   --tint: rgb(255 184 150 / .6);
   transition: box-shadow .18s ease, border-color .18s, background-color .18s;
 }
 :root .menu a:not([aria-current]), :root .gear { --tint: rgb(130 225 190 / .55); }
-:root .evals .node, :root .evals [data-dry] { --tint: rgb(150 215 255 / .6); }
+:root .evals [data-dry] { --tint: rgb(150 215 255 / .6); }
 :root .button.secondary:not(:disabled):hover,
 :root .button.ghost:not(:disabled):hover,
 :root .menu a:not([aria-current]):hover,
 :root .notice button[data-share="false"]:hover,
 :root .gear:hover, :root .gear[aria-expanded="true"],
-:root .evals .node:hover,
 :root .evals [data-dry]:hover {
   background-color: #fff; border-color: rgb(17 17 22 / .3);
   box-shadow: 0 8px 18px -6px var(--tint), 0 2px 6px -2px var(--tint);
@@ -190,7 +188,7 @@
 
 /* Focus: a black ring with a white gap, visible on glass, foil and black alike. */
 :root .chip:focus-visible, :root .sort button:focus-visible, :root .button:focus-visible, :root .menu a:focus-visible,
-:root .reviews [role="tab"]:focus-visible, :root .evals .node:focus-visible, :root .evals .chip:focus-visible,
+:root .reviews [role="tab"]:focus-visible, :root .evals .chip:focus-visible,
 :root .reference:focus-visible, :root .notice button:focus-visible, :root .notice summary:focus-visible {
   outline: 2px solid #111116; outline-offset: 3px;
 }
@@ -222,14 +220,8 @@
 
 /* --- evals, in the same system ---------------------------------------------------------------- */
 
-:root .evals .node { border-color: rgb(17 17 22 / .18); }
-:root .evals .node[aria-pressed="true"] { border-color: #111116; box-shadow: 3px 3px 0 0 var(--cyan), -3px -3px 0 0 var(--pink); }
-:root .evals .bar { background: #ece8f6; }
-:root .evals .bar span { background: var(--holo); }
-:root .evals .bar i { background: #111116; }
 :root .evals input, :root .evals select { border-radius: 10px; padding: 6px 10px; }
 :root .evals input:focus-visible, :root .evals select:focus-visible { outline: 2px solid #111116; outline-offset: 2px; }
-:root #evals-body > .hint { background: var(--glass); padding: 8px 14px; border-radius: 12px; width: fit-content; color: var(--foreground); }
 
 @keyframes field { from { transform: translate(-4%, -3%) rotate(0deg); } to { transform: translate(4%, 3%) rotate(8deg); } }
 /* Drifting in space: out along (x, y) and a little turned, back by another way. */

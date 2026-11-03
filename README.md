@@ -904,11 +904,34 @@ Snakefile does not read. Snakemake and DuckDB run through
 targets, commits `cache/`, and pushes; entries merge as plain files, and the
 next run anywhere restores them.
 
-**The studio's Evaluations tab** (`#evals` or `#evaluations`) draws a
-scenario's rules from Snakemake's rule graph, each with its outputs current,
-stale and failed; select a rule for its outputs and their numbers and to
-compare them by a parameter; weigh a
-dry run with targets and a budget, nothing run. `nock docs eval` has the
+**The studio's Evaluations tab** (`#evals` or `#evaluations`) draws a scenario as a graph: its rules as columns
+left to right, a row per value of the parameter that forks the runs, each
+group with its runs done, running, failed, stale and not yet run, their
+median cost and key numbers, and wires to what was made from it. Hover a
+group or a run for what it means, its parameters in words, why it is stale,
+its highlights and its files; click it to narrow every column to its right
+to what was made from it (the breadcrumb widens back); split a group by the
+next parameter that forks inside it. "What if I change" picks a parameter's
+value, an input the steps' params carry (a version) or a file, and lights
+what would rerun, with a count and an estimate. While a run goes, the page
+follows it every few seconds. The comparisons view counts the declared
+comparisons as x of y. Snakemake's description of the jobs is kept in
+`.nock/local/evals/` and derived again only when the scenario changes, so the
+tab opens in a second. An optional `evals/NAME/studio.json` words it:
+
+```json
+{
+  "rules": {"detect": {"title": "Detection", "means": "…", "metrics": ["detected"],
+                       "highlights": ["Detected the bug: {detected}, with {alarms} alarms."]}},
+  "parameters": {"bug": {"label": "Planted bug", "values": {"none": "no bug"}}},
+  "lanes": "bug",
+  "analyses": [{"name": "Does the toolbox find it?", "step": "detect", "by": "arm",
+                "metric": "detected", "where": {"bug": "drop-banana"}, "baseline": "control"}]
+}
+```
+
+Without it a rule means the comment above it in the Snakefile. The tab also
+weighs a dry run with targets and a budget, nothing run. `nock docs eval` has the
 rest, with the practice that keeps an evaluation honest: fix the inputs,
 keep the answers from what is scored, measure the outcome, run enough
 repetitions, write the comparison down first.

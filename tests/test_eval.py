@@ -22,21 +22,8 @@ from nock.studio import Studio
 
 from .conftest import git, nock
 
-TOY = Path(__file__).with_name("toy")
 OUTPUTS = 1 + 2 + 12 + 3 + 6
 """build, plant per bug, detect per arm, bug and rep, fix where found, score per bug and rep."""
-
-
-@pytest.fixture
-def toy(project: Project) -> Path:
-    """The toy scenario, scaffolded by `eval init` and filled with the toy's files, committed."""
-    assert nock(project.root, "eval", "init", "toy").returncode == 0
-    directory = project.root / "evals" / "toy"
-    (directory / "steps/example.py").unlink()
-    shutil.copytree(TOY, directory, dirs_exist_ok=True)
-    git(project.root, "add", "-A")
-    git(project.root, "commit", "-qm", "The toy scenario")
-    return directory
 
 
 def call(directory: Path, *arguments: str) -> Any:
@@ -470,20 +457,33 @@ def post(address: str, body: dict[str, Any]) -> Any:
         raise AssertionError(error.read().decode()) from error
 
 
-def test_the_studio_reads_the_same_tables_and_weighs_a_run_without_running_it(
+def test_the_studio_explores_the_graph_and_weighs_a_run_without_running_it(
     project: Project, toy: Path, page: str
 ) -> None:
     call(project.root, "run")
+    explored: dict[str, Any] = {}
+    # The studio reads the workflow in the background: the page polls until it has.
+    for _ in range(1200):
+        explored = post(f"{page}evals/toy/explore", {})
+        rules = [item["rule"] for item in explored.get("columns", [])]
+        if "fix" in rules and explored["counts"]["done"] == OUTPUTS:
+            break
+        threading.Event().wait(0.1)
+    assert [item["rule"] for item in explored["columns"]] == [
+        "build",
+        "plant",
+        "detect",
+        "fix",
+        "score",
+    ]
     with urllib.request.urlopen(f"{page}evals") as response:
-        scenarios = json.loads(response.read())["scenarios"]
-    toy_page = scenarios[0]
-    assert ["build", "plant"] in toy_page["graph"]["edges"]
-    assert ["detect", "fix"] in toy_page["graph"]["edges"]
-    assert len(toy_page["outputs"]) == OUTPUTS
-    leaf = next(
-        item for item in toy_page["outputs"] if item["path"].endswith("arm=toolbox/bug=none/rep=3")
-    )
-    assert leaf["metrics"] == {"detected": 0.0, "alarms": 1.0} and leaf["state"] == "current"
+        [summary] = json.loads(response.read())["scenarios"]
+    assert summary["steps"] == OUTPUTS and summary["counts"]["done"] == OUTPUTS, summary
+    leaf = "results/detect/arm=toolbox/bug=none/rep=3"
+    run = post(f"{page}evals/toy/run", {"output": leaf})
+    assert run["state"] == "done" and "metrics.json" in [item["name"] for item in run["files"]]
+    text = post(f"{page}evals/toy/file", {"output": leaf, "name": "metrics.json"})
+    assert json.loads(text["text"]) == {"detected": False, "alarms": 1}
 
     detect = toy / "steps/detect.py"
     detect.write_text(detect.read_text() + "\n# a draft\n")
