@@ -1,25 +1,16 @@
 <!doctype html>
-<html lang="en" data-design="1">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>nock studio</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&family=Space+Grotesk:wght@500;700&family=Michroma&family=Unbounded:wght@500;700;800&family=Pixelify+Sans:wght@500;700&display=swap">
-<script>
-// The design under review (`?design=1|2|3`, else the last one picked), set before the page paints.
-const DESIGNS = ["1", "2", "3"];
-(() => {
-  let design = new URLSearchParams(location.search).get("design");
-  try { design = design || localStorage.getItem("nock.design"); } catch {}
-  document.documentElement.dataset.design = DESIGNS.includes(design) ? design : "1";
-})();
-</script>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Unbounded:wght@600;800&display=swap">
 <style>
-/* The studio's frame, the same in every design: a bar with the brand and the menu, a band with the
-   open tab's title and counts, then the tab's one centred column. The designs (pages/design-N.css,
-   put in below) give it its tokens, surfaces and type; each tab's own look is in its fragment. */
+/* The studio's frame: a band with the open tab's title, its counts under it and the menu beside
+   it, then the tab's one centred column. Its look — tokens, surfaces, type, the field behind —
+   is in pages/studio.css, put in below; each tab's own look is in its fragment. */
 :root {
   --background: #f4f4f6;
   --foreground: #16161c;
@@ -31,26 +22,20 @@ const DESIGNS = ["1", "2", "3"];
   --selection: #16161c;
   --selection-foreground: #ffffff;
   --selection-tint: #ececf2;
-  --ring: #5b4bff;
+  --ring: #16161c;
   --link: #4b3bd6;
   --ok: #1f7a44;
   --ok-tint: #e7f4ec;
   --warning: #a35f00;
   --error: #b0151b;
   --info: #1666a6;
-  --field: var(--foreground);
-  --field-foreground: var(--background);
 
   --sans: "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-  --mono: "Geist Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
   --display: var(--sans);
   --column: 46rem;
   --number: 2.25rem;
   --radius: 12px;
-
-  --holo: linear-gradient(115deg, #ff9ad5 0%, #c3b2ff 22%, #8fe9ff 45%, #d9ffd0 62%, #fff2a0 78%, #ffb0d6 100%);
-  --holo-conic: conic-gradient(from 210deg at 50% 50%, #ff9ad5, #c3b2ff, #8fe9ff, #d9ffd0, #fff2a0, #ffb0d6, #ff9ad5);
-  --noise: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3' stitchTiles='stitch'/><feColorMatrix type='saturate' values='0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
   color-scheme: light;
 }
 
@@ -68,12 +53,12 @@ button:not(:disabled), label[for] { cursor: pointer; }
 .numeral { font-variant-numeric: tabular-nums; }
 .stage { position: relative; z-index: 1; }
 
-/* The bar: the brand, then the menu — one link per tab, the open one marked. */
-.bar { position: sticky; top: 0; z-index: 10; }
-.bar-inner { display: flex; align-items: center; gap: 8px 24px; padding: 10px max(16px, env(safe-area-inset-left, 0px)); }
-.brand { display: inline-flex; align-items: center; gap: 10px; color: inherit; text-decoration: none; border-radius: 8px; }
-.brand .mascot { width: 40px; height: 28px; flex: none; }
-.brand .wordmark { font: 700 16px/1 var(--display); letter-spacing: -.01em; }
+/* The band: the title with its counts under it, the menu — one link per tab — beside it. */
+.band .frame { padding-block: 24px 4px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; }
+.heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 20px; min-width: 0; }
+.titles { display: grid; gap: 4px; min-width: 0; }
+.band h1 { margin: 0; font: 700 30px/1.15 var(--display); letter-spacing: -.02em; }
+.band #summary { margin: 0; font: 500 13px/20px var(--mono); color: var(--muted); font-variant-numeric: tabular-nums; }
 .menu { display: flex; align-items: center; gap: 4px; }
 .menu a {
   display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px; border-radius: 999px;
@@ -85,15 +70,9 @@ button:not(:disabled), label[for] { cursor: pointer; }
 }
 .menu a[data-tab-link="decisions"] { --icon: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><path d='M2 2h12v3H2zM2 6.5h12v3H2zM2 11h8v3H2z'/></svg>"); }
 .menu a[data-tab-link="evals"] { --icon: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><path d='M1 13h3V8H1zM6.5 13h3V3h-3zM12 13h3V6h-3z'/></svg>"); }
-.brand:focus-visible, .menu a:focus-visible, .designs button:focus-visible, .notice button:focus-visible, .notice summary:focus-visible {
-  outline: 2px solid var(--ring); outline-offset: 2px;
-}
+.menu a:focus-visible, .notice button:focus-visible, .notice summary:focus-visible { outline: 2px solid var(--ring); outline-offset: 3px; }
 
-/* The band: the open tab's title and its counts on one line, and the sharing question while unanswered. */
-.band .frame { padding-block: 28px 4px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; }
-.heading { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 16px; min-width: 0; }
-.band h1 { margin: 0; font: 700 30px/1.15 var(--display); letter-spacing: -.02em; }
-.band #summary { margin: 0; font: 500 13px/20px var(--mono); color: var(--muted); font-variant-numeric: tabular-nums; }
+/* The sharing question, while unanswered: one line, what it holds on request. */
 .notice { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; font-size: 13px; color: var(--muted); }
 .notice p { margin: 0; }
 .notice .choices { display: flex; gap: 6px; }
@@ -117,28 +96,13 @@ button:not(:disabled), label[for] { cursor: pointer; }
 }
 .toast.shown { opacity: 1; transform: translate(-50%, 0); }
 
-/* The design switcher, for reviewing the three designs side by side. */
-.designs {
-  position: fixed; z-index: 20; right: 16px; bottom: calc(16px + env(safe-area-inset-bottom, 0px));
-  display: flex; align-items: center; gap: 4px; padding: 4px 4px 4px 12px; border-radius: 999px;
-  background: var(--foreground); color: var(--background); font: 500 11px/1 var(--mono); letter-spacing: .06em; text-transform: uppercase;
-  box-shadow: 0 6px 24px rgb(0 0 0 / .25);
-}
-.designs button {
-  width: 28px; height: 28px; border-radius: 50%; border: 0; background: transparent; color: inherit; font: 600 13px/1 var(--mono);
-}
-.designs button[aria-pressed="true"] { background: var(--holo); color: #111; }
-
-/* Decoration, shown by the designs that want it; never under text. */
-.backdrop { display: none; position: fixed; inset: 0; z-index: 0; overflow: hidden; pointer-events: none; }
+/* Decoration behind everything; never under text. */
+.backdrop { position: fixed; inset: 0; z-index: 0; overflow: hidden; pointer-events: none; }
 .sprites { position: absolute; width: 0; height: 0; overflow: hidden; }
 
 @media (max-width: 560px) {
-  .bar-inner { gap: 8px 12px; }
-  .brand .wordmark span { display: none; }
   .menu a { padding: 8px 12px; }
   .band h1 { font-size: 24px; }
-  .designs { right: auto; left: 12px; }
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition: none !important; animation: none !important; }
@@ -155,7 +119,7 @@ const studio = {
   current: null,
   // tab: { show(route) — it is opened, or its route changes; hide() — another is opened }.
   register(name, tab) { this.tabs.set(name, tab); },
-  // The counts beside the title, kept per tab and shown for the open one.
+  // The counts under the title, kept per tab and shown for the open one.
   summary(name, text) {
     this.summaries.set(name, text);
     if (name === this.current) document.getElementById("summary").textContent = text;
@@ -188,12 +152,6 @@ const studio = {
     document.getElementById("summary").textContent = this.summaries.get(name) ?? "…";
     this.tabs.get(name).show(route);
   },
-  design(chosen) {
-    document.documentElement.dataset.design = chosen;
-    try { localStorage.setItem("nock.design", chosen); } catch {}
-    history.replaceState(null, "", `?design=${chosen}${location.hash}`);
-    for (const button of document.querySelectorAll("[data-design]")) button.setAttribute("aria-pressed", String(button.dataset.design === chosen));
-  },
 };
 </script>
 </head>
@@ -218,35 +176,27 @@ const studio = {
   </defs>
 </svg>
 <div class="backdrop" aria-hidden="true">
-  <span class="halftone"></span>
   <svg class="creature one"><use href="#mascot"/></svg>
   <svg class="creature two"><use href="#mascot"/></svg>
   <svg class="creature three"><use href="#mascot"/></svg>
   <svg class="creature four"><use href="#mascot"/></svg>
+  <svg class="creature five"><use href="#mascot"/></svg>
+  <svg class="creature six"><use href="#mascot"/></svg>
   <span class="bubble one"></span><span class="bubble two"></span><span class="bubble three"></span><span class="bubble four"></span><span class="bubble five"></span>
 </div>
-<header class="bar">
-  <div class="bar-inner">
-    <a class="brand" href="#" aria-label="nock studio, home"><svg class="mascot" aria-hidden="true"><use href="#mascot"/></svg><span class="wordmark">nock<span> studio</span></span></a>
-    <nav class="menu" aria-label="Studio">
-<!-- nock:tabs -->
-    </nav>
-  </div>
-</header>
 <div class="stage">
 <header class="band">
   <div class="frame">
-    <div class="heading"><h1 id="title"></h1><p id="summary">…</p></div>
+    <div class="heading">
+      <div class="titles"><h1 id="title"></h1><p id="summary">…</p></div>
+      <nav class="menu" aria-label="Studio">
+<!-- nock:tabs -->
+      </nav>
+    </div>
 <!-- nock:notice -->
   </div>
 </header>
 <!-- nock:panels -->
-</div>
-<div class="designs" role="group" aria-label="Design">
-  <span aria-hidden="true">design</span>
-  <button type="button" data-design="1" aria-pressed="false" aria-label="Design 1: halftone night">1</button>
-  <button type="button" data-design="2" aria-pressed="false" aria-label="Design 2: chrome">2</button>
-  <button type="button" data-design="3" aria-pressed="false" aria-label="Design 3: holo">3</button>
 </div>
 <div class="toast" id="toast" role="status"></div>
 <script>
@@ -260,8 +210,6 @@ for (const button of document.querySelectorAll("#usage [data-share]")) {
     studio.toast(share ? "nock will share its weekly usage report" : "nock shares nothing");
   });
 }
-for (const button of document.querySelectorAll("[data-design]")) button.addEventListener("click", () => studio.design(button.dataset.design));
-studio.design(document.documentElement.dataset.design);
 addEventListener("hashchange", () => studio.open());
 studio.open();
 </script>

@@ -1,0 +1,234 @@
+/* The studio's look: a full-bleed holographic field with grain, nock's pixel creatures floating in
+   it with shadows in the foil colours; everything readable sits on frosted, grainy white glass.
+   Headings in Unbounded, labels and counts in IBM Plex Mono. Rules are under :root so they outweigh
+   a fragment's own rule for the same thing. */
+:root {
+  --background: #f3f0fb;
+  --foreground: #111116;
+  --card: rgb(255 255 255 / .95);
+  --muted: #474756;
+  --border: rgb(17 17 22 / .12);
+  --input: rgb(17 17 22 / .28);
+  --hover: rgb(255 255 255 / .98);
+  --selection: #111116;
+  --selection-foreground: #ffffff;
+  --selection-tint: rgb(17 17 22 / .06);
+  --ring: #111116;
+  --link: #4b2fd0;
+  --ok: #136b3a;
+  --ok-tint: #e1f3e8;
+  --warning: #8a4f00;
+  --error: #ab1320;
+  --info: #145a96;
+  --display: "Unbounded", var(--sans);
+  --radius: 20px;
+
+  --pink: #ff9ad5;
+  --cyan: #8fe9ff;
+  --yellow: #ffe27a;
+  --lavender: #b9a6ff;
+  --holo: linear-gradient(115deg, #ff9ad5 0%, #c3b2ff 22%, #8fe9ff 45%, #d9ffd0 62%, #fff2a0 78%, #ffb0d6 100%);
+  --holo-conic: conic-gradient(from 210deg at 50% 50%, #ff9ad5, #c3b2ff, #8fe9ff, #d9ffd0, #fff2a0, #ffb0d6, #ff9ad5);
+  --noise: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3' stitchTiles='stitch'/><feColorMatrix type='saturate' values='0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+  /* Grain for the field: dark specks and light ones, the rest transparent. */
+  --grain: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='d'><feTurbulence type='fractalNoise' baseFrequency='1.1' numOctaves='2' seed='3' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 .1  0 0 0 0 .05  0 0 0 0 .2  3 0 0 0 -1.75'/></filter><filter id='l'><feTurbulence type='fractalNoise' baseFrequency='1.1' numOctaves='2' seed='8' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  3 0 0 0 -1.7'/></filter><rect width='100%' height='100%' filter='url(%23d)'/><rect width='100%' height='100%' filter='url(%23l)'/></svg>");
+  /* The offset shadow in two foil colours: what is chosen, and what to do. */
+  --one: var(--cyan);
+  --two: var(--pink);
+  --offset: 2px;
+  --glass: rgb(255 255 255 / .9);
+}
+:root body { background: #e9e2ff; }
+
+/* --- the field: mesh-like foil gradients drifting slowly, grain over them, creatures and bubbles */
+
+:root .backdrop::before {
+  content: ""; position: absolute; inset: -20%;
+  background:
+    radial-gradient(36% 30% at 20% 25%, #ff9ad5 0%, transparent 70%),
+    radial-gradient(30% 34% at 75% 20%, #8fe9ff 0%, transparent 70%),
+    radial-gradient(34% 30% at 60% 70%, #fff2a0 0%, transparent 70%),
+    radial-gradient(30% 30% at 25% 80%, #c3b2ff 0%, transparent 70%),
+    radial-gradient(26% 26% at 90% 85%, #ffb0d6 0%, transparent 70%),
+    var(--holo-conic);
+  filter: saturate(1.15);
+  animation: field 40s ease-in-out infinite alternate;
+}
+:root .backdrop::after {
+  content: ""; position: absolute; inset: 0; z-index: 2;
+  background: var(--grain) 0 0 / 200px 200px; opacity: .5;
+}
+:root .creature {
+  position: absolute; z-index: 1; filter: drop-shadow(0 12px 18px var(--shadow));
+  animation: float var(--period) ease-in-out var(--delay) infinite;
+}
+:root .creature.one   { --shadow: rgb(255 120 200 / .75); --period: 26s; --delay: -3s;  --turn: -12deg; --x: 18px;  --y: -22px; width: 220px; height: 160px; left: -40px; bottom: 6%; }
+:root .creature.two   { --shadow: rgb(90 220 255 / .8);   --period: 21s; --delay: -9s;  --turn: 10deg;  --x: -16px; --y: 18px;  width: 120px; height: 88px; right: 4%; top: 16%; }
+:root .creature.three { --shadow: rgb(255 214 60 / .85);  --period: 17s; --delay: -5s;  --turn: -6deg;  --x: 12px;  --y: 14px;  width: 54px; height: 40px; left: 6%; top: 22%; }
+:root .creature.four  { --shadow: rgb(160 130 255 / .8);  --period: 23s; --delay: -14s; --turn: 8deg;   --x: -14px; --y: -16px; width: 70px; height: 52px; right: 14%; bottom: 10%; }
+:root .creature.five  { --shadow: rgb(120 240 190 / .8);  --period: 19s; --delay: -7s;  --turn: 14deg;  --x: 10px;  --y: -12px; width: 40px; height: 30px; left: 22%; bottom: 30%; }
+:root .creature.six   { --shadow: rgb(255 160 120 / .8);  --period: 29s; --delay: -18s; --turn: -16deg; --x: -10px; --y: 10px;  width: 46px; height: 34px; right: 26%; top: 4%; }
+:root .bubble {
+  position: absolute; border-radius: 50%; width: 22px; height: 22px; --turn: 0deg; --x: 8px; --y: -18px;
+  background: radial-gradient(circle at 32% 28%, #fff 0 12%, rgb(255 255 255 / .2) 30%, transparent 60%), radial-gradient(circle, rgb(195 178 255 / .35), rgb(143 233 255 / .55) 70%, rgb(255 255 255 / .8) 72%, transparent 76%);
+  animation: float 24s ease-in-out infinite;
+}
+:root .bubble.one { left: 14%; top: 12%; animation-delay: -4s; }
+:root .bubble.two { right: 22%; top: 44%; width: 34px; height: 34px; animation-duration: 31s; }
+:root .bubble.three { left: 9%; top: 46%; width: 14px; height: 14px; animation-delay: -11s; }
+:root .bubble.four { right: 8%; bottom: 30%; width: 18px; height: 18px; animation-duration: 19s; }
+:root .bubble.five { left: 30%; bottom: 6%; width: 28px; height: 28px; animation-delay: -16s; }
+
+/* --- the band: the title on glass, the menu beside it ------------------------------------------- */
+
+:root .band .frame { padding-top: 24px; }
+:root .heading, :root .notice {
+  padding: 16px 16px 16px 24px; border-radius: var(--radius);
+  background: var(--noise), var(--glass); background-blend-mode: soft-light, normal;
+  backdrop-filter: blur(16px) saturate(1.3); -webkit-backdrop-filter: blur(16px) saturate(1.3);
+  border: 1px solid rgb(255 255 255 / .9); box-shadow: 0 6px 24px rgb(60 20 120 / .1);
+}
+:root .notice { padding: 10px 16px; color: var(--foreground); }
+:root .band h1 { font: 800 32px/1.1 var(--display); letter-spacing: -.03em; }
+:root .band #summary { font: 500 13px/20px var(--mono); color: var(--foreground); letter-spacing: .01em; }
+:root .menu { padding: 4px; border-radius: 999px; background: rgb(17 17 22 / .05); }
+:root .menu a { font: 600 14px/20px var(--sans); }
+
+/* --- type: labels and counts in the mono ------------------------------------------------------- */
+
+:root .label, :root .chip, :root .reviews [role="tab"], :root .evals th, :root .sort button {
+  font-family: var(--mono); letter-spacing: .04em;
+}
+:root .chip, :root .reviews [role="tab"] { font-size: 12px; font-weight: 500; }
+:root .row .number { font: 600 14px/24px var(--mono); color: var(--foreground); }
+:root .row .title { font: 600 16px/24px var(--sans); }
+
+/* --- the decisions' controls: the review tabs, sort, search and filters as one glass card ------ */
+
+:root .controls {
+  margin-top: 16px; padding: 0 18px 16px; border-radius: var(--radius);
+  background: var(--noise), var(--glass); background-blend-mode: soft-light, normal;
+  backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgb(255 255 255 / .9); box-shadow: 0 6px 24px rgb(60 20 120 / .1);
+}
+:root .controls nav.reviews { margin-top: 0; }
+:root .controls .tools { padding-top: 14px; }
+
+/* --- what is chosen: black, with the two-colour offset shadow --------------------------------- */
+
+:root .menu a[aria-current="page"],
+:root .chip[aria-pressed="true"],
+:root .evals .chip[aria-pressed="true"],
+:root .button.primary,
+:root .notice button[data-share="true"] {
+  background: #111116; color: #fff; border-color: #111116;
+  box-shadow: var(--offset) var(--offset) 0 0 var(--one), calc(-1 * var(--offset)) calc(-1 * var(--offset)) 0 0 var(--two);
+  transition: transform .18s cubic-bezier(.3, 1.6, .5, 1), box-shadow .18s ease, background-color .18s;
+}
+:root .chip[data-tag="important"][aria-pressed="true"] { color: var(--yellow); }
+:root .chip[aria-pressed="true"] .count { color: #fff; }
+:root .menu a[aria-current="page"]:hover,
+:root .chip[aria-pressed="true"]:hover,
+:root .evals .chip[aria-pressed="true"]:hover,
+:root .button.primary:not(:disabled):hover,
+:root .notice button[data-share="true"]:hover {
+  --offset: 4px; transform: scale(1.06); background: #111116;
+}
+:root .button.primary:not(:disabled):active { --offset: 1px; transform: scale(.98); }
+:root .button { border-radius: 12px; }
+
+/* --- everything else: a foil sheen sweeps across on hover, with a soft glow and a slight lift -- */
+
+:root .chip:not([aria-pressed="true"]),
+:root .evals .chip:not([aria-pressed="true"]),
+:root .button.secondary,
+:root .button.ghost,
+:root .menu a:not([aria-current]),
+:root .notice button[data-share="false"],
+:root .evals .node,
+:root .evals [data-dry] {
+  background-color: rgb(255 255 255 / .9);
+  background-image: linear-gradient(110deg, transparent 30%, rgb(143 233 255 / .55) 42%, rgb(255 154 213 / .5) 50%, rgb(255 242 160 / .55) 58%, transparent 70%);
+  background-size: 260% 100%; background-position: 120% 0; background-repeat: no-repeat;
+  transition: background-position .55s ease, transform .15s ease, box-shadow .15s ease, border-color .15s;
+}
+:root .chip:not([aria-pressed="true"]) { border-color: rgb(17 17 22 / .2); }
+:root .menu a:not([aria-current]), :root .button.ghost { background-color: transparent; }
+:root .chip:not([aria-pressed="true"]):not(:disabled):hover,
+:root .evals .chip:not([aria-pressed="true"]):hover,
+:root .button.secondary:not(:disabled):hover,
+:root .button.ghost:not(:disabled):hover,
+:root .menu a:not([aria-current]):hover,
+:root .notice button[data-share="false"]:hover,
+:root .evals .node:hover,
+:root .evals [data-dry]:hover {
+  background-position: -20% 0; transform: translateY(-1px);
+  border-color: rgb(17 17 22 / .35); box-shadow: 0 0 0 3px rgb(195 178 255 / .35), 0 4px 12px rgb(60 20 120 / .12);
+}
+:root .chip:disabled { background-image: none; }
+:root .sort button:hover { color: var(--foreground); text-decoration: underline; text-decoration-color: var(--lavender); text-decoration-thickness: 2px; text-underline-offset: 4px; }
+:root .reviews [role="tab"]:hover { color: var(--foreground); border-bottom-color: var(--lavender); }
+:root .reviews [role="tab"][aria-selected="true"] { border-bottom-color: #111116; }
+:root .row { transition: background-color .15s; }
+:root .row:hover { background: linear-gradient(90deg, rgb(255 154 213 / .1), rgb(143 233 255 / .1)); }
+
+/* Focus: a black ring with a white gap, visible on glass, foil and black alike. */
+:root .chip:focus-visible, :root .sort button:focus-visible, :root .button:focus-visible, :root .menu a:focus-visible,
+:root .reviews [role="tab"]:focus-visible, :root .evals .node:focus-visible, :root .evals .chip:focus-visible,
+:root .reference:focus-visible, :root .notice button:focus-visible, :root .notice summary:focus-visible {
+  outline: 2px solid #111116; outline-offset: 3px;
+}
+:root .row:focus-visible { outline: 2px solid #111116; outline-offset: -4px; border-radius: 16px; }
+
+/* --- cards: near-opaque grainy white, so a long list scrolls without blurring each card -------- */
+
+:root .decision, :root .evals .card {
+  border-radius: var(--radius); border: 1px solid rgb(255 255 255 / .95);
+  background: var(--noise), rgb(255 255 255 / .95); background-blend-mode: soft-light, normal;
+  box-shadow: 0 6px 24px rgb(60 20 120 / .1);
+}
+/* An open one takes a pair of foil colours by its number, so open ones tell apart. */
+:root .decision[data-hue="0"] { --one: var(--cyan); --two: var(--pink); }
+:root .decision[data-hue="1"] { --one: var(--yellow); --two: var(--cyan); }
+:root .decision[data-hue="2"] { --one: var(--lavender); --two: var(--yellow); }
+:root .decision[data-hue="3"] { --one: var(--pink); --two: var(--lavender); }
+:root .decision.open {
+  border: 2px solid #111116;
+  box-shadow: 5px 5px 0 0 var(--one), -5px -5px 0 0 var(--two), 0 12px 32px rgb(60 20 120 / .18);
+}
+:root .decision.open .row .number {
+  justify-self: end; padding: 0 7px; border-radius: 8px; background: linear-gradient(135deg, var(--two), var(--one));
+}
+:root .decision.open .body { border-top: 1px dashed rgb(17 17 22 / .2); }
+:root .decision.open .section > .label { color: var(--foreground); }
+:root .decision.open .section li::marker { color: #111116; }
+:root .decision.open textarea:focus-visible { border-bottom: 2px solid #111116; }
+
+:root .panel.agent, :root .evals pre, :root .context code, :root .context pre, :root .links code { background: #f1eefa; }
+:root .empty { background: var(--glass); border-radius: var(--radius); }
+
+/* --- evals, in the same system ---------------------------------------------------------------- */
+
+:root .evals .node { border-color: rgb(17 17 22 / .18); }
+:root .evals .node[aria-pressed="true"] { border-color: #111116; box-shadow: 3px 3px 0 0 var(--cyan), -3px -3px 0 0 var(--pink); }
+:root .evals .bar { background: #ece8f6; }
+:root .evals .bar span { background: var(--holo); }
+:root .evals .bar i { background: #111116; }
+:root .evals input, :root .evals select { border-radius: 10px; padding: 6px 10px; }
+:root .evals input:focus-visible, :root .evals select:focus-visible { outline: 2px solid #111116; outline-offset: 2px; }
+:root #evals-body > .hint { background: var(--glass); padding: 8px 14px; border-radius: 12px; width: fit-content; color: var(--foreground); }
+
+@keyframes field { from { transform: translate(-4%, -3%) rotate(0deg); } to { transform: translate(4%, 3%) rotate(8deg); } }
+/* Drifting in space: out along (x, y) and a little turned, back by another way. */
+@keyframes float {
+  0%, 100% { transform: translate(0, 0) rotate(var(--turn)); }
+  30% { transform: translate(var(--x), var(--y)) rotate(calc(var(--turn) + 5deg)); }
+  65% { transform: translate(calc(var(--x) * -.6), calc(var(--y) * .4)) rotate(calc(var(--turn) - 4deg)); }
+}
+@media (max-width: 560px) {
+  :root .heading { padding: 14px 14px 14px 18px; }
+  :root .band h1 { font-size: 24px; }
+  :root .controls { padding: 0 14px 14px; }
+  :root .creature.one { width: 140px; height: 100px; }
+  :root .creature.two { width: 70px; height: 52px; }
+}

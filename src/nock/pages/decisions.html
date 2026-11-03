@@ -1,5 +1,5 @@
 <style>
-/* The decisions tab: the review tabs, search and filters, then the decisions; one opens in place. */
+/* The decisions tab: the controls — review tabs, sort, search and filters — then the decisions; one opens in place. */
 nav.reviews { display: flex; flex-wrap: wrap; align-items: center; gap: 0 24px; border-bottom: 1px solid var(--border); margin-top: 8px; }
 
 /* Search and filters: one line under the tabs, every control a bare field with a bottom border. */
@@ -157,6 +157,7 @@ kbd {
 }
 </style>
 <div class="frame">
+  <div class="controls">
   <nav class="reviews" role="tablist" aria-label="Which decisions">
     <button type="button" role="tab" data-review="unreviewed" aria-selected="true">to review <span class="count" id="count-unreviewed"></span></button>
     <button type="button" role="tab" data-review="accepted" aria-selected="false">accepted <span class="count" id="count-accepted"></span></button>
@@ -173,6 +174,7 @@ kbd {
       <input type="search" id="search" placeholder="search" autocomplete="off" aria-label="Search decisions">
     </label>
     <div class="chips" id="chips" role="group" aria-label="Filter"></div>
+  </div>
   </div>
   <main><section id="list" aria-live="polite"></section></main>
 <script>
@@ -390,7 +392,7 @@ function draw() {
   const filtered = state.search.trim() || state.statuses.size || state.tags.size;
   document.getElementById("list").innerHTML = shown.length ? shown.map(decision => {
     const open = state.expanded.has(decision.number);
-    return `<article class="decision ${open ? "open" : ""} ${decision.superseded_by ? "superseded" : ""}">
+    return `<article class="decision ${open ? "open" : ""} ${decision.superseded_by ? "superseded" : ""}" data-hue="${decision.number % 4}">
       <button type="button" class="row" data-toggle="${decision.number}" aria-expanded="${open}">
         <span class="number">${decision.number}</span>
         <span class="title">${escape(decision.title)}</span>

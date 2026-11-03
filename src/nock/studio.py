@@ -5,8 +5,7 @@ reviewed in place, and the evaluations, read from their files. Local, and only w
 A tab is a `Tab` in `TABS`: its name is its address on the page (`#NAME`) and
 its routes on the server (`/NAME/…`); its page is the fragment
 `pages/NAME.html` (markup, style and a script that registers it with the
-studio, `pages/studio.html`, whose look is the design in `pages/design-N.css`
-the page picks). While nobody has answered whether nock shares
+studio, `pages/studio.html`, whose look is `pages/studio.css`). While nobody has answered whether nock shares
 its usage report, the page asks under the title, and `POST /usage` records
 the owner's answer."""
 
@@ -33,6 +32,7 @@ from nock.usage import QUESTION, Answer, Usage, sharing
 
 PAGES = Path(__file__).resolve().with_name("pages")
 SHELL = PAGES / "studio.html"
+LOOK = PAGES / "studio.css"
 
 
 class Tab:
@@ -197,8 +197,8 @@ class Studio(ThreadingHTTPServer):
         return f"http://127.0.0.1:{self.server_address[1]}/"
 
     def page(self) -> bytes:
-        """The shell with the designs' styles and every tab's link and panel
-        in it, the first tab open."""
+        """The shell with its look and every tab's link and panel in it, the
+        first tab open."""
         links = "\n".join(
             f'      <a href="#{tab.name}" data-tab-link="{tab.name}">{html.escape(tab.title)}</a>'
             for tab in self.tabs.values()
@@ -207,12 +207,9 @@ class Studio(ThreadingHTTPServer):
             f'<section data-tab-panel="{tab.name}" hidden>\n{tab.fragment()}</section>'
             for tab in self.tabs.values()
         )
-        styles = "\n".join(
-            f"<style>\n{path.read_text()}</style>" for path in sorted(PAGES.glob("design-*.css"))
-        )
         shell = SHELL.read_text()
         return (
-            shell.replace("<!-- nock:styles -->", styles)
+            shell.replace("<!-- nock:styles -->", f"<style>\n{LOOK.read_text()}</style>")
             .replace("<!-- nock:tabs -->", links)
             .replace("<!-- nock:panels -->", panels)
             .replace("<!-- nock:notice -->", self.question())

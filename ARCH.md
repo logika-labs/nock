@@ -59,9 +59,9 @@ src/nock/
   kinds.py           KINDS: the kinds of round, the default first; adding one is an entry here
   decisions.py       Decisions (decide, edit, review, elaborate, what governs a file, the map's problems)
   studio.py          the owner's page (`nock studio`): a local server, a Tab per tab
-  pages/             studio.html, the shell (bar and menu, band, routing by `#NAME/ROUTE`);
-                     NAME.html, each tab's fragment (markup, style, a script registering it);
-                     design-N.css, the designs under review (`?design=N`), put in the shell
+  pages/             studio.html, the shell (band with the title and the menu, routing by
+                     `#NAME/ROUTE`); studio.css, its look, put in the shell;
+                     NAME.html, each tab's fragment (markup, style, a script registering it)
   status.py          Standing: a round due, decisions waiting, rejected ones to rework, answered
                      questions, an unshared summary
   share.py           Sharing: a round's summary, held to naming nothing, sent on the owner's word
@@ -415,16 +415,15 @@ primer.
 
 `nock studio` serves one page from one process, `studio.Studio`, a
 `ThreadingHTTPServer` on 127.0.0.1. The page is `pages/studio.html` with
-the designs' styles (`pages/design-N.css`; `?design=N` picks one, the page
-remembers it, a switcher in the corner changes it), each tab's link in the
-menu and its fragment (`pages/NAME.html`) put in; the browser
+its look (`pages/studio.css`), each tab's link in the menu and its fragment
+(`pages/NAME.html`) put in; the browser
 shows the tab the address names (`#NAME`, or `#NAME/ROUTE` for something in
 it; an address naming no tab goes to the first, so `#7` opens decision 7).
 On the server, `/NAME/ROUTE` goes to that tab's `get` or `post`, JSON both
 ways, a nock `Error` becoming 404 or 400. A tab is a `studio.Tab` subclass
 listed in `TABS`, and a fragment whose script calls
 `studio.register(NAME, {show(route), hide()})`; the studio gives it
-`studio.summary` (the counts beside the title) and `studio.toast`. Fragments
+`studio.summary` (the counts under the title) and `studio.toast`. Fragments
 share the page's scripts and styles, so a tab keeps its script in a closure
 and its style under its own class. Two tabs: `DecisionsTab`, and `EvalsTab`,
 which reads `Scenario.rulegraph` and the `results.Results` tables and
