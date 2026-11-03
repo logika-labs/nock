@@ -575,7 +575,7 @@ class Reflection(Round):
             ),
             "decisions_recorded": len(recorded),
             "decisions_todo": sum(1 for d in recorded if d["status"] == "todo"),
-            "decisions_question": sum(1 for d in recorded if d["status"] == "question"),
+            "decisions_important": sum(1 for d in recorded if "important" in d["tags"]),
             "decisions_reviewed": len(reviewed),
             "decisions_accepted": sum(1 for d in reviewed if d["review"] == "accepted"),
             "decisions_rejected": sum(1 for d in reviewed if d["review"] == "rejected"),
@@ -1107,7 +1107,7 @@ the sessions; `api_cost`, what they would cost at API prices (a subscription
 does not pay per token), over the priced ones, and `unpriced_sessions`; commits. `nock_*`: calls
 to nock, and how many said no (exit 1), were called wrong (40s) or broke
 (50s); `consultations` answered. `decisions_*`: recorded in the window (and how many as todos and
-questions),
+tagged important),
 reviewed by the owner in it (accepted, rejected), and every standing one
 still unreviewed. `tools`: the project's own commands, how many were used,
 and how often. `map_*`: the map's length and the decisions it cites."""

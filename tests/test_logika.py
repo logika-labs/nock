@@ -1,6 +1,6 @@
 """The logika topic: in a Logika project — a `logika.json` ledger, the `logika`
 CLI on PATH (here a stand-in script) — a round that reads the ledger and the
-questions earlier rounds left, finishes with its report and a ledger that
+decisions earlier rounds left, finishes with its report and a ledger that
 parses, commits both, and is offered gently, never run."""
 
 from __future__ import annotations
@@ -109,16 +109,16 @@ def test_init_installs_the_logika_skill_in_a_logika_project(logika: Project) -> 
     assert "## 4. Prove each rule both ways" in (skill / "rules.md").read_text()
 
 
-def test_the_material_says_what_the_ledger_holds_and_what_was_asked(logika: Project) -> None:
+def test_the_material_says_what_the_ledger_holds_and_what_was_decided(logika: Project) -> None:
     asked = nock(
         logika.root,
         "decide",
         json.dumps(
             {
                 "title": "Refunds never exceed the charge",
-                "status": "question",
+                "status": "done",
                 "summary": "A rule would hold every refund to its charge.",
-                "tags": ["logika"],
+                "tags": ["logika", "important"],
             }
         ),
     )
@@ -134,9 +134,7 @@ def test_the_material_says_what_the_ledger_holds_and_what_was_asked(logika: Proj
     assert "shop,src,,yes,1," in material
     assert "Instrument the shop" in material
     assert "This is the first logika round." in material
-    assert (
-        "- [D1] question, rejected: Refunds never exceed the charge — the owner: 110%" in material
-    )
+    assert "- [D1] done, rejected: Refunds never exceed the charge — the owner: 110%" in material
     assert started["write"] == [".nock/reflections/logika/" + started["round"] + "/report.md"]
     analytics = Path(started["material"]["analytics"]).read_text()
     assert "3 events, 3 params (0 identities, 0 dimensions), 0 funnels" in analytics

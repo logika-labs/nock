@@ -226,7 +226,7 @@ class LogikaRound(Round):
 class Material:
     """What the rules part reads, computed: what the ledger already says must
     hold, per component and per event; what changed since the last round; and
-    the questions and suggestions earlier rounds left."""
+    the decisions and suggestions earlier rounds left."""
 
     def __init__(
         self, logika: LogikaRound, ledger: dict[str, Any], last: dict[str, Any] | None
@@ -244,7 +244,7 @@ class Material:
             self.relations(),
             self.direction(),
             self.previous(),
-            self.questions(),
+            self.decided(),
         ]
         return "\n\n".join(section for section in sections if section) + "\n"
 
@@ -391,22 +391,27 @@ class Material:
             lines += ["", f"Notes it left: {self.last['notes']}"]
         return "\n".join(lines)
 
-    def questions(self) -> str:
-        """What earlier rounds asked and suggested (tagged `logika`), and where each stands."""
+    def decided(self) -> str:
+        """What earlier rounds decided and suggested (tagged `logika`), and where each stands."""
         found = Decisions(self.logika.project).matching({"tag": TAG})
         if not found:
-            return f"# Questions and suggestions\n\nNone tagged `{TAG}` yet."
+            return f"# Decisions and suggestions\n\nNone tagged `{TAG}` yet."
         lines = [
-            "# Questions and suggestions",
+            "# Decisions and suggestions",
             "",
-            f"Decisions tagged `{TAG}`. A question's title is the answer proposed: accepted is "
-            "yes, rejected is no with the note saying what holds. An accepted todo is on the "
-            "owner's backlog.",
+            f"Decisions tagged `{TAG}`, the owner's calls (tagged `important`) first. Each title "
+            "is what was decided, or proposed for the owner to settle: accepted, it holds; "
+            "rejected, the note says what holds instead. An accepted todo is on the owner's "
+            "backlog.",
             "",
         ]
-        order = {Status.QUESTION: 0, Status.TODO: 1, Status.DONE: 2}
         for decision in sorted(
-            found, key=lambda item: (order[Status(item["status"])], item["number"])
+            found,
+            key=lambda item: (
+                "important" not in item["tags"],
+                item["status"] != Status.TODO,
+                item["number"],
+            ),
         ):
             note = f" — the owner: {decision['note']}" if decision["note"] else ""
             lines.append(
@@ -420,7 +425,7 @@ class Analytics(Material):
     """What the analytics part reads: what the ledger already measures — the
     params marked as identities or dimensions, the numeric ones, the funnels,
     milestones and views — beside the components, the history, the last
-    round and the questions."""
+    round and the earlier rounds' decisions."""
 
     def render(self) -> str:
         sections = [
@@ -430,7 +435,7 @@ class Analytics(Material):
             self.components(),
             self.direction(),
             self.previous(),
-            self.questions(),
+            self.decided(),
         ]
         return "\n\n".join(section for section in sections if section) + "\n"
 

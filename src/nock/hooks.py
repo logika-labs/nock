@@ -138,7 +138,7 @@ class HookRunner:
 
     def standing(self) -> list[str]:
         """Where things stand, said once a day — sooner when something new
-        calls: a round falls due, the owner answers or rejects something."""
+        calls: a round falls due, the owner rejects something."""
         store = self.project.store
 
         def seen(key: str) -> bool:
@@ -153,7 +153,6 @@ class HookRunner:
         news = [
             bool(collected["reflection"]["due"]),
             sorted(item["number"] for item in collected["to_rework"]),
-            sorted(item["number"] for item in collected["answered"]),
             collected["unshared"],
             collected["newer_nock"],
             offers,
@@ -219,7 +218,7 @@ class HookRunner:
             [
                 "nock: the owner reviewed decision(s) you recorded:",
                 *lines,
-                "Rework what was rejected, act on what they answered, and edit the decision to say what you did: "
+                "Rework what was rejected, act on what they noted, and edit the decision to say what you did: "
                 "`.nock/nock decisions edit '{\"number\": N, …}'`.",
             ]
         )

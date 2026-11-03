@@ -32,12 +32,12 @@ CONSULT = """\
 DECIDE = """\
 - **Record decisions as you make them:** `.nock/nock decide` (`--help` has
   the fields). A decision is a choice between ways that could each work, a
-  deliberate simplification, your reading of something ambiguous, a todo
-  you are leaving, or a question only the owner can settle when they are
-  not there to ask; give the alternatives you weighed, for someone who knows
-  what the system does but not how it is built. The owner reviews them
-  later, so don't wait. When you do a todo, act on an answer or rework a
-  rejected decision, edit it to say what you did.
+  deliberate simplification, your reading of something ambiguous, or a
+  todo you are leaving; give the alternatives you weighed, for someone who
+  knows what the system does but not how it is built. If it is the owner's
+  call, record the decision you would propose, tag it `important`, and
+  carry on with it. The owner reviews them later, so don't wait. When you
+  do a todo or rework a rejected decision, edit it to say what you did.
 - **Run noisy or long commands through `.nock/nock run -- COMMAND`**
   (Claude Code asks about it as about the command itself), and
   `.nock/nock check` before you finish. Exit codes: 1 fix the code, 42 fix

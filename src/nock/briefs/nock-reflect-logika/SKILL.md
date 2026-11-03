@@ -14,10 +14,10 @@ captures. Set aside whatever this session was doing.
 1. `.nock/nock reflect logika` prints the round's two material files and
    the report you write. The material shows what the ledger already says
    and measures, per component, event and param, what changed since the
-   last round, and the questions and suggestions earlier rounds left.
+   last round, and the decisions and suggestions earlier rounds left.
 2. Start with what is owed:
-   - the questions the owner has answered: act on each answer, then edit the
-     question to done and say what you did;
+   - the decisions the owner rejected or left a note on: act on each, then
+     edit it to say what you did;
    - the last round's rules that raised false alarms: fix them or take them
      out (see `logika show`).
 3. Dispatch the two parts as subagents, in one message, each of its type
@@ -45,10 +45,10 @@ captures. Set aside whatever this session was doing.
 5. Ask the owner what only they know, here in the session, a few questions at
    a time. Each question names the rule or declaration it would settle and
    the answer you propose. If they would rather answer later, or someone
-   else has to: `.nock/nock decide '{"status": "question", "tags":
-   ["logika"], …}'`, with the answer you propose as the title (`.nock/nock
-   docs decisions.questions`). Don't land what depends on an unanswered
-   question.
+   else has to, record the decision you propose and carry on with it:
+   `.nock/nock decide '{"status": "done", "tags": ["logika", "important"],
+   …}'`, with the answer you propose as the title (`.nock/nock docs
+   decisions.important`); the owner accepts or rejects it in review.
 6. Where a rule or a question needs state the code does not record, don't
    add the instrumentation in this round unless the owner says to. Record it
    as a todo tagged `logika` and `instrumentation`: the event and its

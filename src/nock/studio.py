@@ -1,5 +1,5 @@
 """The owner's page (`nock studio`): one local server, a tab for each thing
-nock keeps for the owner: the decisions and questions agents recorded,
+nock keeps for the owner: the decisions agents recorded,
 reviewed in place, and the evaluations, explored as a graph of their runs
 (`nock.explorer`). Local, and only while `nock studio` runs.
 
@@ -7,8 +7,8 @@ A tab is a `Tab` in `TABS`: its name is its address on the page (`#NAME`) and
 its routes on the server (`/NAME/…`); its page is the fragment
 `pages/NAME.html` (markup, style and a script that registers it with the
 studio, `pages/studio.html`, whose look is `pages/studio.css`). While nobody has answered whether nock shares
-its usage report, the page asks under the title, and `POST /usage` records
-the owner's answer."""
+its usage report, the page asks under the title; the settings in the menu
+change the answer later; `POST /usage` records either."""
 
 from __future__ import annotations
 
@@ -114,7 +114,7 @@ class EvalsTab(Tab):
     here runs a step or writes a file outside `.nock/local/`."""
 
     name = "evals"
-    title = "Evals"
+    title = "Evaluations"
 
     def __init__(self, project: Project) -> None:
         super().__init__(project)
@@ -189,17 +189,44 @@ class Studio(ThreadingHTTPServer):
         self.tabs = {tab.name: tab(project) for tab in TABS}
 
     def question(self) -> str:
-        """Under the title while nobody has answered: the question in a line,
-        Share and Don't share, and what the report holds on request."""
+        """Under the title while nobody has answered: a slim line asking, with
+        Share and Don't share; what the report holds is in the settings."""
         if sharing(self.project)[0] is not Answer.UNANSWERED:
             return ""
         return (
-            '    <div class="notice" id="usage">\n'
+            '    <div class="notice" id="usage" role="region" aria-label="Usage reports">\n'
             "      <p>May nock share a weekly usage report with its makers?</p>\n"
             '      <p class="choices"><button type="button" data-share="true">Share</button>'
-            ' <button type="button" data-share="false">Don\'t share</button></p>\n'
-            f"      <details><summary>What it holds</summary><p>{html.escape(QUESTION)}</p></details>\n"
+            ' <button type="button" data-share="false">Don\'t share</button>'
+            ' <button type="button" class="quiet" data-settings>What it holds</button></p>\n'
             "    </div>"
+        )
+
+    def settings(self) -> str:
+        """The settings behind the gear in the menu: whether nock shares its
+        usage report, as a switch that gives the same answer the question
+        does, and what the report holds."""
+        answer = sharing(self.project)[0]
+        said = {Answer.YES: "On", Answer.NO: "Off", Answer.UNANSWERED: "Not answered"}[answer]
+        return (
+            '      <div class="settings">\n'
+            '        <button type="button" class="gear" aria-label="Settings" aria-expanded="false"'
+            ' aria-controls="settings">'
+            '<svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd"'
+            ' d="M6.6 1h2.8l.4 1.9 1.2.7 1.8-.6 1.4 2.4-1.4 1.3v1.4l1.4 1.3-1.4 2.4-1.8-.6-1.2.7'
+            "-.4 1.9H6.6l-.4-1.9-1.2-.7-1.8.6-1.4-2.4L3.2 8.7V7.3L1.8 6l1.4-2.4 1.8.6 1.2-.7z"
+            'M8 10.2a2.2 2.2 0 1 0 0-4.4 2.2 2.2 0 0 0 0 4.4z"/></svg></button>\n'
+            '        <div class="popover" id="settings" role="dialog" aria-label="Settings" hidden>\n'
+            '          <div class="setting"><span id="share-label">Share usage reports</span>'
+            f' <span class="state" id="share-state">{said}</span>'
+            ' <button type="button" class="switch" role="switch" id="share-switch"'
+            f' aria-checked="{str(answer is Answer.YES).lower()}" aria-labelledby="share-label">'
+            "<span></span></button></div>\n"
+            '          <p class="hint">Weekly at most, counts and categories only: never code,'
+            " paths, names or what decisions say.</p>\n"
+            f"          <details><summary>What it holds</summary><p>{html.escape(QUESTION)}</p></details>\n"
+            "        </div>\n"
+            "      </div>"
         )
 
     def answer(self, body: Any) -> dict[str, Any]:
@@ -227,6 +254,7 @@ class Studio(ThreadingHTTPServer):
             .replace("<!-- nock:tabs -->", links)
             .replace("<!-- nock:panels -->", panels)
             .replace("<!-- nock:notice -->", self.question())
+            .replace("<!-- nock:settings -->", self.settings())
             .encode()
         )
 

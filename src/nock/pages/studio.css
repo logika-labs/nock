@@ -35,7 +35,6 @@
   /* The offset shadow in two foil colours: what is chosen, and what to do. */
   --one: var(--cyan);
   --two: var(--pink);
-  --offset: 2px;
   --glass: rgb(255 255 255 / .9);
 }
 :root body { background: #e9e2ff; }
@@ -88,7 +87,18 @@
   backdrop-filter: blur(16px) saturate(1.3); -webkit-backdrop-filter: blur(16px) saturate(1.3);
   border: 1px solid rgb(255 255 255 / .9); box-shadow: 0 6px 24px rgb(60 20 120 / .1);
 }
-:root .notice { padding: 10px 16px; color: var(--foreground); }
+/* The heading holds the settings' popover: it stays above the cards after it. */
+:root .heading { position: relative; z-index: 5; }
+:root .notice {
+  padding: 6px 14px; border-radius: 14px; font-size: 12.5px; color: var(--muted);
+  background: rgb(255 255 255 / .62); box-shadow: none; border-color: rgb(255 255 255 / .7);
+}
+:root .notice .quiet:hover { color: var(--foreground); }
+:root .popover {
+  background: var(--noise), rgb(255 255 255 / .96); background-blend-mode: soft-light, normal;
+  border: 1px solid #fff; border-radius: 18px; box-shadow: 0 16px 40px rgb(60 20 120 / .2), 0 0 0 1px rgb(17 17 22 / .06);
+}
+:root .switch[aria-checked="true"] { box-shadow: 2px 2px 0 0 var(--cyan), -2px -2px 0 0 var(--pink); }
 :root .band h1 { font: 800 32px/1.1 var(--display); letter-spacing: -.03em; }
 :root .band #summary { font: 500 13px/20px var(--mono); color: var(--foreground); letter-spacing: .01em; }
 :root .menu { padding: 4px; border-radius: 999px; background: rgb(17 17 22 / .05); }
@@ -114,58 +124,62 @@
 :root .controls nav.reviews { margin-top: 0; }
 :root .controls .tools { padding-top: 14px; }
 
-/* --- what is chosen: black, with the two-colour offset shadow --------------------------------- */
+/* Hover never moves or resizes a control: it only adds a glow or a tint. */
+
+/* --- what is chosen or to be done: black, with the two-colour offset shadow ------------------ */
 
 :root .menu a[aria-current="page"],
-:root .chip[aria-pressed="true"],
-:root .evals .chip[aria-pressed="true"],
 :root .button.primary,
 :root .notice button[data-share="true"] {
   background: #111116; color: #fff; border-color: #111116;
-  box-shadow: var(--offset) var(--offset) 0 0 var(--one), calc(-1 * var(--offset)) calc(-1 * var(--offset)) 0 0 var(--two);
-  transition: transform .18s cubic-bezier(.3, 1.6, .5, 1), box-shadow .18s ease, background-color .18s;
+  box-shadow: 2px 2px 0 0 var(--one), -2px -2px 0 0 var(--two);
+  transition: box-shadow .18s ease, background-color .18s;
 }
-:root .chip[data-tag="important"][aria-pressed="true"] { color: var(--yellow); }
-:root .chip[aria-pressed="true"] .count { color: #fff; }
 :root .menu a[aria-current="page"]:hover,
-:root .chip[aria-pressed="true"]:hover,
-:root .evals .chip[aria-pressed="true"]:hover,
 :root .button.primary:not(:disabled):hover,
 :root .notice button[data-share="true"]:hover {
-  --offset: 4px; transform: scale(1.06); background: #111116;
+  background: #23232b;
+  box-shadow: 2px 2px 0 0 var(--one), -2px -2px 0 0 var(--two), 0 8px 20px -6px var(--one), 0 -6px 18px -8px var(--two);
 }
-:root .button.primary:not(:disabled):active { --offset: 1px; transform: scale(.98); }
 :root .button { border-radius: 12px; }
 
-/* --- everything else: a foil sheen sweeps across on hover, with a soft glow and a slight lift -- */
+/* --- chips: quiet; a faint tint on hover, a soft lavender one when chosen --------------------- */
 
-:root .chip:not([aria-pressed="true"]),
-:root .evals .chip:not([aria-pressed="true"]),
+:root .chip, :root .evals .chip {
+  background: rgb(255 255 255 / .9); border-color: rgb(17 17 22 / .18); color: var(--foreground);
+  transition: background-color .15s, border-color .15s, color .15s;
+}
+:root .chip:not(:disabled):hover, :root .evals .chip:hover { background: rgb(185 166 255 / .12); border-color: rgb(17 17 22 / .3); }
+:root .chip[aria-pressed="true"], :root .evals .chip[aria-pressed="true"] {
+  background: rgb(185 166 255 / .26); border-color: rgb(75 47 208 / .55); color: #2a1d78;
+}
+:root .chip[aria-pressed="true"]:hover, :root .evals .chip[aria-pressed="true"]:hover { background: rgb(185 166 255 / .34); }
+:root .chip[aria-pressed="true"] .count { color: inherit; }
+:root .chip[data-tag="important"][aria-pressed="true"] { background: rgb(255 226 122 / .35); border-color: rgb(138 79 0 / .55); color: var(--warning); }
+
+/* --- other buttons: a soft shadow in a mellow tint of their own on hover ---------------------- */
+
 :root .button.secondary,
 :root .button.ghost,
 :root .menu a:not([aria-current]),
 :root .notice button[data-share="false"],
-:root .evals .node,
+:root .gear,
 :root .evals [data-dry] {
-  background-color: rgb(255 255 255 / .9);
-  background-image: linear-gradient(110deg, transparent 30%, rgb(143 233 255 / .55) 42%, rgb(255 154 213 / .5) 50%, rgb(255 242 160 / .55) 58%, transparent 70%);
-  background-size: 260% 100%; background-position: 120% 0; background-repeat: no-repeat;
-  transition: background-position .55s ease, transform .15s ease, box-shadow .15s ease, border-color .15s;
+  --tint: rgb(255 184 150 / .6);
+  transition: box-shadow .18s ease, border-color .18s, background-color .18s;
 }
-:root .chip:not([aria-pressed="true"]) { border-color: rgb(17 17 22 / .2); }
-:root .menu a:not([aria-current]), :root .button.ghost { background-color: transparent; }
-:root .chip:not([aria-pressed="true"]):not(:disabled):hover,
-:root .evals .chip:not([aria-pressed="true"]):hover,
+:root .menu a:not([aria-current]), :root .gear { --tint: rgb(130 225 190 / .55); }
+:root .evals [data-dry] { --tint: rgb(150 215 255 / .6); }
 :root .button.secondary:not(:disabled):hover,
 :root .button.ghost:not(:disabled):hover,
 :root .menu a:not([aria-current]):hover,
 :root .notice button[data-share="false"]:hover,
-:root .evals .node:hover,
+:root .gear:hover, :root .gear[aria-expanded="true"],
 :root .evals [data-dry]:hover {
-  background-position: -20% 0; transform: translateY(-1px);
-  border-color: rgb(17 17 22 / .35); box-shadow: 0 0 0 3px rgb(195 178 255 / .35), 0 4px 12px rgb(60 20 120 / .12);
+  background-color: #fff; border-color: rgb(17 17 22 / .3);
+  box-shadow: 0 8px 18px -6px var(--tint), 0 2px 6px -2px var(--tint);
 }
-:root .chip:disabled { background-image: none; }
+:root .menu a:not([aria-current]):hover, :root .gear:hover { background-color: rgb(255 255 255 / .85); }
 :root .sort button:hover { color: var(--foreground); text-decoration: underline; text-decoration-color: var(--lavender); text-decoration-thickness: 2px; text-underline-offset: 4px; }
 :root .reviews [role="tab"]:hover { color: var(--foreground); border-bottom-color: var(--lavender); }
 :root .reviews [role="tab"][aria-selected="true"] { border-bottom-color: #111116; }
@@ -174,7 +188,7 @@
 
 /* Focus: a black ring with a white gap, visible on glass, foil and black alike. */
 :root .chip:focus-visible, :root .sort button:focus-visible, :root .button:focus-visible, :root .menu a:focus-visible,
-:root .reviews [role="tab"]:focus-visible, :root .evals .node:focus-visible, :root .evals .chip:focus-visible,
+:root .reviews [role="tab"]:focus-visible, :root .evals .chip:focus-visible,
 :root .reference:focus-visible, :root .notice button:focus-visible, :root .notice summary:focus-visible {
   outline: 2px solid #111116; outline-offset: 3px;
 }
@@ -196,9 +210,6 @@
   border: 2px solid #111116;
   box-shadow: 5px 5px 0 0 var(--one), -5px -5px 0 0 var(--two), 0 12px 32px rgb(60 20 120 / .18);
 }
-:root .decision.open .row .number {
-  justify-self: end; padding: 0 7px; border-radius: 8px; background: linear-gradient(135deg, var(--two), var(--one));
-}
 :root .decision.open .body { border-top: 1px dashed rgb(17 17 22 / .2); }
 :root .decision.open .section > .label { color: var(--foreground); }
 :root .decision.open .section li::marker { color: #111116; }
@@ -209,14 +220,8 @@
 
 /* --- evals, in the same system ---------------------------------------------------------------- */
 
-:root .evals .node { border-color: rgb(17 17 22 / .18); }
-:root .evals .node[aria-pressed="true"] { border-color: #111116; box-shadow: 3px 3px 0 0 var(--cyan), -3px -3px 0 0 var(--pink); }
-:root .evals .bar { background: #ece8f6; }
-:root .evals .bar span { background: var(--holo); }
-:root .evals .bar i { background: #111116; }
 :root .evals input, :root .evals select { border-radius: 10px; padding: 6px 10px; }
 :root .evals input:focus-visible, :root .evals select:focus-visible { outline: 2px solid #111116; outline-offset: 2px; }
-:root #evals-body > .hint { background: var(--glass); padding: 8px 14px; border-radius: 12px; width: fit-content; color: var(--foreground); }
 
 @keyframes field { from { transform: translate(-4%, -3%) rotate(0deg); } to { transform: translate(4%, 3%) rotate(8deg); } }
 /* Drifting in space: out along (x, y) and a little turned, back by another way. */

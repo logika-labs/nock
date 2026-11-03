@@ -2,14 +2,26 @@
 /* The decisions tab: the controls — review tabs, sort, search and filters — then the decisions; one opens in place. */
 nav.reviews { display: flex; flex-wrap: wrap; align-items: center; gap: 0 24px; border-bottom: 1px solid var(--border); margin-top: 8px; }
 
-/* Search and filters: one line under the tabs, every control a bare field with a bottom border. */
+/* Search and the status chips on one line under the tabs; every tag in use on one scrolling line below. */
 .tools { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px; padding-top: 20px; }
 .search { position: relative; flex: 1 1 16rem; min-width: 0; display: flex; align-items: center; }
 .search svg { position: absolute; left: 0; width: 15px; height: 15px; color: var(--muted); pointer-events: none; }
 .search input[type="search"] { padding-left: 24px; font-size: 14px; }
 .search input::-webkit-search-cancel-button { filter: grayscale(1); }
-/* Priority chips: toggles, several at once, each with how many it would show. */
-.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+/* Chips: toggles, several at once, each with how many it would show. */
+.chips { display: flex; gap: 8px; }
+.tags {
+  margin-top: 12px; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; scroll-padding-inline: 16px;
+  --start: 0px; --end: 0px;
+  -webkit-mask-image: linear-gradient(to right, transparent 0, #000 var(--start), #000 calc(100% - var(--end)), transparent 100%);
+  mask-image: linear-gradient(to right, transparent 0, #000 var(--start), #000 calc(100% - var(--end)), transparent 100%);
+}
+/* An edge fades only where there is more to scroll to. */
+.tags.more-before { --start: 24px; }
+.tags.more-after { --end: 32px; }
+.tags::-webkit-scrollbar { display: none; }
+.tags .chips { width: max-content; padding: 2px; }
+.chip { flex: none; white-space: nowrap; }
 .chip {
   display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 11px; border-radius: 999px;
   border: 1px solid var(--input); background: transparent; color: var(--foreground);
@@ -19,7 +31,9 @@ nav.reviews { display: flex; flex-wrap: wrap; align-items: center; gap: 0 24px; 
 .chip:hover { background: var(--card); }
 .chip { --tone: var(--foreground); }
 .chip[data-tag="important"] { --tone: var(--warning); }
-.chips .divider { width: 1px; align-self: stretch; margin: 4px 2px; background: var(--border); }
+.applies { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; font-size: 13px; color: var(--muted); }
+.applies .label { font-size: 11px; margin-right: 2px; }
+.applies code { font: 12px var(--mono); background: var(--background); color: var(--foreground); padding: 1px 5px; border-radius: 4px; overflow-wrap: anywhere; }
 .chip[aria-pressed="true"] { border-color: var(--tone); color: var(--tone); background: color-mix(in oklab, var(--tone) 10%, var(--card)); }
 .chip[aria-pressed="true"] .count { color: inherit; }
 .chip:disabled { opacity: .4; cursor: default; background: transparent; }
@@ -163,7 +177,6 @@ kbd {
     <button type="button" role="tab" data-review="accepted" aria-selected="false">accepted <span class="count" id="count-accepted"></span></button>
     <button type="button" role="tab" data-review="rejected" aria-selected="false">rejected <span class="count" id="count-rejected"></span></button>
     <div class="sort" role="group" aria-label="Sort">
-      <span class="label">sort</span>
       <button type="button" data-sort="oldest" aria-pressed="true">oldest</button>
       <button type="button" data-sort="newest" aria-pressed="false">newest</button>
     </div>
@@ -173,17 +186,17 @@ kbd {
       <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="7" cy="7" r="4.75" stroke="currentColor" stroke-width="1.5"/><path d="m10.5 10.5 3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
       <input type="search" id="search" placeholder="search" autocomplete="off" aria-label="Search decisions">
     </label>
-    <div class="chips" id="chips" role="group" aria-label="Filter"></div>
+    <div class="chips" id="statuses" role="group" aria-label="Status"></div>
   </div>
+  <div class="tags" id="tag-row"><div class="chips" id="tags" role="group" aria-label="Tags"></div></div>
   </div>
   <main><section id="list" aria-live="polite"></section></main>
 <script>
 const CHEVRON = '<svg class="chevron" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M6 3.5 10.5 8 6 12.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 const MAC = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
-// The chips: done/todo/question, then the tags in use, the fixed ones first.
-const STATUSES = ["done", "todo", "question"];
-const SHOWN_TAGS = 6;
-const state = { shown: false, link: null, search: "", statuses: new Set(), tags: new Set(), sort: "oldest", review: "unreviewed", decisions: [], tags_in_use: {}, expanded: new Set(), notes: new Map(), active: null, seen: "" };
+// The chips: done/todo beside the search, then every tag in use.
+const STATUSES = ["done", "todo"];
+const state = { shown: false, link: null, search: "", statuses: new Set(), tags: new Set(), sort: "oldest", review: "unreviewed", decisions: [], expanded: new Set(), notes: new Map(), active: null, seen: "" };
 
 function escape(text) {
   return String(text).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
@@ -270,7 +283,6 @@ function moment(decision) { return decision.reviewed ? decision.reviewed.moment 
 function badges(decision) {
   const found = [];
   if (decision.status === "todo") found.push('<span class="badge info">todo</span>');
-  if (decision.status === "question") found.push('<span class="badge warning">question</span>');
   if (decision.tags.includes("important")) found.push('<span class="badge warning">important</span>');
   if (decision.elaborating) found.push('<span class="badge info">elaborating</span>');
   if (decision.superseded_by) found.push(`<span class="badge">superseded by ${decision.superseded_by}</span>`);
@@ -283,31 +295,28 @@ function section(label, items) {
 }
 
 const VERDICT = { accepted: "accepted", rejected: "rejected" };
-// A question's title is the answer the agent proposes: accepting it is yes.
-const ANSWER = { accepted: "answered yes", rejected: "answered no" };
 const AFTER = {
   done: { accepted: "It stands.", rejected: "An agent reworks it: the next session that touches what it governs is told." },
   todo: { accepted: "It is on the backlog.", rejected: "It will not be done." },
-  question: { accepted: "An agent goes ahead as it proposed.", rejected: "An agent goes ahead with what your note says holds." },
 };
 
 function body(decision) {
   const parts = [`<div class="context">${markdown(decision.summary)}</div>`];
+  if (decision.touches.length) parts.push(`<div class="applies"><span class="label">Applies to</span> ${decision.touches.map(path => `<code>${escape(path)}</code>`).join(" ")}</div>`);
   parts.push(section("evidence", decision.evidence.map(line => `<li>${inline(line)}</li>`)));
-  parts.push(section(decision.status === "question" ? "other answers" : "considered instead", decision.alternatives.map(item =>
+  parts.push(section("considered instead", decision.alternatives.map(item =>
     `<li class="alternative"><span class="option">${inline(item.option)}</span> — <span class="why">${inline(item.why_not)}</span></li>`)));
   if (decision.elaborating) {
     parts.push(`<div class="panel agent"><span class="label"><span class="spinner" aria-hidden="true"></span>an agent is looking into it</span>${decision.note ? `<div>${inline(decision.note)}</div>` : ""}</div>`);
   } else if (decision.review !== "unreviewed") {
-    const heading = `${(decision.status === "question" ? ANSWER : VERDICT)[decision.review]} ${decision.reviewed ? time(decision.reviewed.moment) : ""}`;
+    const heading = `${VERDICT[decision.review]} ${decision.reviewed ? time(decision.reviewed.moment) : ""}`;
     parts.push(`<div class="panel ${decision.review === "accepted" ? "ok" : "rejected"}"><span class="label">${heading}</span><div>${AFTER[decision.status][decision.review]}</div></div>`);
   }
   if (!decision.superseded_by) {
-    const asked = decision.status === "question";
-    const keys = `<kbd>${MAC ? "⌘" : "Ctrl"}</kbd> <kbd>↵</kbd> to ${asked ? "answer yes" : "accept"}`;
+    const keys = `<kbd>${MAC ? "⌘" : "Ctrl"}</kbd> <kbd>↵</kbd> to accept`;
     const disabled = decision.elaborating ? "disabled" : "";
     const verdicts = ["rejected", "accepted"].filter(review => review !== decision.review).map(review =>
-      `<button type="button" class="button ${review === "accepted" ? "primary" : "secondary"}" data-action="${review}" data-number="${decision.number}" ${disabled}>${review === "accepted" ? (asked ? "yes" : "accept") : (asked ? "no" : "reject")}</button>`).join("");
+      `<button type="button" class="button ${review === "accepted" ? "primary" : "secondary"}" data-action="${review}" data-number="${decision.number}" ${disabled}>${review === "accepted" ? "accept" : "reject"}</button>`).join("");
     const saving = decision.review !== "unreviewed" ? `<button type="button" class="button ghost" data-action="note" data-number="${decision.number}" ${disabled} hidden>save note</button>` : "";
     parts.push(`<textarea id="note-${decision.number}" data-number="${decision.number}" rows="1" aria-label="Note" placeholder="Add a note" ${disabled}>${escape(note(decision))}</textarea>`);
     parts.push(`<div class="actions">
@@ -320,7 +329,6 @@ function body(decision) {
     </div>`);
   }
   const links = [];
-  if (decision.touches.length) links.push(`<span><span class="label">governs</span> ${decision.touches.map(path => `<code>${escape(path)}</code>`).join(" ")}</span>`);
   if (decision.supersedes.length) links.push(`<span><span class="label">supersedes</span> ${decision.supersedes.map(number => `<button type="button" class="reference" data-open="${number}">${number}</button>`).join(" ")}</span>`);
   if (decision.superseded_by) links.push(`<span><span class="label">superseded by</span> <button type="button" class="reference" data-open="${decision.superseded_by}">${decision.superseded_by}</button></span>`);
   const tags = decision.tags.filter(tag => tag !== "important");
@@ -364,11 +372,27 @@ function chip(kind, value, count) {
 function drawChips() {
   const tab = state.decisions.filter(inTab);
   const statuses = STATUSES.map(status => chip("status", status, tab.filter(decision => decision.status === status).length));
-  const counted = Object.keys(state.tags_in_use).map(tag => [tag, tab.filter(decision => decision.tags.includes(tag)).length]);
-  const tags = counted.filter(([tag, count]) => count || state.tags.has(tag)).sort((left, right) => right[1] - left[1]).slice(0, SHOWN_TAGS)
+  // Every tag on any decision (and any chosen), counted in this tab, the most used first.
+  const names = new Set([...state.decisions.flatMap(decision => decision.tags), ...state.tags]);
+  const tags = [...names].map(tag => [tag, tab.filter(decision => decision.tags.includes(tag)).length])
+    .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))
     .map(([tag, count]) => chip("tag", tag, count));
-  document.getElementById("chips").innerHTML = statuses.join("") + (tags.length ? '<span class="divider" aria-hidden="true"></span>' + tags.join("") : "");
+  document.getElementById("statuses").innerHTML = statuses.join("");
+  // Redrawn as the owner types: the row keeps where it was scrolled to.
+  const row = document.getElementById("tag-row");
+  const scrolled = row.scrollLeft;
+  document.getElementById("tags").innerHTML = tags.join("");
+  row.hidden = !tags.length;
+  row.scrollLeft = scrolled;
+  fade(row);
 }
+
+function fade(row) {
+  row.classList.toggle("more-before", row.scrollLeft > 2);
+  row.classList.toggle("more-after", row.scrollLeft + row.clientWidth < row.scrollWidth - 2);
+}
+document.getElementById("tag-row").addEventListener("scroll", event => fade(event.currentTarget), { passive: true });
+addEventListener("resize", () => fade(document.getElementById("tag-row")));
 
 function draw() {
   const standing = state.decisions.filter(decision => !decision.superseded_by);
@@ -376,10 +400,10 @@ function draw() {
   for (const decision of standing) counts[decision.review]++;
   for (const key of Object.keys(counts)) document.getElementById(`count-${key}`).textContent = counts[key] || "";
   const todos = standing.filter(decision => decision.review === "unreviewed" && decision.status === "todo").length;
-  const questions = standing.filter(decision => decision.review === "unreviewed" && decision.status === "question").length;
+  const important = standing.filter(decision => decision.review === "unreviewed" && decision.tags.includes("important")).length;
   const rework = standing.filter(decision => decision.review === "rejected" && decision.status === "done").length;
   const said = [
-    questions ? `${questions} ${questions === 1 ? "question" : "questions"}` : "",
+    important ? `${important} important` : "",
     counts.unreviewed ? `${counts.unreviewed} to review` : "",
     todos ? `${todos} ${todos === 1 ? "todo" : "todos"}` : "",
     rework ? `${rework} to rework` : "",
@@ -438,7 +462,6 @@ async function load() {
     state.seen = text;
     const data = JSON.parse(text);
     state.decisions = data.decisions;
-    state.tags_in_use = data.tags;
     // The address's decision opens (`#decisions/7`, or `#7`); otherwise the first in the tab.
     const linked = state.link !== null && find(state.link);
     state.link = null;

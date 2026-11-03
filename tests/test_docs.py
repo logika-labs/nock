@@ -87,7 +87,7 @@ def test_nock_docs_lists_the_terms_reads_them_and_answers_a_miss(project: Projec
     assert listed.returncode == 0, listed.stderr
     index = json.loads(listed.stdout)
     assert index["tools.caching"] == Docs().find("cache").description  # pyright: ignore[reportOptionalMemberAccess]
-    assert "decisions.questions" in index and "studio" in index
+    assert "decisions.important" in index and "studio" in index
 
     by_alias = nock(project.root, "docs", "CACHE")
     assert by_alias.returncode == 0 and by_alias.stdout.startswith("`@nock.command(cache=")

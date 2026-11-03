@@ -342,8 +342,8 @@ SessionStart hook. CLAUDE.md imports a short primer, `.nock/context.md`: why
 the project uses nock (to stay coherent across sessions), to consult before
 changing code, recording decisions, and `nock run`. A session the human
 starts also hears where things stand, in a few lines — once a day, or sooner
-when something new calls (a round falls due, the owner answers a question or
-rejects a decision) — with a word on what to do with it: take into account
+when something new calls (a round falls due, the owner rejects a
+decision) — with a word on what to do with it: take into account
 what bears on the request, and mention the rest to the human only when
 relevant or once the work is done. `.nock/nock` with no arguments lists the
 toolbox.
@@ -448,10 +448,10 @@ deliberate simplification, or a reading of something ambiguous. What has one
 obvious right way is not a decision, and an alternative nobody weighed is
 not an alternative. With `"status": "todo"` it is something that should be
 done and is not yet; a possible improvement is a todo tagged `improvement`.
-With `"status": "question"` it asks the owner what only they can settle,
-when they are not there to ask: the title is the answer the agent proposes
+What only the owner can settle, when they are not there to ask, is a
+decision tagged `important`: the title is the answer the agent proposes
 ("Refunds never exceed the charge"), the alternatives the other answers it
-sees. The summary is written for someone who knows what the system does,
+sees, and the agent carries on with it. The summary is written for someone who knows what the system does,
 but not how it is built.
 
 Each decision is a file, `.nock/decisions/0007.json`, written and committed in
@@ -465,15 +465,15 @@ decisions it overturns, which stay as history.
 |---|---|---|---|
 | **done** | done; please check | it stands | rework it |
 | **todo** | worth doing later? | on the backlog | do not do it |
-| **question** | asks you | yes, as proposed | no: the note says what holds |
 
-A note alone answers a question in words. Until an agent acts on the answer
-— and edits the question to done, saying what it did — the session start
-lists it, the day it comes and once a day after.
+A decision tagged `important` is the owner's call: accepted, it holds as
+proposed; rejected, it is reworked as the note says. While it is unreviewed,
+the session start lists it, once a day. (A decision an earlier nock recorded
+as a question reads as one done and tagged `important`, its review kept.)
 
 - **The owner reviews.** In the studio, `nock studio` (or with
   `{"open": true}`), the owner's local page: its Decisions tab lists the
-  decisions and questions to review, accepted and rejected, searchable and
+  decisions to review, accepted and rejected, searchable and
   filtered by status and tag; `#decisions/7` (or just `#7`) in its address
   opens decision 7. Or in a
   session, with `/nock-triage`, which goes through them one at a time. Each
@@ -494,8 +494,8 @@ lists it, the day it comes and once a day after.
   (`nock decisions elaborate N`).
 
 Once a day (sooner when something new calls), a session the human starts
-says how many questions, todos and done decisions wait on review, the
-questions answered and not yet acted on and the rejected ones to rework (the
+says how many important decisions, todos and done decisions wait on review,
+the important ones not yet reviewed and the rejected ones to rework (the
 first few of each), and how many todos the owner accepted and notes they
 left since the last round — a note often asks for something. `nock status`
 says it all in full, and whether a reflection round is due.
@@ -527,8 +527,8 @@ A fresh headless agent is given the map, the project's tools and checks,
 and reads the decisions that govern what the work touches. It changes
 nothing, and takes the intent as given: it doesn't redesign the task. It
 advises in a few lines — what the decisions mean for this work (what to keep
-to, a rejected option the work would bring back, a todo or answered
-question it could close, and first, plainly, an accepted decision the intent
+to, a rejected option the work would bring back, a todo it could
+close, and first, plainly, an accepted decision the intent
 goes against), the tools that do its steps, a choice the work is about to
 make that should be recorded, and the checks to pass — or says that nothing
 in nock bears on it. It submits with `nock advise`, which refuses a decision,
@@ -620,7 +620,7 @@ status` always says.
    that touched each component since the last round); for analytics, each
    param with its flags and the events that carry it, and the funnels,
    milestones and views declared; for both, the ledger's history, the last
-   logika round's changes and expectations, and the questions and
+   logika round's changes and expectations, and the decisions and
    suggestions tagged `logika`.
 2. **The session works through it with the owner.** It learns the forms
    from Logika's own docs (`logika docs …`) instead of a copy, explores real
@@ -631,8 +631,8 @@ status` always says.
    events and params it names. False positives are the cost it guards
    against first.
 3. **What only the owner knows** is asked in the session. A question for
-   later becomes a question decision tagged `logika`, and the next round
-   acts on the answer. A rule or a measure that needs state the code
+   later becomes a decision tagged `logika` and `important`, the answer the
+   session proposes and carries on with, for the owner to accept or reject. A rule or a measure that needs state the code
    doesn't record becomes a todo tagged `logika` and `instrumentation`, not
    a weaker rule or an empty funnel.
 4. **`nock reflect logika finish JSON`** requires the round's
@@ -877,7 +877,7 @@ Snakefile does not read. Snakemake and DuckDB run through
 targets, commits `cache/`, and pushes; entries merge as plain files, and the
 next run anywhere restores them.
 
-**The studio's Evals tab** draws a scenario as a graph: its rules as columns
+**The studio's Evaluations tab** (`#evals` or `#evaluations`) draws a scenario as a graph: its rules as columns
 left to right, a row per value of the parameter that forks the runs, each
 group with its runs done, running, failed, stale and not yet run, their
 median cost and key numbers, and wires to what was made from it. Hover a
@@ -920,10 +920,10 @@ repetitions, write the comparison down first.
 | `nock run -- COMMAND` | run anything supervised and condensed (Claude Code asks, as for the command itself) |
 | `nock docs [TERM…]` | nock's documentation for agents, a short article per term: with no term, the terms |
 | `nock calls`, `stats`, `sessions`, `query SQL` | the telemetry |
-| `nock status` | a round due, decisions waiting, rejected ones to rework, answered questions, an unshared summary, a logika round to offer |
+| `nock status` | a round due, decisions waiting, rejected ones to rework, important ones unreviewed, an unshared summary, a logika round to offer |
 | `nock decide JSON` | record a decision |
 | `nock decisions list [JSON]`, `show N`, `edit JSON`, `elaborate N` | the decisions: filtered, in full, changed or reviewed, elaborated |
-| `nock studio [JSON]` | the owner's page, a tab for each thing to look at: the decisions and questions, the evaluations |
+| `nock studio [JSON]` | the owner's page, a tab for each thing to look at: the decisions, the evaluations |
 | `nock eval init NAME`, `run [TARGETS…] [--dry] [--budget USD] [--limit NAME=N] [--retry]`, `import JSON`, `show [NAME]`, `query SQL`, `compare QUERY`, `prune [NAME] [--dry]` | evaluations: scaffold a Snakemake scenario, run it restoring what the cache has (or the failed again), import outputs computed elsewhere, read it, query it with SQL, compare its outputs, delete stale and failed cache entries |
 | `nock consult JSON` | a fresh agent advises on a task: the decisions, tools, checks and docs that bear on it; the caller waits |
 | `nock advise JSON` | the consultant's advice, submitted; only a consultant nock dispatched runs it |
