@@ -4,6 +4,7 @@ edge every request passes, and the rate limit on a virtual clock."""
 import json
 import os
 import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -15,6 +16,7 @@ from nock.usage import Usage
 
 from nock_api import rules
 from tests.conftest import Api, Clock
+from tests.test_migrate import nock_api
 
 REPORT: dict[str, Any] = {
     "schema": 2,
@@ -259,3 +261,92 @@ def test_the_report_kept_is_what_was_sent(api: Api) -> None:
     raw = json.dumps(REPORT, indent=2).encode()
     assert api.post("/usage", raw)[0] == 201
     assert api.rows("usage")[0]["report"] == REPORT
+
+
+WRITTEN = {
+    "text": "I need nock to list the decisions a commit touched.",
+    "nock": "0.3.0",
+    "platform": "darwin",
+}
+
+
+def test_a_report_is_kept_stripped_without_anything_about_its_sender(
+    api: Api, clock: Clock
+) -> None:
+    sent = {**WRITTEN, "text": f"  {WRITTEN['text']}\n"}
+    assert api.post("/reports", sent, "203.0.113.7") == (201, {"id": 1})
+    assert api.rows("reports") == [{"id": 1, "received": clock.moment, **WRITTEN}]
+
+
+@pytest.mark.parametrize(
+    ("change", "said"),
+    [
+        ({"text": "   "}, "`text` is text of at most 10000 characters"),
+        ({"text": 3}, "`text` is text of at most 10000 characters"),
+        ({"text": "x" * (rules.LONGEST_WRITTEN + 1)}, "`text` is text of at most 10000"),
+        ({"text": "a\x00b"}, "`text` is text of at most 10000 characters"),
+        ({"email": "someone@example.com"}, "unexpected fields: email"),
+        ({"nock": "latest"}, "`nock` is not what it should be"),
+        ({"platform": "a laptop at acme"}, "`platform` is not what it should be"),
+    ],
+)
+def test_a_report_with_anything_unexpected_is_refused(
+    api: Api, clock: Clock, change: dict[str, Any], said: str
+) -> None:
+    status, answer = api.post("/reports", {**WRITTEN, **change})
+    assert status == 400 and said in answer["error"]
+    missing = {key: value for key, value in WRITTEN.items() if key != "platform"}
+    clock.advance(60)
+    assert api.post("/reports", missing) == (400, {"error": "`body` lacks platform"})
+    assert api.rows("reports") == []
+
+
+def test_a_report_past_its_cap_is_refused_unread(api: Api) -> None:
+    head = b"POST /reports HTTP/1.1\r\nHost: x\r\nContent-Length: 40001\r\n"
+    assert api.answer_to(head) == b"413"
+    assert api.post("/reports", b"{" + b" " * rules.LARGEST["/reports"] + b"}") == (
+        413,
+        {"error": "at most 40000 bytes"},
+    )
+    assert api.rows("reports") == []
+
+
+def test_reports_share_the_rate_limit_with_every_other_post(api: Api) -> None:
+    sender = "203.0.113.7"
+    for _ in range(4):
+        assert api.post("/usage", REPORT, sender)[0] == 201
+    assert api.post("/reports", WRITTEN, sender)[0] == 201
+    assert api.post("/reports", WRITTEN, sender)[0] == 429
+    assert len(api.rows("reports")) == 1
+
+
+def test_nock_report_sends_to_the_api_and_says_the_id(project: Project, api: Api) -> None:
+    local = project.root / ".nock" / "local" / "config.toml"
+    local.write_text(local.read_text() + f'[endpoints]\nreports = "{api.address}/reports"\n')
+    run = subprocess.run(
+        [str(project.root / ".nock" / "nock"), "report", WRITTEN["text"], "--yes", "--json"],
+        cwd=project.root,
+        capture_output=True,
+        text=True,
+        env={**os.environ, "NOCK_PYTHON": sys.executable},
+    )
+    assert run.returncode == 0, run.stderr
+    assert json.loads(run.stdout)["id"] == 1
+    (row,) = api.rows("reports")
+    assert row["text"] == WRITTEN["text"] and row["platform"] == sys.platform
+
+
+def test_the_makers_read_the_latest_reports_newest_first(
+    api: Api, clock: Clock, database_url: str
+) -> None:
+    assert nock_api("reports", url=database_url).stdout == "no reports yet\n"
+    api.post("/reports", {**WRITTEN, "text": "First.\nTwo lines."})
+    clock.advance(60)
+    api.post("/reports", {**WRITTEN, "text": "Second.", "platform": "linux"})
+    listed = nock_api("reports", url=database_url)
+    assert listed.returncode == 0, listed.stderr
+    assert listed.stdout == (
+        "#2  2026-11-03 12:01 UTC  nock 0.3.0 on linux\n    Second.\n\n"
+        "#1  2026-11-03 12:00 UTC  nock 0.3.0 on darwin\n    First.\n    Two lines.\n"
+    )
+    assert nock_api("reports", "--limit", "1", url=database_url).stdout.count("#") == 1

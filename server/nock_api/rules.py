@@ -1,5 +1,6 @@
-"""What the API keeps, field by field: a round's summary and a usage report exactly as nock builds them
-(`src/nock/share.py`, `src/nock/usage.py`). A body with any field it should not have is refused whole."""
+"""What the API keeps, field by field: a round's summary, a usage report and what someone wrote with
+`nock report`, exactly as nock builds them (`src/nock/share.py`, `src/nock/usage.py`,
+`src/nock/reports.py`). A body with any field it should not have is refused whole."""
 
 import math
 import re
@@ -8,9 +9,11 @@ from typing import Any
 
 # The longest summary kept; the round asks for a few hundred words.
 LONGEST = 20_000
-# The largest body read, in bytes, per path: a summary's JSON escapes may take four bytes a character;
+# The longest text someone may write to the makers with `nock report`.
+LONGEST_WRITTEN = 10_000
+# The largest body read, in bytes, per path: a text's JSON escapes may take four bytes a character;
 # a real usage report is about two thousand.
-LARGEST = {"/reflections": LONGEST * 4, "/usage": 32_000}
+LARGEST = {"/reflections": LONGEST * 4, "/usage": 32_000, "/reports": LONGEST_WRITTEN * 4}
 # The usage report's shapes this server reads (nock's `usage.SCHEMA`): 3 adds metrics that may be
 # null — `api_cost` when no session in the window was priced.
 REPORT_SCHEMAS = (2, 3)
@@ -149,3 +152,19 @@ def reflection(sent: Any) -> tuple[str, str | None]:
     if round is not None and (not isinstance(round, str) or len(round) > 40 or not storable(round)):
         raise Refused("`round` is the round's date")
     return summary.strip(), round
+
+
+def written(sent: Any) -> tuple[str, str, str]:
+    """What someone wrote with `nock report`, stripped, with nock's version and platform, or `Refused`."""
+    body = fields(sent, "body", ("text", "nock", "platform"))
+    text_sent = body["text"]
+    if (
+        not isinstance(text_sent, str)
+        or not text_sent.strip()
+        or len(text_sent) > LONGEST_WRITTEN
+        or not storable(text_sent)
+    ):
+        raise Refused(f"`text` is text of at most {LONGEST_WRITTEN} characters")
+    text(body["nock"], "nock", VERSION)
+    text(body["platform"], "platform", PLATFORM)
+    return text_sent.strip(), body["nock"], body["platform"]

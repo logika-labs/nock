@@ -1,6 +1,6 @@
-"""The rate limit: one token bucket per client address across both endpoints, in memory only and never
-stored or logged. A project sends a usage report at most weekly (a retry at most daily) and a summary per
-round, so a burst of 5, then 6 a minute, is plenty."""
+"""The rate limit: one token bucket per client address across every endpoint, in memory only and never
+stored or logged. A project sends a usage report at most weekly (a retry at most daily), a summary per
+round and a report when someone writes one, so a burst of 5, then 6 a minute, is plenty."""
 
 from collections import OrderedDict
 

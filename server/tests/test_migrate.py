@@ -13,6 +13,7 @@ import pytest
 from nock_api import migrate
 
 FIRST = "0001_reflections_and_usage.sql"
+EVERY = [FIRST, "0002_reports.sql"]
 
 
 def tables(url: str) -> set[str]:
@@ -25,10 +26,10 @@ def tables(url: str) -> set[str]:
 
 def test_an_empty_database_gets_every_migration_once(empty_database_url: str) -> None:
     with psycopg.connect(empty_database_url, autocommit=True) as connection:
-        assert migrate.migrate(connection, migrate.MIGRATIONS) == [FIRST]
+        assert migrate.migrate(connection, migrate.MIGRATIONS) == EVERY
         assert migrate.migrate(connection, migrate.MIGRATIONS) == []
-        assert migrate.applied(connection) == {FIRST}
-    assert tables(empty_database_url) == {"schema_migrations", "reflections", "usage"}
+        assert migrate.applied(connection) == set(EVERY)
+    assert tables(empty_database_url) == {"schema_migrations", "reflections", "usage", "reports"}
 
 
 def test_concurrent_runners_apply_each_migration_once(empty_database_url: str) -> None:
@@ -43,7 +44,7 @@ def test_concurrent_runners_apply_each_migration_once(empty_database_url: str) -
         runner.start()
     for runner in runners:
         runner.join(30)
-    assert sorted(applied) == [[], [], [FIRST]]
+    assert sorted(applied) == [[], [], EVERY]
 
 
 def test_a_failing_migration_leaves_no_trace(empty_database_url: str, tmp_path: Path) -> None:
@@ -85,7 +86,10 @@ def test_the_entry_point_migrates_the_database_its_environment_names(
 ) -> None:
     first = nock_api("migrate", url=empty_database_url)
     assert first.returncode == 0, first.stderr
-    assert first.stdout.splitlines() == [f"applied {FIRST}", "1 migration(s) applied"]
+    assert first.stdout.splitlines() == [
+        *(f"applied {name}" for name in EVERY),
+        f"{len(EVERY)} migration(s) applied",
+    ]
     assert nock_api("migrate", url=empty_database_url).stdout == "schema is up to date\n"
     missing = nock_api("migrate", url=None)
     assert missing.returncode == 2 and "DATABASE_URL is not set" in missing.stderr

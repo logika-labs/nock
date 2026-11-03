@@ -1,4 +1,5 @@
-"""The ASGI app: `GET /health`, `POST /reflections`, `POST /usage`, and the edge every request passes.
+"""The ASGI app: `GET /health`, `POST /reflections`, `POST /usage`, `POST /reports`, and the edge every
+request passes.
 
 Every `POST` answers `201` with `{"id": N}`, or `{"error": "…"}` with `400` naming what is wrong, `411`
 without a `Content-Length`, `413` when the body is too large (refused unread), `429` beyond the rate limit
@@ -211,6 +212,24 @@ def create(database_url: str, now: Callable[[], datetime], limit: Limit) -> ASGI
                     "commands": len(report["commands"]),
                     "metrics": len(report["metrics"]),
                 },
+            ).end()
+        return JSONResponse({"id": identity}, 201)
+
+    @app.post("/reports")
+    async def reports(request: Request) -> JSONResponse:
+        with tracer.start_as_current_span("report", attributes=size(request)):
+            try:
+                text, nock, platform = await read(request, "/reports", rules.written)
+            except Refusal as refusal:
+                tracer.start_span("report.refused", attributes=refusal.attributes()).end()
+                return refusal.answer()
+            identity = await keep(
+                "INSERT INTO reports (received, text, nock, platform) VALUES (%s, %s, %s, %s)"
+                " RETURNING id",
+                (text, nock, platform),
+            )
+            tracer.start_span(
+                "report.kept", attributes={"row_id": identity, "text_chars": len(text)}
             ).end()
         return JSONResponse({"id": identity}, 201)
 

@@ -36,10 +36,12 @@ commits, shows the change, and pushes only when you answer `y`.
 
 ## The API
 
-api.nock.dev, where `nock share` sends a summary and nock its usage reports,
+api.nock.dev, where `nock share` sends a summary, nock its usage reports and
+`nock report` what someone wrote,
 is not part of the site: it is `server/` at the repository's root, a
 distribution of its own (FastAPI on Postgres, on Logika's box). Its
 `README.md` has the endpoints, the rate limit, the deploy and the
 provisioning. `nock share` posts to `https://api.nock.dev/reflections` (the
 `endpoints.reflections` setting), the usage reports go to
-`https://api.nock.dev/usage` (`endpoints.usage`).
+`https://api.nock.dev/usage` (`endpoints.usage`), and `nock report` to
+`https://api.nock.dev/reports` (`endpoints.reports`).

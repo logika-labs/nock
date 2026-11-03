@@ -79,6 +79,27 @@ def test_every_span_is_declared_with_its_params_and_carries_nothing_sent(
             assert span.parent is not None
 
 
+def test_a_report_s_spans_are_declared_and_carry_nothing_it_says(api: Api, spans: Spans) -> None:
+    written = {"text": "Please add a deploy tool.", "nock": "0.3.0", "platform": "linux"}
+    assert api.post("/reports", written, SENDER)[0] == 201
+    assert api.post("/reports", {**written, "text": " "}, SENDER)[0] == 400
+    finished = [
+        span
+        for span in spans.finished()
+        if span.instrumentation_scope and span.instrumentation_scope.name == "nock_api"
+    ]
+    events = declared()
+    for span in finished:
+        required, optional = events[span.name]
+        attributes = dict(span.attributes or {})
+        assert required <= set(attributes) <= required | optional, span.name
+        for value in attributes.values():
+            assert SENDER not in str(value) and "deploy" not in str(value)
+    by_name = {span.name: dict(span.attributes or {}) for span in finished}
+    assert by_name["report.kept"] == {"row_id": 1, "text_chars": len(written["text"])}
+    assert by_name["report.refused"] == {"http_status": 400, "reason": "value"}
+
+
 def test_a_key_the_enhancer_cannot_use_never_takes_the_server_down(
     empty_database_url: str,
 ) -> None:
@@ -98,4 +119,4 @@ def test_a_key_the_enhancer_cannot_use_never_takes_the_server_down(
         timeout=120,
     )
     assert ran.returncode == 0, ran.stderr
-    assert "1 migration(s) applied" in ran.stdout
+    assert "2 migration(s) applied" in ran.stdout

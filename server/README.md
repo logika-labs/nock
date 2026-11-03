@@ -1,7 +1,8 @@
 # api.nock.dev
 
 Where nock sends its makers a reflection round's summary (`nock share`, on the
-owner's word) and the weekly anonymous usage report (on the owner's yes). It is
+owner's word), the weekly anonymous usage report (on the owner's yes) and what
+someone writes to them with `nock report` (on their word). It is
 not part of nock: a distribution of its own (`nock-api`, Python 3.14), never
 published or vendored, while nock itself stays standard-library only.
 
@@ -53,10 +54,22 @@ answers `{"ok": true}`.
 
   Kept in `usage`: the project id and schema as columns (indexed by project,
   to count projects), the report as `jsonb`.
+- **`POST /reports`**: what someone wrote with `nock report`, `{"text": TEXT,
+  "nock": VERSION, "platform": PLATFORM}` (the text non-empty, at most
+  10,000 characters, kept stripped; `nock` and `platform` as in a usage
+  report; the body at most 40 KB). Kept in `reports`. Read the latest,
+  newest first, with `nock-api reports [--limit N]` (20 by default); on the
+  box:
+
+  ```sh
+  sudo systemd-run --quiet --wait --pipe --collect --uid=nock-api --gid=nock-api \
+    -p EnvironmentFile=/etc/nock-api/nock-api.env /opt/nock-api/current/venv/bin/nock-api reports
+  ```
 
 The rate limit is the server's: per client address, 6 requests a minute with a
 burst of 5, one limit across every `POST` (a project sends a usage report at
-most weekly, a retry at most daily, and a summary per round); beyond it, `429`
+most weekly, a retry at most daily, a summary per round, and a report when
+someone writes one); beyond it, `429`
 with `{"error": …}` and `Retry-After`. It is a token bucket per address held
 in memory only, each address forgotten once its bucket has refilled (under a
 minute), never written to the database, a log or a span. The client address
@@ -69,7 +82,7 @@ server runs as one process, so one limit.
 When `OTEL_EXPORTER_OTLP_HEADERS` holds a Logika SDK key
 (`authorization=Bearer KEY`), the server sends its own spans to Logika through
 `logika-otel`, against `logika.json` (the release's, its working directory);
-unset, it runs untraced. Each `POST` is a `reflection` or `usage` operation
+unset, it runs untraced. Each `POST` is a `reflection`, `usage` or `report` operation
 whose outcome is a `kept` child (our row's id, the schema, counts) or a
 `refused` one (the status and a one-word reason); the rate limit is a
 `limited` moment; migrations are a `migrate` operation. Spans carry counts,
@@ -96,6 +109,7 @@ To run it locally against a Postgres of your own:
 ```sh
 DATABASE_URL=postgresql://… uv run nock-api migrate
 DATABASE_URL=postgresql://… uv run nock-api serve        # 127.0.0.1:8610
+DATABASE_URL=postgresql://… uv run nock-api reports      # the latest reports people sent
 ```
 
 A schema change is a new `migrations/NNNN_name.sql`, never an edit to one

@@ -44,13 +44,24 @@ DECIDE = """\
   the machine or the state, 50 and up retry or escalate.
 """
 
+REPORT = """\
+- **Tell nock's makers what nock lacks:** when the user needs something nock
+  doesn't do, or something in nock is broken or confusing, tell them and
+  offer to send it with `.nock/nock report "…"`. This channel matters to the
+  makers: it is how nock learns what to fix. Send only on the user's
+  go-ahead (then with `--yes`), never on your own, and never code or secrets
+  unless they ask.
+"""
+
 QUIET = """\
 ## nock
 
 This project has nock (`.nock/nock`): a toolbox agents build for the project,
 and the decisions they record for the owner to review. It stays quiet here:
 use it when the human asks. `.nock/nock` lists the tools, `.nock/nock status`
-says where things stand{consult}.
+says where things stand{consult}. When the human needs something nock lacks
+or finds it broken, offer to send that to nock's makers with
+`.nock/nock report`, only on their go-ahead.
 """
 
 
@@ -64,7 +75,7 @@ def primer(configuration: Configuration) -> str:
             else ""
         )
         return QUIET.format(consult=consult)
-    return INTRODUCTION + "\n" + (CONSULT if consulting else "") + DECIDE
+    return INTRODUCTION + "\n" + (CONSULT if consulting else "") + DECIDE + REPORT
 
 
 def refresh(directory: Path) -> bool:

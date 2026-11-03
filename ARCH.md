@@ -67,6 +67,8 @@ src/nock/
   share.py           Sharing: a round's summary, held to naming nothing, sent on the owner's word
   usage.py           Usage: the report shared with nock's makers on the owner's yes (`share`),
                      the question asked once, the project's random id, the weekly send
+  reports.py         Reports: what the user writes to nock's makers (`nock report`), shown and
+                     asked on a terminal, sent with no terminal only with `--yes`
   consult.py         Consultant: a fresh agent advises on a task, submitting through `nock advise`
   dispatch.py        Dispatcher: launch a headless `claude -p` session and ingest it
   hooks.py           `nock hook EVENT`: nock's own handlers, then the project's
@@ -118,7 +120,8 @@ scripts/release.py   cut a release: checks, asks, then tags vVERSION and pushes 
 evals/               does reflection pay? real sessions, with and without a toolbox
 web/                 nock.dev, never vendored or packaged: site/ (the pages), build.py (docs/
                      from this README), publish.py (to GitHub Pages)
-server/              api.nock.dev, where `nock share` and the usage reports post: a distribution of
+server/              api.nock.dev, where `nock share`, the usage reports and `nock report` post: a
+                     distribution of
                      its own (`nock-api`, Python 3.14, FastAPI, Postgres), never vendored or
                      published, with its own lock, tests and deploy (server/README.md)
 ```
@@ -574,6 +577,31 @@ by the summary, so a preview and the send that follows vet once. It
 returns the text and where it would go; with `send`, it posts it to
 `endpoints.reflections`, records `shared` in the round's record, and
 commits; it refuses to send, before vetting, when `share` is false.
+
+`reports.Reports` builds what `nock report` sends: the text (the argument,
+else stdin when it is not a terminal), stripped, non-empty and at most
+10,000 characters, with `releases.VERSION` and `sys.platform`, nothing else.
+Without `--yes` it asks: on a terminal (stdin a TTY) it writes the body and
+`endpoints.reports` to stderr and reads `[y/N]`; with no terminal it raises
+a `PolicyError` (43) whose value is the body it would send, so an agent can
+show the user before passing `--yes`. It posts to `endpoints.reports` with a
+30-second timeout and returns the body, the endpoint and the server's id; a
+refusal or no answer is an `ExternalError` (52). `share` does not gate it:
+each report is the user's own words, sent on their word. It is
+`confirm=True`, so Claude Code asks before an agent runs it, and the primer
+(`primer.REPORT`, and a sentence in the quiet one) tells agents to offer it
+when the user needs something nock lacks.
+
+On api.nock.dev (`server/`, its README has the API), `POST /reports` takes
+exactly `{text, nock, platform}`: the text non-empty, at most 10,000
+characters, kept stripped, Postgres-storable; `nock` and `platform` held to
+the usage report's patterns; the body at most 40 KB (`413` past it, unread).
+It shares the per-address in-memory rate limit with every other `POST`, keeps
+the row in `reports` (`id`, `received`, `text`, `nock`, `platform`; migration
+`0002_reports.sql`), nothing about the sender, and answers `201 {"id": N}`.
+Its spans are `report` with a `kept` (row id, character count) or `refused`
+child, never the text. The makers read the latest with `nock-api reports
+[--limit N]` (newest first, 20 by default) on the box.
 
 ## Evaluations
 
