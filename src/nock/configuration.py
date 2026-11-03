@@ -98,12 +98,15 @@ DEFAULTS: dict[str, Any] = {
     # `share`, whether nock shares a usage report with its makers (counts and
     # categories, and a random id for the project), weekly, has no default: unset
     # is unanswered and sends nothing until the owner says yes (`nock usage share
-    # yes|no` writes it); false sends nothing at all, summaries included.
+    # yes|no` writes it); false sends nothing at all, summaries included — only
+    # what someone writes and sends themselves with `nock report` still goes.
     "endpoints": {
         # Where `nock share` sends a round's summary, when the owner says so.
         "reflections": "https://api.nock.dev/reflections",
         # Where the usage reports go, once a week at most.
         "usage": "https://api.nock.dev/usage",
+        # Where `nock report` sends what the user wrote, on their word.
+        "reports": "https://api.nock.dev/reports",
     },
     "pricing": {
         # Sessions are costed at API prices (API-equivalent: a subscription does

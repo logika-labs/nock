@@ -178,6 +178,7 @@ def test_init_allows_each_command_but_run_and_asks_for_the_owner_s(project: Proj
     assert all(rule.startswith("Bash(.nock/nock") for rule in allowed)
     assert permissions["ask"] == [
         "Bash(.nock/nock share:*)",
+        "Bash(.nock/nock report:*)",
         "Bash(.nock/nock init:*)",
         "Bash(.nock/nock upgrade:*)",
     ]

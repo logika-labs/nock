@@ -28,6 +28,7 @@ from nock.processes import Output
 from nock.project import Project
 from nock.reflect import Record, Reflection, Round, tool_rows
 from nock.render import Problem
+from nock.reports import Reports
 from nock.results import Results
 from nock.schema import check_schema
 from nock.sessions import Sessions
@@ -445,6 +446,24 @@ def usage_share(project: Project, answer: Literal["yes", "no"]) -> dict[str, Any
     report: `share` in .nock/config.toml, committed, with when it was given.
     Only what the owner said, when they said it."""
     return Usage(project).answer(answer == "yes", "command")
+
+
+@command(confirm=True)
+def report(
+    project: Project,
+    text: str | None = None,
+    *,
+    yes: Annotated[
+        bool, Option(help="Send without asking: only on the user's explicit go-ahead.")
+    ] = False,
+) -> dict[str, Any]:
+    """Send nock's makers what the user wrote — something nock lacks, or
+    something broken or confusing — with nock's version and the platform,
+    nothing from the repository. The text is the argument, or stdin. On a
+    terminal it shows what would go and asks; with no terminal it sends only
+    with --yes, which an agent passes only when the user said to send it.
+    Answers the makers' reference id."""
+    return Reports(project).report(text, yes)
 
 
 # --- generators -----------------------------------------------------------------------
