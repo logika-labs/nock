@@ -6,99 +6,43 @@
 <title>nock studio</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Unbounded:wght@600;800&display=swap">
 <style>
-/* nock's studio look: warm paper, off-black ink, one red for everything interactive,
-   white cards with borders and no shadows, outlined pills, uppercase labels.
-   Layout: a red field band holding the studio's tabs, then the open tab's one centred column.
-   What every tab shares is here; each tab's own look is in its fragment (pages/NAME.html). */
+/* The studio's frame: a band with the open tab's title, its counts under it and the menu beside
+   it, then the tab's one centred column. Its look — tokens, surfaces, type, the field behind —
+   is in pages/studio.css, put in below; each tab's own look is in its fragment. */
 :root {
-  --paper: #f2efe9;
-  --ink: #393939;
-  --red: #da121a;
-  --white: #ffffff;
-  --grey: #8a8a8a;
-  --ok-hue: #1f7a44;
-  --warning-hue: #d1881b;
-  --error-hue: #a4161a;
-  --info-hue: #1b94d1;
-
-  --background: var(--paper);
-  --foreground: var(--ink);
-  --card: var(--white);
-  --muted: color-mix(in oklab, var(--grey) 62%, var(--ink));
-  --border: color-mix(in oklab, var(--paper) 85%, var(--ink));
-  --input: color-mix(in oklab, var(--paper) 78%, var(--ink));
-  --hover: color-mix(in oklab, var(--paper) 55%, var(--white));
-  --selection: var(--red);
-  --selection-foreground: var(--white);
-  --selection-tint: color-mix(in oklab, var(--red) 8%, var(--white));
-  --ring: var(--red);
-  --link: var(--red);
-  --ok: var(--ok-hue);
-  --ok-tint: color-mix(in oklab, var(--ok-hue) 9%, var(--white));
-  --warning: var(--warning-hue);
-  --error: var(--error-hue);
-  --info: var(--info-hue);
-  --field: var(--red);
-  --field-foreground: var(--white);
-  --field-grid: color-mix(in oklab, var(--white) 20%, transparent);
+  --background: #f4f4f6;
+  --foreground: #16161c;
+  --card: #ffffff;
+  --muted: #5b5d68;
+  --border: #dcdde3;
+  --input: #c6c8d0;
+  --hover: #f7f7f9;
+  --selection: #16161c;
+  --selection-foreground: #ffffff;
+  --selection-tint: #ececf2;
+  --ring: #16161c;
+  --link: #4b3bd6;
+  --ok: #1f7a44;
+  --ok-tint: #e7f4ec;
+  --warning: #a35f00;
+  --error: #b0151b;
+  --info: #1666a6;
 
   --sans: "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-  --mono: "Geist Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --display: var(--sans);
   --column: 46rem;
   --number: 2.25rem;
+  --radius: 12px;
   color-scheme: light;
-}
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --background: color-mix(in oklab, var(--ink) 94%, var(--paper));
-    --foreground: color-mix(in oklab, var(--white) 94%, var(--ink));
-    --card: color-mix(in oklab, var(--ink) 86%, var(--paper));
-    --muted: color-mix(in oklab, var(--grey) 70%, var(--paper));
-    --border: color-mix(in oklab, var(--paper) 16%, var(--ink));
-    --input: color-mix(in oklab, var(--paper) 26%, var(--ink));
-    --hover: color-mix(in oklab, var(--ink) 80%, var(--paper));
-    --selection: color-mix(in oklab, var(--red) 70%, var(--white));
-    --selection-tint: color-mix(in oklab, var(--red) 16%, var(--card));
-    --ring: color-mix(in oklab, var(--red) 62%, var(--paper));
-    --link: color-mix(in oklab, var(--red) 55%, var(--paper));
-    --ok: color-mix(in oklab, var(--ok-hue) 72%, var(--white));
-    --ok-tint: color-mix(in oklab, var(--ok-hue) 16%, var(--card));
-    --warning: color-mix(in oklab, var(--warning-hue) 74%, var(--white));
-    --error: color-mix(in oklab, var(--error-hue) 74%, var(--white));
-    --info: color-mix(in oklab, var(--info-hue) 70%, var(--white));
-    --field: color-mix(in oklab, var(--red) 70%, var(--ink));
-    --field-grid: color-mix(in oklab, var(--white) 16%, transparent);
-    color-scheme: dark;
-  }
-}
-:root[data-theme="dark"] {
-  --background: color-mix(in oklab, var(--ink) 94%, var(--paper));
-  --foreground: color-mix(in oklab, var(--white) 94%, var(--ink));
-  --card: color-mix(in oklab, var(--ink) 86%, var(--paper));
-  --muted: color-mix(in oklab, var(--grey) 70%, var(--paper));
-  --border: color-mix(in oklab, var(--paper) 16%, var(--ink));
-  --input: color-mix(in oklab, var(--paper) 26%, var(--ink));
-  --hover: color-mix(in oklab, var(--ink) 80%, var(--paper));
-  --selection: color-mix(in oklab, var(--red) 70%, var(--white));
-  --selection-tint: color-mix(in oklab, var(--red) 16%, var(--card));
-  --ring: color-mix(in oklab, var(--red) 62%, var(--paper));
-  --link: color-mix(in oklab, var(--red) 55%, var(--paper));
-  --ok: color-mix(in oklab, var(--ok-hue) 72%, var(--white));
-  --ok-tint: color-mix(in oklab, var(--ok-hue) 16%, var(--card));
-  --warning: color-mix(in oklab, var(--warning-hue) 74%, var(--white));
-  --error: color-mix(in oklab, var(--error-hue) 74%, var(--white));
-  --info: color-mix(in oklab, var(--info-hue) 70%, var(--white));
-  --field: color-mix(in oklab, var(--red) 70%, var(--ink));
-  --field-grid: color-mix(in oklab, var(--white) 16%, transparent);
-  color-scheme: dark;
 }
 
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
 html, body { background: var(--background); color: var(--foreground); }
-body { margin: 0; font: 400 15px/1.6 var(--sans); -webkit-font-smoothing: antialiased; }
+body { margin: 0; font: 400 15px/1.6 var(--sans); -webkit-font-smoothing: antialiased; min-height: 100vh; }
 button:not(:disabled), label[for] { cursor: pointer; }
 .frame {
   max-width: calc(var(--column) + 32px); margin: 0 auto;
@@ -107,56 +51,64 @@ button:not(:disabled), label[for] { cursor: pointer; }
 }
 .label { font: 500 12px/16px var(--sans); letter-spacing: .04em; text-transform: uppercase; }
 .numeral { font-variant-numeric: tabular-nums; }
+.stage { position: relative; z-index: 1; }
 
-/* The field band: the page's one loud surface. */
-.band {
-  background-color: var(--field); color: var(--field-foreground);
-  background-image:
-    linear-gradient(to right, var(--field-grid) 1px, transparent 1px),
-    linear-gradient(to bottom, var(--field-grid) 1px, transparent 1px);
-  background-size: 24px 24px;
+/* The band: the title with its counts under it, the menu — one link per tab — beside it. */
+.band .frame { padding-block: 24px 4px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; }
+.heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 20px; min-width: 0; }
+.titles { display: grid; gap: 4px; min-width: 0; }
+.band h1 { margin: 0; font: 700 30px/1.15 var(--display); letter-spacing: -.02em; }
+.band #summary { margin: 0; font: 500 13px/20px var(--mono); color: var(--muted); font-variant-numeric: tabular-nums; }
+.menu { display: flex; align-items: center; gap: 4px; }
+.menu a {
+  display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px; border-radius: 999px;
+  color: inherit; text-decoration: none; font: 500 14px/20px var(--sans);
 }
-.band .frame { padding-block: 40px 32px; display: grid; gap: 6px; }
-.band .wordmark { opacity: .85; }
-.band h1 { margin: 0; font: 700 32px/40px var(--sans); letter-spacing: -.02em; }
-.band p { margin: 0; font-size: 16px; opacity: .92; }
-.band .notice { margin-top: 8px; max-width: 72ch; display: grid; gap: 8px; }
-.band .notice p { font-size: 13px; opacity: .9; }
-.band .notice button {
-  font: 500 13px/20px var(--sans); padding: 4px 12px; border-radius: 6px;
-  border: 1px solid var(--field-foreground); background: transparent; color: inherit;
+.menu a::before {
+  content: ""; width: 16px; height: 16px; flex: none; background: currentColor;
+  -webkit-mask: var(--icon) center / contain no-repeat; mask: var(--icon) center / contain no-repeat;
 }
-.band .notice button[data-share="true"] { background: var(--field-foreground); color: var(--field); }
-.band .notice button:focus-visible { outline: 2px solid var(--field-foreground); outline-offset: 2px; }
+.menu a[data-tab-link="decisions"] { --icon: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><path d='M2 2h12v3H2zM2 6.5h12v3H2zM2 11h8v3H2z'/></svg>"); }
+.menu a[data-tab-link="evals"] { --icon: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><path d='M1 13h3V8H1zM6.5 13h3V3h-3zM12 13h3V6h-3z'/></svg>"); }
+.menu a:focus-visible, .notice button:focus-visible, .notice summary:focus-visible { outline: 2px solid var(--ring); outline-offset: 3px; }
+
+/* The sharing question, while unanswered: one line, what it holds on request. */
+.notice { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; font-size: 13px; color: var(--muted); }
+.notice p { margin: 0; }
+.notice .choices { display: flex; gap: 6px; }
+.notice button {
+  font: 500 12px/18px var(--sans); padding: 3px 10px; border-radius: 999px;
+  border: 1px solid var(--input); background: transparent; color: var(--foreground);
+}
+.notice button[data-share="true"] { background: var(--selection); border-color: var(--selection); color: var(--selection-foreground); }
+.notice details { flex-basis: 100%; }
+.notice summary { cursor: pointer; width: max-content; text-decoration: underline; text-underline-offset: 2px; }
+.notice details p { margin-top: 6px; max-width: 72ch; }
+
 .empty { text-align: center; padding: 64px 16px; color: var(--muted); display: grid; gap: 6px; justify-items: center; }
 .empty strong { color: var(--foreground); font: 700 17px/24px var(--sans); }
 .empty code { font: 13px var(--mono); background: var(--card); padding: 1px 5px; border-radius: 4px; }
 
 .toast {
-  position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom, 0px)); transform: translate(-50%, 8px);
+  position: fixed; z-index: 30; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom, 0px)); transform: translate(-50%, 8px);
   background: var(--foreground); color: var(--background); padding: 10px 16px; border-radius: 8px; font-size: 14px;
   opacity: 0; pointer-events: none; transition: opacity .15s, transform .15s; max-width: calc(100vw - 32px);
 }
 .toast.shown { opacity: 1; transform: translate(-50%, 0); }
-/* The studio's tabs: words on the band, the open one underlined in white. */
-.band .frame { padding-bottom: 0; }
-.band .tabs { display: flex; flex-wrap: wrap; gap: 0 24px; margin-top: 18px; }
-.band .tabs a {
-  padding: 6px 0 8px; border-bottom: 2px solid transparent; color: inherit; opacity: .75; text-decoration: none;
-  font: 500 12px/16px var(--sans); letter-spacing: .04em; text-transform: uppercase;
-}
-.band .tabs a:hover { opacity: 1; }
-.band .tabs a[aria-current="page"] { opacity: 1; border-bottom-color: var(--field-foreground); }
-.band .tabs a:focus-visible { outline: 2px solid var(--field-foreground); outline-offset: 2px; }
+
+/* Decoration behind everything; never under text. */
+.backdrop { position: fixed; inset: 0; z-index: 0; overflow: hidden; pointer-events: none; }
+.sprites { position: absolute; width: 0; height: 0; overflow: hidden; }
 
 @media (max-width: 560px) {
-  .band .frame { padding-top: 28px; }
-  .band h1 { font-size: 26px; line-height: 32px; }
+  .menu a { padding: 8px 12px; }
+  .band h1 { font-size: 24px; }
 }
 @media (prefers-reduced-motion: reduce) {
-  * { transition: none !important; }
+  *, *::before, *::after { transition: none !important; animation: none !important; }
 }
 </style>
+<!-- nock:styles -->
 <script>
 // The studio: tabs register here, and the address says which is open (`#NAME`,
 // or `#NAME/ROUTE` for something in it). An address naming no tab goes to the
@@ -167,7 +119,7 @@ const studio = {
   current: null,
   // tab: { show(route) — it is opened, or its route changes; hide() — another is opened }.
   register(name, tab) { this.tabs.set(name, tab); },
-  // The line under the title, kept per tab and shown for the open one.
+  // The counts under the title, kept per tab and shown for the open one.
   summary(name, text) {
     this.summaries.set(name, text);
     if (name === this.current) document.getElementById("summary").textContent = text;
@@ -190,32 +142,62 @@ const studio = {
     if (this.current && this.current !== name) this.tabs.get(this.current).hide();
     this.current = name;
     for (const panel of document.querySelectorAll("[data-tab-panel]")) panel.hidden = panel.dataset.tabPanel !== name;
-    for (const link of document.querySelectorAll(".tabs a")) {
+    for (const link of document.querySelectorAll(".menu a")) {
       if (link.dataset.tabLink === name) link.setAttribute("aria-current", "page");
       else link.removeAttribute("aria-current");
     }
     const title = document.querySelector(`[data-tab-link="${name}"]`).textContent;
     document.getElementById("title").textContent = title;
     document.title = `nock studio — ${title}`;
-    document.getElementById("summary").textContent = this.summaries.get(name) ?? "Loading…";
+    document.getElementById("summary").textContent = this.summaries.get(name) ?? "…";
     this.tabs.get(name).show(route);
   },
 };
 </script>
 </head>
 <body>
+<svg class="sprites" aria-hidden="true" focusable="false">
+  <defs>
+    <linearGradient id="holo" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="13" y2="9">
+      <stop offset="0" stop-color="#ff9ad5"/><stop offset=".3" stop-color="#c3b2ff"/><stop offset=".55" stop-color="#8fe9ff"/><stop offset=".8" stop-color="#fff2a0"/><stop offset="1" stop-color="#ffb0d6"/>
+    </linearGradient>
+    <g id="mascot-shape">
+      <rect x="3" y="0" width="7" height="1"/><rect x="2" y="1" width="9" height="6"/>
+      <rect x="0" y="3" width="2" height="2"/><rect x="11" y="2" width="2" height="2"/>
+      <rect x="3" y="7" width="1" height="2"/><rect x="5" y="7" width="1" height="1"/><rect x="7" y="7" width="1" height="1"/><rect x="9" y="7" width="1" height="2"/>
+    </g>
+    <!-- nock's mascot: chunky black pixels with a foil rim, extruded in foil, with foil eyes. -->
+    <symbol id="mascot" viewBox="-0.3 -0.3 14 10">
+      <use href="#mascot-shape" transform="translate(.6 .6)" fill="url(#holo)"/>
+      <use href="#mascot-shape" fill="none" stroke="url(#holo)" stroke-width=".4"/>
+      <use href="#mascot-shape" fill="#0b0b0f"/>
+      <rect x="4" y="2" width="1" height="2" fill="url(#holo)"/><rect x="8" y="2" width="1" height="2" fill="url(#holo)"/>
+    </symbol>
+  </defs>
+</svg>
+<div class="backdrop" aria-hidden="true">
+  <svg class="creature one"><use href="#mascot"/></svg>
+  <svg class="creature two"><use href="#mascot"/></svg>
+  <svg class="creature three"><use href="#mascot"/></svg>
+  <svg class="creature four"><use href="#mascot"/></svg>
+  <svg class="creature five"><use href="#mascot"/></svg>
+  <svg class="creature six"><use href="#mascot"/></svg>
+  <span class="bubble one"></span><span class="bubble two"></span><span class="bubble three"></span><span class="bubble four"></span><span class="bubble five"></span>
+</div>
+<div class="stage">
 <header class="band">
   <div class="frame">
-    <span class="label wordmark">nock studio</span>
-    <h1 id="title"></h1>
-    <p id="summary">Loading…</p>
-<!-- nock:notice -->
-    <nav class="tabs" aria-label="Studio">
+    <div class="heading">
+      <div class="titles"><h1 id="title"></h1><p id="summary">…</p></div>
+      <nav class="menu" aria-label="Studio">
 <!-- nock:tabs -->
-    </nav>
+      </nav>
+    </div>
+<!-- nock:notice -->
   </div>
 </header>
 <!-- nock:panels -->
+</div>
 <div class="toast" id="toast" role="status"></div>
 <script>
 // The owner's answer to whether nock shares its usage report, asked until given.

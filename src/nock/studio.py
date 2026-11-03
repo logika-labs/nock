@@ -5,7 +5,7 @@ reviewed in place, and the evaluations, read from their files. Local, and only w
 A tab is a `Tab` in `TABS`: its name is its address on the page (`#NAME`) and
 its routes on the server (`/NAME/…`); its page is the fragment
 `pages/NAME.html` (markup, style and a script that registers it with the
-studio, `pages/studio.html`). While nobody has answered whether nock shares
+studio, `pages/studio.html`, whose look is `pages/studio.css`). While nobody has answered whether nock shares
 its usage report, the page asks under the title, and `POST /usage` records
 the owner's answer."""
 
@@ -32,6 +32,7 @@ from nock.usage import QUESTION, Answer, Usage, sharing
 
 PAGES = Path(__file__).resolve().with_name("pages")
 SHELL = PAGES / "studio.html"
+LOOK = PAGES / "studio.css"
 
 
 class Tab:
@@ -174,15 +175,16 @@ class Studio(ThreadingHTTPServer):
         self.tabs = {tab.name: tab(project) for tab in TABS}
 
     def question(self) -> str:
-        """Under the title while nobody has answered: the question, with Share
-        and Don't share."""
+        """Under the title while nobody has answered: the question in a line,
+        Share and Don't share, and what the report holds on request."""
         if sharing(self.project)[0] is not Answer.UNANSWERED:
             return ""
         return (
             '    <div class="notice" id="usage">\n'
-            f"      <p>{html.escape(QUESTION)}</p>\n"
+            "      <p>May nock share a weekly usage report with its makers?</p>\n"
             '      <p class="choices"><button type="button" data-share="true">Share</button>'
             ' <button type="button" data-share="false">Don\'t share</button></p>\n'
+            f"      <details><summary>What it holds</summary><p>{html.escape(QUESTION)}</p></details>\n"
             "    </div>"
         )
 
@@ -195,7 +197,8 @@ class Studio(ThreadingHTTPServer):
         return f"http://127.0.0.1:{self.server_address[1]}/"
 
     def page(self) -> bytes:
-        """The shell with every tab's link and panel in it, the first tab open."""
+        """The shell with its look and every tab's link and panel in it, the
+        first tab open."""
         links = "\n".join(
             f'      <a href="#{tab.name}" data-tab-link="{tab.name}">{html.escape(tab.title)}</a>'
             for tab in self.tabs.values()
@@ -206,7 +209,8 @@ class Studio(ThreadingHTTPServer):
         )
         shell = SHELL.read_text()
         return (
-            shell.replace("<!-- nock:tabs -->", links)
+            shell.replace("<!-- nock:styles -->", f"<style>\n{LOOK.read_text()}</style>")
+            .replace("<!-- nock:tabs -->", links)
             .replace("<!-- nock:panels -->", panels)
             .replace("<!-- nock:notice -->", self.question())
             .encode()
@@ -234,7 +238,7 @@ class Handler(BaseHTTPRequestHandler):
         return self.server
 
     def do_GET(self) -> None:
-        if self.path == "/":
+        if self.path.split("?")[0] == "/":
             self.send(HTTPStatus.OK, self.studio.page(), "text/html")
             return
         self.answer(lambda tab, route: tab.get(route))
