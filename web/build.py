@@ -20,7 +20,7 @@ OUTPUT = HERE / "site" / "docs" / "index.html"
 PAGE = HERE / "page.html"
 # Each legal page: its source in legal/, its description, and where it is served.
 LEGAL = {
-    "privacy": "What reaches nock's makers from nock.dev and from nock: the usage report, shared summaries, and your rights.",
+    "privacy": "What reaches nock's makers from nock.dev and from nock: the usage report, shared summaries, reports you write, and your rights.",
     "terms": "The terms of nock.dev and api.nock.dev; the software itself is MIT licensed.",
 }
 REPOSITORY = "https://github.com/logika-labs/nock/blob/main/"

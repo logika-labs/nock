@@ -6,10 +6,11 @@ This policy explains what personal data reaches nock's makers when you visit noc
 
 ## 1. In short
 
-nock runs on your computer, and what it records about your project stays there, in your repository. We receive two things, and only these:
+nock runs on your computer, and what it records about your project stays there, in your repository. We receive three things, and only these:
 
 - **A weekly usage report**, only if you said yes when nock asked: counts and categories only, under a random project id.
 - **A reflection round's summary**, only when you choose to send one, after seeing exactly what would be sent.
+- **A report you write to us**, only when you send one with `nock report` after seeing exactly what would be sent: your text, nock's version and your platform, which we store with the time it arrived, and no IP address, for up to 12 months.
 
 The website sets no cookies and runs no analytics.
 

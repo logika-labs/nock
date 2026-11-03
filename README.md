@@ -340,7 +340,9 @@ when one of them has drifted.
 Every session starts with the project's tools listed, through Claude Code's
 SessionStart hook. CLAUDE.md imports a short primer, `.nock/context.md`: why
 the project uses nock (to stay coherent across sessions), to consult before
-changing code, recording decisions, and `nock run`. A session the human
+changing code, recording decisions, `nock run`, and offering to tell nock's
+makers what nock lacks with `nock report` (see [Telling nock's makers what
+you need](#telling-nocks-makers-what-you-need)). A session the human
 starts also hears where things stand, in a few lines — once a day, or sooner
 when something new calls (a round falls due, the owner answers a question or
 rejects a decision) — with a word on what to do with it: take into account
@@ -663,7 +665,8 @@ runs arbitrary shell:
   run the project's own committed tools and checks;
 - `ask`: every `confirm=True` command, the project's and nock's own:
   `init` (it rewrites these rules), `upgrade` (it fetches and merges code)
-  and `share` (it sends a summary out). Claude Code asks about these even
+  `share` (it sends a summary out) and `report` (it sends what you wrote
+  to nock's makers). Claude Code asks about these even
   in bypass mode; `permissions.confirm = "allow"` in `.nock/config.toml`
   moves them to `allow` and leaves nock no `ask` rule, and the agents are
   told to run them only when the owner's request calls for them;
@@ -741,7 +744,8 @@ answer, and has no default:
   report of a project carries it, the reports are pseudonymous rather than
   anonymous. Nothing is published.
 - **`share = false`**: nothing is ever sent — no report, no id is made, and
-  `nock share` won't send a summary either.
+  `nock share` won't send a summary either. Only what you write and send
+  yourself with `nock report` (below) still goes.
 
 An earlier nock's `[share]` table with `level` still reads: `"none"` as
 `share = false`, any other level as `share = true` (which now sends only the
@@ -769,6 +773,29 @@ the owner sees what they are asked about).
 
 A round's summary is sent only with `nock share` and the owner's yes (see
 [Reflection](#reflection)).
+
+### Telling nock's makers what you need
+
+When nock lacks something you need, or something in it is broken or
+confusing, tell its makers: they read what arrives and it shapes what they
+build next.
+
+```sh
+.nock/nock report "I need nock to list the decisions a commit touched."
+```
+
+The text is the argument, or stdin. It goes to `endpoints.reports` with
+nock's version and the platform (`darwin`, `linux`) and nothing else —
+nothing from the repository unless the text says it — and the makers'
+answer is a reference id, printed with what was sent. On a terminal nock shows
+exactly what would go and asks `[y/N]`; with no terminal to ask on (an
+agent's session) it refuses unless `--yes` is passed, and shows what it would
+have sent. The primer tells agents that this channel exists and matters:
+when you need something nock lacks, your agent offers to send it, and sends
+it only on your go-ahead (then with `--yes`), never code or secrets unless
+you ask; Claude Code asks you before each call too (it is a `confirm=True`
+command). The text is at most 10,000 characters. Reports are sent whatever
+`share` says: each is something you wrote and chose to send.
 
 ## Evaluations
 
@@ -908,6 +935,7 @@ repetitions, write the comparison down first.
 | `nock usage share yes\|no` | records the owner's answer on sharing the usage report |
 | `nock reflect [KIND]`, `nock reflect [KIND] finish JSON` | a reflection round: nock's own (`/nock-reflect`), or another kind, `logika` (`/nock-reflect-logika`) |
 | `nock share [JSON]` | a round's summary as it would be sent, and sending it (asks the owner) |
+| `nock report [TEXT] [--yes]` | send nock's makers what you need from nock or what is wrong with it (shows it and asks; with no terminal, only with `--yes`) |
 | `nock gen write`, `new`, `add`, `set`, `rm`, `show`, `bind`, `unbind` | generators |
 | `nock init`, `nock upgrade` | install (or re-wire), and upgrade the vendored core to the latest release, with a three-way merge (each asks the owner) |
 
@@ -954,8 +982,8 @@ one machine.
 | `permissions.confirm` | `ask` | how Claude Code treats a `confirm=True` command: `ask` has the owner approve each call (even in bypass mode); `allow` lets the agent run it, which it does only when the owner's request calls for it (see [What nock's agents may do](#what-nocks-agents-may-do)); `nock init` rewrites the rules after a change |
 | `consult.enabled`, `consult.deadline` | true, 600 | whether the consultant runs and the primer asks for it; seconds a consultation may take |
 | `upgrade.check`, `upgrade.index` | true, PyPI's `nock` | whether a session start says a newer nock is out, and where releases are looked up |
-| `share` | — (unanswered) | the owner's answer to whether nock sends its makers the weekly usage report: unset sends nothing until they answer, false sends nothing, summaries included (see [What nock shares](#what-nock-shares)) |
-| `endpoints.reflections`, `endpoints.usage` | `https://api.nock.dev/reflections`, `https://api.nock.dev/usage` | where `nock share` sends a summary, and where the usage reports go |
+| `share` | — (unanswered) | the owner's answer to whether nock sends its makers the weekly usage report: unset sends nothing until they answer, false sends nothing, summaries included, only what you send yourself with `nock report` (see [What nock shares](#what-nock-shares)) |
+| `endpoints.reflections`, `endpoints.usage`, `endpoints.reports` | `https://api.nock.dev/reflections`, `https://api.nock.dev/usage`, `https://api.nock.dev/reports` | where `nock share` sends a summary, where the usage reports go, and where `nock report` sends what you wrote |
 | `environment.python`, `setup`, `path`, `dotenv` | —, —, `[]`, — | what tools run in: the project's interpreter and how to make it, PATH entries, a dotenv file |
 | `pricing.fetch`, `pricing.table` | true, LiteLLM's `model_prices_and_context_window.json` on GitHub | whether nock fetches the public price table (at most daily) to cost sessions at API prices, and from where |
 | `pricing."PREFIX"` | — | dollars per million tokens, `{input, output, cache_read, cache_write}`, for models whose name starts with PREFIX; overrides the table |
