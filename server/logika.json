@@ -9,6 +9,7 @@
     "commands": {"type": "int"},
     "metrics": {"type": "int"},
     "summary_chars": {"type": "int"},
+    "text_chars": {"type": "int"},
     "dated": {"type": "bool", "dimension": true},
     "retry_after": {"type": "int"},
     "migration": {"type": "str"}
@@ -34,6 +35,16 @@
         {"name": "refused", "message": "Refused with {http_status} ({reason})", "params": ["http_status", "reason"]}
       ]
     },
+    {
+      "name": "report",
+      "message": "A report someone wrote, of {bytes} bytes",
+      "params": ["bytes?"],
+      "span": {},
+      "children": [
+        {"name": "kept", "message": "Kept report {row_id} of {text_chars} characters", "params": ["row_id", "text_chars"]},
+        {"name": "refused", "message": "Refused with {http_status} ({reason})", "params": ["http_status", "reason"]}
+      ]
+    },
     {"name": "limited", "message": "A sender past the rate limit, told to retry in {retry_after} s", "params": ["retry_after"]},
     {
       "name": "migrate",
@@ -53,7 +64,7 @@
         "init": ["nock_api/telemetry.py"],
         "version": "pyproject.toml: project.version",
         "instrumented": true,
-        "strategy": "Plain OTel spans on nock_api.telemetry.tracer, the enhancer installed by the entry point when the SDK key is set. Each POST is a `reflection` or `usage` operation whose outcome is a `kept` or `refused` child; the rate limit a `limited` moment; migrations a `migrate` operation. Counts, outcomes, schema versions and ids of our own rows only: never an address, a header or what a body says."
+        "strategy": "Plain OTel spans on nock_api.telemetry.tracer, the enhancer installed by the entry point when the SDK key is set. Each POST is a `reflection`, `usage` or `report` operation whose outcome is a `kept` or `refused` child; the rate limit a `limited` moment; migrations a `migrate` operation. Counts, outcomes, schema versions and ids of our own rows only: never an address, a header or what a body says."
       }
     ],
     "exclude": ["tests/**", "deploy/**", "migrations/**"]

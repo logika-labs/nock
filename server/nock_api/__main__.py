@@ -1,5 +1,5 @@
-"""`nock-api serve` and `nock-api migrate`: the entry point, the only place that reads the environment
-and the clock.
+"""`nock-api serve`, `nock-api migrate` and `nock-api reports`: the entry point, the only place that
+reads the environment and the clock.
 
 `DATABASE_URL` names the database; when `OTEL_EXPORTER_OTLP_HEADERS` holds an SDK key, the server sends
 its own spans to Logika, else it runs untraced. On the box both come from `/etc/nock-api/nock-api.env`.
@@ -28,6 +28,10 @@ def main(argv: list[str] | None = None) -> int:
     migrating.add_argument(
         "--directory", type=Path, default=migrate.MIGRATIONS, help="defaults to the repository's"
     )
+    listing = commands.add_parser(
+        "reports", help="print the latest reports people sent, newest first"
+    )
+    listing.add_argument("--limit", type=int, default=20, help="how many (default: 20)")
     arguments = parser.parse_args(argv)
     database_url = os.environ.get("DATABASE_URL")
     if not database_url:
@@ -46,6 +50,10 @@ def main(argv: list[str] | None = None) -> int:
             print(f"applied {name}")
         print(f"{len(names)} migration(s) applied" if names else "schema is up to date")
         return 0
+    if arguments.command == "reports":
+        with psycopg.connect(database_url) as connection:
+            print(latest_reports(connection, arguments.limit))
+        return 0
     uvicorn.run(
         app.create(database_url, lambda: datetime.now(UTC), Limit()),
         host=arguments.host,
@@ -57,6 +65,23 @@ def main(argv: list[str] | None = None) -> int:
         server_header=False,
     )
     return 0
+
+
+def latest_reports(connection: psycopg.Connection, limit: int) -> str:
+    """The latest `limit` reports, newest first: each one's id, when it arrived, nock's version and the
+    platform, then its text, indented."""
+    rows = connection.execute(
+        "SELECT id, received, nock, platform, text FROM reports ORDER BY id DESC LIMIT %s",
+        [limit],
+    ).fetchall()
+    if not rows:
+        return "no reports yet"
+    entries = []
+    for identity, received, nock, platform, text in rows:
+        moment = received.astimezone(UTC).strftime("%Y-%m-%d %H:%M UTC")
+        body = "\n".join(f"    {line}" for line in text.splitlines())
+        entries.append(f"#{identity}  {moment}  nock {nock} on {platform}\n{body}")
+    return "\n\n".join(entries)
 
 
 if __name__ == "__main__":
