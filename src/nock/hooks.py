@@ -2,7 +2,7 @@
 stdin and answers in Claude Code's hook format. nock's own: a session starts
 knowing the toolbox and — when the human started it, once a day or when
 something new calls — where things stand, in a few lines (a reflection round
-due, decisions waiting on review or rework, another kind of round worth
+due, decisions waiting on review or rework, assets to make again, another kind of round worth
 offering); a
 prompt brings the owner's reviews of the decisions the session recorded; an
 edit to a file shows the decisions that govern it; and when the session ends
@@ -153,6 +153,7 @@ class HookRunner:
         news = [
             bool(collected["reflection"]["due"]),
             sorted(item["number"] for item in collected["to_rework"]),
+            sorted([item["key"], item["version"]] for item in collected["assets_to_remake"]),
             collected["unshared"],
             collected["newer_nock"],
             offers,

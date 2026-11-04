@@ -237,7 +237,7 @@ class Assets:
             counts[asset["versions"][-1]["review"]] += 1
         return counts
 
-    def to_rework(self) -> list[dict[str, Any]]:
+    def to_remake(self) -> list[dict[str, Any]]:
         """Latest versions the owner rejected, or left a note on without
         approving: someone should make the next version."""
         return [

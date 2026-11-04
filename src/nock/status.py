@@ -1,6 +1,7 @@
 """Where the project stands with nock, in one place: whether a reflection round
 is due, the decisions by status and review, those rejected and waiting to be
-redone, those tagged important that wait on the owner's review, a round
+redone, those tagged important that wait on the owner's review, the assets
+waiting on review and those to make again, a round
 summary not yet shared, a
 newer nock, and whether another kind of round (a logika round, in a Logika
 project) is worth offering. `nock status` prints it; a
@@ -10,6 +11,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from nock.assets import Assets
+from nock.assets import Review as AssetReview
 from nock.decisions import Decisions, Review, Status
 from nock.kinds import offered
 from nock.reflect import Reflection
@@ -40,6 +43,7 @@ class Standing:
         reflection = Reflection(self.project)
         window = reflection.window()
         decisions = Decisions(self.project)
+        assets = Assets(self.project)
         return {
             "reflection": {
                 "due": reflection.due() or None,
@@ -64,6 +68,18 @@ class Standing:
                 if decision["note"]
                 and decision["review"] != Review.REJECTED
                 and decision["updated"] > (window.since or "")
+            ],
+            "assets": assets.counts(),
+            # The latest versions the owner rejected or left a note on: someone makes the next.
+            "assets_to_remake": [
+                {
+                    "key": version["key"],
+                    "version": version["version"],
+                    "title": version["title"],
+                    "review": version["review"],
+                    "feedback": version["feedback"],
+                }
+                for version in assets.to_remake()
             ],
             "unshared": Sharing(self.project).unshared(),
             "newer_nock": Updates(self.project).newer(),
@@ -116,6 +132,30 @@ class Standing:
                 lines.append(
                     f"- and {len(important) - SHOWN} more — `.nock/nock status` lists them"
                 )
+        assets = standing["assets"]
+        remake = standing["assets_to_remake"]
+        if assets[AssetReview.UNREVIEWED] or remake:
+            parts = [
+                f"{count} {what}"
+                for count, what in (
+                    (assets[AssetReview.UNREVIEWED], "unreviewed"),
+                    (len(remake), "to make again"),
+                )
+                if count
+            ]
+            lines.append(f"nock: assets — {', '.join(parts)}: review them on `.nock/nock studio`.")
+        lines += [
+            f"- make again asset `{item['key']}` (version {item['version']}, {item['review']})"
+            f" {item['title']}{said({'note': item['feedback']})}"
+            for item in remake[:SHOWN]
+        ]
+        if len(remake) > SHOWN:
+            lines.append(f"- and {len(remake) - SHOWN} more — `.nock/nock status` lists them")
+        if remake:
+            lines.append(
+                "  (`.nock/nock assets show KEY` has how each was made; `assets add` registers"
+                " the next version, answering the note.)"
+            )
         notes = [item for item in standing["notes"] if item not in standing["backlog"]]
         if standing["backlog"] or notes:
             parts = [
