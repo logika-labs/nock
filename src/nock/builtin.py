@@ -71,10 +71,18 @@ def check_command(
     names: list[str] | None = None,
     *,
     fix: Annotated[bool, Option(help="Run each command check's `fix` first.")] = False,
+    changed: Annotated[
+        bool,
+        Option(
+            help="Only the checks the branch's changes (since the main branch, committed or not) can affect."
+        ),
+    ] = False,
 ) -> None:
     """Run the checks — all of them, or those named; prints nothing when all pass.
-    Exit 1: the code is wrong. 42 (or 54/55): the machine is."""
-    verdict = Checks(project).run(names or None, fix=fix)
+    Exit 1: the code is wrong. 42 (or 54/55): the machine is. `--changed` runs
+    only those the changes since the main branch can affect, by each check's
+    `paths`."""
+    verdict = Checks(project).run(names or None, fix=fix, changed=changed)
     if verdict.exit_code == ExitCode.SUCCESS:
         return
     problems = verdict.problems()
@@ -631,7 +639,7 @@ def upgrade(
 # --- nock's own checks ---------------------------------------------------------------------
 
 
-@check(name="nock-tools")
+@check(name="nock-tools", paths=[".nock/**"])
 def tools_load_and_examples_run(project: Project, root: Path) -> list[str]:
     """Every tool loads, and every example a tool gives runs without being
     called wrong or breaking."""
@@ -685,14 +693,14 @@ def generated_files_in_step(project: Project, root: Path) -> list[str]:
     return problems
 
 
-@check(name="nock-map")
+@check(name="nock-map", paths=[".nock/**"])
 def decisions_hold(project: Project) -> list[Problem]:
     """Every decision the map cites stands. (Decisions whose files are gone
     are for a reflection round to look at, not a failure.)"""
     return Decisions(project).citation_problems()
 
 
-@check(name="nock-share")
+@check(name="nock-share", paths=[".nock/**"])
 def summary_names_nothing(project: Project) -> list[Problem]:
     """The round's shareable summary names nothing of the project: no paths,
     file names, the project's or its people's names, addresses or links."""
@@ -701,7 +709,7 @@ def summary_names_nothing(project: Project) -> list[Problem]:
     return Sharing(project).problems(name) if name else []
 
 
-@check(name="nock-wiring")
+@check(name="nock-wiring", paths=[".nock/**", ".claude/**"])
 def hooks_wired(project: Project) -> list[str]:
     """Every event a hook listens to is wired into Claude Code; Claude Code
     asks the owner before an agent runs a command that needs their word
@@ -910,7 +918,7 @@ def eval_prune(
     return rows or "nothing to prune"
 
 
-@check(name="nock-eval")
+@check(name="nock-eval", paths=[".nock/**", "evals/**"])
 def evaluations_hold(project: Project) -> list[str]:
     """Every scenario has nock's profile, a Snakefile Snakemake reads, and
     rules cached by their wildcards."""

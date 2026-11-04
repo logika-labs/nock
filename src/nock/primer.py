@@ -43,8 +43,9 @@ DECIDE = """\
   what you did.{tags}
 - **Run noisy or long commands through `.nock/nock run -- COMMAND`**
   (Claude Code asks about it as about the command itself), and
-  `.nock/nock check` before you finish. Exit codes: 1 fix the code, 42 fix
-  the machine or the state, 50 and up retry or escalate.
+  `.nock/nock check --changed` before you finish: the checks your changes
+  can affect (plain `check` runs them all). Exit codes: 1 fix the code, 42
+  fix the machine or the state, 50 and up retry or escalate.
 """
 
 REPORT = """\
