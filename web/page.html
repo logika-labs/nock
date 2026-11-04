@@ -6,15 +6,45 @@
 <title>nock — {{ title }}</title>
 <meta name="description" content="{{ description }}">
 <link rel="preload" href="/fonts/geist-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23da121a'/%3E%3Cpath d='M9 23V9l14 14V9' stroke='white' stroke-width='3' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="preload" href="/fonts/unbounded-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='-1.5 -3 16 16'%3E%3Cg fill='%23111116'%3E%3Crect x='3' y='0' width='7' height='1'/%3E%3Crect x='2' y='1' width='9' height='6'/%3E%3Crect x='0' y='3' width='2' height='2'/%3E%3Crect x='11' y='2' width='2' height='2'/%3E%3Crect x='3' y='7' width='1' height='2'/%3E%3Crect x='5' y='7' width='1' height='1'/%3E%3Crect x='7' y='7' width='1' height='1'/%3E%3Crect x='9' y='7' width='1' height='2'/%3E%3C/g%3E%3Cg fill='%238fe9ff'%3E%3Crect x='4' y='2' width='1' height='2'/%3E%3Crect x='8' y='2' width='1' height='2'/%3E%3C/g%3E%3C/svg%3E">
 <link rel="stylesheet" href="/style.css">
 </head>
 <body>
+<svg class="sprites" aria-hidden="true" focusable="false">
+  <defs>
+    <linearGradient id="holo" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="13" y2="9">
+      <stop offset="0" stop-color="#ff9ad5"/><stop offset=".3" stop-color="#c3b2ff"/><stop offset=".55" stop-color="#8fe9ff"/><stop offset=".8" stop-color="#fff2a0"/><stop offset="1" stop-color="#ffb0d6"/>
+    </linearGradient>
+    <g id="mascot-shape">
+      <rect x="3" y="0" width="7" height="1"/><rect x="2" y="1" width="9" height="6"/>
+      <rect x="0" y="3" width="2" height="2"/><rect x="11" y="2" width="2" height="2"/>
+      <rect x="3" y="7" width="1" height="2"/><rect x="5" y="7" width="1" height="1"/><rect x="7" y="7" width="1" height="1"/><rect x="9" y="7" width="1" height="2"/>
+    </g>
+    <!-- nock's mascot: chunky black pixels with a foil rim, extruded in foil, with foil eyes. -->
+    <symbol id="mascot" viewBox="-0.3 -0.3 14 10">
+      <use href="#mascot-shape" transform="translate(.6 .6)" fill="url(#holo)"/>
+      <use href="#mascot-shape" fill="none" stroke="url(#holo)" stroke-width=".4"/>
+      <use href="#mascot-shape" fill="#0b0b0f"/>
+      <rect x="4" y="2" width="1" height="2" fill="url(#holo)"/><rect x="8" y="2" width="1" height="2" fill="url(#holo)"/>
+    </symbol>
+  </defs>
+</svg>
+<div class="backdrop" aria-hidden="true">
+  <svg class="creature one"><use href="#mascot"/></svg>
+  <svg class="creature two"><use href="#mascot"/></svg>
+  <svg class="creature three"><use href="#mascot"/></svg>
+  <svg class="creature four"><use href="#mascot"/></svg>
+  <svg class="creature five"><use href="#mascot"/></svg>
+  <svg class="creature six"><use href="#mascot"/></svg>
+  <span class="bubble one"></span><span class="bubble two"></span><span class="bubble three"></span><span class="bubble four"></span><span class="bubble five"></span>
+</div>
+<div class="stage">
 <!-- Built by build.py from web/legal/; edit that, not this. -->
 <header class="band slim">
   <div class="frame">
-    <nav aria-label="Site">
-      <a class="wordmark" href="/">nock</a>
+    <nav class="site" aria-label="Site">
+      <a class="wordmark" href="/"><svg aria-hidden="true" focusable="false"><use href="#mascot"/></svg>nock</a>
       <div class="links">
         <a href="/docs/">Docs</a>
         <a href="https://github.com/logika-labs/nock">GitHub</a>
@@ -29,9 +59,12 @@
 </div>
 <footer>
   <div class="frame">
-    <span>nock — MIT licensed. Made for Claude Code.</span>
-    <span><a href="/privacy/">Privacy</a> · <a href="/terms/">Terms</a> · <a href="https://github.com/logika-labs/nock">github.com/logika-labs/nock</a></span>
+    <div class="foot">
+      <span>nock — MIT licensed. Made for Claude Code.</span>
+      <span><a href="/privacy/">Privacy</a> · <a href="/terms/">Terms</a> · <a href="https://github.com/logika-labs/nock">github.com/logika-labs/nock</a></span>
+    </div>
   </div>
 </footer>
+</div>
 </body>
 </html>
