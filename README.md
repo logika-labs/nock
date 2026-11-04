@@ -566,6 +566,66 @@ really straightforward and unambiguous. **`consult.enabled = false`** turns
 it off: the primer no longer mentions it, and `nock consult` says so and
 dispatches nothing.
 
+## Assets
+
+What an agent makes for the owner to look at — a screenshot of a page it
+changed, a video of a flow, a PDF, an HTML email, the text a command prints —
+it registers as an asset, and the owner reviews it in the studio. Each has a
+stable key, and registering the key again adds a version: the latest
+supersedes the earlier ones, which stay to compare against.
+
+```sh
+$ .nock/nock assets add '{"key": "email/anomaly-report",
+    "title": "The anomaly report email", "tags": ["email"],
+    "files": ["out/anomaly-report.html"],
+    "note": "The headline leads with the count.", "decision": 12,
+    "recipe": {"command": "uv run python dev/render.py anomaly --output $NOCK_ASSET_OUTPUT",
+               "instruction": "Render the anomaly email with the fixture, as the owner asks."}}'
+```
+
+`files` are images, videos, PDFs, HTML pages and text files (`.txt`, `.md`,
+`.json`, …); `text` is a text asset given inline. A version leaves out what it
+keeps of the last: the title, tags, decision and recipe carry over. The `note`
+says what this version is, or what changed; `decision` is the decision it
+illustrates. Each version is a directory, `.nock/assets/KEY/N/`, its record
+`asset.json` beside its files, written and committed in the main checkout
+whichever worktree registered it, as decisions are. A file over 20 MB (most
+videos) stays on the machine, under `.nock/local/assets/`, uncommitted, and
+the record says so (`"local": true`).
+
+`nock assets list` lists them by their latest version (filtered by `tag`,
+`review` or a key `prefix`), `assets show KEY` has every version and where
+each file is, and `assets delete KEY` (or `--version N`) removes one that
+should not be shown, in a commit; git keeps it.
+
+- **The owner reviews the latest version.** On the studio's Assets tab, or
+  `nock assets review KEY '{"review": "approved"|"rejected", "feedback": …}'`:
+  approved, rejected, or a note (`feedback`); like a decision's review, it is
+  the owner's word, which agents set only when told to.
+- **Rejected or noted, it is made again.** Until a new version comes, the
+  session start lists it (the first few, once a day, sooner when something
+  new calls), with the owner's note and a pointer to how it was made.
+- **"Regenerate" makes the next version.** `recipe.command` runs in the
+  working tree (`sh -c`) with the owner's note in `$NOCK_ASSET_FEEDBACK`, and
+  what it writes into `$NOCK_ASSET_OUTPUT` is registered as the next version.
+  With `recipe.instruction`, nock dispatches an agent (the regenerator seat)
+  with the instruction, the note and the current version; it makes the
+  files in its own work directory, may run the recipe's command, and
+  registers them. Either way the new version records what it was made from
+  and the note it answers. `nock assets regenerate KEY` does the same from a
+  terminal; Claude Code asks the owner first, since it runs the recipe.
+
+The Assets tab shows them as a grid of thumbnails or a list, filtered by
+review (to review, approved, rejected, all), by tag and by a search on the
+key and title; `#assets/KEY` opens one. The viewer shows a picture (fit, or
+zoomed and scrolled), a video, a PDF, a page (an HTML asset runs no script
+there) or a text, and any version; "Compare" puts two side by side — the
+last two, unless picked — and a text's as a line diff, the changed words of
+a changed line marked. Next to Approve, Reject and Note, Regenerate saves
+the note and makes the next version, which shows up when it is registered.
+Keys: `a` approve, `r` reject, `n` note, `g` regenerate, `c` compare,
+`←`/`→` between assets, `esc` back.
+
 ## Reflection
 
 Rounds come in kinds. nock's own is the default: `nock reflect` starts it,
@@ -711,13 +771,15 @@ Reading files in the directory it runs in needs no rule.
 |---|---|---|
 | consultant | Read, Grep, Glob, Bash | `.nock/nock decisions list`, `decisions show`, `docs`, `advise` |
 | elaborator | Read, Grep, Glob, Bash | `.nock/nock decisions list`, `decisions show`, `docs`, `decisions edit`; `git log`, `git show` |
+| regenerator | Read, Grep, Glob, Bash, Edit, Write | `.nock/nock assets show`, `assets add`, `docs`; `git log`, `git show`; the asset's recipe command; reading and writing only its own work directory, `.nock/local/regenerations/…` |
 | sharer | Read, Grep, Glob, Bash | `git log` |
 
 `git log` and `git show` are allowed without `--output` (or any
 abbreviation of it git accepts, down to `--ou`), which a deny rule refuses:
 it would write their output to a file.
 
-None can edit a file, reach the network, or run any other command. What
+None but the regenerator can edit a file, and it only in its work
+directory; none can reach the network or run any other command. What
 Claude Code refused comes back with the session: in the consultation's
 record and its failure, in the elaboration's result, in the vetted summary's
 record and the share's failure, and in the run's log.
@@ -968,10 +1030,11 @@ repetitions, write the comparison down first.
 | `nock run -- COMMAND` | run anything supervised and condensed (Claude Code asks, as for the command itself) |
 | `nock docs [TERM…]` | nock's documentation for agents, a short article per term: with no term, the terms |
 | `nock calls`, `stats`, `sessions`, `query SQL` | the telemetry |
-| `nock status` | a round due, decisions waiting, rejected ones to rework, important ones unreviewed, an unshared summary, a logika round to offer |
+| `nock status` | a round due, decisions waiting, rejected ones to rework, important ones unreviewed, assets to review or make again, an unshared summary, a logika round to offer |
 | `nock decide JSON [--force]` | record a decision (`--force` past the duplicate guard) |
 | `nock decisions list [JSON]`, `show N`, `edit JSON`, `delete N`, `batch JSON`, `elaborate N` | the decisions: filtered, in full, changed or reviewed, deleted, many at once in one commit, elaborated |
-| `nock studio [JSON]` | the owner's page, a tab for each thing to look at: the decisions, the evaluations |
+| `nock assets add JSON`, `list [JSON]`, `show KEY`, `review KEY JSON`, `delete KEY [--version N]`, `regenerate KEY` | assets: register a version, filtered, every version, the owner's word, deleted, made again from the recipe (asks the owner) |
+| `nock studio [JSON]` | the owner's page, a tab for each thing to look at: the decisions, the assets, the evaluations |
 | `nock eval init NAME`, `run [TARGETS…] [--dry] [--budget USD] [--limit NAME=N] [--retry]`, `import JSON`, `show [NAME]`, `query SQL`, `compare QUERY`, `prune [NAME] [--dry]` | evaluations: scaffold a Snakemake scenario, run it restoring what the cache has (or the failed again), import outputs computed elsewhere, read it, query it with SQL, compare its outputs, delete stale and failed cache entries |
 | `nock consult JSON` | a fresh agent advises on a task: the decisions, tools, checks and docs that bear on it; the caller waits |
 | `nock advise JSON` | the consultant's advice, submitted; only a consultant nock dispatched runs it |
@@ -1022,7 +1085,7 @@ one machine.
 | `checks.concurrency` | 2 | checks run at once, machine-wide |
 | `reflect.sessions`, `reflect.days` | 15, 7 | when a round is due, whichever comes first |
 | `reflect.logika.days` | 30 | in a Logika project, days after a logika round before the next is offered (once the ledger has changed) |
-| `agent.command`, `agent.model`, `agent.deadline` | `claude`, —, 1800 | the headless agent nock dispatches (elaborate, consult, share); it may not bypass or set permissions (see [What nock's agents may do](#what-nocks-agents-may-do)) |
+| `agent.command`, `agent.model`, `agent.deadline` | `claude`, —, 1800 | the headless agent nock dispatches (elaborate, consult, share, regenerate); it may not bypass or set permissions (see [What nock's agents may do](#what-nocks-agents-may-do)) |
 | `permissions.confirm` | `ask` | how Claude Code treats a `confirm=True` command: `ask` has the owner approve each call (even in bypass mode); `allow` lets the agent run it, which it does only when the owner's request calls for it (see [What nock's agents may do](#what-nocks-agents-may-do)); `nock init` rewrites the rules after a change |
 | `consult.enabled`, `consult.deadline` | true, 600 | whether the consultant runs and the primer asks for it; seconds a consultation may take |
 | `upgrade.check`, `upgrade.index` | true, PyPI's `nock` | whether a session start says a newer nock is out, and where releases are looked up |
