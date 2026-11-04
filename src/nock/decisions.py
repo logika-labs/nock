@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, NotRequired, TypedDict
 
 from nock.dispatch import Dispatcher
-from nock.errors import Failed, NotFoundError, UsageError
+from nock.errors import Error, Failed, NotFoundError, UsageError
 from nock.render import Problem
 from nock.templates import Library
 from nock.utils import now, read_json, write_json
@@ -110,10 +110,19 @@ class Change(TypedDict):
     tags: NotRequired[list[str]]
     touches: NotRequired[list[str]]
     supersedes: NotRequired[list[int]]
+    superseded_by: NotRequired[int | None]
+    """The decision that overturns this one; null: it stands again."""
     review: NotRequired[Review]
     note: NotRequired[str | None]
     elaborate: NotRequired[bool]
     """Have an agent say more — answering the note, if there is one."""
+
+
+class Batch(TypedDict):
+    """Several changes at once, committed once: the edits, then the deletions."""
+
+    edit: NotRequired[list[Change]]
+    delete: NotRequired[list[int]]
 
 
 class Filter(TypedDict):
@@ -256,57 +265,126 @@ class Decisions:
 
     def delete(self, number: int) -> str | None:
         """Remove a decision that should not have been recorded, and commit
-        that; git keeps it. What it superseded stands again, and what
-        superseded it no longer names it."""
+        that; git keeps it."""
         with self.project.lock("decisions"):
-            decision = self.get(number)
-            touched = []
-            for other in self.all():
-                if other["number"] == number:
-                    continue
-                if other.get("superseded_by") == number:
-                    other["superseded_by"] = None
-                elif number in other["supersedes"]:
-                    other["supersedes"] = [n for n in other["supersedes"] if n != number]
-                else:
-                    continue
-                self.save(other)
-                touched.append(other["number"])
-            self.path(number).unlink()
-            return self.commit(
-                [number, *touched], f"Decision {number}, deleted: {decision['title']}"
+            title = self.get(number)["title"]
+            touched = self.remove(number)
+            return self.commit(touched, f"Decision {number}, deleted: {title}")
+
+    def remove(self, number: int) -> list[int]:
+        """Remove a decision's file: what it superseded stands again, and what
+        superseded it no longer names it; the decisions touched, uncommitted."""
+        self.get(number)
+        touched = [number]
+        for other in self.all():
+            if other["number"] == number:
+                continue
+            if other.get("superseded_by") == number:
+                other["superseded_by"] = None
+            elif number in other["supersedes"]:
+                other["supersedes"] = [n for n in other["supersedes"] if n != number]
+            else:
+                continue
+            self.save(other)
+            touched.append(other["number"])
+        self.path(number).unlink()
+        return touched
+
+    def batch(self, batch: Batch) -> tuple[list[dict[str, Any]], list[int], str | None]:
+        """Apply the edits, then the deletions, and commit them once: the
+        decisions edited, those deleted, and why it is not committed when it
+        could not be. A refused change leaves every file as it was."""
+        changes, deletions = batch.get("edit", []), batch.get("delete", [])
+        if not changes and not deletions:
+            raise UsageError("nothing to do: give `edit`, `delete` or both")
+        with self.project.lock("decisions"):
+            before = {path: path.read_bytes() for path in self.directory.glob("[0-9]*.json")}
+            try:
+                touched, edited = [], []
+                for change in changes:
+                    decision, numbers, _ = self.revise(change)
+                    edited.append(decision)
+                    touched += numbers
+                for number in deletions:
+                    touched += self.remove(number)
+            except Error:
+                for path in self.directory.glob("[0-9]*.json"):
+                    if path not in before:
+                        path.unlink()
+                for path, content in before.items():
+                    path.write_bytes(content)
+                raise
+            numbers = sorted(set(touched))
+            message = f"Decisions {', '.join(map(str, numbers))}: " + ", ".join(
+                part
+                for part in (
+                    f"{len(changes)} edited" if changes else "",
+                    f"{len(deletions)} deleted" if deletions else "",
+                )
+                if part
             )
+            return edited, sorted(set(deletions)), self.commit(numbers, message)
 
     def edit(self, change: Change) -> tuple[dict[str, Any], str | None]:
-        """Change a decision. A change to what it says asks for a fresh review
-        (the owner's note stays); `review` and `note` record the owner's word."""
+        """Change a decision, and commit it. A change to what it says asks for
+        a fresh review (the owner's note stays); `review` and `note` record the
+        owner's word."""
         with self.project.lock("decisions"):
-            decision = self.get(change["number"])
-            fields = {key: value for key, value in change.items() if key != "number"}
-            substance = {key: fields[key] for key in SUBSTANCE if key in fields}
-            changed = any(decision.get(key) != value for key, value in substance.items())
-            self.apply(decision, fields)
-            if changed:
-                decision["elaborating"] = False
-            if "review" in fields:
-                decision["review"] = str(fields["review"])
-                decision["reviewed"] = {
-                    "moment": now(),
-                    "session": self.project.current_session(),
-                }
-            elif changed:
-                decision["review"] = str(Review.UNREVIEWED)
-                decision["reviewed"] = None
-            if "note" in fields:
-                decision["note"] = str(fields["note"] or "").strip() or None
-            if fields.get("elaborate"):
-                decision["elaborating"] = True
-            self.save(decision)
-            overturned = self.overturn(decision)
-            message = (
-                f"Decision {decision['number']}, {self.said(fields, changed)}: {decision['title']}"
-            )
-            return decision, self.commit([decision["number"], *overturned], message)
+            decision, touched, message = self.revise(change)
+            return decision, self.commit(touched, message)
+
+    def revise(self, change: Change) -> tuple[dict[str, Any], list[int], str]:
+        """Change a decision, uncommitted: it, the decisions touched, and the commit message."""
+        decision = self.get(change["number"])
+        fields = {key: value for key, value in change.items() if key != "number"}
+        substance = {key: fields[key] for key in SUBSTANCE if key in fields}
+        changed = any(decision.get(key) != value for key, value in substance.items())
+        self.apply(decision, fields)
+        if changed:
+            decision["elaborating"] = False
+        if "review" in fields:
+            decision["review"] = str(fields["review"])
+            decision["reviewed"] = {
+                "moment": now(),
+                "session": self.project.current_session(),
+            }
+        elif changed:
+            decision["review"] = str(Review.UNREVIEWED)
+            decision["reviewed"] = None
+        if "note" in fields:
+            decision["note"] = str(fields["note"] or "").strip() or None
+        if fields.get("elaborate"):
+            decision["elaborating"] = True
+        relinked = (
+            self.relink(decision, change["superseded_by"]) if "superseded_by" in change else []
+        )
+        self.save(decision)
+        overturned = self.overturn(decision)
+        message = (
+            f"Decision {decision['number']}, {self.said(fields, changed)}: {decision['title']}"
+        )
+        return decision, [decision["number"], *relinked, *overturned], message
+
+    def relink(self, decision: dict[str, Any], successor: int | None) -> list[int]:
+        """Set what supersedes a decision (None: nothing, it stands again),
+        keeping the superseding decision's `supersedes` in step; the others touched."""
+        number = decision["number"]
+        if successor == number:
+            raise UsageError(f"decision {number} cannot supersede itself")
+        touched = []
+        previous = decision.get("superseded_by")
+        if previous and previous != successor and self.path(previous).is_file():
+            earlier = self.get(previous)
+            earlier["supersedes"] = [n for n in earlier["supersedes"] if n != number]
+            self.save(earlier)
+            touched.append(previous)
+        if successor is not None and successor != previous:
+            later = self.get(successor)
+            later["supersedes"] = sorted({*later["supersedes"], number})
+            self.save(later)
+            touched.append(successor)
+        decision["superseded_by"] = successor
+        return touched
 
     def said(self, fields: dict[str, Any], changed: bool) -> str:
         """What an edit did, in a word or two, for its commit message."""
@@ -346,26 +424,36 @@ class Decisions:
             decision["supersedes"] = self.overturnable(fields["supersedes"], decision)
 
     def overturnable(self, numbers: list[int], decision: dict[str, Any]) -> list[int]:
-        """Only a decision that stands can be superseded, and not by itself."""
+        """Only a decision that stands can be superseded, and not by itself;
+        one it already named that has since been deleted is dropped."""
+        kept = []
         for earlier in numbers:
             if earlier == decision["number"]:
                 raise UsageError(f"decision {earlier} cannot supersede itself")
+            if earlier in decision.get("supersedes", []) and not self.path(earlier).is_file():
+                continue
+            kept.append(earlier)
             overturned = self.get(earlier)
             if overturned.get("superseded_by") not in (None, decision["number"]):
                 raise UsageError(
                     f"decision {earlier} is already superseded by {overturned['superseded_by']}"
                 )
-        return sorted(set(numbers))
+        return sorted(set(kept))
 
     def overturn(self, decision: dict[str, Any]) -> list[int]:
-        """Mark what a decision supersedes as superseded by it."""
+        """Mark what a decision supersedes as superseded by it, and what it no
+        longer supersedes as standing again."""
         marked = []
-        for earlier in decision["supersedes"]:
-            overturned = self.get(earlier)
-            if overturned.get("superseded_by") != decision["number"]:
-                overturned["superseded_by"] = decision["number"]
-                self.save(overturned)
-                marked.append(earlier)
+        for other in self.all():
+            names = other["number"] in decision["supersedes"]
+            if names and other.get("superseded_by") != decision["number"]:
+                other["superseded_by"] = decision["number"]
+            elif not names and other.get("superseded_by") == decision["number"]:
+                other["superseded_by"] = None
+            else:
+                continue
+            self.save(other)
+            marked.append(other["number"])
         return marked
 
     def commit(self, numbers: list[int], message: str) -> str | None:
