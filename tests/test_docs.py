@@ -47,7 +47,7 @@ def test_every_term_holds_to_the_rules() -> None:
     for term in docs.terms:
         assert len(term.article) <= LIMIT and len(term.description) <= DESCRIPTION_LIMIT
         assert all(NAME.match(name) for name in term.names)
-    assert [term.term for term in docs.terms][:2] == ["checks", "checks.chains"]
+    assert [term.term for term in docs.terms][:2] == ["assets", "assets.recipe"]
 
 
 @pytest.mark.parametrize(

@@ -7,7 +7,10 @@ attempt). As the elaborator it deepens the decision it was given, unless
 FAKE_ELABORATE is `silent`; as the consultant it answers at once; as the
 sharer it reads the authors and hands back the vetted summary (FAKE_SHARE,
 or a stock one; `nothing` hands back nothing); as an evaluation step's
-agent it writes its brief to answer.txt, when its allow rules let it write."""
+agent it writes its brief to answer.txt, when its allow rules let it write;
+as the regenerator it writes the asset's next version, answering the owner's
+note, into its output directory, when its rules let it write there, and
+registers it, unless FAKE_REGENERATE is `silent`."""
 
 from __future__ import annotations
 
@@ -120,6 +123,8 @@ def main() -> int:
         return elaborate(session, prompt)
     if os.environ.get("NOCK_ROLE") == "consultant":
         return consult(session, prompt)
+    if os.environ.get("NOCK_ROLE") == "regenerator":
+        return regenerate(session, prompt)
     if os.environ.get("NOCK_ROLE") == "sharer":
         assert "NOTHING TO SHARE:" in prompt
         authors = run("git", "log", "--format=%an %ae")
@@ -176,6 +181,27 @@ def elaborate(session: str, prompt: str) -> int:
         print(json.dumps({"type": "system", "message": result.stdout + result.stderr}), flush=True)
     write_transcript(session, prompt)
     finish("elaborated")
+    return 0
+
+
+def regenerate(session: str, prompt: str) -> int:
+    key, output = os.environ["NOCK_ASSET"], os.environ["NOCK_ASSET_OUTPUT"]
+    assert f"`{key}`" in prompt and output in prompt
+    if os.environ.get("FAKE_REGENERATE") != "silent":
+        made = Path(output) / "text.txt"
+        writable = any(
+            rule.startswith("Write(/") and output.startswith(rule[len("Write(/") : -len("/**)")])
+            for rule in ALLOWED
+        )
+        if writable:
+            made.write_text(f"made again: {os.environ['NOCK_ASSET_FEEDBACK']}\n")
+            draft = {"key": key, "files": [str(made)], "note": "Answered the note."}
+            result = run(".nock/nock", "assets", "add", json.dumps(draft))
+            print(json.dumps({"type": "system", "message": result.stdout + result.stderr}))
+        else:
+            DENIED.append({"tool_name": "Write", "tool_input": {"file_path": str(made)}})
+    write_transcript(session, prompt)
+    finish("made again")
     return 0
 
 

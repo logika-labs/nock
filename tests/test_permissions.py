@@ -11,6 +11,7 @@ from pathlib import Path
 
 import pytest
 
+from nock.assets import ROLE as REGENERATOR
 from nock.consult import ROLE as CONSULTANT
 from nock.decisions import ROLE as ELABORATOR
 from nock.dispatch import ARGUMENT_LIMIT, BYPASS, SEATS, Dispatcher
@@ -39,10 +40,19 @@ EXPECTED = {
         "Bash(git log:*)",
         "Bash(git show:*)",
     ],
+    REGENERATOR: [
+        "Bash(.nock/nock assets show:*)",
+        "Bash(.nock/nock assets add:*)",
+        "Bash(.nock/nock docs:*)",
+        "Bash(git log:*)",
+        "Bash(git show:*)",
+    ],
     SHARER: ["Bash(git log:*)"],
 }
 WRITING_GIT = ["--disallowedTools", "Bash(git * --ou*)"]
-DENIED = {CONSULTANT: [], ELABORATOR: WRITING_GIT, SHARER: WRITING_GIT}
+DENIED = {CONSULTANT: [], ELABORATOR: WRITING_GIT, REGENERATOR: WRITING_GIT, SHARER: WRITING_GIT}
+# The regenerator writes too: an asset's next version, in its own work directory.
+TOOLS = {REGENERATOR: f"{READING},Edit,Write"}
 
 
 def seat_flags(role: str, allowed: list[str]) -> list[str]:
@@ -57,7 +67,7 @@ def seat_flags(role: str, allowed: list[str]) -> list[str]:
         "user",
         "--strict-mcp-config",
         "--tools",
-        READING,
+        TOOLS.get(role, READING),
         "--allowedTools",
         *allowed,
     ]
@@ -80,7 +90,13 @@ def test_each_seat_gets_exactly_its_tools_and_rules(
     arguments = tmp_path / "arguments.json"
     monkeypatch.setenv("FAKE_ARGUMENTS", str(arguments))
     monkeypatch.setenv("NOCK_DECISION", "1")
-    brief = "NOTHING TO SHARE: decision 1 <intent> When each of the project's decisions matters:"
+    monkeypatch.setenv("NOCK_ASSET", "email/report")
+    monkeypatch.setenv("NOCK_ASSET_OUTPUT", "/nowhere")
+    monkeypatch.setenv("FAKE_REGENERATE", "silent")
+    brief = (
+        "NOTHING TO SHARE: decision 1 <intent> When each of the project's decisions matters:"
+        " `email/report` /nowhere"
+    )
     session = Dispatcher(project).launch(role, brief, project.root)
     assert session.exit_code == 0 and session.denied == []
     assert launched(arguments) == seat_flags(role, EXPECTED[role]) + DENIED[role]
@@ -177,6 +193,7 @@ def test_init_allows_each_command_but_run_and_asks_for_the_owner_s(project: Proj
     }
     assert all(rule.startswith("Bash(.nock/nock") for rule in allowed)
     assert permissions["ask"] == [
+        "Bash(.nock/nock assets regenerate:*)",
         "Bash(.nock/nock share:*)",
         "Bash(.nock/nock report:*)",
         "Bash(.nock/nock init:*)",
