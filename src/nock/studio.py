@@ -1,6 +1,7 @@
 """The owner's page (`nock studio`): one local server, a tab for each thing
 nock keeps for the owner: the decisions agents recorded,
-reviewed in place, and the evaluations, explored as a graph of their runs
+reviewed in place, the assets they made (screenshots, videos, pages, texts),
+looked at, compared and reviewed, and the evaluations, explored as a graph of their runs
 (`nock.explorer`). Local, and only while `nock studio` runs.
 
 A tab is a `Tab` in `TABS`: its name is its address on the page (`#NAME`) and
@@ -14,18 +15,25 @@ from __future__ import annotations
 
 import html
 import json
+import mimetypes
+import re
 import threading
+import urllib.parse
 import webbrowser
 from collections.abc import Callable
+from dataclasses import dataclass
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, NotRequired, TypedDict
 
+from nock.assets import Assets
+from nock.assets import Review as AssetReview
+from nock.assets import Word as AssetWord
 from nock.commands import schema_of
 from nock.comparison import Comparison, Query
 from nock.decisions import Change, Decisions, Review
-from nock.errors import Error, NotFoundError
+from nock.errors import Error, NotFoundError, UsageError
 from nock.evaluation import Evaluations, Run
 from nock.explorer import Explorer, View
 from nock.project import Project
@@ -178,7 +186,68 @@ class EvalsTab(Tab):
         raise NotFoundError("no such page")
 
 
-TABS: tuple[type[Tab], ...] = (DecisionsTab, EvalsTab)
+@dataclass(frozen=True)
+class Raw:
+    """A file a tab answers with as it is, not as JSON."""
+
+    path: Path
+
+
+class Said(TypedDict):
+    """What the owner says about an asset on the page: a review, a note, or
+    to regenerate it (answering the note)."""
+
+    key: str
+    review: NotRequired[AssetReview]
+    feedback: NotRequired[str | None]
+
+
+class AssetsTab(Tab):
+    """`GET /assets` every asset with all its versions, the tags in use and
+    the regenerations under way; `GET /assets/file/KEY/VERSION/NAME` one of a
+    version's files, as it is; `POST /assets/review` the owner's word on the
+    latest version, `/regenerate` a new version made from the recipe in the
+    background, answering the note given."""
+
+    name = "assets"
+    title = "Assets"
+
+    def __init__(self, project: Project) -> None:
+        super().__init__(project)
+        self.assets = Assets(project)
+
+    def fragment(self) -> str:
+        return f"<style>\n{(PAGES / 'assets.css').read_text()}</style>\n" + super().fragment()
+
+    def get(self, route: str) -> Any:
+        if not route:
+            return {
+                "assets": self.assets.all(),
+                "tags": self.assets.tags(),
+                "regenerating": self.assets.running(),
+            }
+        kind, _, rest = route.partition("/")
+        place, _, name = urllib.parse.unquote(rest).rpartition("/")
+        key, _, version = place.rpartition("/")
+        if kind != "file" or not version.isdigit() or not key:
+            raise NotFoundError("no such page")
+        return Raw(self.assets.file(key, int(version), name))
+
+    def post(self, route: str, body: Any) -> Any:
+        if route not in ("review", "regenerate"):
+            raise NotFoundError("no such page")
+        validate(body, schema_of(Said))
+        key = body["key"]
+        if route == "regenerate":
+            if "review" in body:
+                raise UsageError("regenerate takes the note, not a review")
+            return self.assets.regenerate_in_background(key, body.get("feedback"))
+        word = {field: body[field] for field in ("review", "feedback") if field in body}
+        version, _ = self.assets.review(key, AssetWord(**word))
+        return version
+
+
+TABS: tuple[type[Tab], ...] = (DecisionsTab, AssetsTab, EvalsTab)
 
 
 class Choice(TypedDict):
@@ -318,7 +387,52 @@ class Handler(BaseHTTPRequestHandler):
             )
             self.send_json(status, {"error": str(error)})
             return
+        if isinstance(value, Raw):
+            self.send_file(value.path)
+            return
         self.send_json(HTTPStatus.OK, value)
+
+    def send_file(self, path: Path) -> None:
+        """A file as it is; a byte range of it when asked, so a video seeks."""
+        size = path.stat().st_size
+        kind = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
+        if kind.startswith("text/") or kind in ("application/json", "image/svg+xml"):
+            kind += "; charset=utf-8"
+        asked = re.fullmatch(r"bytes=(\d*)-(\d*)", self.headers.get("Range", ""))
+        start, end = 0, size - 1
+        if asked and size and (asked.group(1) or asked.group(2)):
+            if asked.group(1):
+                start = int(asked.group(1))
+                end = min(int(asked.group(2) or end), end)
+            else:
+                start = max(size - int(asked.group(2)), 0)
+            if start > end:
+                self.send_response(HTTPStatus.REQUESTED_RANGE_NOT_SATISFIABLE)
+                self.send_header("Content-Range", f"bytes */{size}")
+                self.end_headers()
+                return
+            self.send_response(HTTPStatus.PARTIAL_CONTENT)
+            self.send_header("Content-Range", f"bytes {start}-{end}/{size}")
+        else:
+            self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", kind)
+        self.send_header("Content-Length", str(end - start + 1 if size else 0))
+        self.send_header("Accept-Ranges", "bytes")
+        self.send_header("Cache-Control", "no-cache")
+        self.end_headers()
+        with path.open("rb") as file:
+            file.seek(start)
+            left = end - start + 1 if size else 0
+            while left > 0:
+                chunk = file.read(min(left, 1 << 20))
+                if not chunk:
+                    break
+                try:
+                    self.wfile.write(chunk)
+                except ConnectionError:
+                    # The browser stops a video's download once it has what it shows.
+                    return
+                left -= len(chunk)
 
     def send_json(self, status: HTTPStatus, value: Any) -> None:
         self.send(status, json.dumps(value).encode(), "application/json")

@@ -1,0 +1,705 @@
+<div class="frame assets" id="assets">
+  <div class="controls">
+    <div class="head">
+      <nav class="reviews" role="tablist" aria-label="Which assets" id="assets-reviews">
+        <button type="button" role="tab" data-asset-review="all" aria-selected="true">all <span class="count" id="assets-count-all"></span></button>
+        <button type="button" role="tab" data-asset-review="unreviewed" aria-selected="false">to review <span class="count" id="assets-count-unreviewed"></span></button>
+        <button type="button" role="tab" data-asset-review="approved" aria-selected="false">approved <span class="count" id="assets-count-approved"></span></button>
+        <button type="button" role="tab" data-asset-review="rejected" aria-selected="false">rejected <span class="count" id="assets-count-rejected"></span></button>
+      </nav>
+      <div class="layout" role="group" aria-label="Layout">
+        <button type="button" data-asset-layout="grid" aria-pressed="true"><svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M2 2h5v5H2zM9 2h5v5H9zM2 9h5v5H2zM9 9h5v5H9z"/></svg>grid</button>
+        <button type="button" data-asset-layout="list" aria-pressed="false"><svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M2 2.5h3v3H2zM6.5 3h7.5v2H6.5zM2 6.5h3v3H2zM6.5 7h7.5v2H6.5zM2 10.5h3v3H2zM6.5 11h7.5v2H6.5z"/></svg>list</button>
+      </div>
+    </div>
+    <div class="tools">
+      <label class="search" for="assets-search">
+        <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="7" cy="7" r="4.75" stroke="currentColor" stroke-width="1.5"/><path d="m10.5 10.5 3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        <input type="search" id="assets-search" placeholder="search by key or title" autocomplete="off" aria-label="Search assets">
+      </label>
+    </div>
+    <div class="tags" id="assets-tag-row"><div class="chips" id="assets-tags" role="group" aria-label="Tags"></div></div>
+  </div>
+  <main><section id="assets-list" class="grid" aria-live="polite"></section></main>
+  <div class="assets-viewer" id="assets-viewer" role="dialog" aria-modal="true" aria-labelledby="assets-viewer-title" hidden>
+    <div class="window">
+      <header id="assets-viewer-head"></header>
+      <div class="viewer-body">
+        <div class="stage" id="assets-stage"></div>
+        <aside>
+          <div id="assets-about"></div>
+          <div class="section">
+            <span class="label" id="assets-note-label">Your note</span>
+            <textarea id="assets-note" rows="1" aria-labelledby="assets-note-label" placeholder="What should change? Regenerate takes it into account."></textarea>
+          </div>
+          <div class="buttons" id="assets-buttons">
+            <button type="button" class="button secondary" data-asset-act="rejected">Reject <kbd>r</kbd></button>
+            <button type="button" class="button primary" data-asset-act="approved">Approve <kbd>a</kbd></button>
+            <button type="button" class="button ghost" data-asset-act="note">Note <kbd>n</kbd></button>
+            <button type="button" class="button ghost" data-asset-act="regenerate">Regenerate <kbd>g</kbd></button>
+          </div>
+          <p class="hint error" id="assets-problem" hidden></p>
+          <div class="keys"><kbd>←</kbd> <kbd>→</kbd> between assets · <kbd>c</kbd> compare · <kbd>esc</kbd> back · in the note, <kbd id="assets-mod">⌘</kbd> <kbd>↵</kbd> saves it</div>
+        </aside>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+// The assets tab (its look is pages/assets.css): `GET assets` every asset with all its versions,
+// polled while shown; a version's files come from `assets/file/KEY/VERSION/NAME`. The viewer shows
+// one version or, comparing, two (a text's as a line diff, written here: an LCS over lines, then
+// over the words of a changed line); the owner's word goes to `POST assets/review`, and Regenerate
+// to `POST assets/regenerate`, after which the next version shows up on a later poll.
+(() => {
+  const $ = id => document.getElementById(id);
+  const escape = text => String(text ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+  const MAC = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
+  const POLL = 3000;
+  const REVIEWS = ["unreviewed", "approved", "rejected"];
+  const WORDS = { unreviewed: "to review", approved: "approved", rejected: "rejected" };
+  const TONE = { unreviewed: "", approved: "ok", rejected: "error" };
+  const CHEVRON = '<svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="m4 6 4 4 4-4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  const SIGNS = {
+    pdf: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M6 2.5h8l4.5 4.5v14.5H6z"/><path d="M14 2.5V7h4.5"/><path d="M8.5 13h7M8.5 16h7M8.5 10h3"/></svg>',
+    video: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2.5" y="5" width="19" height="14" rx="2"/><path d="m10 9 5 3-5 3z" fill="currentColor"/></svg>',
+  };
+  const state = {
+    shown: false, seen: "", assets: [], tags: {}, regenerating: {},
+    review: "all", tags_chosen: new Set(), search: "", layout: "grid",
+    open: null, compare: false, single: null, left: null, right: null, file: null, zoom: "fit",
+    notes: new Map(), latest: new Map(), signature: "", picker: null, link: null,
+  };
+  try { state.layout = localStorage.getItem("nock.assets.layout") || "grid"; } catch { /* storage refused: the grid */ }
+  $("assets-mod").textContent = MAC ? "⌘" : "Ctrl";
+
+  // --- time -------------------------------------------------------------------------------------
+
+  const RELATIVE = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
+  const UNITS = [["year", 31536000], ["month", 2592000], ["week", 604800], ["day", 86400], ["hour", 3600], ["minute", 60]];
+  function ago(moment) {
+    const seconds = (new Date(moment).getTime() - Date.now()) / 1000;
+    if (Math.abs(seconds) < 45) return "just now";
+    for (const [unit, size] of UNITS) if (Math.abs(seconds) >= size || unit === "minute") return RELATIVE.format(Math.round(seconds / size), unit);
+  }
+  const time = moment => moment ? `<time datetime="${escape(moment)}" title="${escape(new Date(moment).toLocaleString())}">${escape(ago(moment))}</time>` : "";
+
+  // --- the assets ---------------------------------------------------------------------------------
+
+  const find = key => state.assets.find(asset => asset.key === key);
+  const last = asset => asset.versions[asset.versions.length - 1];
+  const version = (asset, number) => asset.versions.find(item => item.version === number) || last(asset);
+  const url = (asset, item, name) => `assets/file/${asset.key.split("/").map(encodeURIComponent).join("/")}/${item.version}/${encodeURIComponent(name)}`;
+  const texts = new Map();
+  function text(address) {
+    if (!texts.has(address)) texts.set(address, fetch(address).then(response => response.ok ? response.text() : Promise.reject(new Error("gone"))));
+    return texts.get(address);
+  }
+
+  function matches(asset) {
+    const latest = last(asset);
+    if (state.review !== "all" && latest.review !== state.review) return false;
+    if (state.tags_chosen.size && ![...state.tags_chosen].every(tag => latest.tags.includes(tag))) return false;
+    const words = state.search.toLowerCase().split(/\s+/).filter(Boolean);
+    const said = `${asset.key} ${latest.title}`.toLowerCase();
+    return words.every(word => said.includes(word));
+  }
+  const visible = () => state.assets.filter(matches);
+
+  function thumb(asset) {
+    const latest = last(asset);
+    const first = latest.files[0];
+    const address = url(asset, latest, first.name);
+    const more = latest.files.length > 1 ? `<span class="more">+${latest.files.length - 1}</span>` : "";
+    let inner = "";
+    if (first.kind === "image") inner = `<img src="${address}" alt="" loading="lazy">`;
+    else if (first.kind === "video") inner = `<video src="${address}#t=0.1" muted preload="metadata" playsinline></video>`;
+    else if (first.kind === "html") inner = `<iframe src="${address}" sandbox="" loading="lazy" tabindex="-1" aria-hidden="true"></iframe>`;
+    else if (first.kind === "text") inner = `<pre data-text="${address}"></pre>`;
+    else inner = `<span class="sign">${SIGNS[first.kind] || SIGNS.pdf}${escape(first.name)}</span>`;
+    return `<span class="thumb">${inner}<span class="kind">${escape(first.kind)}</span>${more}</span>`;
+  }
+
+  function badges(asset) {
+    const latest = last(asset);
+    const kinds = [...new Set(latest.files.map(file => file.kind))].join(" + ");
+    const found = [`<span class="badge kind-badge">${escape(kinds)}</span>`, `<span class="badge">v${latest.version}</span>`];
+    if (state.regenerating[asset.key] && !state.regenerating[asset.key].problem) found.push('<span class="badge info spin"><span class="spinner" aria-hidden="true"></span>making</span>');
+    else if (state.regenerating[asset.key]) found.push('<span class="badge error">regeneration failed</span>');
+    found.push(`<span class="badge ${TONE[latest.review]}">${WORDS[latest.review]}</span>`);
+    if (latest.feedback && latest.review === "unreviewed") found.push('<span class="badge warning">noted</span>');
+    return found.join("");
+  }
+
+  function drawList() {
+    const counts = { all: state.assets.length, unreviewed: 0, approved: 0, rejected: 0 };
+    for (const asset of state.assets) counts[last(asset).review]++;
+    for (const key of Object.keys(counts)) $(`assets-count-${key}`).textContent = counts[key] || "";
+    for (const tab of document.querySelectorAll("[data-asset-review]")) tab.setAttribute("aria-selected", String(tab.dataset.assetReview === state.review));
+    for (const button of document.querySelectorAll("[data-asset-layout]")) button.setAttribute("aria-pressed", String(button.dataset.assetLayout === state.layout));
+    const remake = state.assets.filter(asset => last(asset).review === "rejected" || (last(asset).review === "unreviewed" && last(asset).feedback)).length;
+    const making = Object.values(state.regenerating).filter(entry => !entry.problem).length;
+    const said = [counts.unreviewed ? `${counts.unreviewed} to review` : "", remake ? `${remake} to make again` : "", making ? `${making} being made` : ""].filter(Boolean);
+    studio.summary("assets", state.assets.length ? (said.join(" · ") || "nothing waits on you") : "no assets yet");
+    const tags = Object.entries(state.tags).map(([tag]) => tag);
+    for (const tag of state.tags_chosen) if (!tags.includes(tag)) tags.push(tag);
+    const pool = state.assets.filter(asset => state.review === "all" || last(asset).review === state.review);
+    $("assets-tags").innerHTML = tags.map(tag => {
+      const count = pool.filter(asset => last(asset).tags.includes(tag)).length;
+      const chosen = state.tags_chosen.has(tag);
+      return `<button type="button" class="chip" data-asset-tag="${escape(tag)}" aria-pressed="${chosen}" ${count === 0 && !chosen ? "disabled" : ""}>${escape(tag)} <span class="count">${count}</span></button>`;
+    }).join("");
+    $("assets-tag-row").hidden = !tags.length;
+    const list = $("assets-list");
+    list.className = state.layout;
+    const shown = visible();
+    if (!shown.length) {
+      const filtered = state.search.trim() || state.tags_chosen.size || state.review !== "all";
+      list.innerHTML = `<div class="empty">${filtered
+        ? "<strong>No matches</strong><span>No asset fits the search and filters.</span>"
+        : "<strong>No assets yet</strong><span>Agents show you what they made with <code>.nock/nock assets add</code>; it appears here.</span>"}</div>`;
+      return;
+    }
+    // A card already drawn is kept, so its picture, page or video does not load again.
+    const signature = shown.map(asset => `${asset.key}@${last(asset).version}:${last(asset).review}:${!!last(asset).feedback}:${JSON.stringify(state.regenerating[asset.key] || null)}`).join("|") + state.layout;
+    if (list.dataset.signature === signature) return;
+    list.dataset.signature = signature;
+    list.innerHTML = shown.map(asset => {
+      const latest = last(asset);
+      return `<button type="button" class="card" data-asset-open="${escape(asset.key)}">
+        ${thumb(asset)}
+        <span class="meta"><span class="title">${escape(latest.title)}</span><span class="key">${escape(asset.key)}</span>
+        <span class="badges">${badges(asset)}${time(latest.recorded.moment)}</span></span>
+      </button>`;
+    }).join("");
+    for (const pre of list.querySelectorAll("pre[data-text]")) {
+      text(pre.dataset.text).then(content => { pre.textContent = content.slice(0, 1200); }).catch(() => {});
+    }
+  }
+
+  // --- the diff -----------------------------------------------------------------------------------
+
+  // The longest common subsequence of two lists, as steps: equal, removed (from the left), added.
+  function steps(before, after) {
+    let start = 0;
+    while (start < before.length && start < after.length && before[start] === after[start]) start++;
+    let end = 0;
+    while (end < before.length - start && end < after.length - start && before[before.length - 1 - end] === after[after.length - 1 - end]) end++;
+    const left = before.slice(start, before.length - end), right = after.slice(start, after.length - end);
+    const head = before.slice(0, start).map(value => ["equal", value, value]);
+    const tail = before.slice(before.length - end).map(value => ["equal", value, value]);
+    const n = left.length, m = right.length;
+    const middle = [];
+    if (n * m > 4_000_000) {
+      for (const value of left) middle.push(["removed", value, null]);
+      for (const value of right) middle.push(["added", null, value]);
+      return [...head, ...middle, ...tail];
+    }
+    const table = new Uint32Array((n + 1) * (m + 1));
+    for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--) {
+      table[i * (m + 1) + j] = left[i] === right[j] ? table[(i + 1) * (m + 1) + j + 1] + 1 : Math.max(table[(i + 1) * (m + 1) + j], table[i * (m + 1) + j + 1]);
+    }
+    let i = 0, j = 0;
+    while (i < n && j < m) {
+      if (left[i] === right[j]) { middle.push(["equal", left[i], right[j]]); i++; j++; }
+      else if (table[(i + 1) * (m + 1) + j] >= table[i * (m + 1) + j + 1]) middle.push(["removed", left[i++], null]);
+      else middle.push(["added", null, right[j++]]);
+    }
+    while (i < n) middle.push(["removed", left[i++], null]);
+    while (j < m) middle.push(["added", null, right[j++]]);
+    return [...head, ...middle, ...tail];
+  }
+
+  // A changed line's words: what went marked on the left, what came marked on the right.
+  function words(before, after) {
+    const split = line => line.match(/\s+|[\p{L}\p{N}_]+|[^\s\p{L}\p{N}_]/gu) || [];
+    const marked = { before: "", after: "" };
+    for (const [kind, left, right] of steps(split(before), split(after))) {
+      if (kind === "equal") { marked.before += escape(left); marked.after += escape(right); }
+      else if (kind === "removed") marked.before += /^\s+$/.test(left) ? escape(left) : `<del>${escape(left)}</del>`;
+      else marked.after += /^\s+$/.test(right) ? escape(right) : `<ins>${escape(right)}</ins>`;
+    }
+    // Neighbouring marks read as one, the space between them included.
+    marked.before = marked.before.replace(/<\/del>(\s+)<del>/g, "$1");
+    marked.after = marked.after.replace(/<\/ins>(\s+)<ins>/g, "$1");
+    return marked;
+  }
+
+  // The rows side by side: a run of removed lines next to a run of added ones pairs up as changed
+  // lines; long unchanged stretches fold, leaving three lines of context around each change.
+  function rows(before, after) {
+    const found = [];
+    const walked = steps(before.split("\n"), after.split("\n"));
+    let numberBefore = 0, numberAfter = 0;
+    for (let index = 0; index < walked.length;) {
+      if (walked[index][0] === "equal") {
+        found.push({ kind: "equal", before: walked[index][1], after: walked[index][2], left: ++numberBefore, right: ++numberAfter });
+        index++;
+        continue;
+      }
+      const removed = [], added = [];
+      while (index < walked.length && walked[index][0] !== "equal") {
+        if (walked[index][0] === "removed") removed.push(walked[index][1]); else added.push(walked[index][2]);
+        index++;
+      }
+      // A blank line is never another line changed: it goes, or comes, on its own.
+      for (let k = 0; k < Math.max(removed.length, added.length); k++) {
+        const before = removed[k], after = added[k];
+        if (before?.trim() && after?.trim()) { found.push({ kind: "changed", before, after, left: ++numberBefore, right: ++numberAfter }); continue; }
+        if (before !== undefined) found.push({ kind: "removed", before, after: null, left: ++numberBefore, right: null });
+        if (after !== undefined) found.push({ kind: "added", before: null, after, left: null, right: ++numberAfter });
+      }
+    }
+    return found;
+  }
+
+  function diff(before, after) {
+    const found = rows(before, after);
+    const near = found.map((row, index) => row.kind !== "equal" || found.slice(Math.max(0, index - 3), index + 4).some(other => other.kind !== "equal"));
+    const tally = { added: 0, removed: 0, changed: 0 };
+    for (const row of found) if (row.kind !== "equal") tally[row.kind]++;
+    let html = "", folded = 0;
+    const fold = () => { if (folded) html += `<tr class="fold"><td colspan="4">${folded} unchanged ${folded === 1 ? "line" : "lines"}</td></tr>`; folded = 0; };
+    found.forEach((row, index) => {
+      if (!near[index] && found.length > 40) { folded++; return; }
+      fold();
+      let left = row.before === null ? "" : escape(row.before), right = row.after === null ? "" : escape(row.after);
+      if (row.kind === "changed") ({ before: left, after: right } = words(row.before, row.after));
+      html += `<tr class="${row.kind}"><td class="number before">${row.left ?? ""}</td><td class="before">${left}</td><td class="number after after-side">${row.right ?? ""}</td><td class="after">${right}</td></tr>`;
+    });
+    fold();
+    return {
+      tally,
+      html: `<table class="diff"><colgroup><col class="number"><col><col class="number"><col></colgroup><tbody>${html}</tbody></table>`,
+    };
+  }
+
+  // --- the viewer ---------------------------------------------------------------------------------
+
+  // Which versions are shown: one (the latest unless picked), or two (the last two unless picked).
+  function chosen(asset) {
+    const numbers = asset.versions.map(item => item.version);
+    if (!state.compare) return [state.single && numbers.includes(state.single) ? state.single : numbers[numbers.length - 1]];
+    const right = state.right && numbers.includes(state.right) ? state.right : numbers[numbers.length - 1];
+    const left = state.left && numbers.includes(state.left) ? state.left : numbers[Math.max(0, numbers.length - 2)];
+    return [left, right];
+  }
+
+  function picker(asset, side, number) {
+    const latest = last(asset).version;
+    const item = version(asset, number);
+    const options = [...asset.versions].reverse().map(entry => `<li role="option" id="assets-option-${side}-${entry.version}" data-version="${entry.version}" aria-selected="${entry.version === number}">
+        <span class="number">v${entry.version}</span>${entry.version === latest ? '<span class="badge">latest</span>' : ""}<span class="badge ${TONE[entry.review]}">${WORDS[entry.review]}</span>${time(entry.recorded.moment)}</li>`).join("");
+    return `<div class="picker" data-picker="${side}">
+      <button type="button" aria-haspopup="listbox" aria-expanded="false" aria-label="Version">v${item.version} <span class="quiet">${item.version === latest ? "latest" : `of ${latest}`}</span>${CHEVRON}</button>
+      <ul role="listbox" tabindex="-1" aria-label="Versions" hidden>${options}</ul>
+    </div>`;
+  }
+
+  function names(asset, numbers) {
+    const found = [];
+    for (const number of numbers) for (const file of version(asset, number).files) if (!found.includes(file.name)) found.push(file.name);
+    return found;
+  }
+
+  function fileOf(asset, number) {
+    const item = version(asset, number);
+    return item.files.find(file => file.name === state.file) || item.files[0];
+  }
+
+  function pane(asset, number) {
+    const item = version(asset, number);
+    const file = fileOf(asset, number);
+    if (state.file && file.name !== state.file) return `<div class="pane"><p class="missing">Version ${item.version} has no ${escape(state.file)}.</p></div>`;
+    const address = url(asset, item, file.name);
+    if (file.kind === "image") {
+      const zoomed = state.zoom !== "fit";
+      return `<div class="pane ${zoomed ? "zoomed" : "fit"}"><img src="${address}" alt="${escape(item.title)}, version ${item.version}" data-zoom-image ${zoomed ? `data-scale="${state.zoom}"` : ""}></div>`;
+    }
+    if (file.kind === "video") return `<div class="pane fit"><video src="${address}" controls preload="metadata" playsinline></video></div>`;
+    if (file.kind === "pdf") return `<div class="pane"><iframe src="${address}" title="${escape(file.name)}"></iframe></div>`;
+    if (file.kind === "html") return `<div class="pane"><iframe src="${address}" sandbox="" title="${escape(file.name)}"></iframe></div>`;
+    return `<div class="pane"><pre class="text" data-text="${address}">…</pre></div>`;
+  }
+
+  function drawStage(asset) {
+    const numbers = chosen(asset);
+    const files = names(asset, numbers);
+    const kinds = numbers.map(number => fileOf(asset, number).kind);
+    const signature = JSON.stringify([asset.key, numbers, state.compare, state.file, state.zoom, files, asset.versions.length]);
+    if (signature === state.signature) return;
+    state.signature = signature;
+    const fileTabs = files.length > 1 ? `<div class="files" role="group" aria-label="Files">${files.map(name => `<button type="button" class="chip" data-asset-file="${escape(name)}" aria-pressed="${name === (state.file || fileOf(asset, numbers[numbers.length - 1]).name)}">${escape(name)}</button>`).join("")}</div>` : "";
+    const zoom = kinds.includes("image") ? `<div class="zoom" role="group" aria-label="Zoom">
+      <button type="button" class="chip" data-asset-zoom="fit" aria-pressed="${state.zoom === "fit"}">fit</button>
+      <button type="button" class="chip" data-asset-zoom="1" aria-pressed="${state.zoom === 1}">1:1</button>
+      <button type="button" class="chip" data-asset-zoom="out" aria-label="Zoom out">−</button>
+      <button type="button" class="chip" data-asset-zoom="in" aria-label="Zoom in">+</button></div>` : "";
+    const textual = state.compare && kinds.every(kind => kind === "text");
+    let bar;
+    if (state.compare) {
+      bar = `<div class="sides">
+        <div class="side-head"><span class="label">before</span>${picker(asset, "left", numbers[0])}</div>
+        <div class="side-head"><span class="label">after</span>${picker(asset, "right", numbers[1])}<span class="grow"></span><span class="tally" id="assets-tally"></span></div>
+      </div>${fileTabs}<span class="grow"></span>${zoom}`;
+    } else {
+      bar = `${picker(asset, "single", numbers[0])}${fileTabs}<span class="grow"></span>${zoom}`;
+    }
+    const panes = textual
+      ? `<div class="panes"><div class="pane" id="assets-diff"><p class="missing">…</p></div></div>`
+      : `<div class="panes ${numbers.length === 2 ? "two" : ""}">${numbers.map(number => pane(asset, number)).join("")}</div>`;
+    $("assets-stage").innerHTML = `<div class="bar">${bar}</div>${panes}`;
+    for (const pre of $("assets-stage").querySelectorAll("pre[data-text]")) {
+      text(pre.dataset.text).then(content => { pre.textContent = content; }).catch(() => { pre.textContent = "This file could not be read."; });
+    }
+    for (const image of $("assets-stage").querySelectorAll("img[data-scale]")) {
+      const size = () => { image.style.width = `${image.naturalWidth * Number(image.dataset.scale)}px`; };
+      if (image.complete) size(); else image.addEventListener("load", size, { once: true });
+    }
+    if (textual) {
+      const [before, after] = numbers.map(number => url(asset, version(asset, number), fileOf(asset, number).name));
+      Promise.all([text(before), text(after)]).then(([left, right]) => {
+        if (state.signature !== signature) return;
+        const made = diff(left, right);
+        $("assets-diff").innerHTML = made.html;
+        const { added, removed, changed } = made.tally;
+        const counted = [[added, "added", "+"], [removed, "removed", "−"], [changed, "changed", "~"]].filter(([count]) => count);
+        $("assets-tally").innerHTML = counted.length
+          ? counted.map(([count, kind, sign]) => `<span class="badge ${kind}" title="${count} ${kind}">${sign}${count}</span>`).join("")
+          : '<span class="badge">the same</span>';
+      }).catch(() => { $("assets-diff").innerHTML = '<p class="missing">These files could not be read.</p>'; });
+    }
+  }
+
+  function drawHead(asset) {
+    const shown = visible();
+    const index = shown.findIndex(item => item.key === asset.key);
+    const latest = last(asset);
+    const left = '<svg viewBox="0 0 16 16" fill="none"><path d="M10 3.5 5.5 8l4.5 4.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+    const right = '<svg viewBox="0 0 16 16" fill="none"><path d="M6 3.5 10.5 8 6 12.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+    const close = '<svg viewBox="0 0 16 16" fill="none"><path d="m4 4 8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>';
+    $("assets-viewer-head").innerHTML = `
+      <div class="where"><h2 id="assets-viewer-title">${escape(latest.title)}</h2><span class="key">${escape(asset.key)} · ${asset.versions.length} ${asset.versions.length === 1 ? "version" : "versions"}</span></div>
+      <button type="button" class="toggle" data-asset-compare aria-pressed="${state.compare}" ${asset.versions.length < 2 ? "disabled" : ""}><span class="switch" aria-hidden="true"><span></span></span>Compare <kbd>c</kbd></button>
+      <span class="steps"><button type="button" class="icon" data-asset-step="-1" aria-label="Previous asset" ${index <= 0 ? "disabled" : ""}>${left}</button>
+      ${index >= 0 ? `${index + 1} of ${shown.length}` : ""}
+      <button type="button" class="icon" data-asset-step="1" aria-label="Next asset" ${index < 0 || index >= shown.length - 1 ? "disabled" : ""}>${right}</button></span>
+      <button type="button" class="icon" data-asset-close aria-label="Close">${close}</button>`;
+  }
+
+  function drawAbout(asset) {
+    const numbers = chosen(asset);
+    const item = version(asset, numbers[numbers.length - 1]);
+    const latest = last(asset);
+    const parts = [];
+    const tags = item.tags.map(tag => `<span class="badge">${escape(tag)}</span>`).join("");
+    parts.push(`<div class="section"><span class="label">Version ${item.version}${item.version === latest.version ? ", the latest" : ""}</span>
+      <div class="facts"><span class="badge ${TONE[item.review]}">${WORDS[item.review]}</span>${tags}</div>
+      <p>Registered ${time(item.recorded.moment)}${item.recorded.role && item.recorded.role !== "interactive" ? ` by the ${escape(item.recorded.role)}` : ""}.</p></div>`);
+    if (item.regenerated) {
+      parts.push(`<div class="section"><span class="label">Made again from version ${item.regenerated.from}</span><p>${item.regenerated.feedback ? `Answering your note: “${escape(item.regenerated.feedback)}”` : "As the recipe says, with no note."}</p></div>`);
+    }
+    if (item.note) parts.push(`<div class="section"><span class="label">What the agent says</span><p>${escape(item.note)}</p></div>`);
+    if (item.decision) parts.push(`<div class="section"><span class="label">Illustrates</span><p><a href="#decisions/${item.decision}">decision ${item.decision}</a></p></div>`);
+    if (item.recipe) {
+      const recipe = [item.recipe.command ? `<p><code>${escape(item.recipe.command)}</code></p>` : "", item.recipe.instruction ? `<p>${escape(item.recipe.instruction)}</p>` : ""].join("");
+      parts.push(`<div class="section"><span class="label">How it is made</span>${recipe}</div>`);
+    }
+    if (latest.review !== "unreviewed") {
+      parts.push(`<div class="panel ${latest.review === "approved" ? "ok" : "rejected"}"><span class="label">v${latest.version} ${latest.review} ${latest.reviewed ? time(latest.reviewed.moment) : ""}</span>${latest.feedback ? `<div>${escape(latest.feedback)}</div>` : ""}</div>`);
+    } else if (latest.feedback) {
+      parts.push(`<div class="panel agent"><span class="label">your note on v${latest.version}</span><div>${escape(latest.feedback)}</div></div>`);
+    }
+    const running = state.regenerating[asset.key];
+    if (running && !running.problem) {
+      parts.push(`<div class="panel agent"><span class="label"><span class="spinner" aria-hidden="true"></span>making version ${running.from + 1}</span><div>Started ${time(running.since)}; it shows here when it is registered.</div></div>`);
+    } else if (running) {
+      parts.push(`<div class="panel problem"><span class="label">the regeneration failed</span><div>${escape(running.problem)}</div></div>`);
+    }
+    $("assets-about").innerHTML = parts.join("");
+    const making = running && !running.problem;
+    for (const button of $("assets-buttons").querySelectorAll("button")) {
+      const act = button.dataset.assetAct;
+      button.disabled = making || (act === "regenerate" && !latest.recipe) || (act === latest.review);
+      button.title = act === "regenerate" && !latest.recipe ? "No recipe: the agent that made it did not say how to make it again" : "";
+    }
+  }
+
+  // The note being written, kept per version: a new version starts with its own (none).
+  const noteKey = asset => `${asset.key}@${last(asset).version}`;
+  function note(asset) {
+    if (!state.notes.has(noteKey(asset))) state.notes.set(noteKey(asset), last(asset).feedback ?? "");
+    return state.notes.get(noteKey(asset));
+  }
+
+  function drawViewer() {
+    const asset = state.open && find(state.open);
+    const viewer = $("assets-viewer");
+    if (!asset) { viewer.hidden = true; return; }
+    viewer.hidden = false;
+    if (!state.picker) drawHead(asset);
+    if (!state.picker) drawStage(asset);
+    drawAbout(asset);
+    const field = $("assets-note");
+    if (document.activeElement !== field) field.value = note(asset);
+  }
+
+  function draw() { drawList(); drawViewer(); }
+
+  function open(key) {
+    if (state.open !== key) {
+      state.open = key;
+      state.single = state.left = state.right = state.file = null;
+      state.zoom = "fit";
+      state.signature = "";
+      state.picker = null;
+      $("assets-problem").hidden = true;
+    }
+    const wanted = `#assets/${key}`;
+    if (decodeURIComponent(location.hash) !== wanted) history.replaceState(null, "", wanted);
+    draw();
+  }
+
+  function close() {
+    state.open = null;
+    state.compare = false;
+    state.signature = "";
+    state.picker = null;
+    history.replaceState(null, "", "#assets");
+    draw();
+    document.querySelector(".assets .card")?.focus();
+  }
+
+  function step(offset) {
+    const shown = visible();
+    const index = shown.findIndex(asset => asset.key === state.open);
+    const next = shown[index + offset];
+    if (index >= 0 && next) open(next.key);
+  }
+
+  // --- the version picker: the design's dropdown -------------------------------------------------
+
+  function openPicker(element) {
+    closePicker();
+    state.picker = element.dataset.picker;
+    const button = element.querySelector("button");
+    const list = element.querySelector("ul");
+    button.setAttribute("aria-expanded", "true");
+    list.hidden = false;
+    const selected = list.querySelector('[aria-selected="true"]') || list.querySelector("li");
+    activate(list, selected);
+    list.focus();
+  }
+  function activate(list, item) {
+    for (const other of list.querySelectorAll("li")) other.classList.toggle("active", other === item);
+    if (item) { list.setAttribute("aria-activedescendant", item.id); item.scrollIntoView({ block: "nearest" }); }
+  }
+  function closePicker(focus) {
+    const element = state.picker && document.querySelector(`#assets-stage [data-picker="${state.picker}"]`);
+    state.picker = null;
+    if (!element) return;
+    element.querySelector("ul").hidden = true;
+    const button = element.querySelector("button");
+    button.setAttribute("aria-expanded", "false");
+    if (focus) button.focus();
+  }
+  function pick(side, number) {
+    const asset = find(state.open);
+    closePicker();
+    if (side === "single") state.single = number === last(asset).version ? null : number;
+    else state[side] = number;
+    state.signature = "";
+    draw();
+    document.querySelector(`#assets-stage [data-picker="${side}"] button`)?.focus();
+  }
+
+  // --- the owner's word -------------------------------------------------------------------------
+
+  async function post(path, body) {
+    const response = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    const answer = await response.json();
+    if (!response.ok) throw new Error(answer.error);
+    return answer;
+  }
+
+  async function act(action) {
+    const asset = find(state.open);
+    if (!asset) return;
+    const latest = last(asset);
+    const running = state.regenerating[asset.key];
+    if (running && !running.problem) return;
+    const button = $("assets-buttons").querySelector(`[data-asset-act="${action}"]`);
+    if (button?.disabled) return;
+    const written = ($("assets-note").value || "").trim() || null;
+    const word = written !== (latest.feedback || null) ? { feedback: written } : {};
+    const problem = $("assets-problem");
+    problem.hidden = true;
+    try {
+      if (action === "regenerate") {
+        await post("assets/regenerate", { key: asset.key, ...word });
+        studio.toast(`Making version ${latest.version + 1} of ${asset.key}…`);
+      } else if (action === "note") {
+        if (!("feedback" in word)) { $("assets-note").focus(); return; }
+        await post("assets/review", { key: asset.key, ...word });
+        studio.toast(`Saved your note on ${asset.key}.`);
+      } else {
+        await post("assets/review", { key: asset.key, review: action, ...word });
+        studio.toast(`${asset.key} v${latest.version} ${action}.`);
+      }
+    } catch (error) {
+      problem.textContent = error.message;
+      problem.hidden = false;
+      return;
+    }
+    state.notes.delete(noteKey(asset));
+    $("assets-note").blur();
+    state.seen = "";
+    await load();
+  }
+
+  // --- loading ----------------------------------------------------------------------------------
+
+  async function load() {
+    try {
+      const response = await fetch("assets");
+      const raw = await response.text();
+      if (raw === state.seen) return;
+      state.seen = raw;
+      const data = JSON.parse(raw);
+      for (const asset of data.assets) {
+        const before = state.latest.get(asset.key);
+        const now = last(asset).version;
+        if (before && now > before && state.shown) studio.toast(`Version ${now} of ${asset.key} arrived.`);
+        state.latest.set(asset.key, now);
+      }
+      state.assets = data.assets;
+      state.tags = data.tags;
+      state.regenerating = data.regenerating;
+      if (state.link) { const key = state.link; state.link = null; if (find(key)) open(key); }
+      if (state.open && !find(state.open)) close();
+      draw();
+    } catch {
+      studio.summary("assets", "Lost touch with nock — is `nock studio` still running?");
+    }
+  }
+
+  // --- events -------------------------------------------------------------------------------------
+
+  const root = $("assets");
+  root.addEventListener("click", event => {
+    const target = event.target;
+    const tab = target.closest("[data-asset-review]");
+    if (tab) { state.review = tab.dataset.assetReview; draw(); return; }
+    const layout = target.closest("[data-asset-layout]");
+    if (layout) {
+      state.layout = layout.dataset.assetLayout;
+      try { localStorage.setItem("nock.assets.layout", state.layout); } catch { /* not kept: fine */ }
+      draw();
+      return;
+    }
+    const tag = target.closest("[data-asset-tag]");
+    if (tag) { const value = tag.dataset.assetTag; state.tags_chosen.has(value) ? state.tags_chosen.delete(value) : state.tags_chosen.add(value); draw(); return; }
+    const card = target.closest("[data-asset-open]");
+    if (card) { open(card.dataset.assetOpen); return; }
+    if (target === $("assets-viewer")) { close(); return; }
+    if (target.closest("[data-asset-close]")) { close(); return; }
+    const stepper = target.closest("[data-asset-step]");
+    if (stepper) { step(Number(stepper.dataset.assetStep)); return; }
+    if (target.closest("[data-asset-compare]")) { toggleCompare(); return; }
+    const option = target.closest(".picker li");
+    if (option) { pick(option.closest("[data-picker]").dataset.picker, Number(option.dataset.version)); return; }
+    const pickerButton = target.closest(".picker > button");
+    if (pickerButton) {
+      const element = pickerButton.parentElement;
+      if (state.picker === element.dataset.picker) closePicker(true); else openPicker(element);
+      return;
+    }
+    if (state.picker && !target.closest(".picker")) closePicker();
+    const file = target.closest("[data-asset-file]");
+    if (file) { state.file = file.dataset.assetFile; draw(); return; }
+    const zoom = target.closest("[data-asset-zoom]");
+    if (zoom) { setZoom(zoom.dataset.assetZoom); return; }
+    if (target.closest("[data-zoom-image]")) { setZoom(state.zoom === "fit" ? "1" : "fit"); return; }
+    const action = target.closest("[data-asset-act]");
+    if (action) act(action.dataset.assetAct);
+  });
+
+  function toggleCompare() {
+    const asset = find(state.open);
+    if (!asset || asset.versions.length < 2) return;
+    state.compare = !state.compare;
+    state.left = state.right = null;
+    state.signature = "";
+    draw();
+  }
+
+  const ZOOMS = [0.25, 0.5, 1, 1.5, 2, 3, 4];
+  function setZoom(value) {
+    if (value === "fit") state.zoom = "fit";
+    else if (value === "in" || value === "out") {
+      const now = state.zoom === "fit" ? 1 : state.zoom;
+      const index = ZOOMS.indexOf(now);
+      state.zoom = ZOOMS[Math.min(ZOOMS.length - 1, Math.max(0, index + (value === "in" ? 1 : -1)))];
+    } else state.zoom = Number(value);
+    state.signature = "";
+    draw();
+  }
+
+  root.addEventListener("input", event => {
+    if (event.target.id === "assets-search") { state.search = event.target.value; draw(); return; }
+    if (event.target.id === "assets-note" && find(state.open)) state.notes.set(noteKey(find(state.open)), event.target.value);
+  });
+
+  document.addEventListener("keydown", event => {
+    if (!state.shown) return;
+    const target = event.target;
+    if (state.picker) {
+      const list = document.querySelector(`#assets-stage [data-picker="${state.picker}"] ul`);
+      if (!list) return;
+      const items = [...list.querySelectorAll("li")];
+      const index = items.findIndex(item => item.classList.contains("active"));
+      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+        event.preventDefault();
+        activate(list, items[Math.min(items.length - 1, Math.max(0, index + (event.key === "ArrowDown" ? 1 : -1)))]);
+      } else if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        if (items[index]) pick(state.picker, Number(items[index].dataset.version));
+      } else if (event.key === "Escape" || event.key === "Tab") {
+        event.preventDefault();
+        closePicker(true);
+      }
+      return;
+    }
+    if (!state.open) {
+      if (event.key === "/" && !["TEXTAREA", "INPUT"].includes(target.tagName)) { event.preventDefault(); $("assets-search").focus(); }
+      return;
+    }
+    if (target.id === "assets-note") {
+      if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) { event.preventDefault(); act("note"); }
+      else if (event.key === "Escape") { event.preventDefault(); target.blur(); }
+      return;
+    }
+    if (["TEXTAREA", "INPUT"].includes(target.tagName) || event.metaKey || event.ctrlKey || event.altKey) return;
+    const keys = {
+      a: () => act("approved"), r: () => act("rejected"), g: () => act("regenerate"), c: toggleCompare,
+      n: () => $("assets-note").focus(),
+      ArrowLeft: () => step(-1), ArrowRight: () => step(1), Escape: close,
+      "+": () => setZoom("in"), "=": () => setZoom("in"), "-": () => setZoom("out"), "0": () => setZoom("fit"),
+    };
+    const run = keys[event.key];
+    if (run) { event.preventDefault(); run(); }
+  });
+
+  // Shown, the tab keeps up with what agents register: it asks again every few seconds.
+  studio.register("assets", {
+    show(route) {
+      state.shown = true;
+      if (route) { state.link = route; state.seen = ""; }
+      else if (state.open) { state.open = null; state.signature = ""; }
+      load();
+    },
+    hide() { state.shown = false; $("assets-viewer").hidden = true; },
+  });
+  setInterval(() => { if (state.shown) load(); }, POLL);
+})();
+</script>
