@@ -16,6 +16,7 @@ from typing import Any
 from nock import hooks
 from nock.commands import FRESH_FLAG, FULL_FLAG, JSON_FLAG, Command, Group
 from nock.configuration import Confirm
+from nock.decisions import Decisions
 from nock.environment import Environment
 from nock.errors import Error, Exit, ExitCode, PreconditionError, UsageError
 from nock.fixtures import Call, Scope
@@ -59,6 +60,16 @@ def build(registry: Registry) -> Group:
     for tool in registry.tools:
         root.add(tool.command)
     return root
+
+
+def name_tags(project: Project, registry: Registry) -> None:
+    """`decide --help` names the project's tags, when it fixes them."""
+    tool = registry.tool("decide")
+    vocabulary = Decisions(project).vocabulary()
+    if tool is not None and vocabulary:
+        tool.command.epilog = (
+            f"Tags, the project's (`decisions.tags` in .nock/config.toml): {', '.join(vocabulary)}"
+        )
 
 
 def listing(registry: Registry, confirm: Confirm = Confirm.ASK) -> str:
@@ -106,6 +117,8 @@ class Invocation:
                 sys.stderr.write(f"nock: {error}\n")
                 return error.exit_code
         registry = self.project.registry if self.project else Registry.load(None)
+        if self.project:
+            name_tags(self.project, registry)
         for failure in registry.failures:
             sys.stderr.write(f"nock: a tool did not load — {failure}\n")
         if self.arguments in ([], ["--help"]):

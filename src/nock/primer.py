@@ -30,14 +30,17 @@ CONSULT = """\
 """
 
 DECIDE = """\
-- **Record decisions as you make them:** `.nock/nock decide` (`--help` has
-  the fields). A decision is a choice between ways that could each work, a
-  deliberate simplification, your reading of something ambiguous, or a
-  todo you are leaving; give the alternatives you weighed, for someone who
-  knows what the system does but not how it is built. If it is the owner's
-  call, record the decision you would propose, tag it `important`, and
-  carry on with it. The owner reviews them later, so don't wait. When you
-  do a todo or rework a rejected decision, edit it to say what you did.
+- **Record a decision only when a later reader would ask "why":**
+  `.nock/nock decide` (`--help` has the fields) for a choice between real
+  alternatives the owner hasn't already made, a deliberate simplification,
+  your reading of something ambiguous, or a todo you are leaving. Never for
+  carrying out the owner's explicit instruction (the instruction is the
+  record), a routine implementation detail, a change to an existing
+  decision (edit it: `.nock/nock decisions edit`), or twice for the same
+  thing. If it is the owner's call, record the answer you would propose,
+  tag it `important`, and carry on; the owner reviews later, so don't
+  wait. When you do a todo or rework a rejected decision, edit it to say
+  what you did.{tags}
 - **Run noisy or long commands through `.nock/nock run -- COMMAND`**
   (Claude Code asks about it as about the command itself), and
   `.nock/nock check` before you finish. Exit codes: 1 fix the code, 42 fix
@@ -75,7 +78,9 @@ def primer(configuration: Configuration) -> str:
             else ""
         )
         return QUIET.format(consult=consult)
-    return INTRODUCTION + "\n" + (CONSULT if consulting else "") + DECIDE + REPORT
+    fixed = [tag for tag in configuration.get("decisions.tags") or [] if tag != "important"]
+    tags = f"\n  Tags: {', '.join(f'`{tag}`' for tag in fixed)} and `important`." if fixed else ""
+    return INTRODUCTION + "\n" + (CONSULT if consulting else "") + DECIDE.format(tags=tags) + REPORT
 
 
 def refresh(directory: Path) -> bool:

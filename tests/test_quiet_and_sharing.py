@@ -53,7 +53,7 @@ def test_with_reminders_off_nock_says_nothing_unasked_and_still_records(
     assert HookRunner(quiet, payload).handle("PostToolUse") is None
     primer = (project.root / ".nock" / "context.md").read_text()
     assert "It stays quiet here" in primer
-    assert "Record decisions" not in primer
+    assert "Record a decision" not in primer
     path = transcript(quiet, "s1", ["Deploy it"], [("make deploy", 10, False)])
     HookRunner(quiet, {"session_id": "s1", "transcript_path": str(path)}).handle("SessionEnd")
     assert quiet.store.rows("SELECT id FROM sessions") == [{"id": "s1"}]
@@ -280,5 +280,5 @@ def test_the_primer_follows_the_committed_settings_not_the_machine_s(project: Pr
     local.write_text("reminders = false\n" + local.read_text())
     quiet = Project.discover(project.root)
     assert HookRunner(quiet, {"session_id": "s1"}).handle("SessionStart") is None
-    assert "Record decisions" in (project.root / ".nock" / "context.md").read_text()
+    assert "Record a decision" in (project.root / ".nock" / "context.md").read_text()
     assert git(project.root, "status", "--porcelain") == ""

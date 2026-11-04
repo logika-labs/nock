@@ -237,7 +237,9 @@ def test_the_map_check_holds_citations_and_gone_files_go_to_the_round(project: P
 def test_a_decision_naming_files_that_do_not_exist_is_told_so(project: Project) -> None:
     recorded = decide(project.root, {**DRAFT, "touches": ["README.md", "ANSWER.md"]})
     assert recorded["touches_no_file"] == ["ANSWER.md"]
-    assert "touches_no_file" not in decide(project.root)
+    assert "touches_no_file" not in decide(
+        project.root, {**DRAFT, "title": "Orders keep a history"}
+    )
 
 
 def test_a_session_starts_with_the_owner_s_backlog_and_notes(project: Project) -> None:
@@ -417,3 +419,68 @@ def test_the_consultant_off_dispatches_nothing_and_the_primer_asks_for_none(
     assert project.store.rows("SELECT role FROM sessions") == []
     HookRunner(project, {"session_id": "s1"}).handle("SessionStart")
     assert "consult" not in primer.read_text()
+
+
+def test_a_title_a_standing_decision_has_is_refused_unless_forced(project: Project) -> None:
+    first = decide(project.root)["number"]
+    again = nock(project.root, "decide", json.dumps({**DRAFT, "title": "orders live in SQLite!"}))
+    assert again.returncode == 1
+    assert f"decision {first} already says this" in again.stderr + again.stdout
+    near = nock(project.root, "decide", json.dumps({**DRAFT, "title": "Orders lives in SQLite"}))
+    assert near.returncode == 1
+    superseding = decide(project.root, {**DRAFT, "supersedes": [first]})["number"]
+    forced = nock(project.root, "decide", json.dumps(DRAFT), "--force", "--json")
+    assert forced.returncode == 0, forced.stderr
+    assert json.loads(forced.stdout)["number"] == superseding + 1
+
+
+def test_a_decision_that_should_not_have_been_recorded_is_deleted(project: Project) -> None:
+    first = decide(project.root)["number"]
+    second = decide(
+        project.root, {**DRAFT, "title": "Orders move to Postgres", "supersedes": [first]}
+    )["number"]
+    result = nock(project.root, "decisions", "delete", str(second), "--json")
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout) == {"deleted": second}
+    assert not Decisions(project).path(second).exists()
+    assert Decisions(project).get(first)["superseded_by"] is None
+    assert git(project.root, "log", "-1", "--format=%s") == (
+        f"Decision {second}, deleted: Orders move to Postgres"
+    )
+    assert git(project.root, "status", "--porcelain") == ""
+    assert nock(project.root, "decisions", "delete", str(second)).returncode == 44
+
+
+def test_a_project_s_tag_vocabulary_is_the_only_tags_it_takes(project: Project, page: str) -> None:
+    config = project.root / ".nock" / "config.toml"
+    config.write_text(config.read_text() + '\n[decisions]\ntags = ["core", "web"]\n')
+    git(project.root, "commit", "-qam", "Fix the tags")
+    outside = nock(project.root, "decide", json.dumps(DRAFT))
+    assert outside.returncode == 40
+    assert "storage, technical: not in the project's tags (core, web, important" in outside.stderr
+    recorded = decide(project.root, {**DRAFT, "tags": ["Core", "important"]})
+    assert Decisions(project).get(recorded["number"])["tags"] == ["core", "important"]
+    refused = nock(
+        project.root,
+        "decisions",
+        "edit",
+        json.dumps({"number": recorded["number"], "tags": ["ui"]}),
+    )
+    assert refused.returncode == 40 and "ui: not in the project's tags" in refused.stderr
+    assert "core, web, important" in nock(project.root, "decide", "--help").stdout
+    HookRunner(project, {"session_id": "s1"}).handle("SessionStart")
+    assert (
+        "Tags: `core`, `web` and `important`."
+        in (project.root / ".nock" / "context.md").read_text()
+    )
+    with urllib.request.urlopen(f"{page}decisions") as response:
+        listed = json.loads(response.read())
+    assert listed["vocabulary"][:3] == ["core", "web", "important"]
+    assert list(listed["tags"])[:2] == ["core", "important"]
+
+
+def test_the_page_filters_the_important_and_shows_each_decision_s_tags() -> None:
+    fragment = (PAGES / "decisions.html").read_text()
+    assert 'chip("flag", "important"' in fragment
+    assert "${tagChips(decision)}" in fragment
+    assert "state.vocabulary" in fragment

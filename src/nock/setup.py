@@ -74,6 +74,11 @@ days = 7
 # The model of the agents nock dispatches (elaborate, consult); empty is Claude Code's default.
 model = ""
 
+# [decisions]
+# The project's fixed tags for decisions: `decide` and `edit` refuse any other
+# (but `important`). Unset, agents add their own.
+# tags = ["core", "web", "deploy"]
+
 [consult]
 # Whether agents are asked to consult nock's consultant before changing code.
 enabled = true

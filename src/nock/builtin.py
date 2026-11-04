@@ -258,18 +258,21 @@ def studio(
 
 
 @command
-def decide(project: Project, decision: Draft) -> dict[str, Any]:
-    """Record a decision as you make it — a non-trivial choice between ways
-    that could each work, a deliberate simplification, a reading of something
-    ambiguous — or, as a todo, something that should be done and is not yet
-    (tag a possible improvement `improvement`). What only the owner can
-    settle, when they are not there to ask, is a decision tagged `important`:
-    the answer you propose as the title, the other answers as alternatives,
-    and carry on with it; they accept or reject it. Not what has one
-    obvious right way. Write it for someone who knows what the system does,
-    not how it is built; give only alternatives you really weighed. The owner
-    reviews it later; keep going meanwhile."""
-    recorded, problem = Decisions(project).decide(decision)
+def decide(project: Project, decision: Draft, *, force: bool = False) -> dict[str, Any]:
+    """Record a decision only when a later reader would ask "why": a choice
+    between real alternatives the owner has not already made, a deliberate
+    simplification, a reading of something ambiguous — or, as a todo,
+    something that should be done and is not yet. Never for carrying out the
+    owner's explicit instruction (the instruction is the record), a routine
+    implementation detail, a change to an existing decision (`decisions
+    edit` it), or twice for the same thing: a title a standing decision
+    already has, or nearly, is refused with its number unless FORCE. What
+    only the owner can settle, when they are not there to ask, is a decision
+    tagged `important`: the answer you propose as the title, the other
+    answers as alternatives, and carry on with it. Write it for someone who
+    knows what the system does, not how it is built; give only alternatives
+    you really weighed. The owner reviews it later; keep going meanwhile."""
+    recorded, problem = Decisions(project).decide(decision, force)
     return recorded_result(project, recorded, problem)
 
 
@@ -279,9 +282,10 @@ def recorded_result(
     """The number, and the tags in use — so a near-duplicate tag is fixed while it is cheap."""
     decisions = Decisions(project)
     tags = decisions.tags()
+    fixed = decisions.vocabulary() or TAGS
     result: dict[str, Any] = {
         "number": decision["number"],
-        "new_tags": [tag for tag in decision["tags"] if tags.get(tag) == 1 and tag not in TAGS],
+        "new_tags": [tag for tag in decision["tags"] if tags.get(tag) == 1 and tag not in fixed],
         "tags_in_use": list(tags),
     }
     unmatched = decisions.unmatched(decision)
@@ -340,6 +344,15 @@ def ask(project: Project, result: dict[str, Any], moment: Moment) -> None:
     question = Usage(project).ask(moment)
     if question:
         result["ask_the_owner"] = question
+
+
+@command(name="delete", group="decisions")
+def decisions_delete(project: Project, number: int) -> dict[str, Any]:
+    """Delete a decision that should not have been recorded — a duplicate, the
+    owner's own instruction restated, a routine detail — and commit that; git
+    keeps it. A decision a later one overturns is superseded instead."""
+    problem = Decisions(project).delete(number)
+    return {"deleted": number, **({"not_committed": problem} if problem else {})}
 
 
 @command(name="elaborate", group="decisions")

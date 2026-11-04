@@ -83,6 +83,12 @@ DEFAULTS: dict[str, Any] = {
         "deadline": 1800,
         "silence": 600,
     },
+    "decisions": {
+        # The project's fixed tags, lowercase: `decide` and `edit` refuse any
+        # other (but `important`, and a logika round's `logika` and
+        # `instrumentation`). Empty lets agents add their own.
+        "tags": [],
+    },
     "consult": {
         # Whether the consultant runs, and the primer asks agents to consult.
         "enabled": True,

@@ -395,7 +395,15 @@ change to a field in `SUBSTANCE` resets the review. The owner's call is a
 decision tagged `important`, the agent's proposed answer as its title;
 `important` lists those unreviewed, for `status.Standing`. A file an earlier
 nock wrote with `status: question` is read (`upgraded`) as done and tagged
-`important`, its review kept, and saved so on its next write. "Elaborate" starts
+`important`, its review kept, and saved so on its next write. `decide`
+refuses (`Failed`, exit 1, naming it) a title a standing decision not in its
+`supersedes` already has, compared `normalised` by `difflib` at `SIMILAR`,
+unless forced. `vocabulary` is the configuration's `decisions.tags` with
+`RESERVED` (`important`, and a logika round's tags); when set, `apply`
+refuses any other tag, `tags` counts from it, the CLI puts it in `decide
+--help` (`cli.name_tags`), the primer names it, and `DecisionsTab` sends it
+for the tag filter. `delete` removes a file and commits it, clearing the
+`supersedes`/`superseded_by` links that named it. "Elaborate" starts
 `nock decisions elaborate N` as a detached process, which dispatches the
 elaborator; the decision's `elaborating` flag holds until an edit changes
 it, or the elaborator ends without one.
