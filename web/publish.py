@@ -14,10 +14,9 @@ import subprocess
 import sys
 from pathlib import Path
 
-from build import OUTPUT, README, build, build_legal
+from build import SITE, build
 
 HERE = Path(__file__).resolve().parent
-SITE = HERE / "site"
 CHECKOUT = HERE / "pages"
 REPOSITORY = "git@github.com:logika-labs/nock.dev.git"
 DOMAIN = "nock.dev"
@@ -33,7 +32,7 @@ def problems(site: Path) -> list[str]:
     """Why `site` must not be published."""
     return [
         f"{relative} is missing"
-        for relative in ("index.html", "style.css", "docs/index.html")
+        for relative in ("index.html", "style.css", "getting-started/index.html", "docs/index.html")
         if not (site / relative).is_file()
     ]
 
@@ -53,8 +52,7 @@ def stage(site: Path, checkout: Path) -> None:
 
 
 def publish(repository: str, push: bool) -> str:
-    build(README, OUTPUT)
-    build_legal(SITE)
+    build(SITE)
     if found := problems(SITE):
         raise SystemExit("the site is not publishable: " + "; ".join(found))
     head = run("git", "rev-parse", "--short=12", "HEAD", cwd=HERE).strip()

@@ -5,22 +5,37 @@ init` vendors `src/nock/` only, and the package is built from `src/` only.
 Standard library only, like nock.
 
 ```
-site/              the pages: index.html, style.css, docs/ (built, gitignored)
-docs.html          the docs page's template
-legal/             privacy.md and terms.md → site/privacy/, site/terms/ (built, gitignored)
-page.html          their template
-build.py           ../README.md → site/docs/index.html, with a table of contents; legal/ → its pages
+layout.html        every page's frame: the band and its menu, the main column, the footer
+home.html          the home page's main column
+legal/             privacy.md and terms.md, each with its plain-words summary (NAME-plain.md)
+site/              style.css and fonts/; the pages are built into it (gitignored)
+build.py           the pages: home, ../README.md → getting-started/ and docs/ (a page per
+                   section, in a tab: Concepts, Evaluation, Reference), legal/ → privacy/, terms/
 publish.py         build, and push to GitHub Pages
 ```
+
+The column, the type scale and the look are the studio's (`src/nock/pages/`).
 
 ## Build
 
 ```sh
 python3 web/build.py
+python3 -m http.server -d web/site   # then open http://localhost:8000
 ```
 
-The docs page is the README, so edit the README, never `site/docs/`. To look at
-the site, serve `web/site/` (`python3 -m http.server -d web/site`).
+The docs are the README, so edit the README, never `site/`. `DOCS` in `build.py`
+places each of its `## ` sections: a page in a tab, with its line on the docs
+index. `START` is Getting started, a page of its own, and `LEFT_OUT` stays on
+PyPI only (Thanks). A section placed nowhere fails the build. A link between
+sections lands on the right page, and an old one-page address, `/docs/#ANCHOR`,
+is sent on to the page that has the heading now.
+
+`TELEGRAM` in `build.py` is the community's link on every page: a placeholder
+until the channel exists.
+
+The legal pages show their summary above the full text while the tl;dr switch
+is on (the default); the visitor's choice stays in their browser's
+`localStorage`, as the privacy policy says. The full text is always shown.
 
 ## Publish
 

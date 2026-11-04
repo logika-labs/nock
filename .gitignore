@@ -5,8 +5,6 @@ __pycache__/
 .ruff_cache/
 dist/
 .DS_Store
-web/site/docs/
+web/site/**/*.html
 web/pages/
-web/site/privacy/
-web/site/terms/
 server/build/

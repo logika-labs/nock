@@ -123,7 +123,8 @@ tests/               real git repositories and processes; no mocks
                      detector (a checkpoint), a fix when found, a score joining the arms
 scripts/release.py   cut a release: checks, asks, then tags vVERSION and pushes it (standard library)
 evals/               does reflection pay? real sessions, with and without a toolbox
-web/                 nock.dev, never vendored or packaged: site/ (the pages), build.py (docs/
+web/                 nock.dev, never vendored or packaged: layout.html, home.html, legal/, site/
+                     (style, fonts, the built pages), build.py (Getting started and the docs pages
                      from this README), publish.py (to GitHub Pages)
 server/              api.nock.dev, where `nock share`, the usage reports and `nock report` post: a
                      distribution of

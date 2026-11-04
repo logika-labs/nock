@@ -1063,7 +1063,7 @@ A release goes:
 `evals/` measures whether reflection pays (`evals/README.md`), and whether nock
 helps through a month of real work (`evals/story/README.md`).
 
-`web/` is nock.dev: the site, its docs page built from this README, and the
+`web/` is nock.dev: the site, its docs pages built from this README, and the
 publishing to GitHub Pages (`web/README.md`).
 
 ## Thanks
