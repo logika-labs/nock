@@ -4,11 +4,13 @@ committed file per decision in the main checkout's
 `.nock/decisions/`, each with its reasoning, the alternatives that lost, the
 files it governs (`touches`) and the decisions it overturns (`supersedes`).
 The owner reviews them, on the page (`nock studio`) or in a session: accepts,
-rejects, leaves a note, or has an agent elaborate. `map.md` beside them says
+rejects, leaves a note, or has an agent elaborate. One that should never have
+been recorded is deleted; git keeps it. `map.md` beside them says
 how they bear on the work and on each other."""
 
 from __future__ import annotations
 
+import difflib
 import fnmatch
 import json
 import os
@@ -21,7 +23,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, NotRequired, TypedDict
 
 from nock.dispatch import Dispatcher
-from nock.errors import NotFoundError, UsageError
+from nock.errors import Failed, NotFoundError, UsageError
 from nock.render import Problem
 from nock.templates import Library
 from nock.utils import now, read_json, write_json
@@ -38,10 +40,16 @@ BUSY_MARKERS = ("MERGE_HEAD", "CHERRY_PICK_HEAD", "REVERT_HEAD", "rebase-merge",
 MAP = "map.md"
 # How the map cites a decision: `[D7]`.
 CITATION = re.compile(r"\[D(\d+)\]")
-# Tags every project has; agents add their own (a component, a subject).
+# Tags every project has, unless it fixes its own vocabulary (`decisions.tags`);
+# without one, agents add their own (a component, a subject).
 TAGS = ("important", "technical", "product", "improvement")
+# Tags nock's own workflows set, allowed beside any vocabulary: the owner's
+# calls, and a logika round's decisions and instrumentation todos.
+RESERVED = ("important", "logika", "instrumentation")
 # What a decision says; changing any of it asks for a fresh review.
 SUBSTANCE = ("title", "status", "summary", "evidence", "alternatives", "touches", "supersedes")
+# How alike two titles must be, normalised, for `decide` to take the second for the first again.
+SIMILAR = 0.9
 
 
 class Status(StrEnum):
@@ -81,8 +89,9 @@ class Draft(TypedDict):
     alternatives: NotRequired[list[Alternative]]
     """What you seriously considered instead, and why not; none is a fine answer."""
     tags: NotRequired[list[str]]
-    """important (only the owner can settle it: they accept or reject it),
-    technical, product, improvement, and your own (a component, a subject)."""
+    """important (only the owner can settle it: they accept or reject it), and
+    the project's vocabulary (`decide --help` lists it); without one, technical,
+    product, improvement and your own (a component, a subject)."""
     touches: NotRequired[list[str]]
     """The files it governs, as paths or globs: `src/pricing.py`, `migrations/**`."""
     supersedes: NotRequired[list[int]]
@@ -128,6 +137,17 @@ def live(decision: dict[str, Any]) -> bool:
     return not decision.get("superseded_by")
 
 
+def normalised(title: str) -> str:
+    """A title as the duplicate guard compares it: lowercase words, nothing else."""
+    return " ".join(re.sub(r"[\W_]+", " ", title.lower()).split())
+
+
+def alike(left: str, right: str) -> bool:
+    """Whether two titles say the same thing, near enough."""
+    left, right = normalised(left), normalised(right)
+    return left == right or difflib.SequenceMatcher(None, left, right).ratio() >= SIMILAR
+
+
 def upgraded(decision: dict[str, Any]) -> dict[str, Any]:
     """A decision as this nock reads it: an earlier nock's question is a
     decision done and tagged important, reviewed as it was; saving it
@@ -171,13 +191,25 @@ class Decisions:
         decision["updated"] = now()
         write_json(self.path(decision["number"]), decision)
 
+    def vocabulary(self) -> list[str]:
+        """The project's fixed tags (`decisions.tags`), nock's own with them;
+        empty when the project fixes none and any tag goes."""
+        fixed = self.project.configuration.get("decisions.tags") or []
+        if not fixed:
+            return []
+        return list(dict.fromkeys([*(str(tag).strip().lower() for tag in fixed), *RESERVED]))
+
     # --- deciding ---------------------------------------------------------------
 
-    def decide(self, draft: Draft) -> tuple[dict[str, Any], str | None]:
+    def decide(self, draft: Draft, force: bool = False) -> tuple[dict[str, Any], str | None]:
         """Record the decision under the next number, and commit it; the record,
-        and why it is not committed when it could not be."""
+        and why it is not committed when it could not be. A title a standing
+        decision already has, or nearly, is refused unless forced."""
         with self.project.lock("decisions"):
-            number = max((decision["number"] for decision in self.all()), default=0) + 1
+            every = self.all()
+            if not force:
+                self.refuse_duplicate(draft, every)
+            number = max((decision["number"] for decision in every), default=0) + 1
             decision: dict[str, Any] = {
                 "number": number,
                 "title": "",
@@ -204,6 +236,46 @@ class Decisions:
             overturned = self.overturn(decision)
             message = f"Decision {number}: {decision['title']}"
             return decision, self.commit([number, *overturned], message)
+
+    def refuse_duplicate(self, draft: Draft, every: list[dict[str, Any]]) -> None:
+        """Fail when a standing decision, other than one the draft supersedes,
+        has the draft's title or nearly."""
+        overturned = set(draft.get("supersedes", []))
+        for decision in every:
+            if (
+                live(decision)
+                and decision["number"] not in overturned
+                and alike(decision["title"], str(draft.get("title", "")))
+            ):
+                raise Failed(
+                    f"decision {decision['number']} already says this: {decision['title']} — "
+                    "edit it (`.nock/nock decisions edit`) rather than record it again; "
+                    "`--force` only if this is really another decision",
+                    {"duplicate_of": decision["number"], "title": decision["title"]},
+                )
+
+    def delete(self, number: int) -> str | None:
+        """Remove a decision that should not have been recorded, and commit
+        that; git keeps it. What it superseded stands again, and what
+        superseded it no longer names it."""
+        with self.project.lock("decisions"):
+            decision = self.get(number)
+            touched = []
+            for other in self.all():
+                if other["number"] == number:
+                    continue
+                if other.get("superseded_by") == number:
+                    other["superseded_by"] = None
+                elif number in other["supersedes"]:
+                    other["supersedes"] = [n for n in other["supersedes"] if n != number]
+                else:
+                    continue
+                self.save(other)
+                touched.append(other["number"])
+            self.path(number).unlink()
+            return self.commit(
+                [number, *touched], f"Decision {number}, deleted: {decision['title']}"
+            )
 
     def edit(self, change: Change) -> tuple[dict[str, Any], str | None]:
         """Change a decision. A change to what it says asks for a fresh review
@@ -261,9 +333,15 @@ class Decisions:
         if "alternatives" in fields:
             decision["alternatives"] = [dict(item) for item in fields["alternatives"]]
         if "tags" in fields:
-            decision["tags"] = sorted(
-                {tag.strip().lower() for tag in fields["tags"] if tag.strip()}
-            )
+            tags = sorted({tag.strip().lower() for tag in fields["tags"] if tag.strip()})
+            vocabulary = self.vocabulary()
+            outside = [tag for tag in tags if vocabulary and tag not in vocabulary]
+            if outside:
+                raise UsageError(
+                    f"{', '.join(outside)}: not in the project's tags ({', '.join(vocabulary)}); "
+                    "pick from them — the owner changes them in .nock/config.toml, `decisions.tags`"
+                )
+            decision["tags"] = tags
         if "supersedes" in fields:
             decision["supersedes"] = self.overturnable(fields["supersedes"], decision)
 
@@ -342,8 +420,9 @@ class Decisions:
         return self.matching({"tag": "important", "review": Review.UNREVIEWED})
 
     def tags(self) -> dict[str, int]:
-        """Every tag in use, the most used first; the fixed ones always."""
-        counted: Counter[str] = Counter({tag: 0 for tag in TAGS})
+        """Every tag in use, the most used first; the fixed ones (the project's
+        vocabulary, or nock's) always."""
+        counted: Counter[str] = Counter({tag: 0 for tag in self.vocabulary() or TAGS})
         for decision in self.all():
             if live(decision):
                 counted.update(decision["tags"])

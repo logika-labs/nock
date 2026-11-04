@@ -445,10 +445,15 @@ $ .nock/nock decide '{"title": "The charge sweep requeues dead charges only",
     "tags": ["important", "payments"], "touches": ["billing/sweeper.py"]}'
 ```
 
-A decision is a non-trivial choice between ways that could each work, a
-deliberate simplification, or a reading of something ambiguous. What has one
-obvious right way is not a decision, and an alternative nobody weighed is
-not an alternative. With `"status": "todo"` it is something that should be
+A decision is recorded only when a later reader would ask "why": a choice
+between real alternatives the owner hasn't already made, a deliberate
+simplification, or a reading of something ambiguous. Carrying out the
+owner's explicit instruction is not a decision (the instruction is the
+record), nor is a routine implementation detail, a change to an existing
+decision (edit it instead), or the same thing twice: `decide` refuses a
+title a standing decision already has, or nearly (normalised text
+similarity), naming its number, unless `--force`. An alternative nobody
+weighed is not an alternative. With `"status": "todo"` it is something that should be
 done and is not yet; a possible improvement is a todo tagged `improvement`.
 What only the owner can settle, when they are not there to ask, is a
 decision tagged `important`: the title is the answer the agent proposes
@@ -457,11 +462,23 @@ sees, and the agent carries on with it. The summary is written for someone who k
 but not how it is built.
 
 Each decision is a file, `.nock/decisions/0007.json`, written and committed in
-the main checkout whichever worktree recorded it. Its tags are `important`,
-`technical`, `product`, `improvement` and the agent's own (a component, a
-subject); `decide` prints the tags in use, so a near-duplicate is caught
-early. `touches` names the files or globs it governs, and `supersedes` the
-decisions it overturns, which stay as history.
+the main checkout whichever worktree recorded it. A project can fix its tags
+in `.nock/config.toml`:
+
+```toml
+[decisions]
+tags = ["core", "web", "deploy", "billing"]
+```
+
+Then `decide` and `edit` refuse any other tag, naming the allowed ones, and
+`decide --help`, the primer and the studio's tag filter list them; `important`
+is always allowed, and so are a logika round's `logika` and `instrumentation`.
+Without a vocabulary, tags are `important`, `technical`, `product`,
+`improvement` and the agent's own (a component, a subject); `decide` prints the
+tags in use, so a near-duplicate is caught early. `touches` names the files or
+globs it governs, and `supersedes` the decisions it overturns, which stay as
+history. A decision that should never have been recorded is deleted,
+`nock decisions delete 7`, in one commit; git keeps it.
 
 | | unreviewed | accepted | rejected |
 |---|---|---|---|
@@ -476,7 +493,7 @@ as a question reads as one done and tagged `important`, its review kept.)
 - **The owner reviews.** In the studio, `nock studio` (or with
   `{"open": true}`), the owner's local page: its Decisions tab lists the
   decisions to review, accepted and rejected, searchable and
-  filtered by status and tag; `#decisions/7` (or just `#7`) in its address
+  filtered by status, important and tag, each card's tags at its foot; `#decisions/7` (or just `#7`) in its address
   opens decision 7. Or in a
   session, with `/nock-triage`, which goes through them one at a time. Each
   can be accepted, rejected or noted; asked for more, the session looks into
@@ -948,8 +965,8 @@ repetitions, write the comparison down first.
 | `nock docs [TERM…]` | nock's documentation for agents, a short article per term: with no term, the terms |
 | `nock calls`, `stats`, `sessions`, `query SQL` | the telemetry |
 | `nock status` | a round due, decisions waiting, rejected ones to rework, important ones unreviewed, an unshared summary, a logika round to offer |
-| `nock decide JSON` | record a decision |
-| `nock decisions list [JSON]`, `show N`, `edit JSON`, `elaborate N` | the decisions: filtered, in full, changed or reviewed, elaborated |
+| `nock decide JSON [--force]` | record a decision (`--force` past the duplicate guard) |
+| `nock decisions list [JSON]`, `show N`, `edit JSON`, `delete N`, `elaborate N` | the decisions: filtered, in full, changed or reviewed, deleted, elaborated |
 | `nock studio [JSON]` | the owner's page, a tab for each thing to look at: the decisions, the evaluations |
 | `nock eval init NAME`, `run [TARGETS…] [--dry] [--budget USD] [--limit NAME=N] [--retry]`, `import JSON`, `show [NAME]`, `query SQL`, `compare QUERY`, `prune [NAME] [--dry]` | evaluations: scaffold a Snakemake scenario, run it restoring what the cache has (or the failed again), import outputs computed elsewhere, read it, query it with SQL, compare its outputs, delete stale and failed cache entries |
 | `nock consult JSON` | a fresh agent advises on a task: the decisions, tools, checks and docs that bear on it; the caller waits |

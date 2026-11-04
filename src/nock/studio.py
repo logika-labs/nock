@@ -66,7 +66,8 @@ class Word(TypedDict):
 
 
 class DecisionsTab(Tab):
-    """`GET /decisions` every decision with the tags in use, `POST
+    """`GET /decisions` every decision with the tags in use and the project's
+    vocabulary (empty when it fixes none), `POST
     /decisions/N` the owner's word on one: a review, a note, or elaborate."""
 
     name = "decisions"
@@ -79,7 +80,11 @@ class DecisionsTab(Tab):
     def get(self, route: str) -> Any:
         if route:
             raise NotFoundError("no such page")
-        return {"decisions": self.decisions.all(), "tags": self.decisions.tags()}
+        return {
+            "decisions": self.decisions.all(),
+            "tags": self.decisions.tags(),
+            "vocabulary": self.decisions.vocabulary(),
+        }
 
     def post(self, route: str, body: Any) -> Any:
         if not route.isdigit():

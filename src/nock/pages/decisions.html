@@ -2,7 +2,7 @@
 /* The decisions tab: the controls — review tabs, sort, search and filters — then the decisions; one opens in place. */
 nav.reviews { display: flex; flex-wrap: wrap; align-items: center; gap: 0 24px; border-bottom: 1px solid var(--border); margin-top: 8px; }
 
-/* Search and the status chips on one line under the tabs; every tag in use on one scrolling line below. */
+/* Search and the status chips (done, todo, important) on one line under the tabs; every other tag on one scrolling line below. */
 .tools { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px; padding-top: 20px; }
 .search { position: relative; flex: 1 1 16rem; min-width: 0; display: flex; align-items: center; }
 .search svg { position: absolute; left: 0; width: 15px; height: 15px; color: var(--muted); pointer-events: none; }
@@ -10,8 +10,10 @@ nav.reviews { display: flex; flex-wrap: wrap; align-items: center; gap: 0 24px; 
 .search input::-webkit-search-cancel-button { filter: grayscale(1); }
 /* Chips: toggles, several at once, each with how many it would show. */
 .chips { display: flex; gap: 8px; }
+#statuses { flex-wrap: wrap; }
+#tag-row { margin-top: 12px; }
 .tags {
-  margin-top: 12px; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; scroll-padding-inline: 16px;
+  overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; scroll-padding-inline: 16px;
   --start: 0px; --end: 0px;
   -webkit-mask-image: linear-gradient(to right, transparent 0, #000 var(--start), #000 calc(100% - var(--end)), transparent 100%);
   mask-image: linear-gradient(to right, transparent 0, #000 var(--start), #000 calc(100% - var(--end)), transparent 100%);
@@ -30,7 +32,7 @@ nav.reviews { display: flex; flex-wrap: wrap; align-items: center; gap: 0 24px; 
 .chip .count { color: var(--muted); font-variant-numeric: tabular-nums; letter-spacing: 0; }
 .chip:hover { background: var(--card); }
 .chip { --tone: var(--foreground); }
-.chip[data-tag="important"] { --tone: var(--warning); }
+.chip[data-flag="important"] { --tone: var(--warning); }
 .applies { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; font-size: 13px; color: var(--muted); }
 .applies .label { font-size: 11px; margin-right: 2px; }
 .applies code { font: 12px var(--mono); background: var(--background); color: var(--foreground); padding: 1px 5px; border-radius: 4px; overflow-wrap: anywhere; }
@@ -60,6 +62,9 @@ main { padding-block: 20px 80px; }
 
 .decision { background: var(--card); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
 .decision.superseded { opacity: .7; }
+/* A decision's tags, at the foot of its card: the filter's chips, on one line that scrolls. */
+.foot { padding: 0 18px 14px calc(18px + var(--number) + 14px); margin-top: -4px; }
+.decision.open .foot { margin-top: 0; }
 .row {
   display: grid; grid-template-columns: var(--number) minmax(0, 1fr) auto; align-items: start; gap: 14px;
   width: 100%; padding: 16px 18px; border: 0; background: none; color: inherit; font: inherit; text-align: left;
@@ -163,6 +168,7 @@ kbd {
   .row { grid-template-columns: var(--number) minmax(0, 1fr); padding: 14px; gap: 10px; }
   .row .side { grid-column: 2; justify-self: start; }
   .body { padding: 16px 14px 16px; }
+  .foot { padding: 0 14px 12px; }
   .search { flex-basis: 100%; }
   .sort { margin-left: 0; padding-block: 4px 8px; flex-basis: 100%; }
 }
@@ -194,9 +200,9 @@ kbd {
 <script>
 const CHEVRON = '<svg class="chevron" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M6 3.5 10.5 8 6 12.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 const MAC = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
-// The chips: done/todo beside the search, then every tag in use.
+// The chips: done, todo and important beside the search, then every other tag: the project's vocabulary, and any in use.
 const STATUSES = ["done", "todo"];
-const state = { shown: false, link: null, search: "", statuses: new Set(), tags: new Set(), sort: "oldest", review: "unreviewed", decisions: [], expanded: new Set(), notes: new Map(), active: null, seen: "" };
+const state = { shown: false, link: null, search: "", statuses: new Set(), flags: new Set(), tags: new Set(), vocabulary: [], sort: "oldest", review: "unreviewed", decisions: [], expanded: new Set(), notes: new Map(), active: null, seen: "" };
 
 function escape(text) {
   return String(text).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
@@ -331,14 +337,13 @@ function body(decision) {
   const links = [];
   if (decision.supersedes.length) links.push(`<span><span class="label">supersedes</span> ${decision.supersedes.map(number => `<button type="button" class="reference" data-open="${number}">${number}</button>`).join(" ")}</span>`);
   if (decision.superseded_by) links.push(`<span><span class="label">superseded by</span> <button type="button" class="reference" data-open="${decision.superseded_by}">${decision.superseded_by}</button></span>`);
-  const tags = decision.tags.filter(tag => tag !== "important");
-  if (tags.length) links.push(`<span><span class="label">tags</span> ${tags.map(escape).join(", ")}</span>`);
   if (links.length) parts.push(`<div class="links">${links.join("")}</div>`);
   return `<div class="body">${parts.filter(Boolean).join("")}</div>`;
 }
 
 function matches(decision) {
   if (state.statuses.size && !state.statuses.has(decision.status)) return false;
+  if (state.flags.has("important") && !decision.tags.includes("important")) return false;
   if (state.tags.size && ![...state.tags].every(tag => decision.tags.includes(tag))) return false;
   const words = state.search.toLowerCase().split(/\s+/).filter(Boolean);
   if (!words.length) return true;
@@ -364,20 +369,32 @@ const EMPTY = {
   rejected: "<strong>Nothing rejected</strong><span>A rejected decision is reworked; a rejected todo is not done.</span>",
 };
 
+// A filter's chip: with how many it would show (`count`), or, at a card's foot, without.
 function chip(kind, value, count) {
-  const chosen = (kind === "status" ? state.statuses : state.tags).has(value);
-  return `<button type="button" class="chip" data-${kind}="${escape(value)}" aria-pressed="${chosen}" ${count === 0 && !chosen ? "disabled" : ""}>${escape(value)} <span class="count">${count}</span></button>`;
+  const chosen = { status: state.statuses, flag: state.flags, tag: state.tags }[kind].has(value);
+  const counted = count === undefined ? "" : ` <span class="count">${count}</span>`;
+  return `<button type="button" class="chip" data-${kind}="${escape(value)}" aria-pressed="${chosen}" ${count === 0 && !chosen ? "disabled" : ""}>${escape(value)}${counted}</button>`;
+}
+
+// A decision's tags as the filter shows them; pressing one filters by it.
+function tagChips(decision) {
+  if (!decision.tags.length) return "";
+  const chips = decision.tags.map(tag => tag === "important" ? chip("flag", tag) : chip("tag", tag));
+  return `<div class="foot"><div class="tags"><div class="chips" role="group" aria-label="Tags">${chips.join("")}</div></div></div>`;
 }
 
 function drawChips() {
   const tab = state.decisions.filter(inTab);
   const statuses = STATUSES.map(status => chip("status", status, tab.filter(decision => decision.status === status).length));
-  // Every tag on any decision (and any chosen), counted in this tab, the most used first.
-  const names = new Set([...state.decisions.flatMap(decision => decision.tags), ...state.tags]);
-  const tags = [...names].map(tag => [tag, tab.filter(decision => decision.tags.includes(tag)).length])
-    .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))
-    .map(([tag, count]) => chip("tag", tag, count));
-  document.getElementById("statuses").innerHTML = statuses.join("");
+  const important = chip("flag", "important", tab.filter(decision => decision.tags.includes("important")).length);
+  // The vocabulary in its order, then any other tag on a decision (or chosen), counted in this tab, the most used first.
+  const counted = tag => [tag, tab.filter(decision => decision.tags.includes(tag)).length];
+  const fixed = state.vocabulary.filter(tag => tag !== "important").map(counted);
+  const others = [...new Set([...state.decisions.flatMap(decision => decision.tags), ...state.tags])]
+    .filter(tag => tag !== "important" && !state.vocabulary.includes(tag)).map(counted)
+    .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]));
+  const tags = [...fixed, ...others].map(([tag, count]) => chip("tag", tag, count));
+  document.getElementById("statuses").innerHTML = [...statuses, important].join("");
   // Redrawn as the owner types: the row keeps where it was scrolled to.
   const row = document.getElementById("tag-row");
   const scrolled = row.scrollLeft;
@@ -391,8 +408,9 @@ function fade(row) {
   row.classList.toggle("more-before", row.scrollLeft > 2);
   row.classList.toggle("more-after", row.scrollLeft + row.clientWidth < row.scrollWidth - 2);
 }
-document.getElementById("tag-row").addEventListener("scroll", event => fade(event.currentTarget), { passive: true });
-addEventListener("resize", () => fade(document.getElementById("tag-row")));
+// Scrolling does not bubble: one listener, capturing, for the filter's row and every card's.
+document.addEventListener("scroll", event => { if (event.target.classList?.contains("tags")) fade(event.target); }, { capture: true, passive: true });
+addEventListener("resize", () => document.querySelectorAll(".tags").forEach(fade));
 
 function draw() {
   const standing = state.decisions.filter(decision => !decision.superseded_by);
@@ -413,7 +431,7 @@ function draw() {
   for (const button of document.querySelectorAll("[data-sort]")) button.setAttribute("aria-pressed", String(button.dataset.sort === state.sort));
   drawChips();
   const shown = visible();
-  const filtered = state.search.trim() || state.statuses.size || state.tags.size;
+  const filtered = state.search.trim() || state.statuses.size || state.tags.size || state.flags.size;
   document.getElementById("list").innerHTML = shown.length ? shown.map(decision => {
     const open = state.expanded.has(decision.number);
     return `<article class="decision ${open ? "open" : ""} ${decision.superseded_by ? "superseded" : ""}" data-hue="${decision.number % 4}">
@@ -423,8 +441,10 @@ function draw() {
         <span class="side">${badges(decision)}${time(moment(decision))}${CHEVRON}</span>
       </button>
       ${open ? body(decision) : ""}
+      ${tagChips(decision)}
     </article>`;
   }).join("") : `<div class="empty">${filtered ? EMPTY_SEARCH : EMPTY[state.review]}</div>`;
+  document.querySelectorAll("#list .tags").forEach(fade);
   for (const field of document.querySelectorAll("textarea")) showSave(Number(field.dataset.number));
   grow();
 }
@@ -462,6 +482,7 @@ async function load() {
     state.seen = text;
     const data = JSON.parse(text);
     state.decisions = data.decisions;
+    state.vocabulary = data.vocabulary || [];
     // The address's decision opens (`#decisions/7`, or `#7`); otherwise the first in the tab.
     const linked = state.link !== null && find(state.link);
     state.link = null;
@@ -508,6 +529,8 @@ document.addEventListener("click", event => {
   if (tab) { state.review = tab.dataset.review; render(); return; }
   const status = event.target.closest("[data-status]");
   if (status) { const value = status.dataset.status; state.statuses.has(value) ? state.statuses.delete(value) : state.statuses.add(value); render(); return; }
+  const flag = event.target.closest("[data-flag]");
+  if (flag) { const value = flag.dataset.flag; state.flags.has(value) ? state.flags.delete(value) : state.flags.add(value); render(); return; }
   const tag = event.target.closest("[data-tag]");
   if (tag) { const value = tag.dataset.tag; state.tags.has(value) ? state.tags.delete(value) : state.tags.add(value); render(); return; }
   const sort = event.target.closest("[data-sort]");
@@ -528,6 +551,7 @@ document.addEventListener("click", event => {
       state.search = "";
       state.statuses.clear();
       state.tags.clear();
+      state.flags.clear();
       document.getElementById("search").value = "";
       state.expanded.add(target.number);
       render();
