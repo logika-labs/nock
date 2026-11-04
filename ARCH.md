@@ -403,7 +403,13 @@ unless forced. `vocabulary` is the configuration's `decisions.tags` with
 refuses any other tag, `tags` counts from it, the CLI puts it in `decide
 --help` (`cli.name_tags`), the primer names it, and `DecisionsTab` sends it
 for the tag filter. `delete` removes a file and commits it, clearing the
-`supersedes`/`superseded_by` links that named it. "Elaborate" starts
+`supersedes`/`superseded_by` links that named it. `edit` and `delete` are
+`revise` and `remove` (uncommitted) plus a commit; `batch` runs many under
+one lock and commits once, restoring every file if one is refused.
+`overturn` keeps both sides of a supersession in step (clearing
+`superseded_by` on what a decision no longer supersedes), `relink` does it
+for an edited `superseded_by`, and `overturnable` drops a deleted decision
+`supersedes` still names. "Elaborate" starts
 `nock decisions elaborate N` as a detached process, which dispatches the
 elaborator; the decision's `elaborating` flag holds until an edit changes
 it, or the elaborator ends without one.

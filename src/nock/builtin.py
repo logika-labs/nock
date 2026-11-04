@@ -17,7 +17,7 @@ from nock.commands import Option
 from nock.comparison import Comparison, Query
 from nock.configuration import Confirm
 from nock.consult import Advice, Consultant, Consultation
-from nock.decisions import TAGS, Change, Decisions, Draft, Filter, row
+from nock.decisions import TAGS, Batch, Change, Decisions, Draft, Filter, row
 from nock.docs import Docs
 from nock.errors import Error, ExitCode, Failed, UsageError
 from nock.evaluation import SCENARIOS, Evaluations, Import, Run, Scenario
@@ -344,6 +344,25 @@ def ask(project: Project, result: dict[str, Any], moment: Moment) -> None:
     question = Usage(project).ask(moment)
     if question:
         result["ask_the_owner"] = question
+
+
+@command(name="batch", group="decisions")
+def decisions_batch(project: Project, batch: Batch) -> dict[str, Any]:
+    """Several edits and deletions at once, committed once — a clean-up, a
+    tag remap: `{"edit": [{"number": 7, "tags": […]}, …], "delete": [9]}`.
+    Each edit is what `decisions edit` takes; a refused one changes nothing."""
+    decisions = Decisions(project)
+    edited, deleted, problem = decisions.batch(batch)
+    for change in batch.get("edit", []):
+        if change.get("elaborate"):
+            decisions.elaborate_in_background(change["number"])
+    result: dict[str, Any] = {
+        "edited": [row(decision) for decision in edited],
+        "deleted": deleted,
+    }
+    if problem:
+        result["not_committed"] = problem
+    return result
 
 
 @command(name="delete", group="decisions")

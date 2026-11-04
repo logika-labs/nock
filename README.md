@@ -501,7 +501,11 @@ as a question reads as one done and tagged `important`, its review kept.)
 - **The session that recorded it hears.** When the owner next types there,
   the prompt hook tells it what they said, once.
 - **Work changes the record.** `nock decisions edit` reworks a rejected
-  decision, or marks a todo done, in place; git keeps the history. A change
+  decision, or marks a todo done, in place; git keeps the history. It sets
+  `superseded_by` too (null: the decision stands again), keeping the other
+  side's `supersedes` in step; a `supersedes` entry naming a deleted decision
+  is dropped. Each call is a commit; `nock decisions batch '{"edit": […],
+  "delete": […]}'` makes many changes in one, or none if one is refused. A change
   to what a decision says asks for a fresh review, and keeps the owner's
   note. `review` and `note` are the owner's word: agents set them only when
   told to.
@@ -966,7 +970,7 @@ repetitions, write the comparison down first.
 | `nock calls`, `stats`, `sessions`, `query SQL` | the telemetry |
 | `nock status` | a round due, decisions waiting, rejected ones to rework, important ones unreviewed, an unshared summary, a logika round to offer |
 | `nock decide JSON [--force]` | record a decision (`--force` past the duplicate guard) |
-| `nock decisions list [JSON]`, `show N`, `edit JSON`, `delete N`, `elaborate N` | the decisions: filtered, in full, changed or reviewed, deleted, elaborated |
+| `nock decisions list [JSON]`, `show N`, `edit JSON`, `delete N`, `batch JSON`, `elaborate N` | the decisions: filtered, in full, changed or reviewed, deleted, many at once in one commit, elaborated |
 | `nock studio [JSON]` | the owner's page, a tab for each thing to look at: the decisions, the evaluations |
 | `nock eval init NAME`, `run [TARGETS…] [--dry] [--budget USD] [--limit NAME=N] [--retry]`, `import JSON`, `show [NAME]`, `query SQL`, `compare QUERY`, `prune [NAME] [--dry]` | evaluations: scaffold a Snakemake scenario, run it restoring what the cache has (or the failed again), import outputs computed elsewhere, read it, query it with SQL, compare its outputs, delete stale and failed cache entries |
 | `nock consult JSON` | a fresh agent advises on a task: the decisions, tools, checks and docs that bear on it; the caller waits |

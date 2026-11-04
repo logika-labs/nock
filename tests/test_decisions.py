@@ -484,3 +484,68 @@ def test_the_page_filters_the_important_and_shows_each_decision_s_tags() -> None
     assert 'chip("flag", "important"' in fragment
     assert "${tagChips(decision)}" in fragment
     assert "state.vocabulary" in fragment
+
+
+def test_a_batch_edits_and_deletes_in_one_commit_or_not_at_all(project: Project) -> None:
+    first = decide(project.root)["number"]
+    second = decide(project.root, {**DRAFT, "title": "Orders move to Postgres"})["number"]
+    third = decide(project.root, {**DRAFT, "title": "Keep the README short"})["number"]
+    commits = int(git(project.root, "rev-list", "--count", "HEAD"))
+    refused = nock(
+        project.root,
+        "decisions",
+        "batch",
+        json.dumps({"edit": [{"number": first, "tags": ["core"]}, {"number": 99}]}),
+    )
+    assert refused.returncode == 44
+    assert Decisions(project).get(first)["tags"] == ["storage", "technical"]
+    assert git(project.root, "status", "--porcelain") == ""
+    result = nock(
+        project.root,
+        "decisions",
+        "batch",
+        json.dumps(
+            {
+                "edit": [
+                    {"number": first, "tags": ["core"]},
+                    {"number": second, "tags": ["core", "important"]},
+                ],
+                "delete": [third],
+            }
+        ),
+        "--json",
+    )
+    assert result.returncode == 0, result.stderr
+    done = json.loads(result.stdout)
+    assert [row["number"] for row in done["edited"]] == [first, second]
+    assert done["deleted"] == [third]
+    assert int(git(project.root, "rev-list", "--count", "HEAD")) == commits + 1
+    assert git(project.root, "log", "-1", "--format=%s") == (
+        f"Decisions {first}, {second}, {third}: 2 edited, 1 deleted"
+    )
+    assert git(project.root, "status", "--porcelain") == ""
+    assert Decisions(project).get(second)["tags"] == ["core", "important"]
+
+
+def test_supersession_is_editable_both_ways_and_survives_a_deletion(project: Project) -> None:
+    first = decide(project.root)["number"]
+    second = decide(project.root, {**DRAFT, "title": "Orders move to Postgres"})["number"]
+    third = decide(
+        project.root, {**DRAFT, "title": "Orders shard by tenant", "supersedes": [first, second]}
+    )["number"]
+    decisions = Decisions(project)
+    edit(project.root, {"number": second, "superseded_by": None})
+    assert decisions.get(second)["superseded_by"] is None
+    assert decisions.get(third)["supersedes"] == [first]
+    edit(project.root, {"number": second, "superseded_by": third})
+    assert decisions.get(third)["supersedes"] == [first, second]
+    edit(project.root, {"number": third, "supersedes": [second]})
+    assert decisions.get(first)["superseded_by"] is None
+    # A deleted decision a `supersedes` still names is dropped, not refused.
+    fourth = decide(project.root, {**DRAFT, "title": "Orders archive yearly"})["number"]
+    edit(project.root, {"number": third, "supersedes": [second, fourth]})
+    decisions.path(fourth).unlink()
+    git(project.root, "commit", "-qam", "Lose a decision by hand")
+    kept = edit(project.root, {"number": third, "supersedes": [second, fourth], "tags": ["x"]})
+    assert kept["number"] == third and decisions.get(third)["supersedes"] == [second]
+    assert git(project.root, "status", "--porcelain") == ""

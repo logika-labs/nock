@@ -14,6 +14,7 @@ Their word is what you record.
     .nock/nock decisions edit '{"number": 7, "review": "rejected", "note": "what they said"}'
     .nock/nock decisions edit '{"number": 7, "note": "what they said"}'
     .nock/nock decisions delete 7    # only when the owner says it should not have been recorded
+    .nock/nock decisions batch '{"edit": [{"number": 7, "review": "accepted"}, …], "delete": [9]}'   # many, one commit
 
 What each review means for a done decision and a todo:
 `.nock/nock docs decisions.review decisions.todos decisions.important`.
