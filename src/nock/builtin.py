@@ -12,6 +12,12 @@ import sys
 from pathlib import Path
 from typing import Annotated, Any, Literal, NotRequired, TypedDict
 
+from nock.assets import FROM_VARIABLE as ASSET_FROM_VARIABLE
+from nock.assets import KEY_VARIABLE as ASSET_KEY_VARIABLE
+from nock.assets import Assets
+from nock.assets import Draft as AssetDraft
+from nock.assets import Filter as AssetFilter
+from nock.assets import Word as AssetWord
 from nock.checks import Checks
 from nock.commands import Option
 from nock.comparison import Comparison, Query
@@ -382,6 +388,81 @@ def decisions_elaborate(project: Project, number: int) -> dict[str, Any]:
     if not outcome["elaborated"]:
         raise Failed(f"decision {number} was not elaborated", outcome)
     return outcome
+
+
+# --- assets ----------------------------------------------------------------------------
+
+
+@command(name="add", group="assets")
+def assets_add(project: Project, asset: AssetDraft) -> dict[str, Any]:
+    """Show the owner something you made — a screenshot, a video, a PDF, an
+    HTML page, a text — to review in the studio: under a stable key, each
+    call a new version, the latest superseding the earlier ones. Give a
+    `recipe` (a command that writes the files into $NOCK_ASSET_OUTPUT, or an
+    instruction for an agent) so the owner can have it made again. Files over
+    20 MB stay on this machine, uncommitted."""
+    regenerating = os.environ.get(ASSET_KEY_VARIABLE) == asset.get("key", "").strip("/")
+    regenerated = None
+    if regenerating:
+        assets = Assets(project)
+        source = int(os.environ.get(ASSET_FROM_VARIABLE) or 0)
+        earlier = next(
+            (item for item in assets.history(asset["key"]) if item["version"] == source), None
+        )
+        regenerated = {"from": source, "feedback": earlier and earlier["feedback"]}
+    version, problem = Assets(project).add(asset, regenerated)
+    result = {field: version[field] for field in ("key", "version", "title", "tags")}
+    result["files"] = [item["name"] for item in version["files"]]
+    if problem:
+        result["not_committed"] = problem
+    return result
+
+
+@command(name="list", group="assets")
+def assets_list(project: Project, filter: AssetFilter = {}) -> dict[str, Any]:  # noqa: B006
+    """The assets — those matching FILTER (by their latest version) — and how
+    many there are of each review."""
+    assets = Assets(project)
+    return {"counts": assets.counts(), "assets": assets.matching(filter)}
+
+
+@command(name="show", group="assets")
+def assets_show(project: Project, key: str) -> list[dict[str, Any]]:
+    """Every version of an asset, the earliest first, each file with its path."""
+    return Assets(project).shown(key)
+
+
+@command(name="review", group="assets")
+def assets_review(project: Project, key: str, word: AssetWord) -> dict[str, Any]:
+    """The owner's word on an asset's latest version: `review` (approved,
+    rejected) and `feedback`. Set them only when the owner says so."""
+    version, problem = Assets(project).review(key, word)
+    result = {field: version[field] for field in ("key", "version", "title", "review", "feedback")}
+    if problem:
+        result["not_committed"] = problem
+    ask(project, result, Moment.REVIEW)
+    return result
+
+
+@command(name="delete", group="assets")
+def assets_delete(
+    project: Project,
+    key: str,
+    *,
+    version: Annotated[int | None, Option(help="Only this version.")] = None,
+) -> dict[str, Any]:
+    """Delete an asset — or one version of it — that should not be shown, and
+    commit that; git keeps it."""
+    deleted, problem = Assets(project).delete(key, version)
+    return {"key": key, "deleted": deleted, **({"not_committed": problem} if problem else {})}
+
+
+@command(name="regenerate", group="assets", confirm=True)
+def assets_regenerate(project: Project, key: str) -> dict[str, Any]:
+    """Make an asset's next version from its recipe, answering the owner's
+    feedback: runs the recipe's command, or dispatches an agent with its
+    instruction. The page's Regenerate runs this."""
+    return Assets(project).regenerate(key)
 
 
 # --- consulting -----------------------------------------------------------------------

@@ -95,6 +95,13 @@ SEATS = {
         ),
         GIT_WRITING,
     ),
+    # Makes an asset's next version in its work directory and registers it;
+    # each regeneration adds that directory, and the recipe's command (`assets.Assets.seat`).
+    "regenerator": Seat(
+        (*READING, "Edit", "Write"),
+        (nock("assets show"), nock("assets add"), nock("docs"), *GIT_READING),
+        GIT_WRITING,
+    ),
     # Reads what identifies the project and answers in its last message.
     "sharer": Seat(READING, (GIT_READING[0],), GIT_WRITING),
 }

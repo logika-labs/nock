@@ -133,6 +133,20 @@ class Filter(TypedDict):
     """Only the decisions governing this file."""
 
 
+def committed(project: Project, paths: list[str], message: str) -> str | None:
+    """Commit these paths (files written or removed) in the main checkout —
+    unless that would land in the middle of a merge or rebase there; then
+    say so, and leave them as they are."""
+    git = project.git
+    git_directory = Path(git("rev-parse", "--absolute-git-dir"))
+    busy = next((marker for marker in BUSY_MARKERS if (git_directory / marker).exists()), None)
+    if busy is not None:
+        return f"not committed: the main checkout is mid-operation ({busy}); {', '.join(paths)} written"
+    git("add", "--all", "--", *paths)
+    git("commit", "--quiet", "--no-verify", "--only", "-m", message, "--", *paths)
+    return None
+
+
 def governs(pattern: str, path: str) -> bool:
     """Whether a `touches` entry covers a repository path: a glob, a file, or a directory."""
     directory = pattern.rstrip("/")
@@ -457,18 +471,8 @@ class Decisions:
         return marked
 
     def commit(self, numbers: list[int], message: str) -> str | None:
-        """Commit these decisions' files in the main checkout — unless that would
-        land in the middle of a merge or rebase there; then say so, and leave
-        them written."""
-        git = self.project.git
-        git_directory = Path(git("rev-parse", "--absolute-git-dir"))
-        busy = next((marker for marker in BUSY_MARKERS if (git_directory / marker).exists()), None)
         relative = [str(self.path(number).relative_to(self.project.root)) for number in numbers]
-        if busy is not None:
-            return f"not committed: the main checkout is mid-operation ({busy}); {', '.join(relative)} written"
-        git("add", "--", *relative)
-        git("commit", "--quiet", "--no-verify", "--only", "-m", message, "--", *relative)
-        return None
+        return committed(self.project, relative, message)
 
     # --- reading ----------------------------------------------------------------
 
