@@ -54,6 +54,10 @@ DOCS = {
         "concepts",
         "Agents record what they chose and what they passed over; you review it later. The map, and consulting before a change.",
     ),
+    "assets": (
+        "concepts",
+        "Agents register what they made for you to see: screenshots, videos, pages, texts. You approve, reject, note or regenerate each, version by version.",
+    ),
     "reflection": (
         "concepts",
         "Rounds that read the record and improve the toolbox, keep the map and judge how nock is doing; the logika round.",
