@@ -65,6 +65,9 @@ DEFAULTS: dict[str, Any] = {
     "checks": {
         # How many check suites may run at once on this machine.
         "concurrency": 2,
+        # Globs of paths no check depends on (prose, records), so that
+        # `check --changed` does not run everything when only they change.
+        "unaffected": [],
     },
     "reflect": {
         # A round is due after this many sessions since the last one, or this

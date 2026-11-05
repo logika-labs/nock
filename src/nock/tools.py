@@ -71,6 +71,8 @@ class Check:
     function: Callable[..., Any]
     description: str
     source: str
+    paths: tuple[str, ...] = ()
+    """The paths whose change can affect it (`check --changed`); none is any."""
 
 
 @dataclass
@@ -174,16 +176,28 @@ def command(
     return decorate(function) if function is not None else decorate
 
 
-def check(function: Callable[..., Any] | None = None, *, name: str | None = None) -> Any:
+def check(
+    function: Callable[..., Any] | None = None,
+    *,
+    name: str | None = None,
+    paths: list[str] | None = None,
+) -> Any:
     """Make a function a check: `nock check` runs it, and so does reflection
     before it lands anything. It asks for fixtures by parameter name and
     returns its problems — strings, or `nock.Problem`s — and nothing when
     there are none. Raising `nock.PreconditionError` says the machine, not the
-    code, is wrong."""
+    code, is wrong. `paths` are the globs whose change can affect it, for
+    `check --changed` (`paths` in its `[checks.NAME]` overrides them)."""
 
     def decorate(target: Callable[..., Any]) -> Callable[..., Any]:
         PENDING.checks.append(
-            Check(name or command_name(target), target, summary_of(target), CURRENT_SOURCE[-1])
+            Check(
+                name or command_name(target),
+                target,
+                summary_of(target),
+                CURRENT_SOURCE[-1],
+                tuple(paths or ()),
+            )
         )
         return target
 
