@@ -9,15 +9,16 @@
 @font-face { font-family: "IBM Plex Mono"; font-style: normal; font-display: swap; font-weight: 500; src: url(/fonts/ibm-plex-mono-latin-ext-500-normal.woff2) format("woff2"); unicode-range: U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF; }
 @font-face { font-family: "IBM Plex Mono"; font-style: normal; font-display: swap; font-weight: 600; src: url(/fonts/ibm-plex-mono-latin-ext-600-normal.woff2) format("woff2"); unicode-range: U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF; }
 
-/* nock's look, the studio's (src/nock/pages/studio.css): a full-bleed holographic field with grain,
-   nock's pixel creatures floating in it with glows in the foil colours; everything readable sits on
-   frosted, near-opaque white. Headings in Unbounded, labels and code in IBM Plex Mono. */
+/* nock's look is the studio's (src/nock/pages/studio.html and studio.css), and so is its measure: one
+   centred column as wide as the studio's, its type scale, a holographic field with grain behind, nock's
+   pixel creatures floating in it; everything readable sits on frosted, near-opaque white. Headings in
+   Unbounded, labels and code in IBM Plex Mono. */
 :root {
   --foreground: #111116;
   --muted: #474756;
   --border: rgb(17 17 22 / .12);
+  --input: rgb(17 17 22 / .28);
   --link: #4b2fd0;
-  --ink: #111116;
   --code: #f1eefa;
   --terminal: #15131d;
   --terminal-foreground: #f1eefa;
@@ -26,9 +27,8 @@
   --sans: "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
   --display: "Unbounded", var(--sans);
-  --column: 72rem;
-  --prose: 40rem;
-  --radius: 22px;
+  --column: 46rem;
+  --radius: 20px;
 
   --pink: #ff9ad5;
   --cyan: #8fe9ff;
@@ -44,37 +44,35 @@
   --glass: rgb(255 255 255 / .9);
   --paper: rgb(255 255 255 / .95);
   --lift: 0 6px 24px rgb(60 20 120 / .1);
-  /* The offset shadow in two foil colours. */
+  /* The offset shadow in two foil colours: what is chosen, and what to do. */
   --one: var(--cyan);
   --two: var(--pink);
-  --offset: 2px;
   color-scheme: light;
 }
 
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 html { scroll-behavior: smooth; }
 html, body { background: #e9e2ff; color: var(--foreground); }
-body { margin: 0; font: 400 16px/1.65 var(--sans); -webkit-font-smoothing: antialiased; min-height: 100vh; }
+body { margin: 0; font: 400 15px/1.6 var(--sans); -webkit-font-smoothing: antialiased; min-height: 100vh; }
 a { color: var(--link); text-underline-offset: 3px; text-decoration-thickness: 1px; }
 a:hover { text-decoration-color: var(--pink); text-decoration-thickness: 2px; }
-:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; border-radius: 4px; }
-::selection { background: var(--ink); color: #fff; }
-code { font: 500 0.86em var(--mono); background: var(--code); padding: 1px 5px; border-radius: 5px; overflow-wrap: anywhere; }
-h1, h2, h3 { text-wrap: balance; margin: 0; }
-h1, h2 { font-family: var(--display); }
-h2 { font-weight: 700; font-size: 28px; line-height: 1.2; letter-spacing: -.03em; }
-h3 { font: 600 18px/26px var(--sans); letter-spacing: -.01em; }
+:focus-visible { outline: 2px solid var(--foreground); outline-offset: 3px; border-radius: 4px; }
+::selection { background: var(--foreground); color: #fff; }
+button { font: inherit; }
+button:not(:disabled), label[for] { cursor: pointer; }
+code { font: 500 .86em var(--mono); background: var(--code); padding: 1px 5px; border-radius: 5px; overflow-wrap: anywhere; }
+h1, h2, h3, h4 { text-wrap: balance; margin: 0; }
 p { margin: 0; }
 .frame {
   max-width: calc(var(--column) + 32px); margin: 0 auto;
   padding-left: max(16px, env(safe-area-inset-left, 0px));
   padding-right: max(16px, env(safe-area-inset-right, 0px));
 }
-.label { font: 500 12px/16px var(--mono); letter-spacing: .08em; text-transform: uppercase; }
-.prose { max-width: var(--prose); display: grid; gap: 14px; }
+.label { font: 500 12px/16px var(--mono); letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
 .stage { position: relative; z-index: 1; }
 
-/* --- the field: foil gradients drifting slowly, grain over them, creatures and bubbles ---------- */
+/* --- the field: foil gradients drifting slowly, grain over them, creatures and bubbles --------- */
 
 .sprites { position: absolute; width: 0; height: 0; overflow: hidden; }
 .backdrop { position: fixed; inset: 0; z-index: 0; overflow: hidden; pointer-events: none; }
@@ -86,7 +84,6 @@ p { margin: 0; }
     radial-gradient(34% 30% at 60% 70%, #fff2a0 0%, transparent 70%),
     radial-gradient(30% 30% at 25% 80%, #c3b2ff 0%, transparent 70%),
     radial-gradient(26% 26% at 90% 85%, #ffb0d6 0%, transparent 70%),
-    radial-gradient(22% 22% at 45% 40%, #c8f7dc 0%, transparent 70%),
     var(--holo-conic);
   filter: saturate(1.15);
   animation: field 40s ease-in-out infinite alternate;
@@ -99,227 +96,214 @@ p { margin: 0; }
   position: absolute; z-index: 1; filter: drop-shadow(0 12px 18px var(--shadow));
   animation: float var(--period) ease-in-out var(--delay) infinite;
 }
-.creature.one   { --shadow: rgb(255 120 200 / .75); --period: 26s; --delay: -3s;  --turn: -12deg; --x: 18px;  --y: -22px; width: 240px; height: 175px; left: -50px; bottom: 5%; }
-.creature.two   { --shadow: rgb(90 220 255 / .8);   --period: 21s; --delay: -9s;  --turn: 10deg;  --x: -16px; --y: 18px;  width: 130px; height: 95px; right: 2%; top: 18%; }
-.creature.three { --shadow: rgb(255 214 60 / .85);  --period: 17s; --delay: -5s;  --turn: -6deg;  --x: 12px;  --y: 14px;  width: 54px; height: 40px; left: 3%; top: 24%; }
-.creature.four  { --shadow: rgb(160 130 255 / .8);  --period: 23s; --delay: -14s; --turn: 8deg;   --x: -14px; --y: -16px; width: 76px; height: 56px; right: 6%; bottom: 8%; }
-.creature.five  { --shadow: rgb(120 240 190 / .8);  --period: 19s; --delay: -7s;  --turn: 14deg;  --x: 10px;  --y: -12px; width: 40px; height: 30px; left: 30%; bottom: 3%; }
-.creature.six   { --shadow: rgb(255 160 120 / .8);  --period: 29s; --delay: -18s; --turn: -16deg; --x: -10px; --y: 10px;  width: 46px; height: 34px; right: 30%; top: 3%; }
+.creature.one   { --shadow: rgb(255 120 200 / .75); --period: 26s; --delay: -3s;  --turn: -12deg; --x: 18px;  --y: -22px; width: 220px; height: 160px; left: -40px; bottom: 6%; }
+.creature.two   { --shadow: rgb(90 220 255 / .8);   --period: 21s; --delay: -9s;  --turn: 10deg;  --x: -16px; --y: 18px;  width: 120px; height: 88px; right: 4%; top: 16%; }
+.creature.three { --shadow: rgb(255 214 60 / .85);  --period: 17s; --delay: -5s;  --turn: -6deg;  --x: 12px;  --y: 14px;  width: 54px; height: 40px; left: 6%; top: 22%; }
+.creature.four  { --shadow: rgb(160 130 255 / .8);  --period: 23s; --delay: -14s; --turn: 8deg;   --x: -14px; --y: -16px; width: 70px; height: 52px; right: 14%; bottom: 10%; }
+.creature.five  { --shadow: rgb(120 240 190 / .8);  --period: 19s; --delay: -7s;  --turn: 14deg;  --x: 10px;  --y: -12px; width: 40px; height: 30px; left: 22%; bottom: 30%; }
+.creature.six   { --shadow: rgb(255 160 120 / .8);  --period: 29s; --delay: -18s; --turn: -16deg; --x: -10px; --y: 10px;  width: 46px; height: 34px; right: 26%; top: 4%; }
 .bubble {
   position: absolute; border-radius: 50%; width: 22px; height: 22px; --turn: 0deg; --x: 8px; --y: -18px;
   background: radial-gradient(circle at 32% 28%, #fff 0 12%, rgb(255 255 255 / .2) 30%, transparent 60%), radial-gradient(circle, rgb(195 178 255 / .35), rgb(143 233 255 / .55) 70%, rgb(255 255 255 / .8) 72%, transparent 76%);
   animation: float 24s ease-in-out infinite;
 }
 .bubble.one { left: 14%; top: 12%; animation-delay: -4s; }
-.bubble.two { right: 12%; top: 46%; width: 34px; height: 34px; animation-duration: 31s; }
-.bubble.three { left: 5%; top: 52%; width: 14px; height: 14px; animation-delay: -11s; }
-.bubble.four { right: 4%; bottom: 32%; width: 18px; height: 18px; animation-duration: 19s; }
-.bubble.five { left: 40%; bottom: 8%; width: 28px; height: 28px; animation-delay: -16s; }
+.bubble.two { right: 22%; top: 44%; width: 34px; height: 34px; animation-duration: 31s; }
+.bubble.three { left: 9%; top: 46%; width: 14px; height: 14px; animation-delay: -11s; }
+.bubble.four { right: 8%; bottom: 30%; width: 18px; height: 18px; animation-duration: 19s; }
+.bubble.five { left: 30%; bottom: 6%; width: 28px; height: 28px; animation-delay: -16s; }
 
-/* --- surfaces ----------------------------------------------------------------------------------- */
+/* --- surfaces: the band's glass, the cards' near-opaque grainy white ---------------------------- */
 
-.site, .hero, section > .frame > .card, footer .foot {
-  border-radius: var(--radius); border: 1px solid rgb(255 255 255 / .95);
+.heading, .controls, .card, footer .foot {
+  border-radius: var(--radius); border: 1px solid rgb(255 255 255 / .9);
   background: var(--noise), var(--paper); background-blend-mode: soft-light, normal;
   box-shadow: var(--lift);
 }
+.heading, .controls { background: var(--noise), var(--glass); backdrop-filter: blur(16px) saturate(1.3); -webkit-backdrop-filter: blur(16px) saturate(1.3); }
 
-/* --- the band: wordmark and links on a glass bar ------------------------------------------------ */
+/* --- the band: the wordmark, and the menu beside it as the studio's --------------------------- */
 
-.band { padding-top: 20px; }
-.site {
-  display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 8px 8px 18px;
-  border-radius: 999px; background: var(--noise), var(--glass);
-  backdrop-filter: blur(16px) saturate(1.3); -webkit-backdrop-filter: blur(16px) saturate(1.3);
+.band .frame { padding-top: 24px; }
+.heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 20px; padding: 12px 12px 12px 24px; }
+.wordmark { display: inline-flex; align-items: center; gap: 10px; color: var(--foreground); text-decoration: none; font: 800 24px/1.1 var(--display); letter-spacing: -.03em; }
+.wordmark:hover { text-decoration: none; }
+.wordmark svg { width: 32px; height: 23px; flex: none; }
+.menu { display: flex; align-items: center; gap: 4px; padding: 4px; border-radius: 999px; background: rgb(17 17 22 / .05); }
+.menu a {
+  display: inline-flex; align-items: center; padding: 8px 14px; border-radius: 999px; border: 1px solid transparent;
+  color: inherit; text-decoration: none; font: 600 14px/20px var(--sans);
+  transition: box-shadow .18s ease, background-color .18s;
 }
-.wordmark {
-  display: inline-flex; align-items: center; gap: 10px; color: var(--ink); text-decoration: none;
-  font: 800 20px/1 var(--display); letter-spacing: -.04em;
-}
-.wordmark svg { width: 30px; height: 22px; flex: none; }
-.links { display: flex; gap: 4px; }
-.links a {
-  padding: 8px 16px; border-radius: 999px; color: var(--ink); text-decoration: none; font: 600 14px/20px var(--sans);
-  border: 1px solid transparent;
-}
+.menu a:not([aria-current]):hover { background: rgb(255 255 255 / .85); box-shadow: 0 8px 18px -6px rgb(130 225 190 / .55), 0 2px 6px -2px rgb(130 225 190 / .55); }
 
-/* What is chosen or what to do: black, with the two-colour offset shadow that grows on hover. */
-.links a[aria-current="page"], .copy {
-  background: var(--ink); color: #fff; border: 1px solid var(--ink);
-  box-shadow: var(--offset) var(--offset) 0 0 var(--one), calc(-1 * var(--offset)) calc(-1 * var(--offset)) 0 0 var(--two);
-  transition: transform .18s cubic-bezier(.3, 1.6, .5, 1), box-shadow .18s ease;
+/* What is chosen or to be done: black, with the two-colour offset shadow. */
+.menu a[aria-current="page"], .button.primary, .copy, .switch[aria-checked="true"] {
+  background: #111116; color: #fff; border-color: #111116;
+  box-shadow: 2px 2px 0 0 var(--one), -2px -2px 0 0 var(--two);
 }
-.links a[aria-current="page"]:hover, .copy:hover { --offset: 4px; transform: scale(1.05); text-decoration: none; }
-.copy:active { --offset: 1px; transform: scale(.98); }
-
-/* Everything else: a foil sheen sweeps across on hover, with a soft glow and a slight lift. */
-.links a:not([aria-current]), .more, .contents a, .code .copy-code {
-  background-image: linear-gradient(110deg, transparent 30%, rgb(143 233 255 / .55) 42%, rgb(255 154 213 / .5) 50%, rgb(255 242 160 / .55) 58%, transparent 70%);
-  background-size: 260% 100%; background-position: 120% 0; background-repeat: no-repeat;
-  transition: background-position .55s ease, transform .15s ease, box-shadow .15s ease, border-color .15s;
-}
-.links a:not([aria-current]):hover, .more:hover, .contents a:hover {
-  background-position: -20% 0; transform: translateY(-1px); text-decoration: none;
-  border-color: rgb(17 17 22 / .3); box-shadow: 0 0 0 3px rgb(195 178 255 / .35), 0 4px 12px rgb(60 20 120 / .12);
+.menu a[aria-current="page"]:hover, .button.primary:hover {
+  background: #23232b;
+  box-shadow: 2px 2px 0 0 var(--one), -2px -2px 0 0 var(--two), 0 8px 20px -6px var(--one), 0 -6px 18px -8px var(--two);
 }
 
-/* --- the landing page --------------------------------------------------------------------------- */
+main { display: block; padding-top: 16px; }
 
-main { display: grid; gap: 28px; padding-top: 28px; }
-.hero {
-  margin-top: 28px; padding: clamp(28px, 5vw, 64px); display: grid; grid-template-columns: minmax(0, 1fr) auto;
-  gap: 24px 40px; align-items: center; position: relative; overflow: hidden;
+/* --- buttons and links onward ----------------------------------------------------------------- */
+
+.button {
+  display: inline-flex; align-items: center; padding: 8px 16px; border-radius: 12px; border: 1px solid var(--input);
+  background: rgb(255 255 255 / .9); color: var(--foreground); text-decoration: none; font: 600 14px/20px var(--sans);
+  transition: box-shadow .18s ease, border-color .18s, background-color .18s;
 }
-.hero::before {
-  content: ""; position: absolute; inset: 0 0 auto; height: 6px; background: var(--holo);
+.button:not(.primary):hover { background: #fff; border-color: rgb(17 17 22 / .3); box-shadow: 0 8px 18px -6px rgb(255 184 150 / .6), 0 2px 6px -2px rgb(255 184 150 / .6); text-decoration: none; }
+.more { width: fit-content; font: 600 14px/20px var(--sans); color: var(--foreground); text-decoration: underline; text-decoration-color: var(--lavender); text-decoration-thickness: 2px; text-underline-offset: 4px; }
+.more::after { content: " →"; }
+.more:hover { text-decoration-color: var(--pink); }
+.chip {
+  display: inline-block; padding: 1px 8px; border-radius: 999px; border: 1px solid rgb(17 17 22 / .18);
+  font: 500 11px/16px var(--mono); letter-spacing: .04em; color: var(--foreground); background: rgb(255 226 122 / .35); vertical-align: 1px;
 }
-.hero .copytext { display: grid; gap: 22px; max-width: 44rem; min-width: 0; }
-.hero h1 { font: 800 clamp(30px, 5vw, 56px)/1.08 var(--display); letter-spacing: -.045em; }
-.hero p { font-size: 19px; line-height: 1.6; color: var(--muted); max-width: 38rem; }
-.mascot {
-  width: clamp(150px, 20vw, 260px); height: auto; aspect-ratio: 14 / 10; filter: drop-shadow(0 16px 26px rgb(255 120 200 / .55)) drop-shadow(0 4px 30px rgb(90 220 255 / .45));
-  --turn: -6deg; --x: 0px; --y: -12px; animation: float 14s ease-in-out infinite;
-}
+
+/* --- the home page: a card for what nock is, one for each part, one for the community --------- */
+
+.home { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
+.card { padding: 28px 32px; }
+.home .card { display: grid; gap: 14px; justify-items: start; }
+.home h1 { font: 800 32px/1.15 var(--display); letter-spacing: -.03em; }
+.home h2 { font: 700 22px/1.25 var(--display); letter-spacing: -.025em; }
+.home .card p { color: var(--muted); }
+.home .hero p:first-of-type { color: var(--foreground); font-size: 16px; }
+.home .hero strong { color: var(--foreground); font-weight: 650; }
+#reflection { --one: var(--yellow); --two: var(--cyan); }
+#review { --one: var(--lavender); --two: var(--pink); }
+#evaluation { --one: var(--mint); --two: var(--lavender); }
+#logika { --one: var(--peach); --two: var(--cyan); }
+.home .part { box-shadow: 3px 3px 0 0 var(--one), -3px -3px 0 0 var(--two), var(--lift); border: 1px solid rgb(17 17 22 / .14); }
 .install {
-  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
-  background: var(--terminal); color: #fff; border-radius: 14px; padding: 12px 12px 12px 18px; max-width: 100%; width: fit-content;
-  box-shadow: 4px 4px 0 0 var(--cyan), -4px -4px 0 0 var(--pink);
+  display: flex; align-items: center; gap: 12px; width: 100%; margin-top: 4px; padding: 8px 8px 8px 16px; border-radius: 14px;
+  background: var(--terminal); color: var(--terminal-foreground);
 }
-.install code { background: none; padding: 0; font: 500 14px/1.5 var(--mono); color: inherit; min-width: 0; }
+.install code { background: none; padding: 0; font: 500 14px/1.5 var(--mono); color: inherit; min-width: 0; flex: 1; }
 .install code::before { content: "$ "; color: var(--terminal-muted); }
 .copy {
-  font: 600 12px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; padding: 9px 12px; border-radius: 10px; cursor: pointer;
+  padding: 6px 10px; border-radius: 8px; font: 600 11px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase;
+  background: #fff; color: #111116; border: 1px solid #fff; --one: var(--yellow); --two: var(--lavender);
 }
-.install .copy { background: #fff; color: var(--ink); border-color: #fff; --one: var(--yellow); --two: var(--lavender); }
-.install .copy:focus-visible { outline-color: #fff; }
+.actions { display: flex; flex-wrap: wrap; gap: 10px; }
 
-section > .frame > .card { padding: clamp(24px, 4.5vw, 56px); display: grid; gap: 36px; }
-#why { --one: var(--yellow); --two: var(--cyan); }
-#how { --one: var(--lavender); --two: var(--pink); }
-#start { --one: var(--mint); --two: var(--lavender); }
-.kicker {
-  display: inline-block; width: fit-content; padding: 5px 10px; border-radius: 999px; color: var(--ink);
-  background: linear-gradient(135deg, var(--two), var(--one));
+/* --- docs: the tabs and the tab's pages on one glass card, as the studio's controls ----------- */
+
+.docs { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
+.controls { padding: 0 18px 14px; display: grid; gap: 12px; }
+.tabs { display: flex; gap: 20px; border-bottom: 1px solid var(--border); overflow-x: auto; scrollbar-width: none; }
+.tabs a {
+  padding: 14px 2px 10px; border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap;
+  font: 500 12px/16px var(--mono); letter-spacing: .04em; text-transform: uppercase; color: var(--muted); text-decoration: none;
 }
-.heading { display: grid; gap: 14px; max-width: var(--prose); }
-.heading h2 { font-size: clamp(24px, 3.4vw, 36px); }
-
-/* The rule, set large on a foil-edged card. */
-.rule {
-  display: grid; gap: 10px; max-width: var(--prose); padding: 24px 26px; border-radius: 18px; position: relative;
-  background: #fff; border: 2px solid var(--ink); box-shadow: 5px 5px 0 0 var(--one), -5px -5px 0 0 var(--two);
+.tabs a:hover { color: var(--foreground); border-bottom-color: var(--lavender); }
+.tabs a[aria-current="page"] { color: var(--foreground); border-bottom-color: #111116; }
+.pages { display: flex; flex-wrap: wrap; gap: 6px; }
+.pages a {
+  padding: 3px 11px; border-radius: 999px; border: 1px solid rgb(17 17 22 / .18); background: rgb(255 255 255 / .9);
+  font: 500 13px/20px var(--sans); color: var(--foreground); text-decoration: none; transition: background-color .15s, border-color .15s;
 }
-.rule strong { font: 700 22px/1.3 var(--display); letter-spacing: -.03em; }
-.rule span { color: var(--muted); }
+.pages a:hover { background: rgb(185 166 255 / .12); border-color: rgb(17 17 22 / .3); }
+.pages a[aria-current="page"] { background: rgb(185 166 255 / .26); border-color: rgb(75 47 208 / .55); color: #2a1d78; }
 
-/* The loop. */
-.loop { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); gap: 40px; align-items: center; }
-.loop svg { width: 100%; max-width: 440px; height: auto; justify-self: center; overflow: visible; }
-.loop svg .ring { fill: none; stroke: url(#ring); stroke-width: 10; opacity: .8; }
-.loop svg .arrow { fill: none; stroke: var(--ink); stroke-width: 2.5; stroke-linecap: round; }
-.loop svg .head { fill: var(--ink); }
-.loop svg .node { fill: #fff; stroke: var(--ink); stroke-width: 1.5; filter: drop-shadow(3px 3px 0 var(--cyan)) drop-shadow(-3px -3px 0 var(--pink)); }
-.loop svg .name { fill: var(--foreground); font: 700 14px var(--display); text-anchor: middle; letter-spacing: -.02em; }
-.loop svg .what { fill: var(--muted); font: 500 12px var(--sans); text-anchor: middle; }
-.loop svg .centre { fill: var(--ink); font: 800 24px var(--display); text-anchor: middle; letter-spacing: -.04em; }
-.loop svg .centre-sub { fill: var(--muted); font: 500 11px var(--mono); text-anchor: middle; }
-.loop .prose { gap: 16px; }
+/* The docs index: every tab in the markup, the one the address names shown, the first when it names none. */
+[data-docs-index]:has([data-anchor="concepts"]:target) [data-panel]:not([data-panel="concepts"]),
+[data-docs-index]:has([data-anchor="evaluation"]:target) [data-panel]:not([data-panel="evaluation"]),
+[data-docs-index]:has([data-anchor="reference"]:target) [data-panel]:not([data-panel="reference"]),
+[data-docs-index]:not(:has([data-anchor]:target)) [data-panel]:not([data-default]) { display: none; }
+[data-docs-index]:has([data-anchor="concepts"]:target) [data-tab="concepts"],
+[data-docs-index]:has([data-anchor="evaluation"]:target) [data-tab="evaluation"],
+[data-docs-index]:has([data-anchor="reference"]:target) [data-tab="reference"],
+[data-docs-index]:not(:has([data-anchor]:target)) [data-tab="concepts"] { color: var(--foreground); border-bottom-color: #111116; }
+[data-docs-index] .controls { padding-bottom: 0; }
+[data-docs-index] .tabs { border-bottom: 0; }
+[data-docs-index] h1 { font: 800 32px/1.15 var(--display); letter-spacing: -.03em; margin-bottom: 20px; }
+.entries { list-style: none; margin: 0; padding: 0; display: grid; gap: 18px; }
+.entries li { display: flex; gap: 14px; }
+.entries .number { font: 600 14px/24px var(--mono); color: var(--muted); }
+.entries a { font: 600 16px/24px var(--sans); color: var(--foreground); text-decoration-color: var(--lavender); text-decoration-thickness: 2px; }
+.entries p { color: var(--muted); }
 
-/* Terminals: ink, with the offset shadow. */
-.terminal {
-  background: var(--terminal); color: var(--terminal-foreground); border-radius: 16px;
-  font: 13px/1.8 var(--mono); padding: 20px 22px; overflow-x: auto; margin: 0; min-width: 0;
-  box-shadow: 4px 4px 0 0 var(--one), -4px -4px 0 0 var(--two);
-}
-.terminal .prompt { color: var(--terminal-muted); }
-.pair { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 40px; align-items: start; }
-.pair .prose { align-content: start; }
+/* --- an article: a README section, Getting started, a legal page ----------------------------- */
 
-.more {
-  display: inline-flex; width: fit-content; padding: 8px 14px; margin-top: 4px; border-radius: 12px;
-  border: 1px solid rgb(17 17 22 / .2); background-color: #fff; color: var(--ink); font-weight: 600; text-decoration: none;
-}
-
-/* --- footer ------------------------------------------------------------------------------------- */
-
-footer { padding-block: 48px 32px; color: var(--muted); font: 500 13px/1.6 var(--mono); }
-footer .foot { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px 16px; padding: 18px 24px; }
-footer a { color: var(--ink); }
-
-/* --- the documentation and the legal pages: a calm reading column on a frosted card ------------- */
-
-.legal, .docs { padding-top: 28px; }
-.docs { display: grid; grid-template-columns: 16rem minmax(0, 1fr); gap: 28px; align-items: start; }
-.contents {
-  position: sticky; top: 20px; display: grid; gap: 1px; max-height: calc(100vh - 40px); overflow-y: auto; overscroll-behavior: contain;
-  padding: 18px 12px; font-size: 13.5px; line-height: 1.4;
-  border-radius: var(--radius); border: 1px solid rgb(255 255 255 / .95);
-  background: var(--noise), var(--glass); background-blend-mode: soft-light, normal; box-shadow: var(--lift);
-  backdrop-filter: blur(16px) saturate(1.3); -webkit-backdrop-filter: blur(16px) saturate(1.3);
-  scrollbar-width: thin;
-}
-.contents a { color: var(--muted); text-decoration: none; padding: 4px 10px; border-radius: 8px; border: 1px solid transparent; }
-.contents a:hover { color: var(--ink); transform: none; }
-.contents .level-2 { color: var(--ink); font: 600 11.5px/1.4 var(--mono); letter-spacing: .06em; text-transform: uppercase; margin-top: 12px; }
-.contents .level-2:first-child { margin-top: 0; }
-.contents .level-3 { padding-left: 20px; }
-
-.article {
-  min-width: 0; padding: clamp(24px, 5vw, 64px); font-size: 16.5px; line-height: 1.75;
-  border-radius: var(--radius); border: 1px solid rgb(255 255 255 / .95);
-  background: var(--noise), var(--paper); background-blend-mode: soft-light, normal; box-shadow: var(--lift);
-}
-.article > * { max-width: 44rem; }
-.legal .article { max-width: 52rem; margin: 0 auto; }
-.article h1 { font: 800 clamp(28px, 4.5vw, 44px)/1.1 var(--display); letter-spacing: -.045em; margin: 0 0 28px; }
-.article h2 { margin: 64px 0 18px; scroll-margin-top: 24px; font-size: clamp(22px, 3vw, 28px); padding-top: 28px; position: relative; }
-.article h2::before { content: ""; position: absolute; top: 0; left: 0; width: 56px; height: 5px; border-radius: 3px; background: var(--holo); }
-.article h2:first-child { margin-top: 0; }
-.article h3 { margin: 40px 0 10px; scroll-margin-top: 24px; font: 700 18px/1.35 var(--display); letter-spacing: -.025em; }
-.article h4 { margin: 28px 0 8px; font: 600 12.5px/20px var(--mono); letter-spacing: .06em; text-transform: uppercase; }
-.article p, .article ul, .article ol, .article pre, .article blockquote, .article .table, .article .code { margin: 0 0 16px; }
+.article { overflow-wrap: break-word; }
+.article h1 { font: 800 32px/1.15 var(--display); letter-spacing: -.03em; margin: 0 0 20px; scroll-margin-top: 16px; }
+.article h2 { margin: 40px 0 12px; scroll-margin-top: 16px; font: 700 22px/1.25 var(--display); letter-spacing: -.025em; padding-top: 18px; position: relative; }
+.article h2::before { content: ""; position: absolute; top: 0; left: 0; width: 48px; height: 4px; border-radius: 2px; background: var(--holo); }
+.article h3 { margin: 28px 0 8px; scroll-margin-top: 16px; font: 600 16px/24px var(--sans); }
+.article h4 { margin: 22px 0 6px; font: 600 12px/18px var(--mono); letter-spacing: .04em; text-transform: uppercase; }
+.article p, .article ul, .article ol, .article pre, .article blockquote, .article .table, .article .code { margin: 0 0 14px; }
 .article ul, .article ol { padding-left: 1.3em; }
-.article li { margin: 6px 0; }
+.article li { margin: 4px 0; }
 .article li::marker { color: #7a64e8; }
 .article li > p { margin: 0; }
-.article li > ul, .article li > ol { margin: 6px 0 0; }
+.article li > ul, .article li > ol { margin: 4px 0 0; }
 .article strong { font-weight: 650; }
 .article pre {
-  background: var(--terminal); color: var(--terminal-foreground); border-radius: 14px; padding: 16px 20px; overflow-x: auto;
-  font: 13px/1.7 var(--mono); box-shadow: 3px 3px 0 0 var(--cyan), -3px -3px 0 0 var(--pink); tab-size: 4;
+  background: var(--terminal); color: var(--terminal-foreground); border-radius: 14px; padding: 14px 18px; overflow-x: auto;
+  font: 12.5px/1.7 var(--mono); tab-size: 4;
 }
 .article pre code { background: none; padding: 0; font: inherit; color: inherit; overflow-wrap: normal; }
 .article .code { position: relative; }
 .article .code pre { margin: 0; padding-right: 64px; }
-.article .code:nth-of-type(3n+1) pre { box-shadow: 3px 3px 0 0 var(--cyan), -3px -3px 0 0 var(--pink); }
-.article .code:nth-of-type(3n+2) pre { box-shadow: 3px 3px 0 0 var(--yellow), -3px -3px 0 0 var(--lavender); }
-.article .code:nth-of-type(3n) pre { box-shadow: 3px 3px 0 0 var(--mint), -3px -3px 0 0 var(--peach); }
 .code .copy-code {
-  position: absolute; top: 9px; right: 9px; padding: 6px 9px; border-radius: 8px; cursor: pointer;
+  position: absolute; top: 8px; right: 8px; padding: 6px 9px; border-radius: 8px;
   font: 600 11px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase;
   color: #fff; background-color: rgb(255 255 255 / .1); border: 1px solid rgb(255 255 255 / .22);
 }
-.code .copy-code:hover { background-position: -20% 0; color: var(--ink); background-color: #fff; }
+.code .copy-code:hover { color: #111116; background-color: #fff; }
 .code .copy-code:focus-visible { outline-color: #fff; }
 .article blockquote {
-  padding: 16px 20px; border-radius: 14px; background: linear-gradient(115deg, rgb(255 154 213 / .16), rgb(143 233 255 / .18) 50%, rgb(255 242 160 / .2));
+  padding: 14px 18px; border-radius: 14px; background: linear-gradient(115deg, rgb(255 154 213 / .16), rgb(143 233 255 / .18) 50%, rgb(255 242 160 / .2));
   border: 1px solid rgb(17 17 22 / .08);
 }
-.article blockquote p { font-size: 17.5px; }
 .article blockquote > :last-child { margin-bottom: 0; }
 .article .table { overflow-x: auto; border-radius: 14px; border: 1px solid var(--border); background: #fff; max-width: 100%; }
-.article table { border-collapse: collapse; width: 100%; font-size: 14px; line-height: 1.55; }
-.article th, .article td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--border); vertical-align: top; }
-.article th { background: var(--code); font: 600 11.5px/1.4 var(--mono); letter-spacing: .06em; text-transform: uppercase; }
+.article table { border-collapse: collapse; width: 100%; font-size: 13.5px; line-height: 1.55; }
+.article th, .article td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+.article th { background: var(--code); font: 600 11.5px/1.4 var(--mono); letter-spacing: .04em; text-transform: uppercase; }
 .article tr:last-child td { border-bottom: 0; }
-.article tbody tr:hover { background: linear-gradient(90deg, rgb(255 154 213 / .08), rgb(143 233 255 / .1)); }
 
-/* The README's last word, thanks, on a foil card of its own. */
-.article #thanks { margin-top: 72px; }
-.article #thanks + p {
-  padding: 22px 24px; border-radius: 18px; background: #fff; border: 2px solid var(--ink);
-  box-shadow: 5px 5px 0 0 var(--yellow), -5px -5px 0 0 var(--pink); font-size: 17px; margin-bottom: 4px;
+/* Its own table of contents, under its title. */
+.contents { display: grid; gap: 2px; margin: 0 0 24px; padding: 12px 16px; border-radius: 14px; background: var(--code); }
+.contents .label { margin-bottom: 4px; }
+.contents a { color: var(--foreground); text-decoration: none; font-size: 14px; line-height: 22px; width: fit-content; }
+.contents a:hover { text-decoration: underline; text-decoration-color: var(--lavender); text-decoration-thickness: 2px; }
+.contents .level-3 { padding-left: 16px; color: var(--muted); font-size: 13.5px; }
+
+.pager { display: flex; justify-content: space-between; gap: 12px; margin-top: 32px; padding-top: 18px; border-top: 1px dashed rgb(17 17 22 / .2); }
+.pager a { display: grid; gap: 2px; color: var(--foreground); text-decoration: none; font: 600 15px/22px var(--sans); }
+.pager a:hover { text-decoration: underline; text-decoration-color: var(--lavender); text-decoration-thickness: 2px; }
+.pager .next { margin-left: auto; text-align: right; }
+.pager .previous .label::before { content: "← "; }
+.pager .next .label::after { content: " →"; }
+
+/* --- legal pages: the tl;dr switch, the summary while it is on, the full text always ---------- */
+
+.tldr-control { display: flex; align-items: center; gap: 10px; margin-bottom: 18px; font: 500 13px/20px var(--mono); color: var(--muted); }
+.switch {
+  position: relative; flex: none; width: 40px; height: 24px; border-radius: 999px; padding: 0;
+  border: 1px solid var(--input); background: rgb(17 17 22 / .06); transition: background-color .15s;
 }
+.switch span {
+  position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%;
+  background: #fff; box-shadow: 0 1px 3px rgb(0 0 0 / .25); transition: transform .15s;
+}
+.switch[aria-checked="true"] span { transform: translateX(16px); }
+.plain { margin: 0 0 28px; padding: 18px 20px 4px; border-radius: 16px; border: 2px solid #111116; background: #fff; box-shadow: 4px 4px 0 0 var(--yellow), -4px -4px 0 0 var(--cyan); }
+.plain .note { font-size: 13px; color: var(--muted); }
+[data-tldr="off"] .plain { display: none; }
+
+/* --- the footer ------------------------------------------------------------------------------- */
+
+footer { padding-block: 32px; color: var(--muted); font: 500 12.5px/1.6 var(--mono); }
+footer .foot { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px 16px; padding: 14px 20px; }
+footer a { color: var(--foreground); }
 
 @keyframes field { from { transform: translate(-4%, -3%) rotate(0deg); } to { transform: translate(4%, 3%) rotate(8deg); } }
 /* Drifting in space: out along (x, y) and a little turned, back by another way. */
@@ -328,28 +312,19 @@ footer a { color: var(--ink); }
   30% { transform: translate(var(--x), var(--y)) rotate(calc(var(--turn) + 5deg)); }
   65% { transform: translate(calc(var(--x) * -.6), calc(var(--y) * .4)) rotate(calc(var(--turn) - 4deg)); }
 }
-
-@media (max-width: 860px) {
-  .docs { grid-template-columns: minmax(0, 1fr); gap: 20px; }
-  .contents { position: static; max-height: none; grid-template-columns: repeat(auto-fill, minmax(10rem, 1fr)); gap: 0 8px; }
-  .contents .level-2, .contents .level-2:first-child { margin-top: 0; text-transform: none; letter-spacing: 0; font: 600 13.5px/1.4 var(--sans); }
-  .contents .level-3 { display: none; }
-}
-@media (max-width: 760px) {
-  .loop, .pair { grid-template-columns: minmax(0, 1fr); }
-  .hero { grid-template-columns: minmax(0, 1fr); }
-  .mascot { grid-row: 1; width: 110px; justify-self: start; }
-  .hero p { font-size: 17px; }
-  main { gap: 20px; }
-}
 @media (max-width: 560px) {
   :root { --radius: 18px; }
-  .site { padding-left: 14px; }
-  .links a { padding: 7px 12px; }
-  .article { font-size: 16px; }
+  .heading { padding: 10px 10px 10px 16px; }
+  .wordmark { font-size: 20px; }
+  .menu a { padding: 7px 11px; font-size: 13.5px; }
+  .card { padding: 22px 18px; }
+  .controls { padding: 0 14px 12px; }
+  .home h1, .article h1, [data-docs-index] h1 { font-size: 24px; }
+  .home h2 { font-size: 19px; }
+  .article h2 { font-size: 19px; }
+  .install code { font-size: 12.5px; }
   .creature.one { width: 140px; height: 100px; }
   .creature.two { width: 70px; height: 52px; }
-  footer .foot { padding-inline: 18px; }
 }
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }

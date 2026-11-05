@@ -1,6 +1,6 @@
 # Privacy policy
 
-Last updated: 1 November 2026
+Last updated: 4 November 2026
 
 This policy explains what personal data reaches nock's makers when you visit nock.dev or use nock, the open-source tool. nock is made by Parallel Labs, S.L. ("we", "us"), a Spanish company, NIF B05585526, Calle Calabria 171, 5º-3ª, 08015 Barcelona, Spain, which is the controller for what this policy covers. Contact: [support@logika.host](mailto:support@logika.host). It follows the EU General Data Protection Regulation (GDPR) and Spain's Organic Law 3/2018 (LOPDGDD).
 
@@ -16,7 +16,7 @@ The website sets no cookies and runs no analytics.
 
 ## 2. The website
 
-nock.dev is a static site. It sets no cookies, keeps nothing in your browser, runs no analytics and loads nothing from other sites. It is hosted by **GitHub, Inc.** (GitHub Pages) in the United States, which receives your IP address and browser details when you open it, as part of delivering it, and keeps its own server logs as a separate controller under its own privacy statement. GitHub is certified under the EU–US Data Privacy Framework.
+nock.dev is a static site. It sets no cookies, runs no analytics and loads nothing from other sites. It keeps one thing in your browser's local storage, and only if you turn off the plain-words summary on these legal pages: that choice, so the pages remember it. It never leaves your browser. It is hosted by **GitHub, Inc.** (GitHub Pages) in the United States, which receives your IP address and browser details when you open it, as part of delivering it, and keeps its own server logs as a separate controller under its own privacy statement. GitHub is certified under the EU–US Data Privacy Framework.
 
 ## 3. The usage report
 

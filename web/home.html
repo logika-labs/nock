@@ -1,0 +1,54 @@
+<!-- The home page's main column; build.py sets it in layout.html. -->
+<div class="frame home">
+
+<section class="card hero" aria-labelledby="what">
+  <h1 id="what">A community learning to work with AI, as software engineers.</h1>
+  <p>A coding agent starts every session knowing nothing of the last one: not what was decided yesterday, or why; not what you said about it; not which script someone wrote to do what it is about to do by hand. Over weeks, the project drifts: the same question answered three ways, a simplification nobody approved, the same mistake made again.</p>
+  <p>The usual fix is prose, and prose goes stale without anyone noticing. A command that no longer fits breaks, and the failure is recorded. <strong>A check beats a hook beats prose.</strong></p>
+  <p>You are there for the one thing no agent can infer: what the system is for. nock is engineers learning to work this way, and the toolbox they learn with: open source, in your repository, built by your coding agents for themselves.</p>
+  <div class="install">
+    <code id="command">uvx nock init</code>
+    <button type="button" class="copy" data-copy="command">copy</button>
+  </div>
+  <div class="actions">
+    <a class="button primary" href="/getting-started/">Get started</a>
+    <a class="button" href="{{ telegram }}">Join on Telegram</a>
+  </div>
+</section>
+
+<section class="card part" id="reflection" aria-labelledby="reflection-title">
+  <span class="label">Reflection</span>
+  <h2 id="reflection-title">Agents that get better at your project.</h2>
+  <p>Every call and session is recorded on your machine: what you asked, each tool call, what failed, what it cost. Every week or so a reflection round reads that record and the decisions made since: it builds tools for the work that keeps costing turns, repairs the ones that misbehave, and retires the ones nobody uses. What it builds is live on the next call, and the next round holds each change to what it expected.</p>
+  <a class="more" href="/docs/reflection/">Reflection</a>
+</section>
+
+<section class="card part" id="review" aria-labelledby="review-title">
+  <span class="label">Review <span class="chip">assets: soon</span></span>
+  <h2 id="review-title">You judge what agents made, when it suits you.</h2>
+  <p>Agents never wait on you. They record the choices they make with the alternatives they weighed, and register what they make for you to see: screenshots, videos, pages, texts. On <code>nock studio</code> you approve, reject or note each; a note can have it made again, by its recipe or by an agent given your note, as its next version.</p>
+  <a class="more" href="/docs/decisions/">Decisions</a>
+</section>
+
+<section class="card part" id="evaluation" aria-labelledby="evaluation-title">
+  <span class="label">Evaluation</span>
+  <h2 id="evaluation-title">Know whether a change makes your agents better.</h2>
+  <p>An evaluation answers it with real runs: a Snakemake workflow in git beside the code, each output cached under its provenance, so the next question costs only what changed and anyone can run it again. Read the results with SQL; compare the arms with bootstrap intervals.</p>
+  <a class="more" href="/docs/evaluations/">Evaluations</a>
+</section>
+
+<section class="card part" id="logika" aria-labelledby="logika-title">
+  <span class="label">Logika</span>
+  <h2 id="logika-title">Your agent hears when production breaks, and fixes it.</h2>
+  <p>Logika is OpenTelemetry that wakes your agent whenever something breaks. Within five minutes it raises an issue with its evidence; your own agent, on your own machine, takes it, fixes it and delivers the fix the way your repository delivers anything, and its report lands in the same email thread. nock's logika round writes, with you, the rules it checks.</p>
+  <a class="more" href="https://logika.host">logika.host</a>
+</section>
+
+<section class="card part community" id="community" aria-labelledby="community-title">
+  <span class="label">Community</span>
+  <h2 id="community-title">Learn it with others.</h2>
+  <p>What worked with your agents, what did not, what to try next: ask and tell engineers working the same way.</p>
+  <a class="button primary" href="{{ telegram }}">Join on Telegram</a>
+</section>
+
+</div>
