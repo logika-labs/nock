@@ -1,12 +1,11 @@
-/* The review tab: the controls on glass — which verdicts, grid or list, search and tags — then the
-   items as a grid of thumbnails or a list; one opens in a viewer over the page: the version (or
-   two side by side, a text's as a line diff) on the left, what it is and the owner's word on the
-   right. Buttons, chips, badges and the spinner are the decisions tab's, in the studio's look. */
+/* The review tab: the controls on glass — the studio's filters (pages/studio.html), grid or list
+   beside the verdicts — then the items as a grid of thumbnails or a list; one opens in a viewer
+   over the page: the version (or two side by side, a text's as a line diff) on the left, what it
+   is and the owner's word on the right. Chips are the studio's; buttons, badges and the spinner
+   the decisions tab's, in the studio's look. */
 .review.frame { padding-block: 16px 80px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
 .review.frame > * { min-width: 0; }
 .review .controls { margin-top: 0; }
-.review .head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 24px; border-bottom: 1px solid var(--border); }
-.review .head nav { display: flex; flex-wrap: wrap; gap: 0 24px; }
 .review .layout { margin-left: auto; display: flex; gap: 2px; padding: 3px; border-radius: 999px; background: rgb(17 17 22 / .06); }
 .review .layout button {
   display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 12px; border: 0; border-radius: 999px;
@@ -15,8 +14,6 @@
 .review .layout button svg { width: 14px; height: 14px; }
 .review .layout button[aria-pressed="true"] { background: #fff; color: var(--foreground); box-shadow: 0 1px 3px rgb(17 17 22 / .14); }
 .review .layout button:focus-visible { outline: 2px solid #111116; outline-offset: 2px; }
-.review .tools { padding-top: 14px; }
-.review .tags { margin-top: 12px; }
 
 /* --- the grid and the list ------------------------------------------------------------------------ */
 

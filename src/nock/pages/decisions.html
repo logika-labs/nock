@@ -1,45 +1,11 @@
 <style>
-/* The decisions tab: the controls — review tabs, sort, search and filters — then the decisions; one opens in place. */
-nav.reviews { display: flex; flex-wrap: wrap; align-items: center; gap: 0 24px; border-bottom: 1px solid var(--border); margin-top: 8px; }
-
-/* Search and the status chips (done, todo, important) on one line under the tabs; every other tag on one scrolling line below. */
-.tools { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px; padding-top: 20px; }
-.search { position: relative; flex: 1 1 16rem; min-width: 0; display: flex; align-items: center; }
-.search svg { position: absolute; left: 0; width: 15px; height: 15px; color: var(--muted); pointer-events: none; }
-.search input[type="search"] { padding-left: 24px; font-size: 14px; }
-.search input::-webkit-search-cancel-button { filter: grayscale(1); }
-/* Chips: toggles, several at once, each with how many it would show. */
-.chips { display: flex; gap: 8px; }
+/* The decisions tab: the controls — the studio's filters (pages/studio.html), with sort beside the
+   verdicts and the status chips (done, todo, important) beside the search — then the decisions; one opens in place. */
 #statuses { flex-wrap: wrap; }
-#tag-row { margin-top: 12px; }
-.tags {
-  overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; scroll-padding-inline: 16px;
-  --start: 0px; --end: 0px;
-  -webkit-mask-image: linear-gradient(to right, transparent 0, #000 var(--start), #000 calc(100% - var(--end)), transparent 100%);
-  mask-image: linear-gradient(to right, transparent 0, #000 var(--start), #000 calc(100% - var(--end)), transparent 100%);
-}
-/* An edge fades only where there is more to scroll to. */
-.tags.more-before { --start: 24px; }
-.tags.more-after { --end: 32px; }
-.tags::-webkit-scrollbar { display: none; }
-.tags .chips { width: max-content; padding: 2px; }
-.chip { flex: none; white-space: nowrap; }
-.chip {
-  display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 11px; border-radius: 999px;
-  border: 1px solid var(--input); background: transparent; color: var(--foreground);
-  font: 500 11px/1 var(--sans); letter-spacing: .05em; text-transform: uppercase; transition: background .12s, border-color .12s;
-}
-.chip .count { color: var(--muted); font-variant-numeric: tabular-nums; letter-spacing: 0; }
-.chip:hover { background: var(--card); }
-.chip { --tone: var(--foreground); }
 .chip[data-flag="important"] { --tone: var(--warning); }
 .applies { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; font-size: 13px; color: var(--muted); }
 .applies .label { font-size: 11px; margin-right: 2px; }
 .applies code { font: 12px var(--mono); background: var(--background); color: var(--foreground); padding: 1px 5px; border-radius: 4px; overflow-wrap: anywhere; }
-.chip[aria-pressed="true"] { border-color: var(--tone); color: var(--tone); background: color-mix(in oklab, var(--tone) 10%, var(--card)); }
-.chip[aria-pressed="true"] .count { color: inherit; }
-.chip:disabled { opacity: .4; cursor: default; background: transparent; }
-.chip:focus-visible, .sort button:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
 /* Sort: three words, the chosen one in ink and underlined. */
 .sort { display: flex; align-items: center; gap: 2px; margin-left: auto; }
 .sort .label { color: var(--muted); margin-right: 6px; }
@@ -47,16 +13,8 @@ nav.reviews { display: flex; flex-wrap: wrap; align-items: center; gap: 0 24px; 
   border: 0; background: none; padding: 4px 6px; border-radius: 4px; color: var(--muted); font: 13px/20px var(--sans);
 }
 .sort button:hover { color: var(--foreground); }
+.sort button:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
 .sort button[aria-pressed="true"] { color: var(--foreground); font-weight: 600; }
-.reviews [role="tab"] {
-  display: inline-flex; align-items: center; gap: 8px; margin-bottom: -1px;
-  padding: 14px 2px 12px; border: 0; border-bottom: 2px solid transparent; background: none;
-  color: var(--muted); font: 500 12px/16px var(--sans); letter-spacing: .04em; text-transform: uppercase;
-}
-.reviews [role="tab"]:hover { color: var(--foreground); }
-.reviews [role="tab"][aria-selected="true"] { color: var(--foreground); border-bottom-color: var(--selection); }
-.reviews .count { color: var(--muted); font-variant-numeric: tabular-nums; }
-
 main { padding-block: 20px 80px; }
 #list { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; }
 
@@ -113,13 +71,13 @@ main { padding-block: 20px 80px; }
 .alternative .why { color: var(--muted); }
 .section code { font: 13px var(--mono); background: var(--background); padding: 1px 4px; border-radius: 4px; }
 
-textarea, input[type="search"] {
+textarea {
   width: 100%; padding: 4px 0; border: 0; border-bottom: 1px solid var(--input); border-radius: 0;
   font: 15px/24px var(--sans); color: var(--foreground); background: transparent; outline: none;
 }
 textarea { display: block; resize: none; overflow: hidden; field-sizing: content; min-height: 32px; }
-textarea::placeholder, input[type="search"]::placeholder { color: color-mix(in oklab, var(--muted) 60%, transparent); }
-textarea:focus-visible, input[type="search"]:focus-visible { border-bottom-color: var(--ring); }
+textarea::placeholder { color: color-mix(in oklab, var(--muted) 60%, transparent); }
+textarea:focus-visible { border-bottom-color: var(--ring); }
 
 .actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
 .hint { color: var(--muted); font-size: 13px; }
@@ -178,10 +136,10 @@ kbd {
 </style>
 <div class="frame">
   <div class="controls">
-  <nav class="reviews" role="tablist" aria-label="Which decisions">
-    <button type="button" role="tab" data-review="unreviewed" aria-selected="true">to review <span class="count" id="count-unreviewed"></span></button>
-    <button type="button" role="tab" data-review="accepted" aria-selected="false">accepted <span class="count" id="count-accepted"></span></button>
-    <button type="button" role="tab" data-review="rejected" aria-selected="false">rejected <span class="count" id="count-rejected"></span></button>
+  <nav class="reviews" role="tablist" aria-label="Which decisions" id="verdicts">
+    <button type="button" role="tab" data-verdict="unreviewed" aria-selected="true">to review <span class="count"></span></button>
+    <button type="button" role="tab" data-verdict="accepted" aria-selected="false">accepted <span class="count"></span></button>
+    <button type="button" role="tab" data-verdict="rejected" aria-selected="false">rejected <span class="count"></span></button>
     <div class="sort" role="group" aria-label="Sort">
       <button type="button" data-sort="oldest" aria-pressed="true">oldest</button>
       <button type="button" data-sort="newest" aria-pressed="false">newest</button>
@@ -386,34 +344,24 @@ function tagChips(decision) {
 function drawChips() {
   const tab = state.decisions.filter(inTab);
   const statuses = STATUSES.map(status => chip("status", status, tab.filter(decision => decision.status === status).length));
-  const important = chip("flag", "important", tab.filter(decision => decision.tags.includes("important")).length);
+  // `important` is a tag: shown, like the others, only when it would show something (or is chosen).
+  const marked = tab.filter(decision => decision.tags.includes("important")).length;
+  const important = marked || state.flags.has("important") ? chip("flag", "important", marked) : "";
   // The vocabulary in its order, then any other tag on a decision (or chosen), counted in this tab, the most used first.
   const counted = tag => [tag, tab.filter(decision => decision.tags.includes(tag)).length];
   const fixed = state.vocabulary.filter(tag => tag !== "important").map(counted);
   const others = [...new Set([...state.decisions.flatMap(decision => decision.tags), ...state.tags])]
     .filter(tag => tag !== "important" && !state.vocabulary.includes(tag)).map(counted)
     .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]));
-  const tags = [...fixed, ...others].map(([tag, count]) => chip("tag", tag, count));
   studio.morph(document.getElementById("statuses"), [...statuses, important].join(""));
-  const row = document.getElementById("tag-row");
-  studio.morph(document.getElementById("tags"), tags.join(""));
-  row.hidden = !tags.length;
-  fade(row);
+  studio.tags(document.getElementById("tag-row"), [...fixed, ...others], state.tags, "tag");
 }
-
-function fade(row) {
-  row.classList.toggle("more-before", row.scrollLeft > 2);
-  row.classList.toggle("more-after", row.scrollLeft + row.clientWidth < row.scrollWidth - 2);
-}
-// Scrolling does not bubble: one listener, capturing, for the filter's row and every card's.
-document.addEventListener("scroll", event => { if (event.target.classList?.contains("tags")) fade(event.target); }, { capture: true, passive: true });
-addEventListener("resize", () => document.querySelectorAll(".tags").forEach(fade));
 
 function draw() {
   const standing = state.decisions.filter(decision => !decision.superseded_by);
   const counts = { unreviewed: 0, accepted: 0, rejected: 0 };
   for (const decision of standing) counts[decision.review]++;
-  for (const key of Object.keys(counts)) document.getElementById(`count-${key}`).textContent = counts[key] || "";
+  studio.verdicts(document.getElementById("verdicts"), state.review, counts);
   const todos = standing.filter(decision => decision.review === "unreviewed" && decision.status === "todo").length;
   const important = standing.filter(decision => decision.review === "unreviewed" && decision.tags.includes("important")).length;
   const rework = standing.filter(decision => decision.review === "rejected" && decision.status === "done").length;
@@ -424,7 +372,6 @@ function draw() {
     rework ? `${rework} to rework` : "",
   ].filter(Boolean);
   studio.summary("decisions", said.length ? said.join(" · ") : "nothing waits on you");
-  for (const tab of document.querySelectorAll("[data-review]")) tab.setAttribute("aria-selected", String(tab.dataset.review === state.review));
   for (const button of document.querySelectorAll("[data-sort]")) button.setAttribute("aria-pressed", String(button.dataset.sort === state.sort));
   drawChips();
   const shown = visible();
@@ -443,7 +390,7 @@ function draw() {
       ${tagChips(decision)}
     </article>`;
   }).join("") : `<div class="empty" data-key="empty">${filtered ? EMPTY_SEARCH : EMPTY[state.review]}</div>`);
-  document.querySelectorAll("#list .tags").forEach(fade);
+  document.querySelectorAll("#list .tags").forEach(row => studio.fade(row));
   for (const field of document.querySelectorAll("#list textarea")) {
     const decision = find(Number(field.dataset.number));
     if (decision && document.activeElement !== field && field.value !== note(decision)) field.value = note(decision);
@@ -520,8 +467,8 @@ function act(number, action) {
 
 document.addEventListener("click", event => {
   if (!state.shown) return;
-  const tab = event.target.closest("[data-review]");
-  if (tab) { state.review = tab.dataset.review; draw(); return; }
+  const tab = event.target.closest("#verdicts [data-verdict]");
+  if (tab) { state.review = tab.dataset.verdict; draw(); return; }
   const status = event.target.closest("[data-status]");
   if (status) { const value = status.dataset.status; state.statuses.has(value) ? state.statuses.delete(value) : state.statuses.add(value); draw(); return; }
   const flag = event.target.closest("[data-flag]");

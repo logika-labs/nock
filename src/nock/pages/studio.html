@@ -140,6 +140,58 @@ button:not(:disabled), label[for] { cursor: pointer; }
   .menu a { padding: 8px 12px; }
   .band h1 { font-size: 24px; }
 }
+/* The filters the decisions and review tabs share: the verdicts as tabs (with what a tab puts
+   beside them: sort, layout), search, then the tags. */
+nav.reviews { display: flex; flex-wrap: wrap; align-items: center; gap: 0 24px; border-bottom: 1px solid var(--border); margin-top: 8px; }
+
+/* Search, with what a tab adds beside it, on one line under the verdicts; the tags on one scrolling line below. */
+.tools { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px; padding-top: 20px; }
+.search { position: relative; flex: 1 1 16rem; min-width: 0; display: flex; align-items: center; }
+.search svg { position: absolute; left: 0; width: 15px; height: 15px; color: var(--muted); pointer-events: none; }
+.search input[type="search"] { padding-left: 24px; font-size: 14px; }
+.search input::-webkit-search-cancel-button { filter: grayscale(1); }
+/* Chips: toggles, several at once, each with how many it would show. */
+.chips { display: flex; gap: 8px; }
+.controls > .tags { margin-top: 12px; }
+.tags {
+  overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; scroll-padding-inline: 16px;
+  --start: 0px; --end: 0px;
+  -webkit-mask-image: linear-gradient(to right, transparent 0, #000 var(--start), #000 calc(100% - var(--end)), transparent 100%);
+  mask-image: linear-gradient(to right, transparent 0, #000 var(--start), #000 calc(100% - var(--end)), transparent 100%);
+}
+/* An edge fades only where there is more to scroll to. */
+.tags.more-before { --start: 24px; }
+.tags.more-after { --end: 32px; }
+.tags::-webkit-scrollbar { display: none; }
+.tags .chips { width: max-content; padding: 2px; }
+.chip { flex: none; white-space: nowrap; }
+.chip {
+  display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 11px; border-radius: 999px;
+  border: 1px solid var(--input); background: transparent; color: var(--foreground);
+  font: 500 11px/1 var(--sans); letter-spacing: .05em; text-transform: uppercase; transition: background .12s, border-color .12s;
+}
+.chip .count { color: var(--muted); font-variant-numeric: tabular-nums; letter-spacing: 0; }
+.chip:hover { background: var(--card); }
+.chip { --tone: var(--foreground); }
+.chip[aria-pressed="true"] { border-color: var(--tone); color: var(--tone); background: color-mix(in oklab, var(--tone) 10%, var(--card)); }
+.chip[aria-pressed="true"] .count { color: inherit; }
+.chip:disabled { opacity: .4; cursor: default; background: transparent; }
+.chip:focus-visible, .reviews [role="tab"]:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+.reviews [role="tab"] {
+  display: inline-flex; align-items: center; gap: 8px; margin-bottom: -1px;
+  padding: 14px 2px 12px; border: 0; border-bottom: 2px solid transparent; background: none;
+  color: var(--muted); font: 500 12px/16px var(--sans); letter-spacing: .04em; text-transform: uppercase;
+}
+.reviews [role="tab"]:hover { color: var(--foreground); }
+.reviews [role="tab"][aria-selected="true"] { color: var(--foreground); border-bottom-color: var(--selection); }
+.reviews .count { color: var(--muted); font-variant-numeric: tabular-nums; }
+
+input[type="search"] {
+  width: 100%; padding: 4px 0; border: 0; border-bottom: 1px solid var(--input); border-radius: 0;
+  font: 15px/24px var(--sans); color: var(--foreground); background: transparent; outline: none;
+}
+input[type="search"]::placeholder { color: color-mix(in oklab, var(--muted) 60%, transparent); }
+input[type="search"]:focus-visible { border-bottom-color: var(--ring); }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition: none !important; animation: none !important; }
 }
@@ -178,6 +230,33 @@ const studio = {
     template.innerHTML = markup;
     morphChildren(element, template.content);
   },
+  escape(text) {
+    return String(text ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+  },
+  // The filters the decisions and review tabs share (their look is above). The verdicts: NAV's
+  // tabs, each `data-verdict` and holding a `.count`, the chosen one selected, each counting what
+  // it holds (none: blank).
+  verdicts(nav, chosen, counts) {
+    for (const tab of nav.querySelectorAll('[role="tab"][data-verdict]')) {
+      tab.setAttribute("aria-selected", String(tab.dataset.verdict === chosen));
+      tab.querySelector(".count").textContent = counts[tab.dataset.verdict] || "";
+    }
+  },
+  // The tags: ROW's chips, from `[tag, count]` pairs in their order, each counting what it would
+  // show and marked `data-ATTRIBUTE`; a tag that would show nothing is left out unless CHOSEN
+  // holds it, and the row is hidden when no tag is left.
+  tags(row, counted, chosen, attribute) {
+    const chips = counted.filter(([tag, count]) => count > 0 || chosen.has(tag)).map(([tag, count]) =>
+      `<button type="button" class="chip" data-key="${attribute}:${this.escape(tag)}" data-${attribute}="${this.escape(tag)}" aria-pressed="${chosen.has(tag)}">${this.escape(tag)} <span class="count">${count}</span></button>`);
+    this.morph(row.querySelector(".chips"), chips.join(""));
+    row.hidden = !chips.length;
+    this.fade(row);
+  },
+  // A scrolling row of chips fades at an edge only where there is more to scroll to.
+  fade(row) {
+    row.classList.toggle("more-before", row.scrollLeft > 2);
+    row.classList.toggle("more-after", row.scrollLeft + row.clientWidth < row.scrollWidth - 2);
+  },
   // Other names an address may use for a tab.
   aliases: { evaluations: "evals" },
   route() {
@@ -203,6 +282,10 @@ const studio = {
     this.tabs.get(name).show(route);
   },
 };
+
+// Scrolling does not bubble: one listener, capturing, for every row of chips.
+document.addEventListener("scroll", event => { if (event.target.classList?.contains("tags")) studio.fade(event.target); }, { capture: true, passive: true });
+addEventListener("resize", () => document.querySelectorAll(".tags").forEach(row => studio.fade(row)));
 
 const keyOf = node => node.nodeType === Node.ELEMENT_NODE ? (node.getAttribute("data-key") ?? (node.id || null)) : null;
 

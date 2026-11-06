@@ -1,17 +1,14 @@
 <div class="frame review" id="review">
   <div class="controls">
-    <div class="head">
-      <nav class="reviews" role="tablist" aria-label="Which items" id="review-verdicts">
-        <button type="button" role="tab" data-item-verdict="all" aria-selected="true">all <span class="count" id="review-count-all"></span></button>
-        <button type="button" role="tab" data-item-verdict="unreviewed" aria-selected="false">to review <span class="count" id="review-count-unreviewed"></span></button>
-        <button type="button" role="tab" data-item-verdict="approved" aria-selected="false">approved <span class="count" id="review-count-approved"></span></button>
-        <button type="button" role="tab" data-item-verdict="rejected" aria-selected="false">rejected <span class="count" id="review-count-rejected"></span></button>
-      </nav>
+    <nav class="reviews" role="tablist" aria-label="Which items" id="review-verdicts">
+      <button type="button" role="tab" data-verdict="unreviewed" aria-selected="true">to review <span class="count"></span></button>
+      <button type="button" role="tab" data-verdict="approved" aria-selected="false">approved <span class="count"></span></button>
+      <button type="button" role="tab" data-verdict="rejected" aria-selected="false">rejected <span class="count"></span></button>
       <div class="layout" role="group" aria-label="Layout">
         <button type="button" data-item-layout="grid" aria-pressed="true"><svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M2 2h5v5H2zM9 2h5v5H9zM2 9h5v5H2zM9 9h5v5H9z"/></svg>grid</button>
         <button type="button" data-item-layout="list" aria-pressed="false"><svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M2 2.5h3v3H2zM6.5 3h7.5v2H6.5zM2 6.5h3v3H2zM6.5 7h7.5v2H6.5zM2 10.5h3v3H2zM6.5 11h7.5v2H6.5z"/></svg>list</button>
       </div>
-    </div>
+    </nav>
     <div class="tools">
       <label class="search" for="review-search">
         <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="7" cy="7" r="4.75" stroke="currentColor" stroke-width="1.5"/><path d="m10.5 10.5 3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
@@ -58,6 +55,11 @@
   const POLL = 3000;
   const VERDICTS = ["unreviewed", "approved", "rejected"];
   const WORDS = { unreviewed: "to review", approved: "approved", rejected: "rejected" };
+  const EMPTY = {
+    unreviewed: "<strong>Nothing to review</strong><span>Agents show you what they made with <code>.nock/nock review add</code>; it appears here.</span>",
+    approved: "<strong>Nothing approved yet</strong><span>An item you approve stands until its next version.</span>",
+    rejected: "<strong>Nothing rejected</strong><span>A rejected item waits for its next version, made as your note says.</span>",
+  };
   const TONE = { unreviewed: "", approved: "ok", rejected: "error" };
   const CHEVRON = '<svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="m4 6 4 4 4-4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
   const SIGNS = {
@@ -66,7 +68,7 @@
   };
   const state = {
     shown: false, seen: "", items: [], tags: {}, regenerating: {},
-    verdict: "all", tags_chosen: new Set(), search: "", layout: "grid",
+    verdict: "unreviewed", tags_chosen: new Set(), search: "", layout: "grid",
     open: null, compare: false, single: null, left: null, right: null, file: null, zoom: "fit",
     notes: new Map(), latest: new Map(), picker: null, link: null,
   };
@@ -98,7 +100,7 @@
 
   function matches(item) {
     const latest = last(item);
-    if (state.verdict !== "all" && latest.verdict !== state.verdict) return false;
+    if (latest.verdict !== state.verdict) return false;
     if (state.tags_chosen.size && ![...state.tags_chosen].every(tag => latest.tags.includes(tag))) return false;
     const words = state.search.toLowerCase().split(/\s+/).filter(Boolean);
     const said = `${item.key} ${latest.title}`.toLowerCase();
@@ -154,32 +156,28 @@
   }
 
   function drawList() {
-    const counts = { all: state.items.length, unreviewed: 0, approved: 0, rejected: 0 };
+    const counts = { unreviewed: 0, approved: 0, rejected: 0 };
     for (const item of state.items) counts[last(item).verdict]++;
-    for (const key of Object.keys(counts)) $(`review-count-${key}`).textContent = counts[key] || "";
-    for (const tab of document.querySelectorAll("[data-item-verdict]")) tab.setAttribute("aria-selected", String(tab.dataset.itemVerdict === state.verdict));
+    studio.verdicts($("review-verdicts"), state.verdict, counts);
     for (const button of document.querySelectorAll("[data-item-layout]")) button.setAttribute("aria-pressed", String(button.dataset.itemLayout === state.layout));
     const remake = state.items.filter(item => last(item).verdict === "rejected" || (last(item).verdict === "unreviewed" && last(item).feedback)).length;
     const making = Object.values(state.regenerating).filter(entry => !entry.problem).length;
     const said = [counts.unreviewed ? `${counts.unreviewed} to review` : "", remake ? `${remake} to make again` : "", making ? `${making} being made` : ""].filter(Boolean);
     studio.summary("review", state.items.length ? (said.join(" · ") || "nothing waits on you") : "nothing to review yet");
-    const tags = Object.entries(state.tags).map(([tag]) => tag);
-    for (const tag of state.tags_chosen) if (!tags.includes(tag)) tags.push(tag);
-    const pool = state.items.filter(item => state.verdict === "all" || last(item).verdict === state.verdict);
-    studio.morph($("review-tags"), tags.map(tag => {
-      const count = pool.filter(item => last(item).tags.includes(tag)).length;
-      const chosen = state.tags_chosen.has(tag);
-      return `<button type="button" class="chip" data-key="${escape(tag)}" data-item-tag="${escape(tag)}" aria-pressed="${chosen}" ${count === 0 && !chosen ? "disabled" : ""}>${escape(tag)} <span class="count">${count}</span></button>`;
-    }).join(""));
-    $("review-tag-row").hidden = !tags.length;
+    // Every tag in use (or chosen), counted in this verdict's tab, the most used first.
+    const pool = state.items.filter(item => last(item).verdict === state.verdict);
+    const counted = [...new Set([...Object.keys(state.tags), ...state.tags_chosen])]
+      .map(tag => [tag, pool.filter(item => last(item).tags.includes(tag)).length])
+      .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]));
+    studio.tags($("review-tag-row"), counted, state.tags_chosen, "item-tag");
     const list = $("review-list");
     list.className = state.layout;
     // Every card stays drawn, those the filters leave out hidden: a card is never made again, so
     // its picture, page or video loads once, and again only when its latest version changes.
-    const filtered = state.search.trim() || state.tags_chosen.size || state.verdict !== "all";
+    const filtered = state.search.trim() || state.tags_chosen.size;
     const empty = visible().length ? "" : `<div class="empty" data-key="empty">${filtered
-      ? "<strong>No matches</strong><span>No item fits the search and filters.</span>"
-      : "<strong>Nothing to review yet</strong><span>Agents show you what they made with <code>.nock/nock review add</code>; it appears here.</span>"}</div>`;
+      ? "<strong>No matches</strong><span>Nothing in this tab fits the search and filters.</span>"
+      : EMPTY[state.verdict]}</div>`;
     studio.morph(list, state.items.map(card).join("") + empty);
     fill(list);
   }
@@ -473,7 +471,8 @@
   }
 
   function step(offset) {
-    const shown = visible();
+    // The open item keeps its place though judging it moved it to another tab.
+    const shown = state.items.filter(item => matches(item) || item.key === state.open);
     const index = shown.findIndex(item => item.key === state.open);
     const next = shown[index + offset];
     if (index >= 0 && next) open(next.key);
@@ -576,7 +575,8 @@
       state.items = data.items;
       state.tags = data.tags;
       state.regenerating = data.regenerating;
-      if (state.link) { const key = state.link; state.link = null; if (find(key)) open(key); }
+      // The address's item opens, in its verdict's tab.
+      if (state.link) { const key = state.link; state.link = null; if (find(key)) { state.verdict = last(find(key)).verdict; open(key); } }
       if (state.open && !find(state.open)) close();
       draw();
     } catch {
@@ -589,8 +589,8 @@
   const root = $("review");
   root.addEventListener("click", event => {
     const target = event.target;
-    const tab = target.closest("[data-item-verdict]");
-    if (tab) { state.verdict = tab.dataset.itemVerdict; draw(); return; }
+    const tab = target.closest("#review-verdicts [data-verdict]");
+    if (tab) { state.verdict = tab.dataset.verdict; draw(); return; }
     const layout = target.closest("[data-item-layout]");
     if (layout) {
       state.layout = layout.dataset.itemLayout;
