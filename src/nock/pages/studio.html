@@ -162,6 +162,17 @@ const studio = {
     clearTimeout(this.toastTimer);
     this.toastTimer = setTimeout(() => element.classList.remove("shown"), 2600);
   },
+  // Make ELEMENT's content the markup given, changing in place only what differs, so a poll that
+  // brings something new leaves the rest alone: a picture, page or video whose address is the same
+  // is not loaded again, and focus, scroll, selection and hover stay where they were. A child with
+  // `data-key` (or an `id`) is matched by it wherever it moved; others by position and tag. An
+  // element marked `data-own` keeps its content, which the tab's script fills (a text fetched, a
+  // note being typed); a `<details>` the owner opened stays open.
+  morph(element, markup) {
+    const template = document.createElement("template");
+    template.innerHTML = markup;
+    morphChildren(element, template.content);
+  },
   // Other names an address may use for a tab.
   aliases: { evaluations: "evals" },
   route() {
@@ -187,6 +198,46 @@ const studio = {
     this.tabs.get(name).show(route);
   },
 };
+
+const keyOf = node => node.nodeType === Node.ELEMENT_NODE ? (node.getAttribute("data-key") ?? (node.id || null)) : null;
+
+function morphChildren(into, from) {
+  const keyed = new Map();
+  for (const child of into.childNodes) { const key = keyOf(child); if (key !== null) keyed.set(key, child); }
+  const wanted = new Set([...from.childNodes].map(keyOf).filter(key => key !== null));
+  const unwanted = node => keyOf(node) !== null && !wanted.has(keyOf(node));
+  let cursor = into.firstChild;
+  for (const next of [...from.childNodes]) {
+    // A keyed node no longer wanted is passed over here, and removed at the end.
+    while (cursor && unwanted(cursor)) cursor = cursor.nextSibling;
+    const key = keyOf(next);
+    let match = null;
+    if (key !== null) match = keyed.get(key) ?? null;
+    else if (cursor && keyOf(cursor) === null) match = cursor;
+    if (match && match.nodeName !== next.nodeName) match = null;
+    if (!match) { into.insertBefore(next, cursor); continue; }
+    if (key !== null) keyed.delete(key);
+    if (match === cursor) cursor = cursor.nextSibling;
+    else into.insertBefore(match, cursor);
+    if (match.nodeType === Node.ELEMENT_NODE) morphElement(match, next);
+    else if (match.nodeValue !== next.nodeValue) match.nodeValue = next.nodeValue;
+  }
+  while (cursor) {
+    const after = cursor.nextSibling;
+    if (keyOf(cursor) === null || unwanted(cursor)) cursor.remove();
+    cursor = after;
+  }
+  for (const node of keyed.values()) node.remove();
+}
+
+function morphElement(element, next) {
+  for (const { name } of [...element.attributes]) {
+    if (next.hasAttribute(name) || (name === "open" && element.tagName === "DETAILS")) continue;
+    element.removeAttribute(name);
+  }
+  for (const { name, value } of [...next.attributes]) if (element.getAttribute(name) !== value) element.setAttribute(name, value);
+  if (!next.hasAttribute("data-own")) morphChildren(element, next);
+}
 </script>
 </head>
 <body>

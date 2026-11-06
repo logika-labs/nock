@@ -324,7 +324,7 @@ function body(decision) {
     const verdicts = ["rejected", "accepted"].filter(review => review !== decision.review).map(review =>
       `<button type="button" class="button ${review === "accepted" ? "primary" : "secondary"}" data-action="${review}" data-number="${decision.number}" ${disabled}>${review === "accepted" ? "accept" : "reject"}</button>`).join("");
     const saving = decision.review !== "unreviewed" ? `<button type="button" class="button ghost" data-action="note" data-number="${decision.number}" ${disabled} hidden>save note</button>` : "";
-    parts.push(`<textarea id="note-${decision.number}" data-number="${decision.number}" rows="1" aria-label="Note" placeholder="Add a note" ${disabled}>${escape(note(decision))}</textarea>`);
+    parts.push(`<textarea id="note-${decision.number}" data-number="${decision.number}" rows="1" aria-label="Note" placeholder="Add a note" ${disabled} data-own>${escape(note(decision))}</textarea>`);
     parts.push(`<div class="actions">
       <span class="hint" id="hint-${decision.number}">${decision.review === "unreviewed" ? keys : ""}</span>
       <div class="buttons">
@@ -373,7 +373,7 @@ const EMPTY = {
 function chip(kind, value, count) {
   const chosen = { status: state.statuses, flag: state.flags, tag: state.tags }[kind].has(value);
   const counted = count === undefined ? "" : ` <span class="count">${count}</span>`;
-  return `<button type="button" class="chip" data-${kind}="${escape(value)}" aria-pressed="${chosen}" ${count === 0 && !chosen ? "disabled" : ""}>${escape(value)}${counted}</button>`;
+  return `<button type="button" class="chip" data-key="${kind}:${escape(value)}" data-${kind}="${escape(value)}" aria-pressed="${chosen}" ${count === 0 && !chosen ? "disabled" : ""}>${escape(value)}${counted}</button>`;
 }
 
 // A decision's tags as the filter shows them; pressing one filters by it.
@@ -394,13 +394,10 @@ function drawChips() {
     .filter(tag => tag !== "important" && !state.vocabulary.includes(tag)).map(counted)
     .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]));
   const tags = [...fixed, ...others].map(([tag, count]) => chip("tag", tag, count));
-  document.getElementById("statuses").innerHTML = [...statuses, important].join("");
-  // Redrawn as the owner types: the row keeps where it was scrolled to.
+  studio.morph(document.getElementById("statuses"), [...statuses, important].join(""));
   const row = document.getElementById("tag-row");
-  const scrolled = row.scrollLeft;
-  document.getElementById("tags").innerHTML = tags.join("");
+  studio.morph(document.getElementById("tags"), tags.join(""));
   row.hidden = !tags.length;
-  row.scrollLeft = scrolled;
   fade(row);
 }
 
@@ -432,9 +429,11 @@ function draw() {
   drawChips();
   const shown = visible();
   const filtered = state.search.trim() || state.statuses.size || state.tags.size || state.flags.size;
-  document.getElementById("list").innerHTML = shown.length ? shown.map(decision => {
+  // Changed in place, so a decision another agent records leaves the rest as they were: the note
+  // being typed, the focus, where each row was scrolled to.
+  studio.morph(document.getElementById("list"), shown.length ? shown.map(decision => {
     const open = state.expanded.has(decision.number);
-    return `<article class="decision ${open ? "open" : ""} ${decision.superseded_by ? "superseded" : ""}" data-hue="${decision.number % 4}">
+    return `<article class="decision ${open ? "open" : ""} ${decision.superseded_by ? "superseded" : ""}" data-key="${decision.number}" data-hue="${decision.number % 4}">
       <button type="button" class="row" data-toggle="${decision.number}" aria-expanded="${open}">
         <span class="number">${decision.number}</span>
         <span class="title">${escape(decision.title)}</span>
@@ -443,9 +442,13 @@ function draw() {
       ${open ? body(decision) : ""}
       ${tagChips(decision)}
     </article>`;
-  }).join("") : `<div class="empty">${filtered ? EMPTY_SEARCH : EMPTY[state.review]}</div>`;
+  }).join("") : `<div class="empty" data-key="empty">${filtered ? EMPTY_SEARCH : EMPTY[state.review]}</div>`);
   document.querySelectorAll("#list .tags").forEach(fade);
-  for (const field of document.querySelectorAll("textarea")) showSave(Number(field.dataset.number));
+  for (const field of document.querySelectorAll("#list textarea")) {
+    const decision = find(Number(field.dataset.number));
+    if (decision && document.activeElement !== field && field.value !== note(decision)) field.value = note(decision);
+    showSave(Number(field.dataset.number));
+  }
   grow();
 }
 
@@ -465,14 +468,6 @@ function showSave(number) {
   if (decision && button) button.hidden = (note(decision).trim() || null) === (decision.note || null);
 }
 
-// A refresh keeps the note being typed where it was: its text is in `notes`, its focus here.
-function render() {
-  const active = document.activeElement;
-  const typing = active && active.tagName === "TEXTAREA" ? { id: active.id, start: active.selectionStart, end: active.selectionEnd } : null;
-  draw();
-  const again = typing && document.getElementById(typing.id);
-  if (again) { again.focus(); again.setSelectionRange(typing.start, typing.end); }
-}
 
 async function load() {
   try {
@@ -491,7 +486,7 @@ async function load() {
       const first = visible()[0];
       if (first) { state.expanded.add(first.number); state.active = first.number; }
     }
-    render();
+    draw();
   } catch (error) {
     studio.summary("decisions", "Lost touch with nock — is `nock studio` still running?");
   }
@@ -526,21 +521,21 @@ function act(number, action) {
 document.addEventListener("click", event => {
   if (!state.shown) return;
   const tab = event.target.closest("[data-review]");
-  if (tab) { state.review = tab.dataset.review; render(); return; }
+  if (tab) { state.review = tab.dataset.review; draw(); return; }
   const status = event.target.closest("[data-status]");
-  if (status) { const value = status.dataset.status; state.statuses.has(value) ? state.statuses.delete(value) : state.statuses.add(value); render(); return; }
+  if (status) { const value = status.dataset.status; state.statuses.has(value) ? state.statuses.delete(value) : state.statuses.add(value); draw(); return; }
   const flag = event.target.closest("[data-flag]");
-  if (flag) { const value = flag.dataset.flag; state.flags.has(value) ? state.flags.delete(value) : state.flags.add(value); render(); return; }
+  if (flag) { const value = flag.dataset.flag; state.flags.has(value) ? state.flags.delete(value) : state.flags.add(value); draw(); return; }
   const tag = event.target.closest("[data-tag]");
-  if (tag) { const value = tag.dataset.tag; state.tags.has(value) ? state.tags.delete(value) : state.tags.add(value); render(); return; }
+  if (tag) { const value = tag.dataset.tag; state.tags.has(value) ? state.tags.delete(value) : state.tags.add(value); draw(); return; }
   const sort = event.target.closest("[data-sort]");
-  if (sort) { state.sort = sort.dataset.sort; render(); return; }
+  if (sort) { state.sort = sort.dataset.sort; draw(); return; }
   const toggle = event.target.closest("[data-toggle]");
   if (toggle) {
     const number = Number(toggle.dataset.toggle);
     if (state.expanded.has(number)) state.expanded.delete(number);
     else { state.expanded.add(number); state.active = number; }
-    render();
+    draw();
     return;
   }
   const reference = event.target.closest("[data-open]");
@@ -554,7 +549,7 @@ document.addEventListener("click", event => {
       state.flags.clear();
       document.getElementById("search").value = "";
       state.expanded.add(target.number);
-      render();
+      draw();
       document.querySelector(`[data-toggle="${target.number}"]`)?.scrollIntoView({ block: "center" });
     }
     return;

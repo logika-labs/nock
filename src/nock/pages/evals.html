@@ -65,7 +65,7 @@
       view.lanes = page.lanes ?? "";
       view.signature = page.signature;
       summary(page);
-      if (changed) render(); else live(page);
+      if (changed) render(polling); else live(page);
       schedule(POLL);
     }).catch(error => { if (!polling) studio.toast(error.message || "Could not read the scenario"); schedule(POLL * 2); });
   }
@@ -82,25 +82,26 @@
   // --- states without a graph -----------------------------------------------------------------
 
   function picker() {
-    $("evals-picker").innerHTML = view.scenarios.length > 1 ? view.scenarios.map(item =>
-      `<button type="button" class="chip" data-scenario="${escape(item.name)}" aria-pressed="${item.name === view.name}">${escape(item.name)}</button>`).join("") : "";
+    studio.morph($("evals-picker"), view.scenarios.length > 1 ? view.scenarios.map(item =>
+      `<button type="button" class="chip" data-key="${escape(item.name)}" data-scenario="${escape(item.name)}" aria-pressed="${item.name === view.name}">${escape(item.name)}</button>`).join("") : "");
   }
 
   function empty() {
     studio.summary("evals", "No scenarios yet");
-    $("evals-body").innerHTML = '<div class="empty"><strong>No scenarios yet</strong><span>An agent starts one with <code>.nock/nock eval init NAME</code>.</span></div>';
+    studio.morph($("evals-body"), '<div class="empty"><strong>No scenarios yet</strong><span>An agent starts one with <code>.nock/nock eval init NAME</code>.</span></div>');
   }
 
   function waiting(page) {
     studio.summary("evals", `${view.name}: reading the workflow…`);
-    $("evals-body").innerHTML = `<div class="card waiting"><span class="spinner" aria-hidden="true"></span>
+    // In place: asked again every two seconds, the spinner keeps turning instead of starting over.
+    studio.morph($("evals-body"), `<div class="card waiting"><span class="spinner" aria-hidden="true"></span>
       <strong>Reading ${escape(view.name)}'s workflow with Snakemake</strong>
       <span class="hint">The first time takes as long as a dry run; the studio keeps what it learns and only reads it again when the workflow changes.</span>
-      ${page.problem ? `<span class="hint error">${escape(page.problem)}</span>` : ""}</div>`;
+      ${page.problem ? `<span class="hint error">${escape(page.problem)}</span>` : ""}</div>`);
   }
 
   function problem(text) {
-    $("evals-body").innerHTML = `<div class="card"><span class="label">${escape(view.name)}</span><pre class="hint error">${escape(text)}</pre></div>`;
+    studio.morph($("evals-body"), `<div class="card"><span class="label">${escape(view.name)}</span><pre class="hint error">${escape(text)}</pre></div>`);
   }
 
   function summary(page) {
@@ -115,18 +116,20 @@
 
   // --- the page --------------------------------------------------------------------------------
 
-  function render() {
+  // In place (`studio.morph`): a status that changes mid-run changes its card, and the graph, the
+  // wires, where it is scrolled to, an open menu and what is typed in "Weigh a run" stay.
+  function render(polling = false) {
     const page = view.page;
-    hideTip(true);
+    if (!polling) hideTip(true);
     root.classList.toggle("weighing", Boolean(page.change));
-    $("evals-body").innerHTML = [
+    studio.morph($("evals-body"), [
       toolbar(page),
       crumbs(page),
-      '<div id="evals-pinned"></div>',
+      '<div id="evals-pinned" data-own></div>',
       view.mode === "graph" ? graph(page) : analyses(page),
       dry(),
-    ].join("");
-    if (view.mode === "graph") requestAnimationFrame(wires);
+    ].join(""));
+    if (view.mode === "graph") wires();
     pinned();
   }
 
@@ -151,7 +154,7 @@
 
   function live(page) {
     const element = $("evals-live");
-    if (element) element.innerHTML = liveHtml(page);
+    if (element) studio.morph(element, liveHtml(page));
   }
 
   function whatIf(page) {
@@ -224,7 +227,7 @@
     const legend = `<div class="legend">${STATUSES.map(status => `<span><span class="dot ${status}"></span>${WORDS[status]} ${page.counts[status]}</span>`).join("")}
       ${page.constant.length ? `<span>the same for every run: ${page.constant.map(item => `${escape(item.label)} ${escape(item.value)}`).join(", ")}</span>` : ""}</div>`;
     return `<div class="card graph-card"><div class="scroller" id="evals-scroller"><div class="canvas" id="evals-canvas" style="${style}">
-      <svg class="wires" id="evals-wires" aria-hidden="true"></svg>${cells.join("")}</div></div>${legend}</div>`;
+      <svg class="wires" id="evals-wires" aria-hidden="true" data-own></svg>${cells.join("")}</div></div>${legend}</div>`;
   }
 
   function meter(counts, total) {
@@ -250,7 +253,7 @@
     const metric = unit.numbers.metrics.filter(item => item.text !== "—").slice(0, 2).map(item => `${item.label} ${item.short || item.text}`).join(" · ");
     const split = unit.splits ? `<button type="button" class="split" data-split="${escape(unit.id)}" aria-expanded="${unit.expanded}">${unit.expanded ? "▾ fold" : `▸ by ${escape(unit.splits.label)}`}</button>`
       : unit.expanded ? `<button type="button" class="split" data-split="${escape(unit.id)}" aria-expanded="true">▾ fold</button>` : "";
-    return `<div class="${classes}" style="--depth:${unit.depth}" data-unit="${escape(unit.id)}">
+    return `<div class="${classes}" style="--depth:${unit.depth}" data-key="${escape(unit.id)}" data-unit="${escape(unit.id)}">
       ${unit.affected ? `<span class="rerun" title="steps this change reruns">↻ ${unit.affected}</span>` : ""}
       <button type="button" class="main" data-select="${escape(unit.id)}" aria-pressed="${unit.selected}" aria-label="${escape(unit.card.title)}">
         <span class="top"><span class="dot ${unit.status}"></span><strong>${escape(unit.label)}</strong>${unit.count > 1 ? `<span class="n">${unit.count}</span>` : ""}</span>
@@ -385,12 +388,12 @@
   function pinned() {
     const place = $("evals-pinned");
     const last = view.path[view.path.length - 1];
-    if (!place || !last?.run) { if (place) place.innerHTML = ""; return; }
+    if (!place || !last?.run) { if (place) studio.morph(place, ""); return; }
     detail(last.run).then(found => {
       const before = found.before.length ? `<div><span class="label">Made from</span><ul>${found.before.map(item => `<li>${escape(item.title)}</li>`).join("")}</ul></div>` : "";
       const inputs = found.inputs.length ? `<details><summary>${plural(found.inputs.length, "input")} its params carry</summary><dl>${found.inputs.map(item => `<dt>${escape(item.label)}</dt><dd>${escape(item.value)}</dd>`).join("")}</dl></details>` : "";
-      place.innerHTML = `<div class="card pinned">${aboutHtml(found, `${filesHtml(found)}${before}${inputs}<p class="hint"><code>${escape(found.output)}</code></p>`)}</div>`;
-    }).catch(error => { place.innerHTML = `<p class="hint error">${escape(error.message)}</p>`; });
+      studio.morph(place, `<div class="card pinned">${aboutHtml(found, `${filesHtml(found)}${before}${inputs}<p class="hint"><code>${escape(found.output)}</code></p>`)}</div>`);
+    }).catch(error => { studio.morph(place, `<p class="hint error">${escape(error.message)}</p>`); });
   }
 
   // --- the comparisons -------------------------------------------------------------------------
