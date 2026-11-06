@@ -80,6 +80,11 @@ class Draft(TypedDict):
     title: NotRequired[str]
     """What it shows; required for a new key, otherwise the latest version's."""
     tags: NotRequired[list[str]]
+    """Only a topic the owner would look at together with other items or
+    decisions (`pricing`, `onboarding`), never the product, the project or
+    the kind (`email`, `prompt`, `screenshot`): the key and the studio show
+    those. When the project fixes its tags (`decisions.tags`), one of them.
+    No tag is better than one that groups nothing; they carry over."""
     files: NotRequired[list[str]]
     """Paths to images, videos, PDFs, HTML or text files; or give `text`."""
     text: NotRequired[str]
@@ -256,6 +261,26 @@ class Items:
                 counted[tag] = counted.get(tag, 0) + 1
         return dict(sorted(counted.items(), key=lambda item: (-item[1], item[0])))
 
+    def vocabulary(self) -> list[str]:
+        """The project's fixed tags, the decisions' (`decisions.tags`) but
+        `important`, the owner's call on a decision; empty when it fixes none."""
+        fixed = self.project.configuration.get("decisions.tags") or []
+        found = (str(tag).strip().lower() for tag in fixed)
+        return [tag for tag in dict.fromkeys(found) if tag and tag != "important"]
+
+    def checked_tags(self, given: list[str]) -> list[str]:
+        """The tags a draft gives, lowercased; refused outside the project's vocabulary."""
+        tags = sorted({tag.strip().lower() for tag in given if tag.strip()})
+        vocabulary = self.vocabulary()
+        outside = [tag for tag in tags if vocabulary and tag not in vocabulary]
+        if outside:
+            raise UsageError(
+                f"{', '.join(outside)}: not in the project's tags ({', '.join(vocabulary)});"
+                " pick one only if the item is about it, or give none — the owner changes"
+                " them in .nock/config.toml, `decisions.tags`"
+            )
+        return tags
+
     # --- registering ------------------------------------------------------------
 
     def add(
@@ -265,6 +290,7 @@ class Items:
         and why it is not committed when it could not be."""
         key = check_key(draft["key"])
         sources = self.sources(draft)
+        tags = self.checked_tags(draft["tags"]) if "tags" in draft else None
         with self.project.lock("review"):
             earlier = self.versions(key)
             previous = earlier[-1] if earlier else {}
@@ -301,13 +327,7 @@ class Items:
                 "key": key,
                 "version": number,
                 "title": title,
-                "tags": sorted(
-                    {
-                        tag.strip().lower()
-                        for tag in draft.get("tags", previous.get("tags", []))
-                        if tag.strip()
-                    }
-                ),
+                "tags": tags if tags is not None else previous.get("tags", []),
                 "files": files,
                 "note": str(draft.get("note") or "").strip() or None,
                 "decision": decision,

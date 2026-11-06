@@ -45,6 +45,10 @@ DECIDE = """\
   video, a PDF, a page, a text): `.nock/nock review add` (`--help` has the
   fields), under a stable key, with a recipe to make it again. When the
   owner rejects or notes one, make the next version.
+- **A tag, on a decision or an item, names a topic** the owner would look
+  at together (`pricing`, `emails`), or there is none: never the project's
+  or product's name, nor a kind (`prompt`, `screenshot`) or what the key
+  says; nock shows those.
 - **Run noisy or long commands through `.nock/nock run -- COMMAND`**
   (Claude Code asks about it as about the command itself), and
   `.nock/nock check --changed` before you finish: the checks your changes

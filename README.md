@@ -471,10 +471,14 @@ tags = ["core", "web", "deploy", "billing"]
 ```
 
 Then `decide` and `edit` refuse any other tag, naming the allowed ones, and
-`decide --help`, the primer and the studio's tag filter list them; `important`
+`decide --help`, the primer and the studio's tag filter list them (the filter
+only those that would show something), and review items draw from the same
+list; `important`
 is always allowed, and so are a logika round's `logika` and `instrumentation`.
 Without a vocabulary, tags are `important`, `technical`, `product`,
-`improvement` and the agent's own (a component, a subject); `decide` prints the
+`improvement` and the agent's own: a topic the owner would look at together
+(`pricing`, `emails`), never the project's or product's name, and none when
+nothing fits; `decide` prints the
 tags in use, so a near-duplicate is caught early. `touches` names the files or
 globs it governs, and `supersedes` the decisions it overturns, which stay as
 history. A decision that should never have been recorded is deleted,
@@ -576,7 +580,7 @@ supersedes the earlier ones, which stay to compare against.
 
 ```sh
 $ .nock/nock review add '{"key": "email/anomaly-report",
-    "title": "The anomaly report email", "tags": ["email"],
+    "title": "The anomaly report email", "tags": ["anomalies"],
     "files": ["out/anomaly-report.html"],
     "note": "The headline leads with the count.", "decision": 12,
     "recipe": {"command": "uv run python dev/render.py anomaly --output $NOCK_REVIEW_OUTPUT",
@@ -587,7 +591,12 @@ $ .nock/nock review add '{"key": "email/anomaly-report",
 `.json`, …); `text` is a text given inline. A version leaves out what it
 keeps of the last: the title, tags, decision and recipe carry over. The `note`
 says what this version is, or what changed; `decision` is the decision it
-illustrates. Each version is a directory, `.nock/review/KEY/N/`, its record
+illustrates. A tag names a topic the owner would look at together across keys
+(`anomalies` groups the email with the queue's screenshot), never the
+product, the project or what the key and the kind already say (`email` on
+`email/…`, `prompt`, `screenshot`); most items need none. When the project
+fixes its tags (`decisions.tags`), an item's come from them, `important`
+aside, and `review add --help` lists them; without, any lowercase tag goes. Each version is a directory, `.nock/review/KEY/N/`, its record
 `version.json` beside its files, written and committed in the main checkout
 whichever worktree registered it, as decisions are. A file over 20 MB (most
 videos) stays on the machine, under `.nock/local/review/`, uncommitted, and
@@ -615,9 +624,10 @@ that should not be shown, in a commit; git keeps it.
   and the note it answers. `nock review regenerate KEY` does the same from a
   terminal; Claude Code asks the owner first, since it runs the recipe.
 
-The Review tab shows the items as a grid of thumbnails or a list, filtered by
-verdict (to review, approved, rejected, all), by tag and by a search on the
-key and title; `#review/KEY` opens one. The viewer shows a picture (fit, or
+The Review tab shows the items as a grid of thumbnails or a list, filtered as
+the Decisions tab filters: by verdict (to review, approved, rejected), by tag
+(only the tags that would show something in that tab) and by a search on the
+key and title; `#review/KEY` opens one, in its verdict's tab. The viewer shows a picture (fit, or
 zoomed and scrolled), a video, a PDF, a page (an HTML page runs no script
 there) or a text, and any version; "Compare" puts two side by side — the
 last two, unless picked — and a text's as a line diff, the changed words of

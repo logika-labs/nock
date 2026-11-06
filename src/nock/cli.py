@@ -24,6 +24,7 @@ from nock.processes import Output
 from nock.project import Project
 from nock.releases import VERSION
 from nock.render import PACKAGE_INTERNAL, as_json, capped, crash, plain, render
+from nock.review import Items
 from nock.telemetry import UNRECORDED_VARIABLE, Cache, Calls, digest, tree_state
 from nock.tools import BUILT_IN_SOURCE, CONFIRM_NOTES, Registry, Tool
 
@@ -63,13 +64,17 @@ def build(registry: Registry) -> Group:
 
 
 def name_tags(project: Project, registry: Registry) -> None:
-    """`decide --help` names the project's tags, when it fixes them."""
-    tool = registry.tool("decide")
-    vocabulary = Decisions(project).vocabulary()
-    if tool is not None and vocabulary:
-        tool.command.epilog = (
-            f"Tags, the project's (`decisions.tags` in .nock/config.toml): {', '.join(vocabulary)}"
-        )
+    """`decide --help` and `review add --help` name the project's tags, when it fixes them."""
+    for path, vocabulary in (
+        ("decide", Decisions(project).vocabulary()),
+        ("review add", Items(project).vocabulary()),
+    ):
+        tool = registry.tool(path)
+        if tool is not None and vocabulary:
+            tool.command.epilog = (
+                "Tags, the project's (`decisions.tags` in .nock/config.toml):"
+                f" {', '.join(vocabulary)}"
+            )
 
 
 def listing(registry: Registry, confirm: Confirm = Confirm.ASK) -> str:

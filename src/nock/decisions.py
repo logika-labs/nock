@@ -91,7 +91,8 @@ class Draft(TypedDict):
     tags: NotRequired[list[str]]
     """important (only the owner can settle it: they accept or reject it), and
     the project's vocabulary (`decide --help` lists it); without one, technical,
-    product, improvement and your own (a component, a subject)."""
+    product, improvement and your own: a topic the owner would look at
+    together (`pricing`), never the project's or product's name."""
     touches: NotRequired[list[str]]
     """The files it governs, as paths or globs: `src/pricing.py`, `migrations/**`."""
     supersedes: NotRequired[list[int]]

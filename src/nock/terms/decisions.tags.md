@@ -1,7 +1,7 @@
 ---
 term: decisions.tags
 aliases: [tag, tags]
-description: The fixed tags and your own; near-duplicates merged
+description: What a tag is for; the fixed tags and your own
 ---
 
-A project may fix its tags (`decisions.tags` in `.nock/config.toml`; `decide --help` lists them): any other is refused. Always allowed: `important` (the owner's call), and `logika` and `instrumentation` (a logika round's). Unfixed, tags are `technical`, `product`, `improvement` and your own, lowercase; `decide` prints the new ones, so a near-duplicate is fixed while cheap. A round merges tags that mean the same.
+A tag groups decisions on one topic the owner would look at together (`pricing`, `emails`, `eval`); none fits, give none. Never the project's or product's name, nor a kind: nock shows status and `important`. A project may fix its tags (`decisions.tags`; `decide --help` lists them), and any other is refused, but `important`, `logika` and `instrumentation`. Unfixed: `technical`, `product`, `improvement` and your own, lowercase; `decide` prints the new ones.

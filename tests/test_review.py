@@ -27,7 +27,7 @@ from .conftest import git, nock
 DRAFT: dict[str, Any] = {
     "key": "email/anomaly-report",
     "title": "The anomaly report email",
-    "tags": ["Email"],
+    "tags": ["Anomalies"],
     "text": "Three anomalies.\nOpen the queue.\n",
 }
 
@@ -79,7 +79,7 @@ def test_an_item_registered_in_a_worktree_is_versioned_and_committed_on_the_main
         "key": "email/anomaly-report",
         "version": 1,
         "title": "The anomaly report email",
-        "tags": ["email"],
+        "tags": ["anomalies"],
         "files": ["text.txt"],
     }
     assert not (worktree / ".nock" / "review").exists()
@@ -97,7 +97,7 @@ def test_an_item_registered_in_a_worktree_is_versioned_and_committed_on_the_main
         {"key": "email/anomaly-report", "files": ["shot.png", "page.html"], "note": "Darker."},
     )
     assert second["version"] == 2 and second["title"] == "The anomaly report email"
-    assert second["tags"] == ["email"] and second["files"] == ["shot.png", "page.html"]
+    assert second["tags"] == ["anomalies"] and second["files"] == ["shot.png", "page.html"]
     versions = json.loads(
         nock(project.root, "review", "show", "email/anomaly-report", "--json").stdout
     )
@@ -151,7 +151,7 @@ def test_the_owner_judges_the_latest_version_and_lists_filter_by_it(project: Pro
     add(project.root)
     add(
         project.root,
-        {"key": "console/queue", "title": "The queue", "tags": ["console"], "text": "q"},
+        {"key": "console/queue", "title": "The queue", "tags": ["triage"], "text": "q"},
     )
     said = judge(
         project.root, "email/anomaly-report", {"verdict": "rejected", "feedback": "Calmer."}
@@ -164,7 +164,7 @@ def test_the_owner_judges_the_latest_version_and_lists_filter_by_it(project: Pro
     assert listed["counts"] == {"unreviewed": 1, "approved": 0, "rejected": 1}
     rejected = nock(project.root, "review", "list", '{"verdict": "rejected"}', "--json")
     assert [row["key"] for row in json.loads(rejected.stdout)["items"]] == ["email/anomaly-report"]
-    tagged = nock(project.root, "review", "list", '{"tag": "console"}', "--json")
+    tagged = nock(project.root, "review", "list", '{"tag": "triage"}', "--json")
     assert [row["key"] for row in json.loads(tagged.stdout)["items"]] == ["console/queue"]
     prefixed = nock(project.root, "review", "list", '{"prefix": "email/"}', "--json")
     assert [row["key"] for row in json.loads(prefixed.stdout)["items"]] == ["email/anomaly-report"]
@@ -175,6 +175,21 @@ def test_the_owner_judges_the_latest_version_and_lists_filter_by_it(project: Pro
     assert listed["counts"] == {"unreviewed": 2, "approved": 0, "rejected": 0}
     nothing = nock(project.root, "review", "judge", "email/anomaly-report", "{}")
     assert nothing.returncode == 40
+
+
+def test_a_project_s_fixed_tags_are_the_only_tags_an_item_takes(project: Project) -> None:
+    config = project.root / ".nock" / "config.toml"
+    config.write_text(config.read_text() + '\n[decisions]\ntags = ["pricing", "important"]\n')
+    git(project.root, "commit", "-qam", "Fix the tags")
+    outside = nock(project.root, "review", "add", json.dumps(DRAFT))
+    assert outside.returncode == 40
+    assert "anomalies: not in the project's tags (pricing)" in outside.stderr
+    refused = nock(project.root, "review", "add", json.dumps({**DRAFT, "tags": ["important"]}))
+    assert refused.returncode == 40
+    assert add(project.root, {**DRAFT, "tags": ["Pricing"]})["tags"] == ["pricing"]
+    assert add(project.root, {"key": DRAFT["key"], "text": "two"})["tags"] == ["pricing"]
+    assert add(project.root, {"key": DRAFT["key"], "text": "three", "tags": []})["tags"] == []
+    assert "Tags, the project's" in nock(project.root, "review", "add", "--help").stdout
 
 
 def test_an_item_or_one_version_is_deleted_in_a_commit(project: Project) -> None:
@@ -203,7 +218,7 @@ def test_the_page_serves_the_items_and_their_files_and_takes_the_owner_s_word(
     with urllib.request.urlopen(f"{page}review") as response:
         listed = json.loads(response.read())
     assert [item["key"] for item in listed["items"]] == ["email/anomaly-report"]
-    assert listed["tags"] == {"email": 1} and listed["regenerating"] == {}
+    assert listed["tags"] == {"anomalies": 1} and listed["regenerating"] == {}
     address = f"{page}review/file/email/anomaly-report/1/text.txt"
     with urllib.request.urlopen(address) as response:
         assert response.read().decode() == DRAFT["text"]

@@ -285,7 +285,11 @@ def decide(project: Project, decision: Draft, *, force: bool = False) -> dict[st
     tagged `important`: the answer you propose as the title, the other
     answers as alternatives, and carry on with it. Write it for someone who
     knows what the system does, not how it is built; give only alternatives
-    you really weighed. The owner reviews it later; keep going meanwhile."""
+    you really weighed. A tag groups decisions on one topic the owner would
+    look at together (`pricing`, `emails`), never the project's or product's
+    name or a kind of decision: nock shows the status and whether it is
+    important. No tag fits, give none. The owner reviews it later; keep
+    going meanwhile."""
     recorded, problem = Decisions(project).decide(decision, force)
     return recorded_result(project, recorded, problem)
 
@@ -408,7 +412,11 @@ def review_add(project: Project, item: ReviewDraft) -> dict[str, Any]:
     call a new version, the latest superseding the earlier ones. Give a
     `recipe` (a command that writes the files into $NOCK_REVIEW_OUTPUT, or an
     instruction for an agent) so the owner can have it made again. Files over
-    20 MB stay on this machine, uncommitted."""
+    20 MB stay on this machine, uncommitted. A tag groups items on one topic
+    the owner would look at together, across keys (`pricing`, `onboarding`);
+    never the project's or product's name or the kind (`email`, `prompt`,
+    `screenshot`): the key and the studio already show those. Most items
+    need none; when the project fixes its tags, only those."""
     regenerating = os.environ.get(REVIEW_KEY_VARIABLE) == item.get("key", "").strip("/")
     regenerated = None
     if regenerating:
