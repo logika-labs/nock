@@ -27,7 +27,7 @@
   --sans: "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
   --display: "Unbounded", var(--sans);
-  --column: 46rem;
+  --column: 60rem;
   --radius: 20px;
 
   --pink: #ff9ad5;

@@ -4,7 +4,7 @@
    counts. Everything is scoped under .evals and named apart from the studio's shared rules
    (.node, .bar), so the studio's look reaches it only through its tokens and .card. */
 
-.evals.frame { max-width: min(1480px, 100%); padding-block: 16px 80px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; }
+.evals.frame { padding-block: 16px 80px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; }
 .evals.frame > * { min-width: 0; }
 .evals .picker { display: flex; flex-wrap: wrap; gap: 8px; }
 .evals .chip {

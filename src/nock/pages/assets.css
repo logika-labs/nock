@@ -2,7 +2,7 @@
    assets as a grid of thumbnails or a list; one opens in a viewer over the page: the version (or
    two side by side, a text's as a line diff) on the left, what it is and the owner's word on the
    right. Buttons, chips, badges and the spinner are the decisions tab's, in the studio's look. */
-.assets.frame { max-width: min(1280px, 100%); padding-block: 16px 80px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
+.assets.frame { padding-block: 16px 80px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
 .assets.frame > * { min-width: 0; }
 .assets .controls { margin-top: 0; }
 .assets .head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 24px; border-bottom: 1px solid var(--border); }

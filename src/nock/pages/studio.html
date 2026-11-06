@@ -33,7 +33,8 @@
   --sans: "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
   --display: var(--sans);
-  --column: 46rem;
+  /* Every tab's width, and nock.dev's (web/site/style.css): one measure for both. */
+  --column: 60rem;
   --number: 2.25rem;
   --radius: 12px;
   color-scheme: light;
@@ -55,11 +56,12 @@ button:not(:disabled), label[for] { cursor: pointer; }
 
 /* The band: the title with its counts under it, the menu — one link per tab — beside it. */
 .band .frame { padding-block: 24px 4px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; }
-.heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 20px; min-width: 0; }
-.titles { display: grid; gap: 4px; min-width: 0; }
+/* The menu stays on the title's line, whatever the counts say: they wrap under the title instead. */
+.heading { display: flex; flex-wrap: nowrap; align-items: center; justify-content: space-between; gap: 12px 20px; min-width: 0; }
+.titles { display: grid; gap: 4px; min-width: 0; flex: 1 1 auto; }
 .band h1 { margin: 0; font: 700 30px/1.15 var(--display); letter-spacing: -.02em; }
 .band #summary { margin: 0; font: 500 13px/20px var(--mono); color: var(--muted); font-variant-numeric: tabular-nums; }
-.menu { display: flex; align-items: center; gap: 4px; }
+.menu { display: flex; flex-wrap: nowrap; align-items: center; gap: 4px; white-space: nowrap; }
 .menu a {
   display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px; border-radius: 999px;
   color: inherit; text-decoration: none; font: 500 14px/20px var(--sans);
@@ -71,7 +73,7 @@ button:not(:disabled), label[for] { cursor: pointer; }
 .menu a[data-tab-link="decisions"] { --icon: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><path d='M2 2h12v3H2zM2 6.5h12v3H2zM2 11h8v3H2z'/></svg>"); }
 .menu a[data-tab-link="assets"] { --icon: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><path fill-rule='evenodd' d='M1 2h14v12H1zM2.5 3.5v9h11v-9zM3.5 11.5l3-4 2 2.5 1.5-1.5 2.5 3zM10.5 4.6a1.3 1.3 0 1 1 0 2.6 1.3 1.3 0 0 1 0-2.6z'/></svg>"); }
 .menu a[data-tab-link="evals"] { --icon: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><path d='M1 13h3V8H1zM6.5 13h3V3h-3zM12 13h3V6h-3z'/></svg>"); }
-.top { display: flex; align-items: center; gap: 8px; }
+.top { display: flex; flex: none; align-items: center; gap: 8px; }
 .menu a:focus-visible, .notice button:focus-visible, .gear:focus-visible, .switch:focus-visible, .popover summary:focus-visible {
   outline: 2px solid var(--ring); outline-offset: 3px;
 }
@@ -131,6 +133,9 @@ button:not(:disabled), label[for] { cursor: pointer; }
 .backdrop { position: fixed; inset: 0; z-index: 0; overflow: hidden; pointer-events: none; }
 .sprites { position: absolute; width: 0; height: 0; overflow: hidden; }
 
+@media (max-width: 720px) {
+  .heading { flex-wrap: wrap; }
+}
 @media (max-width: 560px) {
   .menu a { padding: 8px 12px; }
   .band h1 { font-size: 24px; }
