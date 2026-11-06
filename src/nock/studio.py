@@ -1,7 +1,7 @@
 """The owner's page (`nock studio`): one local server, a tab for each thing
 nock keeps for the owner: the decisions agents recorded,
-reviewed in place, the assets they made (screenshots, videos, pages, texts),
-looked at, compared and reviewed, and the evaluations, explored as a graph of their runs
+reviewed in place, the items they made for review (screenshots, videos,
+pages, texts), looked at, compared and judged, and the evaluations, explored as a graph of their runs
 (`nock.explorer`). Local, and only while `nock studio` runs.
 
 A tab is a `Tab` in `TABS`: its name is its address on the page (`#NAME`) and
@@ -27,9 +27,6 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, NotRequired, TypedDict
 
-from nock.assets import Assets
-from nock.assets import Review as AssetReview
-from nock.assets import Word as AssetWord
 from nock.commands import schema_of
 from nock.comparison import Comparison, Query
 from nock.decisions import Change, Decisions, Review
@@ -37,6 +34,8 @@ from nock.errors import Error, NotFoundError, UsageError
 from nock.evaluation import Evaluations, Run
 from nock.explorer import Explorer, View
 from nock.project import Project
+from nock.review import Items, Verdict
+from nock.review import Word as ItemWord
 from nock.schema import validate
 from nock.usage import QUESTION, Answer, Usage, sharing
 
@@ -194,60 +193,60 @@ class Raw:
 
 
 class Said(TypedDict):
-    """What the owner says about an asset on the page: a review, a note, or
+    """What the owner says about an item on the page: a verdict, a note, or
     to regenerate it (answering the note)."""
 
     key: str
-    review: NotRequired[AssetReview]
+    verdict: NotRequired[Verdict]
     feedback: NotRequired[str | None]
 
 
-class AssetsTab(Tab):
-    """`GET /assets` every asset with all its versions, the tags in use and
-    the regenerations under way; `GET /assets/file/KEY/VERSION/NAME` one of a
-    version's files, as it is; `POST /assets/review` the owner's word on the
+class ReviewTab(Tab):
+    """`GET /review` every item with all its versions, the tags in use and
+    the regenerations under way; `GET /review/file/KEY/VERSION/NAME` one of a
+    version's files, as it is; `POST /review/judge` the owner's word on the
     latest version, `/regenerate` a new version made from the recipe in the
     background, answering the note given."""
 
-    name = "assets"
-    title = "Assets"
+    name = "review"
+    title = "Review"
 
     def __init__(self, project: Project) -> None:
         super().__init__(project)
-        self.assets = Assets(project)
+        self.items = Items(project)
 
     def fragment(self) -> str:
-        return f"<style>\n{(PAGES / 'assets.css').read_text()}</style>\n" + super().fragment()
+        return f"<style>\n{(PAGES / 'review.css').read_text()}</style>\n" + super().fragment()
 
     def get(self, route: str) -> Any:
         if not route:
             return {
-                "assets": self.assets.all(),
-                "tags": self.assets.tags(),
-                "regenerating": self.assets.running(),
+                "items": self.items.all(),
+                "tags": self.items.tags(),
+                "regenerating": self.items.running(),
             }
         kind, _, rest = route.partition("/")
         place, _, name = urllib.parse.unquote(rest).rpartition("/")
         key, _, version = place.rpartition("/")
         if kind != "file" or not version.isdigit() or not key:
             raise NotFoundError("no such page")
-        return Raw(self.assets.file(key, int(version), name))
+        return Raw(self.items.file(key, int(version), name))
 
     def post(self, route: str, body: Any) -> Any:
-        if route not in ("review", "regenerate"):
+        if route not in ("judge", "regenerate"):
             raise NotFoundError("no such page")
         validate(body, schema_of(Said))
         key = body["key"]
         if route == "regenerate":
-            if "review" in body:
-                raise UsageError("regenerate takes the note, not a review")
-            return self.assets.regenerate_in_background(key, body.get("feedback"))
-        word = {field: body[field] for field in ("review", "feedback") if field in body}
-        version, _ = self.assets.review(key, AssetWord(**word))
+            if "verdict" in body:
+                raise UsageError("regenerate takes the note, not a verdict")
+            return self.items.regenerate_in_background(key, body.get("feedback"))
+        word = {field: body[field] for field in ("verdict", "feedback") if field in body}
+        version, _ = self.items.judge(key, ItemWord(**word))
         return version
 
 
-TABS: tuple[type[Tab], ...] = (DecisionsTab, AssetsTab, EvalsTab)
+TABS: tuple[type[Tab], ...] = (DecisionsTab, ReviewTab, EvalsTab)
 
 
 class Choice(TypedDict):

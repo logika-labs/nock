@@ -1,13 +1,14 @@
-"""Assets: what agents made for the owner to look at — screenshots, videos,
-PDFs, HTML pages, text — each under a stable key (`email/anomaly-report`) and
-numbered by version, the latest superseding the earlier ones. A version is a
-directory in the main checkout's `.nock/assets/KEY/N/`, its record
-(`asset.json`) beside its files, committed as decisions are; a file over
-`LARGE` bytes stays under `.nock/local/assets/` instead, uncommitted, and the
-record says so. The owner reviews the latest version (approved, rejected, a
-note) on the page or with `assets review`, and may have it regenerated: the
-recipe's command is run, or an agent is dispatched with its instruction, the
-note and the current version, and what it makes is the next version."""
+"""Review: the items agents made for the owner to look at — screenshots,
+videos, PDFs, HTML pages, text — each under a stable key
+(`email/anomaly-report`) and numbered by version, the latest superseding the
+earlier ones. A version is a directory in the main checkout's
+`.nock/review/KEY/N/`, its record (`version.json`) beside its files, committed
+as decisions are; a file over `LARGE` bytes stays under `.nock/local/review/`
+instead, uncommitted, and the record says so. The owner judges the latest
+version (approved, rejected, a note) on the page or with `review judge`, and
+may have it regenerated: the recipe's command is run, or an agent is
+dispatched with its instruction, the note and the current version, and what
+it makes is the next version."""
 
 from __future__ import annotations
 
@@ -35,7 +36,7 @@ if TYPE_CHECKING:
 ROLE = "regenerator"
 PACKAGE = Path(__file__).resolve().parent
 BRIEFS = PACKAGE / "briefs"
-RECORD = "asset.json"
+RECORD = "version.json"
 # A file larger than this (most videos) is kept on this machine, uncommitted.
 LARGE = 20 * 1024 * 1024
 # A key: lowercase words joined by `/`, none of them only digits (a version's directory is).
@@ -49,13 +50,13 @@ KINDS = {
     "text": (".txt", ".md", ".json", ".log", ".csv", ".yaml", ".yml", ".toml", ".xml", ".diff"),
 }
 # What a regeneration's command and agent are told, in their environment.
-KEY_VARIABLE = "NOCK_ASSET"
-FROM_VARIABLE = "NOCK_ASSET_FROM"
-FEEDBACK_VARIABLE = "NOCK_ASSET_FEEDBACK"
-OUTPUT_VARIABLE = "NOCK_ASSET_OUTPUT"
+KEY_VARIABLE = "NOCK_REVIEW_KEY"
+FROM_VARIABLE = "NOCK_REVIEW_FROM"
+FEEDBACK_VARIABLE = "NOCK_REVIEW_FEEDBACK"
+OUTPUT_VARIABLE = "NOCK_REVIEW_OUTPUT"
 
 
-class Review(StrEnum):
+class Verdict(StrEnum):
     UNREVIEWED = "unreviewed"
     APPROVED = "approved"
     REJECTED = "rejected"
@@ -63,11 +64,11 @@ class Review(StrEnum):
 
 
 class Recipe(TypedDict):
-    """How to make the asset again: a command, an agent's instruction, or both."""
+    """How to make the item again: a command, an agent's instruction, or both."""
 
     command: NotRequired[str]
     """Run in the working tree by `sh -c`; it writes the new version's files
-    into $NOCK_ASSET_OUTPUT, and may read the owner's note in $NOCK_ASSET_FEEDBACK."""
+    into $NOCK_REVIEW_OUTPUT, and may read the owner's note in $NOCK_REVIEW_FEEDBACK."""
     instruction: NotRequired[str]
     """What an agent does to make it, told the owner's note and the current version."""
 
@@ -91,15 +92,15 @@ class Draft(TypedDict):
 
 
 class Word(TypedDict):
-    """The owner's word on the latest version: a review, a note, or both."""
+    """The owner's word on the latest version: a verdict, a note, or both."""
 
-    review: NotRequired[Review]
+    verdict: NotRequired[Verdict]
     feedback: NotRequired[str | None]
 
 
 class Filter(TypedDict):
     tag: NotRequired[str]
-    review: NotRequired[Review]
+    verdict: NotRequired[Verdict]
     """The latest version's."""
     prefix: NotRequired[str]
     """Keys starting with this: `email/`."""
@@ -128,30 +129,30 @@ def kind_of(name: str) -> str:
 
 
 def row(version: dict[str, Any], count: int) -> dict[str, Any]:
-    """The latest version of an asset in a line, as lists show it."""
+    """The latest version of an item in a line, as lists show it."""
     return {
         "key": version["key"],
         "title": version["title"],
         "version": version["version"],
         "versions": count,
-        "review": version["review"],
+        "verdict": version["verdict"],
         "tags": version["tags"],
         "kinds": sorted({item["kind"] for item in version["files"]}),
     }
 
 
-class Assets:
+class Items:
     def __init__(self, project: Project) -> None:
         self.project = project
 
     @property
     def directory(self) -> Path:
         """The main checkout's, whichever worktree registers: the owner reviews there."""
-        return self.project.root / ".nock" / "assets"
+        return self.project.root / ".nock" / "review"
 
     @property
     def large(self) -> Path:
-        return self.project.local / "assets"
+        return self.project.local / "review"
 
     @property
     def regenerations(self) -> Path:
@@ -163,7 +164,7 @@ class Assets:
     # --- reading ----------------------------------------------------------------
 
     def versions(self, key: str) -> list[dict[str, Any]]:
-        """Every version of an asset, the earliest first; none for a key never registered."""
+        """Every version of an item, the earliest first; none for a key never registered."""
         place = self.directory / check_key(key)
         if not place.is_dir():
             return []
@@ -177,7 +178,7 @@ class Assets:
     def history(self, key: str) -> list[dict[str, Any]]:
         versions = self.versions(key)
         if not versions:
-            raise NotFoundError(f"no asset {key} — `.nock/nock assets list` lists them")
+            raise NotFoundError(f"no item {key} — `.nock/nock review list` lists them")
         return versions
 
     def latest(self, key: str) -> dict[str, Any]:
@@ -194,24 +195,22 @@ class Assets:
         return sorted(found)
 
     def all(self) -> list[dict[str, Any]]:
-        """Every asset with all its versions, the most recently registered first."""
+        """Every item with all its versions, the most recently registered first."""
         found = [{"key": key, "versions": self.versions(key)} for key in self.keys()]
         return sorted(
-            found, key=lambda asset: asset["versions"][-1]["recorded"]["moment"], reverse=True
+            found, key=lambda item: item["versions"][-1]["recorded"]["moment"], reverse=True
         )
 
     def matching(self, filter: Filter) -> list[dict[str, Any]]:
         found = self.all()
         if "prefix" in filter:
-            found = [asset for asset in found if asset["key"].startswith(filter["prefix"])]
+            found = [item for item in found if item["key"].startswith(filter["prefix"])]
         if "tag" in filter:
             tag = filter["tag"].lower()
-            found = [asset for asset in found if tag in asset["versions"][-1]["tags"]]
-        if "review" in filter:
-            found = [
-                asset for asset in found if asset["versions"][-1]["review"] == filter["review"]
-            ]
-        return [row(asset["versions"][-1], len(asset["versions"])) for asset in found]
+            found = [item for item in found if tag in item["versions"][-1]["tags"]]
+        if "verdict" in filter:
+            found = [item for item in found if item["versions"][-1]["verdict"] == filter["verdict"]]
+        return [row(item["versions"][-1], len(item["versions"])) for item in found]
 
     def shown(self, key: str) -> list[dict[str, Any]]:
         """Every version, each file with where it is."""
@@ -226,34 +225,34 @@ class Assets:
         record = next((item for item in self.history(key) if item["version"] == version), None)
         listed = record and next((item for item in record["files"] if item["name"] == name), None)
         if not listed:
-            raise NotFoundError(f"asset {key} has no file {name} in version {version}")
+            raise NotFoundError(f"item {key} has no file {name} in version {version}")
         base = self.large if listed["local"] else self.directory
         return base / key / str(version) / name
 
     def counts(self) -> dict[str, int]:
-        """The assets by their latest version's review."""
-        counts = {review: 0 for review in map(str, Review)}
-        for asset in self.all():
-            counts[asset["versions"][-1]["review"]] += 1
+        """The items by their latest version's verdict."""
+        counts = {verdict: 0 for verdict in map(str, Verdict)}
+        for item in self.all():
+            counts[item["versions"][-1]["verdict"]] += 1
         return counts
 
     def to_remake(self) -> list[dict[str, Any]]:
         """Latest versions the owner rejected, or left a note on without
         approving: someone should make the next version."""
         return [
-            asset["versions"][-1]
-            for asset in self.all()
-            if asset["versions"][-1]["review"] == Review.REJECTED
+            item["versions"][-1]
+            for item in self.all()
+            if item["versions"][-1]["verdict"] == Verdict.REJECTED
             or (
-                asset["versions"][-1]["review"] == Review.UNREVIEWED
-                and asset["versions"][-1]["feedback"]
+                item["versions"][-1]["verdict"] == Verdict.UNREVIEWED
+                and item["versions"][-1]["feedback"]
             )
         ]
 
     def tags(self) -> dict[str, int]:
         counted: dict[str, int] = {}
-        for asset in self.all():
-            for tag in asset["versions"][-1]["tags"]:
+        for item in self.all():
+            for tag in item["versions"][-1]["tags"]:
                 counted[tag] = counted.get(tag, 0) + 1
         return dict(sorted(counted.items(), key=lambda item: (-item[1], item[0])))
 
@@ -262,16 +261,16 @@ class Assets:
     def add(
         self, draft: Draft, regenerated: dict[str, Any] | None = None
     ) -> tuple[dict[str, Any], str | None]:
-        """Register the next version of an asset, and commit it; the record,
+        """Register the next version of an item, and commit it; the record,
         and why it is not committed when it could not be."""
         key = check_key(draft["key"])
         sources = self.sources(draft)
-        with self.project.lock("assets"):
+        with self.project.lock("review"):
             earlier = self.versions(key)
             previous = earlier[-1] if earlier else {}
             title = str(draft.get("title") or previous.get("title") or "").strip()
             if not title:
-                raise UsageError(f"`title` is missing: {key} is a new asset")
+                raise UsageError(f"`title` is missing: {key} is a new item")
             decision = draft.get("decision", previous.get("decision"))
             if decision is not None:
                 Decisions(self.project).get(decision)
@@ -314,7 +313,7 @@ class Assets:
                 "decision": decision,
                 "recipe": recipe or None,
                 "regenerated": regenerated,
-                "review": str(Review.UNREVIEWED),
+                "verdict": str(Verdict.UNREVIEWED),
                 "feedback": None,
                 "reviewed": None,
                 "recorded": {
@@ -324,7 +323,7 @@ class Assets:
                 },
             }
             write_json(folder / RECORD, version)
-            return version, self.commit([folder], f"Asset {key}, version {number}: {title}")
+            return version, self.commit([folder], f"Review item {key}, version {number}: {title}")
 
     def sources(self, draft: Draft) -> list[tuple[str, Path | str]]:
         """Each file's name and where it comes from (a path, or the text itself)."""
@@ -348,37 +347,37 @@ class Assets:
             raise UsageError(f"two files named {', '.join(doubled)}: rename one")
         return found
 
-    def review(self, key: str, word: Word) -> tuple[dict[str, Any], str | None]:
+    def judge(self, key: str, word: Word) -> tuple[dict[str, Any], str | None]:
         """The owner's word on the latest version, committed."""
-        if "review" not in word and "feedback" not in word:
-            raise UsageError("nothing to say: give `review`, `feedback`, or both")
-        with self.project.lock("assets"):
+        if "verdict" not in word and "feedback" not in word:
+            raise UsageError("nothing to say: give `verdict`, `feedback`, or both")
+        with self.project.lock("review"):
             version = self.latest(key)
-            if "review" in word:
-                version["review"] = str(word["review"])
+            if "verdict" in word:
+                version["verdict"] = str(word["verdict"])
                 version["reviewed"] = {"moment": now(), "session": self.project.current_session()}
             if "feedback" in word:
                 version["feedback"] = str(word["feedback"] or "").strip() or None
             folder = self.folder(version["key"], version["version"])
             write_json(folder / RECORD, version)
-            said = str(word["review"]) if "review" in word else "noted"
-            message = f"Asset {version['key']}, version {version['version']}, {said}"
+            said = str(word["verdict"]) if "verdict" in word else "noted"
+            message = f"Review item {version['key']}, version {version['version']}, {said}"
             return version, self.commit([folder], message)
 
     def delete(self, key: str, version: int | None = None) -> tuple[list[int], str | None]:
-        """Remove an asset, or one version of it, and commit that; git keeps it."""
-        with self.project.lock("assets"):
+        """Remove an item, or one version of it, and commit that; git keeps it."""
+        with self.project.lock("review"):
             versions = [item["version"] for item in self.history(key)]
             doomed = versions if version is None else [version]
             if version is not None and version not in versions:
-                raise NotFoundError(f"asset {key} has no version {version}")
+                raise NotFoundError(f"item {key} has no version {version}")
             folders = [self.folder(key, number) for number in doomed]
             for number, folder in zip(doomed, folders, strict=True):
                 shutil.rmtree(folder)
                 shutil.rmtree(self.large / key / str(number), ignore_errors=True)
             self.prune(self.directory / key)
             what = "deleted" if version is None else f"version {version} deleted"
-            return doomed, self.commit(folders, f"Asset {key}, {what}")
+            return doomed, self.commit(folders, f"Review item {key}, {what}")
 
     def prune(self, place: Path) -> None:
         """Remove the empty directories a deleted key leaves."""
@@ -421,7 +420,7 @@ class Assets:
         recipe = version.get("recipe") or {}
         if not recipe:
             raise PreconditionError(
-                f"asset {key} has no recipe: register a version with `recipe`"
+                f"item {key} has no recipe: register a version with `recipe`"
                 ' (`{"command": …}` or `{"instruction": …}`) to regenerate it'
             )
         return version, recipe
@@ -430,10 +429,10 @@ class Assets:
         """Save the owner's note on the latest version, and start making the next."""
         self.recipe(key)
         if feedback is not None:
-            self.review(key, {"feedback": feedback})
+            self.judge(key, {"feedback": feedback})
         version = self.latest(key)
         process = subprocess.Popen(
-            [sys.executable, "-m", "nock", "assets", "regenerate", key],
+            [sys.executable, "-m", "nock", "review", "regenerate", key],
             cwd=self.project.here,
             env={**os.environ, "PYTHONPATH": str(PACKAGE.parent)},
             stdin=subprocess.DEVNULL,

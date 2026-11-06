@@ -1,6 +1,6 @@
 ---
 term: decisions.review
-aliases: [review, reviews, accept, reject, note, accepted, rejected]
+aliases: [accept, reject, note, accepted, rejected]
 description: The owner's word on a decision: accepted, rejected, a note
 ---
 

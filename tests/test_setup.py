@@ -230,7 +230,7 @@ def test_the_version_is_the_package_s() -> None:
 # nock's own commands that need the owner's word: re-wiring the permissions,
 # fetching code, sending a summary or a report out.
 OWN_ASKED = [
-    "Bash(.nock/nock assets regenerate:*)",
+    "Bash(.nock/nock review regenerate:*)",
     "Bash(.nock/nock share:*)",
     "Bash(.nock/nock report:*)",
     "Bash(.nock/nock init:*)",

@@ -1,62 +1,62 @@
-<div class="frame assets" id="assets">
+<div class="frame review" id="review">
   <div class="controls">
     <div class="head">
-      <nav class="reviews" role="tablist" aria-label="Which assets" id="assets-reviews">
-        <button type="button" role="tab" data-asset-review="all" aria-selected="true">all <span class="count" id="assets-count-all"></span></button>
-        <button type="button" role="tab" data-asset-review="unreviewed" aria-selected="false">to review <span class="count" id="assets-count-unreviewed"></span></button>
-        <button type="button" role="tab" data-asset-review="approved" aria-selected="false">approved <span class="count" id="assets-count-approved"></span></button>
-        <button type="button" role="tab" data-asset-review="rejected" aria-selected="false">rejected <span class="count" id="assets-count-rejected"></span></button>
+      <nav class="reviews" role="tablist" aria-label="Which items" id="review-verdicts">
+        <button type="button" role="tab" data-item-verdict="all" aria-selected="true">all <span class="count" id="review-count-all"></span></button>
+        <button type="button" role="tab" data-item-verdict="unreviewed" aria-selected="false">to review <span class="count" id="review-count-unreviewed"></span></button>
+        <button type="button" role="tab" data-item-verdict="approved" aria-selected="false">approved <span class="count" id="review-count-approved"></span></button>
+        <button type="button" role="tab" data-item-verdict="rejected" aria-selected="false">rejected <span class="count" id="review-count-rejected"></span></button>
       </nav>
       <div class="layout" role="group" aria-label="Layout">
-        <button type="button" data-asset-layout="grid" aria-pressed="true"><svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M2 2h5v5H2zM9 2h5v5H9zM2 9h5v5H2zM9 9h5v5H9z"/></svg>grid</button>
-        <button type="button" data-asset-layout="list" aria-pressed="false"><svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M2 2.5h3v3H2zM6.5 3h7.5v2H6.5zM2 6.5h3v3H2zM6.5 7h7.5v2H6.5zM2 10.5h3v3H2zM6.5 11h7.5v2H6.5z"/></svg>list</button>
+        <button type="button" data-item-layout="grid" aria-pressed="true"><svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M2 2h5v5H2zM9 2h5v5H9zM2 9h5v5H2zM9 9h5v5H9z"/></svg>grid</button>
+        <button type="button" data-item-layout="list" aria-pressed="false"><svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M2 2.5h3v3H2zM6.5 3h7.5v2H6.5zM2 6.5h3v3H2zM6.5 7h7.5v2H6.5zM2 10.5h3v3H2zM6.5 11h7.5v2H6.5z"/></svg>list</button>
       </div>
     </div>
     <div class="tools">
-      <label class="search" for="assets-search">
+      <label class="search" for="review-search">
         <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="7" cy="7" r="4.75" stroke="currentColor" stroke-width="1.5"/><path d="m10.5 10.5 3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
-        <input type="search" id="assets-search" placeholder="search by key or title" autocomplete="off" aria-label="Search assets">
+        <input type="search" id="review-search" placeholder="search by key or title" autocomplete="off" aria-label="Search the items">
       </label>
     </div>
-    <div class="tags" id="assets-tag-row"><div class="chips" id="assets-tags" role="group" aria-label="Tags"></div></div>
+    <div class="tags" id="review-tag-row"><div class="chips" id="review-tags" role="group" aria-label="Tags"></div></div>
   </div>
-  <main><section id="assets-list" class="grid" aria-live="polite"></section></main>
-  <div class="assets-viewer" id="assets-viewer" role="dialog" aria-modal="true" aria-labelledby="assets-viewer-title" hidden>
+  <main><section id="review-list" class="grid" aria-live="polite"></section></main>
+  <div class="review-viewer" id="review-viewer" role="dialog" aria-modal="true" aria-labelledby="review-viewer-title" hidden>
     <div class="window">
-      <header id="assets-viewer-head"></header>
+      <header id="review-viewer-head"></header>
       <div class="viewer-body">
-        <div class="stage" id="assets-stage"></div>
+        <div class="stage" id="review-stage"></div>
         <aside>
-          <div id="assets-about"></div>
+          <div id="review-about"></div>
           <div class="section">
-            <span class="label" id="assets-note-label">Your note</span>
-            <textarea id="assets-note" rows="1" aria-labelledby="assets-note-label" placeholder="What should change? Regenerate takes it into account."></textarea>
+            <span class="label" id="review-note-label">Your note</span>
+            <textarea id="review-note" rows="1" aria-labelledby="review-note-label" placeholder="What should change? Regenerate takes it into account."></textarea>
           </div>
-          <div class="buttons" id="assets-buttons">
-            <button type="button" class="button secondary" data-asset-act="rejected">Reject <kbd>r</kbd></button>
-            <button type="button" class="button primary" data-asset-act="approved">Approve <kbd>a</kbd></button>
-            <button type="button" class="button ghost" data-asset-act="note">Note <kbd>n</kbd></button>
-            <button type="button" class="button ghost" data-asset-act="regenerate">Regenerate <kbd>g</kbd></button>
+          <div class="buttons" id="review-buttons">
+            <button type="button" class="button secondary" data-item-act="rejected">Reject <kbd>r</kbd></button>
+            <button type="button" class="button primary" data-item-act="approved">Approve <kbd>a</kbd></button>
+            <button type="button" class="button ghost" data-item-act="note">Note <kbd>n</kbd></button>
+            <button type="button" class="button ghost" data-item-act="regenerate">Regenerate <kbd>g</kbd></button>
           </div>
-          <p class="hint error" id="assets-problem" hidden></p>
-          <div class="keys"><kbd>←</kbd> <kbd>→</kbd> between assets · <kbd>c</kbd> compare · <kbd>esc</kbd> back · in the note, <kbd id="assets-mod">⌘</kbd> <kbd>↵</kbd> saves it</div>
+          <p class="hint error" id="review-problem" hidden></p>
+          <div class="keys"><kbd>←</kbd> <kbd>→</kbd> between items · <kbd>c</kbd> compare · <kbd>esc</kbd> back · in the note, <kbd id="review-mod">⌘</kbd> <kbd>↵</kbd> saves it</div>
         </aside>
       </div>
     </div>
   </div>
 </div>
 <script>
-// The assets tab (its look is pages/assets.css): `GET assets` every asset with all its versions,
-// polled while shown; a version's files come from `assets/file/KEY/VERSION/NAME`. The viewer shows
+// The review tab (its look is pages/review.css): `GET review` every item with all its versions,
+// polled while shown; a version's files come from `review/file/KEY/VERSION/NAME`. The viewer shows
 // one version or, comparing, two (a text's as a line diff, written here: an LCS over lines, then
-// over the words of a changed line); the owner's word goes to `POST assets/review`, and Regenerate
-// to `POST assets/regenerate`, after which the next version shows up on a later poll.
+// over the words of a changed line); the owner's word goes to `POST items/review`, and Regenerate
+// to `POST items/regenerate`, after which the next version shows up on a later poll.
 (() => {
   const $ = id => document.getElementById(id);
   const escape = text => String(text ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
   const MAC = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
   const POLL = 3000;
-  const REVIEWS = ["unreviewed", "approved", "rejected"];
+  const VERDICTS = ["unreviewed", "approved", "rejected"];
   const WORDS = { unreviewed: "to review", approved: "approved", rejected: "rejected" };
   const TONE = { unreviewed: "", approved: "ok", rejected: "error" };
   const CHEVRON = '<svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="m4 6 4 4 4-4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
@@ -65,13 +65,13 @@
     video: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2.5" y="5" width="19" height="14" rx="2"/><path d="m10 9 5 3-5 3z" fill="currentColor"/></svg>',
   };
   const state = {
-    shown: false, seen: "", assets: [], tags: {}, regenerating: {},
-    review: "all", tags_chosen: new Set(), search: "", layout: "grid",
+    shown: false, seen: "", items: [], tags: {}, regenerating: {},
+    verdict: "all", tags_chosen: new Set(), search: "", layout: "grid",
     open: null, compare: false, single: null, left: null, right: null, file: null, zoom: "fit",
     notes: new Map(), latest: new Map(), picker: null, link: null,
   };
-  try { state.layout = localStorage.getItem("nock.assets.layout") || "grid"; } catch { /* storage refused: the grid */ }
-  $("assets-mod").textContent = MAC ? "⌘" : "Ctrl";
+  try { state.layout = localStorage.getItem("nock.review.layout") || "grid"; } catch { /* storage refused: the grid */ }
+  $("review-mod").textContent = MAC ? "⌘" : "Ctrl";
 
   // --- time -------------------------------------------------------------------------------------
 
@@ -84,32 +84,32 @@
   }
   const time = moment => moment ? `<time datetime="${escape(moment)}" title="${escape(new Date(moment).toLocaleString())}">${escape(ago(moment))}</time>` : "";
 
-  // --- the assets ---------------------------------------------------------------------------------
+  // --- the items ---------------------------------------------------------------------------------
 
-  const find = key => state.assets.find(asset => asset.key === key);
-  const last = asset => asset.versions[asset.versions.length - 1];
-  const version = (asset, number) => asset.versions.find(item => item.version === number) || last(asset);
-  const url = (asset, item, name) => `assets/file/${asset.key.split("/").map(encodeURIComponent).join("/")}/${item.version}/${encodeURIComponent(name)}`;
+  const find = key => state.items.find(item => item.key === key);
+  const last = item => item.versions[item.versions.length - 1];
+  const version = (item, number) => item.versions.find(edition => edition.version === number) || last(item);
+  const url = (item, edition, name) => `review/file/${item.key.split("/").map(encodeURIComponent).join("/")}/${edition.version}/${encodeURIComponent(name)}`;
   const texts = new Map();
   function text(address) {
     if (!texts.has(address)) texts.set(address, fetch(address).then(response => response.ok ? response.text() : Promise.reject(new Error("gone"))));
     return texts.get(address);
   }
 
-  function matches(asset) {
-    const latest = last(asset);
-    if (state.review !== "all" && latest.review !== state.review) return false;
+  function matches(item) {
+    const latest = last(item);
+    if (state.verdict !== "all" && latest.verdict !== state.verdict) return false;
     if (state.tags_chosen.size && ![...state.tags_chosen].every(tag => latest.tags.includes(tag))) return false;
     const words = state.search.toLowerCase().split(/\s+/).filter(Boolean);
-    const said = `${asset.key} ${latest.title}`.toLowerCase();
+    const said = `${item.key} ${latest.title}`.toLowerCase();
     return words.every(word => said.includes(word));
   }
-  const visible = () => state.assets.filter(matches);
+  const visible = () => state.items.filter(matches);
 
-  function thumb(asset) {
-    const latest = last(asset);
+  function thumb(item) {
+    const latest = last(item);
     const first = latest.files[0];
-    const address = url(asset, latest, first.name);
+    const address = url(item, latest, first.name);
     const more = latest.files.length > 1 ? `<span class="more">+${latest.files.length - 1}</span>` : "";
     let inner = "";
     if (first.kind === "image") inner = `<img src="${address}" alt="" loading="lazy">`;
@@ -120,14 +120,14 @@
     return `<span class="thumb">${inner}<span class="kind">${escape(first.kind)}</span>${more}</span>`;
   }
 
-  function badges(asset) {
-    const latest = last(asset);
+  function badges(item) {
+    const latest = last(item);
     const kinds = [...new Set(latest.files.map(file => file.kind))].join(" + ");
     const found = [`<span class="badge kind-badge">${escape(kinds)}</span>`, `<span class="badge">v${latest.version}</span>`];
-    if (state.regenerating[asset.key] && !state.regenerating[asset.key].problem) found.push('<span class="badge info spin"><span class="spinner" aria-hidden="true"></span>making</span>');
-    else if (state.regenerating[asset.key]) found.push('<span class="badge error">regeneration failed</span>');
-    found.push(`<span class="badge ${TONE[latest.review]}">${WORDS[latest.review]}</span>`);
-    if (latest.feedback && latest.review === "unreviewed") found.push('<span class="badge warning">noted</span>');
+    if (state.regenerating[item.key] && !state.regenerating[item.key].problem) found.push('<span class="badge info spin"><span class="spinner" aria-hidden="true"></span>making</span>');
+    else if (state.regenerating[item.key]) found.push('<span class="badge error">regeneration failed</span>');
+    found.push(`<span class="badge ${TONE[latest.verdict]}">${WORDS[latest.verdict]}</span>`);
+    if (latest.feedback && latest.verdict === "unreviewed") found.push('<span class="badge warning">noted</span>');
     return found.join("");
   }
 
@@ -144,43 +144,43 @@
     }
   }
 
-  function card(asset) {
-    const latest = last(asset);
-    return `<button type="button" class="card" data-key="${escape(asset.key)}" data-asset-open="${escape(asset.key)}"${matches(asset) ? "" : " hidden"}>
-        ${thumb(asset)}
-        <span class="meta"><span class="title">${escape(latest.title)}</span><span class="key">${escape(asset.key)}</span>
-        <span class="badges">${badges(asset)}${time(latest.recorded.moment)}</span></span>
+  function card(item) {
+    const latest = last(item);
+    return `<button type="button" class="card" data-key="${escape(item.key)}" data-item-open="${escape(item.key)}"${matches(item) ? "" : " hidden"}>
+        ${thumb(item)}
+        <span class="meta"><span class="title">${escape(latest.title)}</span><span class="key">${escape(item.key)}</span>
+        <span class="badges">${badges(item)}${time(latest.recorded.moment)}</span></span>
       </button>`;
   }
 
   function drawList() {
-    const counts = { all: state.assets.length, unreviewed: 0, approved: 0, rejected: 0 };
-    for (const asset of state.assets) counts[last(asset).review]++;
-    for (const key of Object.keys(counts)) $(`assets-count-${key}`).textContent = counts[key] || "";
-    for (const tab of document.querySelectorAll("[data-asset-review]")) tab.setAttribute("aria-selected", String(tab.dataset.assetReview === state.review));
-    for (const button of document.querySelectorAll("[data-asset-layout]")) button.setAttribute("aria-pressed", String(button.dataset.assetLayout === state.layout));
-    const remake = state.assets.filter(asset => last(asset).review === "rejected" || (last(asset).review === "unreviewed" && last(asset).feedback)).length;
+    const counts = { all: state.items.length, unreviewed: 0, approved: 0, rejected: 0 };
+    for (const item of state.items) counts[last(item).verdict]++;
+    for (const key of Object.keys(counts)) $(`review-count-${key}`).textContent = counts[key] || "";
+    for (const tab of document.querySelectorAll("[data-item-verdict]")) tab.setAttribute("aria-selected", String(tab.dataset.itemVerdict === state.verdict));
+    for (const button of document.querySelectorAll("[data-item-layout]")) button.setAttribute("aria-pressed", String(button.dataset.itemLayout === state.layout));
+    const remake = state.items.filter(item => last(item).verdict === "rejected" || (last(item).verdict === "unreviewed" && last(item).feedback)).length;
     const making = Object.values(state.regenerating).filter(entry => !entry.problem).length;
     const said = [counts.unreviewed ? `${counts.unreviewed} to review` : "", remake ? `${remake} to make again` : "", making ? `${making} being made` : ""].filter(Boolean);
-    studio.summary("assets", state.assets.length ? (said.join(" · ") || "nothing waits on you") : "no assets yet");
+    studio.summary("review", state.items.length ? (said.join(" · ") || "nothing waits on you") : "nothing to review yet");
     const tags = Object.entries(state.tags).map(([tag]) => tag);
     for (const tag of state.tags_chosen) if (!tags.includes(tag)) tags.push(tag);
-    const pool = state.assets.filter(asset => state.review === "all" || last(asset).review === state.review);
-    studio.morph($("assets-tags"), tags.map(tag => {
-      const count = pool.filter(asset => last(asset).tags.includes(tag)).length;
+    const pool = state.items.filter(item => state.verdict === "all" || last(item).verdict === state.verdict);
+    studio.morph($("review-tags"), tags.map(tag => {
+      const count = pool.filter(item => last(item).tags.includes(tag)).length;
       const chosen = state.tags_chosen.has(tag);
-      return `<button type="button" class="chip" data-key="${escape(tag)}" data-asset-tag="${escape(tag)}" aria-pressed="${chosen}" ${count === 0 && !chosen ? "disabled" : ""}>${escape(tag)} <span class="count">${count}</span></button>`;
+      return `<button type="button" class="chip" data-key="${escape(tag)}" data-item-tag="${escape(tag)}" aria-pressed="${chosen}" ${count === 0 && !chosen ? "disabled" : ""}>${escape(tag)} <span class="count">${count}</span></button>`;
     }).join(""));
-    $("assets-tag-row").hidden = !tags.length;
-    const list = $("assets-list");
+    $("review-tag-row").hidden = !tags.length;
+    const list = $("review-list");
     list.className = state.layout;
     // Every card stays drawn, those the filters leave out hidden: a card is never made again, so
     // its picture, page or video loads once, and again only when its latest version changes.
-    const filtered = state.search.trim() || state.tags_chosen.size || state.review !== "all";
+    const filtered = state.search.trim() || state.tags_chosen.size || state.verdict !== "all";
     const empty = visible().length ? "" : `<div class="empty" data-key="empty">${filtered
-      ? "<strong>No matches</strong><span>No asset fits the search and filters.</span>"
-      : "<strong>No assets yet</strong><span>Agents show you what they made with <code>.nock/nock assets add</code>; it appears here.</span>"}</div>`;
-    studio.morph(list, state.assets.map(card).join("") + empty);
+      ? "<strong>No matches</strong><span>No item fits the search and filters.</span>"
+      : "<strong>Nothing to review yet</strong><span>Agents show you what they made with <code>.nock/nock review add</code>; it appears here.</span>"}</div>`;
+    studio.morph(list, state.items.map(card).join("") + empty);
     fill(list);
   }
 
@@ -284,44 +284,44 @@
   // --- the viewer ---------------------------------------------------------------------------------
 
   // Which versions are shown: one (the latest unless picked), or two (the last two unless picked).
-  function chosen(asset) {
-    const numbers = asset.versions.map(item => item.version);
+  function chosen(item) {
+    const numbers = item.versions.map(edition => edition.version);
     if (!state.compare) return [state.single && numbers.includes(state.single) ? state.single : numbers[numbers.length - 1]];
     const right = state.right && numbers.includes(state.right) ? state.right : numbers[numbers.length - 1];
     const left = state.left && numbers.includes(state.left) ? state.left : numbers[Math.max(0, numbers.length - 2)];
     return [left, right];
   }
 
-  function picker(asset, side, number) {
-    const latest = last(asset).version;
-    const item = version(asset, number);
-    const options = [...asset.versions].reverse().map(entry => `<li role="option" id="assets-option-${side}-${entry.version}" data-version="${entry.version}" aria-selected="${entry.version === number}">
-        <span class="number">v${entry.version}</span>${entry.version === latest ? '<span class="badge">latest</span>' : ""}<span class="badge ${TONE[entry.review]}">${WORDS[entry.review]}</span>${time(entry.recorded.moment)}</li>`).join("");
+  function picker(item, side, number) {
+    const latest = last(item).version;
+    const edition = version(item, number);
+    const options = [...item.versions].reverse().map(entry => `<li role="option" id="review-option-${side}-${entry.version}" data-version="${entry.version}" aria-selected="${entry.version === number}">
+        <span class="number">v${entry.version}</span>${entry.version === latest ? '<span class="badge">latest</span>' : ""}<span class="badge ${TONE[entry.verdict]}">${WORDS[entry.verdict]}</span>${time(entry.recorded.moment)}</li>`).join("");
     return `<div class="picker" data-picker="${side}">
-      <button type="button" aria-haspopup="listbox" aria-expanded="false" aria-label="Version">v${item.version} <span class="quiet">${item.version === latest ? "latest" : `of ${latest}`}</span>${CHEVRON}</button>
+      <button type="button" aria-haspopup="listbox" aria-expanded="false" aria-label="Version">v${edition.version} <span class="quiet">${edition.version === latest ? "latest" : `of ${latest}`}</span>${CHEVRON}</button>
       <ul role="listbox" tabindex="-1" aria-label="Versions" hidden>${options}</ul>
     </div>`;
   }
 
-  function names(asset, numbers) {
+  function names(item, numbers) {
     const found = [];
-    for (const number of numbers) for (const file of version(asset, number).files) if (!found.includes(file.name)) found.push(file.name);
+    for (const number of numbers) for (const file of version(item, number).files) if (!found.includes(file.name)) found.push(file.name);
     return found;
   }
 
-  function fileOf(asset, number) {
-    const item = version(asset, number);
-    return item.files.find(file => file.name === state.file) || item.files[0];
+  function fileOf(item, number) {
+    const edition = version(item, number);
+    return edition.files.find(file => file.name === state.file) || edition.files[0];
   }
 
-  function pane(asset, number) {
-    const item = version(asset, number);
-    const file = fileOf(asset, number);
-    if (state.file && file.name !== state.file) return `<div class="pane"><p class="missing">Version ${item.version} has no ${escape(state.file)}.</p></div>`;
-    const address = url(asset, item, file.name);
+  function pane(item, number) {
+    const edition = version(item, number);
+    const file = fileOf(item, number);
+    if (state.file && file.name !== state.file) return `<div class="pane"><p class="missing">Version ${edition.version} has no ${escape(state.file)}.</p></div>`;
+    const address = url(item, edition, file.name);
     if (file.kind === "image") {
       const zoomed = state.zoom !== "fit";
-      return `<div class="pane ${zoomed ? "zoomed" : "fit"}"><img data-key="${address}" src="${address}" alt="${escape(item.title)}, version ${item.version}" data-zoom-image ${zoomed ? `data-scale="${state.zoom}"` : ""}></div>`;
+      return `<div class="pane ${zoomed ? "zoomed" : "fit"}"><img data-key="${address}" src="${address}" alt="${escape(edition.title)}, version ${edition.version}" data-zoom-image ${zoomed ? `data-scale="${state.zoom}"` : ""}></div>`;
     }
     if (file.kind === "video") return `<div class="pane fit"><video data-key="${address}" src="${address}" controls preload="metadata" playsinline></video></div>`;
     if (file.kind === "pdf") return `<div class="pane"><iframe data-key="${address}" src="${address}" title="${escape(file.name)}"></iframe></div>`;
@@ -329,38 +329,38 @@
     return `<div class="pane"><pre class="text" data-key="${address}" data-text="${address}" data-own>…</pre></div>`;
   }
 
-  function drawStage(asset) {
-    const numbers = chosen(asset);
-    const files = names(asset, numbers);
-    const kinds = numbers.map(number => fileOf(asset, number).kind);
-    const fileTabs = files.length > 1 ? `<div class="files" role="group" aria-label="Files">${files.map(name => `<button type="button" class="chip" data-key="${escape(name)}" data-asset-file="${escape(name)}" aria-pressed="${name === (state.file || fileOf(asset, numbers[numbers.length - 1]).name)}">${escape(name)}</button>`).join("")}</div>` : "";
+  function drawStage(item) {
+    const numbers = chosen(item);
+    const files = names(item, numbers);
+    const kinds = numbers.map(number => fileOf(item, number).kind);
+    const fileTabs = files.length > 1 ? `<div class="files" role="group" aria-label="Files">${files.map(name => `<button type="button" class="chip" data-key="${escape(name)}" data-item-file="${escape(name)}" aria-pressed="${name === (state.file || fileOf(item, numbers[numbers.length - 1]).name)}">${escape(name)}</button>`).join("")}</div>` : "";
     const zoom = kinds.includes("image") ? `<div class="zoom" role="group" aria-label="Zoom">
-      <button type="button" class="chip" data-asset-zoom="fit" aria-pressed="${state.zoom === "fit"}">fit</button>
-      <button type="button" class="chip" data-asset-zoom="1" aria-pressed="${state.zoom === 1}">1:1</button>
-      <button type="button" class="chip" data-asset-zoom="out" aria-label="Zoom out">−</button>
-      <button type="button" class="chip" data-asset-zoom="in" aria-label="Zoom in">+</button></div>` : "";
+      <button type="button" class="chip" data-item-zoom="fit" aria-pressed="${state.zoom === "fit"}">fit</button>
+      <button type="button" class="chip" data-item-zoom="1" aria-pressed="${state.zoom === 1}">1:1</button>
+      <button type="button" class="chip" data-item-zoom="out" aria-label="Zoom out">−</button>
+      <button type="button" class="chip" data-item-zoom="in" aria-label="Zoom in">+</button></div>` : "";
     const textual = state.compare && kinds.every(kind => kind === "text");
     let bar;
     if (state.compare) {
       bar = `<div class="sides">
-        <div class="side-head"><span class="label">before</span>${picker(asset, "left", numbers[0])}</div>
-        <div class="side-head"><span class="label">after</span>${picker(asset, "right", numbers[1])}<span class="grow"></span>${textual ? '<span class="tally" id="assets-tally" data-own></span>' : ""}</div>
+        <div class="side-head"><span class="label">before</span>${picker(item, "left", numbers[0])}</div>
+        <div class="side-head"><span class="label">after</span>${picker(item, "right", numbers[1])}<span class="grow"></span>${textual ? '<span class="tally" id="review-tally" data-own></span>' : ""}</div>
       </div>${fileTabs}<span class="grow"></span>${zoom}`;
     } else {
-      bar = `${picker(asset, "single", numbers[0])}${fileTabs}<span class="grow"></span>${zoom}`;
+      bar = `${picker(item, "single", numbers[0])}${fileTabs}<span class="grow"></span>${zoom}`;
     }
-    const addresses = numbers.map(number => url(asset, version(asset, number), fileOf(asset, number).name));
+    const addresses = numbers.map(number => url(item, version(item, number), fileOf(item, number).name));
     const panes = textual
-      ? `<div class="panes"><div class="pane" id="assets-diff" data-own data-pair="${escape(addresses.join(" "))}"><p class="missing">…</p></div></div>`
-      : `<div class="panes ${numbers.length === 2 ? "two" : ""}">${numbers.map(number => pane(asset, number)).join("")}</div>`;
-    const stage = $("assets-stage");
+      ? `<div class="panes"><div class="pane" id="review-diff" data-own data-pair="${escape(addresses.join(" "))}"><p class="missing">…</p></div></div>`
+      : `<div class="panes ${numbers.length === 2 ? "two" : ""}">${numbers.map(number => pane(item, number)).join("")}</div>`;
+    const stage = $("review-stage");
     studio.morph(stage, `<div class="bar">${bar}</div>${panes}`);
     fill(stage);
     for (const image of stage.querySelectorAll("img[data-scale]")) {
       const size = () => { if (image.dataset.scale) image.style.width = `${image.naturalWidth * Number(image.dataset.scale)}px`; };
       if (image.complete) size(); else image.addEventListener("load", size, { once: true });
     }
-    const place = $("assets-diff");
+    const place = $("review-diff");
     if (!place || place.filled === place.dataset.pair) return;
     const pair = place.filled = place.dataset.pair;
     Promise.all(addresses.map(text)).then(([left, right]) => {
@@ -369,83 +369,83 @@
       place.innerHTML = made.html;
       const { added, removed, changed } = made.tally;
       const counted = [[added, "added", "+"], [removed, "removed", "−"], [changed, "changed", "~"]].filter(([count]) => count);
-      const tally = $("assets-tally");
+      const tally = $("review-tally");
       if (tally) tally.innerHTML = counted.length
         ? counted.map(([count, kind, sign]) => `<span class="badge ${kind}" title="${count} ${kind}">${sign}${count}</span>`).join("")
         : '<span class="badge">the same</span>';
     }).catch(() => { if (place.filled === pair) place.innerHTML = '<p class="missing">These files could not be read.</p>'; });
   }
 
-  function drawHead(asset) {
+  function drawHead(item) {
     const shown = visible();
-    const index = shown.findIndex(item => item.key === asset.key);
-    const latest = last(asset);
+    const index = shown.findIndex(edition => edition.key === item.key);
+    const latest = last(item);
     const left = '<svg viewBox="0 0 16 16" fill="none"><path d="M10 3.5 5.5 8l4.5 4.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
     const right = '<svg viewBox="0 0 16 16" fill="none"><path d="M6 3.5 10.5 8 6 12.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
     const close = '<svg viewBox="0 0 16 16" fill="none"><path d="m4 4 8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>';
-    studio.morph($("assets-viewer-head"), `
-      <div class="where"><h2 id="assets-viewer-title">${escape(latest.title)}</h2><span class="key">${escape(asset.key)} · ${asset.versions.length} ${asset.versions.length === 1 ? "version" : "versions"}</span></div>
-      <button type="button" class="toggle" data-asset-compare aria-pressed="${state.compare}" ${asset.versions.length < 2 ? "disabled" : ""}><span class="switch" aria-hidden="true"><span></span></span>Compare <kbd>c</kbd></button>
-      <span class="steps"><button type="button" class="icon" data-asset-step="-1" aria-label="Previous asset" ${index <= 0 ? "disabled" : ""}>${left}</button>
+    studio.morph($("review-viewer-head"), `
+      <div class="where"><h2 id="review-viewer-title">${escape(latest.title)}</h2><span class="key">${escape(item.key)} · ${item.versions.length} ${item.versions.length === 1 ? "version" : "versions"}</span></div>
+      <button type="button" class="toggle" data-item-compare aria-pressed="${state.compare}" ${item.versions.length < 2 ? "disabled" : ""}><span class="switch" aria-hidden="true"><span></span></span>Compare <kbd>c</kbd></button>
+      <span class="steps"><button type="button" class="icon" data-item-step="-1" aria-label="Previous item" ${index <= 0 ? "disabled" : ""}>${left}</button>
       ${index >= 0 ? `${index + 1} of ${shown.length}` : ""}
-      <button type="button" class="icon" data-asset-step="1" aria-label="Next asset" ${index < 0 || index >= shown.length - 1 ? "disabled" : ""}>${right}</button></span>
-      <button type="button" class="icon" data-asset-close aria-label="Close">${close}</button>`);
+      <button type="button" class="icon" data-item-step="1" aria-label="Next item" ${index < 0 || index >= shown.length - 1 ? "disabled" : ""}>${right}</button></span>
+      <button type="button" class="icon" data-item-close aria-label="Close">${close}</button>`);
   }
 
-  function drawAbout(asset) {
-    const numbers = chosen(asset);
-    const item = version(asset, numbers[numbers.length - 1]);
-    const latest = last(asset);
+  function drawAbout(item) {
+    const numbers = chosen(item);
+    const edition = version(item, numbers[numbers.length - 1]);
+    const latest = last(item);
     const parts = [];
-    const tags = item.tags.map(tag => `<span class="badge">${escape(tag)}</span>`).join("");
-    parts.push(`<div class="section"><span class="label">Version ${item.version}${item.version === latest.version ? ", the latest" : ""}</span>
-      <div class="facts"><span class="badge ${TONE[item.review]}">${WORDS[item.review]}</span>${tags}</div>
-      <p>Registered ${time(item.recorded.moment)}${item.recorded.role && item.recorded.role !== "interactive" ? ` by the ${escape(item.recorded.role)}` : ""}.</p></div>`);
-    if (item.regenerated) {
-      parts.push(`<div class="section"><span class="label">Made again from version ${item.regenerated.from}</span><p>${item.regenerated.feedback ? `Answering your note: “${escape(item.regenerated.feedback)}”` : "As the recipe says, with no note."}</p></div>`);
+    const tags = edition.tags.map(tag => `<span class="badge">${escape(tag)}</span>`).join("");
+    parts.push(`<div class="section"><span class="label">Version ${edition.version}${edition.version === latest.version ? ", the latest" : ""}</span>
+      <div class="facts"><span class="badge ${TONE[edition.verdict]}">${WORDS[edition.verdict]}</span>${tags}</div>
+      <p>Registered ${time(edition.recorded.moment)}${edition.recorded.role && edition.recorded.role !== "interactive" ? ` by the ${escape(edition.recorded.role)}` : ""}.</p></div>`);
+    if (edition.regenerated) {
+      parts.push(`<div class="section"><span class="label">Made again from version ${edition.regenerated.from}</span><p>${edition.regenerated.feedback ? `Answering your note: “${escape(edition.regenerated.feedback)}”` : "As the recipe says, with no note."}</p></div>`);
     }
-    if (item.note) parts.push(`<div class="section"><span class="label">What the agent says</span><p>${escape(item.note)}</p></div>`);
-    if (item.decision) parts.push(`<div class="section"><span class="label">Illustrates</span><p><a href="#decisions/${item.decision}">decision ${item.decision}</a></p></div>`);
-    if (item.recipe) {
-      const recipe = [item.recipe.command ? `<p><code>${escape(item.recipe.command)}</code></p>` : "", item.recipe.instruction ? `<p>${escape(item.recipe.instruction)}</p>` : ""].join("");
+    if (edition.note) parts.push(`<div class="section"><span class="label">What the agent says</span><p>${escape(edition.note)}</p></div>`);
+    if (edition.decision) parts.push(`<div class="section"><span class="label">Illustrates</span><p><a href="#decisions/${edition.decision}">decision ${edition.decision}</a></p></div>`);
+    if (edition.recipe) {
+      const recipe = [edition.recipe.command ? `<p><code>${escape(edition.recipe.command)}</code></p>` : "", edition.recipe.instruction ? `<p>${escape(edition.recipe.instruction)}</p>` : ""].join("");
       parts.push(`<div class="section"><span class="label">How it is made</span>${recipe}</div>`);
     }
-    if (latest.review !== "unreviewed") {
-      parts.push(`<div class="panel ${latest.review === "approved" ? "ok" : "rejected"}"><span class="label">v${latest.version} ${latest.review} ${latest.reviewed ? time(latest.reviewed.moment) : ""}</span>${latest.feedback ? `<div>${escape(latest.feedback)}</div>` : ""}</div>`);
+    if (latest.verdict !== "unreviewed") {
+      parts.push(`<div class="panel ${latest.verdict === "approved" ? "ok" : "rejected"}"><span class="label">v${latest.version} ${latest.verdict} ${latest.reviewed ? time(latest.reviewed.moment) : ""}</span>${latest.feedback ? `<div>${escape(latest.feedback)}</div>` : ""}</div>`);
     } else if (latest.feedback) {
       parts.push(`<div class="panel agent"><span class="label">your note on v${latest.version}</span><div>${escape(latest.feedback)}</div></div>`);
     }
-    const running = state.regenerating[asset.key];
+    const running = state.regenerating[item.key];
     if (running && !running.problem) {
       parts.push(`<div class="panel agent"><span class="label"><span class="spinner" aria-hidden="true"></span>making version ${running.from + 1}</span><div>Started ${time(running.since)}; it shows here when it is registered.</div></div>`);
     } else if (running) {
       parts.push(`<div class="panel problem"><span class="label">the regeneration failed</span><div>${escape(running.problem)}</div></div>`);
     }
-    studio.morph($("assets-about"), parts.join(""));
+    studio.morph($("review-about"), parts.join(""));
     const making = running && !running.problem;
-    for (const button of $("assets-buttons").querySelectorAll("button")) {
-      const act = button.dataset.assetAct;
-      button.disabled = making || (act === "regenerate" && !latest.recipe) || (act === latest.review);
+    for (const button of $("review-buttons").querySelectorAll("button")) {
+      const act = button.dataset.itemAct;
+      button.disabled = making || (act === "regenerate" && !latest.recipe) || (act === latest.verdict);
       button.title = act === "regenerate" && !latest.recipe ? "No recipe: the agent that made it did not say how to make it again" : "";
     }
   }
 
-  // The note being written, kept per asset until it is saved: a version that arrives meanwhile
+  // The note being written, kept per item until it is saved: a version that arrives meanwhile
   // leaves it be. With nothing written, the field shows the latest version's note (none, for a new one).
-  function note(asset) {
-    return state.notes.has(asset.key) ? state.notes.get(asset.key) : last(asset).feedback ?? "";
+  function note(item) {
+    return state.notes.has(item.key) ? state.notes.get(item.key) : last(item).feedback ?? "";
   }
 
   function drawViewer() {
-    const asset = state.open && find(state.open);
-    const viewer = $("assets-viewer");
-    if (!asset) { viewer.hidden = true; return; }
+    const item = state.open && find(state.open);
+    const viewer = $("review-viewer");
+    if (!item) { viewer.hidden = true; return; }
     viewer.hidden = false;
-    if (!state.picker) drawHead(asset);
-    if (!state.picker) drawStage(asset);
-    drawAbout(asset);
-    const field = $("assets-note");
-    if (document.activeElement !== field && field.value !== note(asset)) field.value = note(asset);
+    if (!state.picker) drawHead(item);
+    if (!state.picker) drawStage(item);
+    drawAbout(item);
+    const field = $("review-note");
+    if (document.activeElement !== field && field.value !== note(item)) field.value = note(item);
   }
 
   function draw() { drawList(); drawViewer(); }
@@ -456,9 +456,9 @@
       state.single = state.left = state.right = state.file = null;
       state.zoom = "fit";
       state.picker = null;
-      $("assets-problem").hidden = true;
+      $("review-problem").hidden = true;
     }
-    const wanted = `#assets/${key}`;
+    const wanted = `#review/${key}`;
     if (decodeURIComponent(location.hash) !== wanted) history.replaceState(null, "", wanted);
     draw();
   }
@@ -467,14 +467,14 @@
     state.open = null;
     state.compare = false;
     state.picker = null;
-    history.replaceState(null, "", "#assets");
+    history.replaceState(null, "", "#review");
     draw();
-    document.querySelector(".assets .card")?.focus();
+    document.querySelector(".review .card")?.focus();
   }
 
   function step(offset) {
     const shown = visible();
-    const index = shown.findIndex(asset => asset.key === state.open);
+    const index = shown.findIndex(item => item.key === state.open);
     const next = shown[index + offset];
     if (index >= 0 && next) open(next.key);
   }
@@ -492,12 +492,12 @@
     activate(list, selected);
     list.focus();
   }
-  function activate(list, item) {
-    for (const other of list.querySelectorAll("li")) other.classList.toggle("active", other === item);
-    if (item) { list.setAttribute("aria-activedescendant", item.id); item.scrollIntoView({ block: "nearest" }); }
+  function activate(list, option) {
+    for (const other of list.querySelectorAll("li")) other.classList.toggle("active", other === option);
+    if (option) { list.setAttribute("aria-activedescendant", option.id); option.scrollIntoView({ block: "nearest" }); }
   }
   function closePicker(focus) {
-    const element = state.picker && document.querySelector(`#assets-stage [data-picker="${state.picker}"]`);
+    const element = state.picker && document.querySelector(`#review-stage [data-picker="${state.picker}"]`);
     state.picker = null;
     if (!element) return;
     element.querySelector("ul").hidden = true;
@@ -506,12 +506,12 @@
     if (focus) button.focus();
   }
   function pick(side, number) {
-    const asset = find(state.open);
+    const item = find(state.open);
     closePicker();
-    if (side === "single") state.single = number === last(asset).version ? null : number;
+    if (side === "single") state.single = number === last(item).version ? null : number;
     else state[side] = number;
     draw();
-    document.querySelector(`#assets-stage [data-picker="${side}"] button`)?.focus();
+    document.querySelector(`#review-stage [data-picker="${side}"] button`)?.focus();
   }
 
   // --- the owner's word -------------------------------------------------------------------------
@@ -524,36 +524,36 @@
   }
 
   async function act(action) {
-    const asset = find(state.open);
-    if (!asset) return;
-    const latest = last(asset);
-    const running = state.regenerating[asset.key];
+    const item = find(state.open);
+    if (!item) return;
+    const latest = last(item);
+    const running = state.regenerating[item.key];
     if (running && !running.problem) return;
-    const button = $("assets-buttons").querySelector(`[data-asset-act="${action}"]`);
+    const button = $("review-buttons").querySelector(`[data-item-act="${action}"]`);
     if (button?.disabled) return;
-    const written = ($("assets-note").value || "").trim() || null;
+    const written = ($("review-note").value || "").trim() || null;
     const word = written !== (latest.feedback || null) ? { feedback: written } : {};
-    const problem = $("assets-problem");
+    const problem = $("review-problem");
     problem.hidden = true;
     try {
       if (action === "regenerate") {
-        await post("assets/regenerate", { key: asset.key, ...word });
-        studio.toast(`Making version ${latest.version + 1} of ${asset.key}…`);
+        await post("review/regenerate", { key: item.key, ...word });
+        studio.toast(`Making version ${latest.version + 1} of ${item.key}…`);
       } else if (action === "note") {
-        if (!("feedback" in word)) { $("assets-note").focus(); return; }
-        await post("assets/review", { key: asset.key, ...word });
-        studio.toast(`Saved your note on ${asset.key}.`);
+        if (!("feedback" in word)) { $("review-note").focus(); return; }
+        await post("review/judge", { key: item.key, ...word });
+        studio.toast(`Saved your note on ${item.key}.`);
       } else {
-        await post("assets/review", { key: asset.key, review: action, ...word });
-        studio.toast(`${asset.key} v${latest.version} ${action}.`);
+        await post("review/judge", { key: item.key, verdict: action, ...word });
+        studio.toast(`${item.key} v${latest.version} ${action}.`);
       }
     } catch (error) {
       problem.textContent = error.message;
       problem.hidden = false;
       return;
     }
-    state.notes.delete(asset.key);
-    $("assets-note").blur();
+    state.notes.delete(item.key);
+    $("review-note").blur();
     state.seen = "";
     await load();
   }
@@ -562,51 +562,51 @@
 
   async function load() {
     try {
-      const response = await fetch("assets");
+      const response = await fetch("review");
       const raw = await response.text();
       if (raw === state.seen) return;
       state.seen = raw;
       const data = JSON.parse(raw);
-      for (const asset of data.assets) {
-        const before = state.latest.get(asset.key);
-        const now = last(asset).version;
-        if (before && now > before && state.shown) studio.toast(`Version ${now} of ${asset.key} arrived.`);
-        state.latest.set(asset.key, now);
+      for (const item of data.items) {
+        const before = state.latest.get(item.key);
+        const now = last(item).version;
+        if (before && now > before && state.shown) studio.toast(`Version ${now} of ${item.key} arrived.`);
+        state.latest.set(item.key, now);
       }
-      state.assets = data.assets;
+      state.items = data.items;
       state.tags = data.tags;
       state.regenerating = data.regenerating;
       if (state.link) { const key = state.link; state.link = null; if (find(key)) open(key); }
       if (state.open && !find(state.open)) close();
       draw();
     } catch {
-      studio.summary("assets", "Lost touch with nock — is `nock studio` still running?");
+      studio.summary("review", "Lost touch with nock — is `nock studio` still running?");
     }
   }
 
   // --- events -------------------------------------------------------------------------------------
 
-  const root = $("assets");
+  const root = $("review");
   root.addEventListener("click", event => {
     const target = event.target;
-    const tab = target.closest("[data-asset-review]");
-    if (tab) { state.review = tab.dataset.assetReview; draw(); return; }
-    const layout = target.closest("[data-asset-layout]");
+    const tab = target.closest("[data-item-verdict]");
+    if (tab) { state.verdict = tab.dataset.itemVerdict; draw(); return; }
+    const layout = target.closest("[data-item-layout]");
     if (layout) {
-      state.layout = layout.dataset.assetLayout;
-      try { localStorage.setItem("nock.assets.layout", state.layout); } catch { /* not kept: fine */ }
+      state.layout = layout.dataset.itemLayout;
+      try { localStorage.setItem("nock.review.layout", state.layout); } catch { /* not kept: fine */ }
       draw();
       return;
     }
-    const tag = target.closest("[data-asset-tag]");
-    if (tag) { const value = tag.dataset.assetTag; state.tags_chosen.has(value) ? state.tags_chosen.delete(value) : state.tags_chosen.add(value); draw(); return; }
-    const card = target.closest("[data-asset-open]");
-    if (card) { open(card.dataset.assetOpen); return; }
-    if (target === $("assets-viewer")) { close(); return; }
-    if (target.closest("[data-asset-close]")) { close(); return; }
-    const stepper = target.closest("[data-asset-step]");
-    if (stepper) { step(Number(stepper.dataset.assetStep)); return; }
-    if (target.closest("[data-asset-compare]")) { toggleCompare(); return; }
+    const tag = target.closest("[data-item-tag]");
+    if (tag) { const value = tag.dataset.itemTag; state.tags_chosen.has(value) ? state.tags_chosen.delete(value) : state.tags_chosen.add(value); draw(); return; }
+    const card = target.closest("[data-item-open]");
+    if (card) { open(card.dataset.itemOpen); return; }
+    if (target === $("review-viewer")) { close(); return; }
+    if (target.closest("[data-item-close]")) { close(); return; }
+    const stepper = target.closest("[data-item-step]");
+    if (stepper) { step(Number(stepper.dataset.itemStep)); return; }
+    if (target.closest("[data-item-compare]")) { toggleCompare(); return; }
     const option = target.closest(".picker li");
     if (option) { pick(option.closest("[data-picker]").dataset.picker, Number(option.dataset.version)); return; }
     const pickerButton = target.closest(".picker > button");
@@ -616,18 +616,18 @@
       return;
     }
     if (state.picker && !target.closest(".picker")) closePicker();
-    const file = target.closest("[data-asset-file]");
-    if (file) { state.file = file.dataset.assetFile; draw(); return; }
-    const zoom = target.closest("[data-asset-zoom]");
-    if (zoom) { setZoom(zoom.dataset.assetZoom); return; }
+    const file = target.closest("[data-item-file]");
+    if (file) { state.file = file.dataset.itemFile; draw(); return; }
+    const zoom = target.closest("[data-item-zoom]");
+    if (zoom) { setZoom(zoom.dataset.itemZoom); return; }
     if (target.closest("[data-zoom-image]")) { setZoom(state.zoom === "fit" ? "1" : "fit"); return; }
-    const action = target.closest("[data-asset-act]");
-    if (action) act(action.dataset.assetAct);
+    const action = target.closest("[data-item-act]");
+    if (action) act(action.dataset.itemAct);
   });
 
   function toggleCompare() {
-    const asset = find(state.open);
-    if (!asset || asset.versions.length < 2) return;
+    const item = find(state.open);
+    if (!item || item.versions.length < 2) return;
     state.compare = !state.compare;
     state.left = state.right = null;
     draw();
@@ -645,24 +645,24 @@
   }
 
   root.addEventListener("input", event => {
-    if (event.target.id === "assets-search") { state.search = event.target.value; draw(); return; }
-    if (event.target.id === "assets-note" && state.open) state.notes.set(state.open, event.target.value);
+    if (event.target.id === "review-search") { state.search = event.target.value; draw(); return; }
+    if (event.target.id === "review-note" && state.open) state.notes.set(state.open, event.target.value);
   });
 
   document.addEventListener("keydown", event => {
     if (!state.shown) return;
     const target = event.target;
     if (state.picker) {
-      const list = document.querySelector(`#assets-stage [data-picker="${state.picker}"] ul`);
+      const list = document.querySelector(`#review-stage [data-picker="${state.picker}"] ul`);
       if (!list) return;
-      const items = [...list.querySelectorAll("li")];
-      const index = items.findIndex(item => item.classList.contains("active"));
+      const options = [...list.querySelectorAll("li")];
+      const index = options.findIndex(option => option.classList.contains("active"));
       if (event.key === "ArrowDown" || event.key === "ArrowUp") {
         event.preventDefault();
-        activate(list, items[Math.min(items.length - 1, Math.max(0, index + (event.key === "ArrowDown" ? 1 : -1)))]);
+        activate(list, options[Math.min(options.length - 1, Math.max(0, index + (event.key === "ArrowDown" ? 1 : -1)))]);
       } else if (event.key === "Enter" || event.key === " ") {
         event.preventDefault();
-        if (items[index]) pick(state.picker, Number(items[index].dataset.version));
+        if (options[index]) pick(state.picker, Number(options[index].dataset.version));
       } else if (event.key === "Escape" || event.key === "Tab") {
         event.preventDefault();
         closePicker(true);
@@ -670,10 +670,10 @@
       return;
     }
     if (!state.open) {
-      if (event.key === "/" && !["TEXTAREA", "INPUT"].includes(target.tagName)) { event.preventDefault(); $("assets-search").focus(); }
+      if (event.key === "/" && !["TEXTAREA", "INPUT"].includes(target.tagName)) { event.preventDefault(); $("review-search").focus(); }
       return;
     }
-    if (target.id === "assets-note") {
+    if (target.id === "review-note") {
       if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) { event.preventDefault(); act("note"); }
       else if (event.key === "Escape") { event.preventDefault(); target.blur(); }
       return;
@@ -681,7 +681,7 @@
     if (["TEXTAREA", "INPUT"].includes(target.tagName) || event.metaKey || event.ctrlKey || event.altKey) return;
     const keys = {
       a: () => act("approved"), r: () => act("rejected"), g: () => act("regenerate"), c: toggleCompare,
-      n: () => $("assets-note").focus(),
+      n: () => $("review-note").focus(),
       ArrowLeft: () => step(-1), ArrowRight: () => step(1), Escape: close,
       "+": () => setZoom("in"), "=": () => setZoom("in"), "-": () => setZoom("out"), "0": () => setZoom("fit"),
     };
@@ -690,14 +690,14 @@
   });
 
   // Shown, the tab keeps up with what agents register: it asks again every few seconds.
-  studio.register("assets", {
+  studio.register("review", {
     show(route) {
       state.shown = true;
       if (route) { state.link = route; state.seen = ""; }
       else if (state.open) state.open = null;
       load();
     },
-    hide() { state.shown = false; $("assets-viewer").hidden = true; },
+    hide() { state.shown = false; $("review-viewer").hidden = true; },
   });
   setInterval(() => { if (state.shown) load(); }, POLL);
 })();

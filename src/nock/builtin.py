@@ -12,12 +12,6 @@ import sys
 from pathlib import Path
 from typing import Annotated, Any, Literal, NotRequired, TypedDict
 
-from nock.assets import FROM_VARIABLE as ASSET_FROM_VARIABLE
-from nock.assets import KEY_VARIABLE as ASSET_KEY_VARIABLE
-from nock.assets import Assets
-from nock.assets import Draft as AssetDraft
-from nock.assets import Filter as AssetFilter
-from nock.assets import Word as AssetWord
 from nock.checks import Checks
 from nock.commands import Option
 from nock.comparison import Comparison, Query
@@ -36,6 +30,12 @@ from nock.reflect import Record, Reflection, Round, tool_rows
 from nock.render import Problem
 from nock.reports import Reports
 from nock.results import Results
+from nock.review import FROM_VARIABLE as REVIEW_FROM_VARIABLE
+from nock.review import KEY_VARIABLE as REVIEW_KEY_VARIABLE
+from nock.review import Draft as ReviewDraft
+from nock.review import Filter as ReviewFilter
+from nock.review import Items
+from nock.review import Word as ReviewWord
 from nock.schema import check_schema
 from nock.sessions import Sessions
 from nock.setup import (
@@ -250,8 +250,8 @@ def sessions(project: Project, *, limit: int = 15) -> list[dict[str, Any]]:
 def status(project: Project) -> dict[str, Any]:
     """Where the project stands with nock: whether a reflection round is due,
     the decisions by status and review, the rejected ones to rework, those
-    tagged important and not yet reviewed, a round summary not yet shared, and whether
-    a newer nock is out."""
+    tagged important and not yet reviewed, the items to review or make again, a
+    round summary not yet shared, and whether a newer nock is out."""
     return Standing(project).collect()
 
 
@@ -261,8 +261,8 @@ def studio(
     options: StudioOptions = {},  # noqa: B006
 ) -> None:
     """Serve the owner's page, a tab for each thing to look at — the
-    decisions to review — until stopped (port 8765 unless
-    OPTIONS say otherwise)."""
+    decisions, the items to review, the evaluations — until stopped (port
+    8765 unless OPTIONS say otherwise)."""
     if Usage(project).ask(Moment.STUDIO):
         print(f"nock: {QUESTION} The page asks too; answer there.", flush=True)
     Studio(project, options.get("port", 8765)).run(options.get("open", False))
@@ -398,79 +398,79 @@ def decisions_elaborate(project: Project, number: int) -> dict[str, Any]:
     return outcome
 
 
-# --- assets ----------------------------------------------------------------------------
+# --- review ----------------------------------------------------------------------------
 
 
-@command(name="add", group="assets")
-def assets_add(project: Project, asset: AssetDraft) -> dict[str, Any]:
+@command(name="add", group="review")
+def review_add(project: Project, item: ReviewDraft) -> dict[str, Any]:
     """Show the owner something you made — a screenshot, a video, a PDF, an
     HTML page, a text — to review in the studio: under a stable key, each
     call a new version, the latest superseding the earlier ones. Give a
-    `recipe` (a command that writes the files into $NOCK_ASSET_OUTPUT, or an
+    `recipe` (a command that writes the files into $NOCK_REVIEW_OUTPUT, or an
     instruction for an agent) so the owner can have it made again. Files over
     20 MB stay on this machine, uncommitted."""
-    regenerating = os.environ.get(ASSET_KEY_VARIABLE) == asset.get("key", "").strip("/")
+    regenerating = os.environ.get(REVIEW_KEY_VARIABLE) == item.get("key", "").strip("/")
     regenerated = None
     if regenerating:
-        assets = Assets(project)
-        source = int(os.environ.get(ASSET_FROM_VARIABLE) or 0)
+        items = Items(project)
+        source = int(os.environ.get(REVIEW_FROM_VARIABLE) or 0)
         earlier = next(
-            (item for item in assets.history(asset["key"]) if item["version"] == source), None
+            (entry for entry in items.history(item["key"]) if entry["version"] == source), None
         )
         regenerated = {"from": source, "feedback": earlier and earlier["feedback"]}
-    version, problem = Assets(project).add(asset, regenerated)
+    version, problem = Items(project).add(item, regenerated)
     result = {field: version[field] for field in ("key", "version", "title", "tags")}
-    result["files"] = [item["name"] for item in version["files"]]
+    result["files"] = [entry["name"] for entry in version["files"]]
     if problem:
         result["not_committed"] = problem
     return result
 
 
-@command(name="list", group="assets")
-def assets_list(project: Project, filter: AssetFilter = {}) -> dict[str, Any]:  # noqa: B006
-    """The assets — those matching FILTER (by their latest version) — and how
-    many there are of each review."""
-    assets = Assets(project)
-    return {"counts": assets.counts(), "assets": assets.matching(filter)}
+@command(name="list", group="review")
+def review_list(project: Project, filter: ReviewFilter = {}) -> dict[str, Any]:  # noqa: B006
+    """The items under review — those matching FILTER (by their latest
+    version) — and how many there are of each verdict."""
+    items = Items(project)
+    return {"counts": items.counts(), "items": items.matching(filter)}
 
 
-@command(name="show", group="assets")
-def assets_show(project: Project, key: str) -> list[dict[str, Any]]:
-    """Every version of an asset, the earliest first, each file with its path."""
-    return Assets(project).shown(key)
+@command(name="show", group="review")
+def review_show(project: Project, key: str) -> list[dict[str, Any]]:
+    """Every version of an item, the earliest first, each file with its path."""
+    return Items(project).shown(key)
 
 
-@command(name="review", group="assets")
-def assets_review(project: Project, key: str, word: AssetWord) -> dict[str, Any]:
-    """The owner's word on an asset's latest version: `review` (approved,
+@command(name="judge", group="review")
+def review_judge(project: Project, key: str, word: ReviewWord) -> dict[str, Any]:
+    """The owner's word on an item's latest version: `verdict` (approved,
     rejected) and `feedback`. Set them only when the owner says so."""
-    version, problem = Assets(project).review(key, word)
-    result = {field: version[field] for field in ("key", "version", "title", "review", "feedback")}
+    version, problem = Items(project).judge(key, word)
+    result = {field: version[field] for field in ("key", "version", "title", "verdict", "feedback")}
     if problem:
         result["not_committed"] = problem
     ask(project, result, Moment.REVIEW)
     return result
 
 
-@command(name="delete", group="assets")
-def assets_delete(
+@command(name="delete", group="review")
+def review_delete(
     project: Project,
     key: str,
     *,
     version: Annotated[int | None, Option(help="Only this version.")] = None,
 ) -> dict[str, Any]:
-    """Delete an asset — or one version of it — that should not be shown, and
+    """Delete an item — or one version of it — that should not be shown, and
     commit that; git keeps it."""
-    deleted, problem = Assets(project).delete(key, version)
+    deleted, problem = Items(project).delete(key, version)
     return {"key": key, "deleted": deleted, **({"not_committed": problem} if problem else {})}
 
 
-@command(name="regenerate", group="assets", confirm=True)
-def assets_regenerate(project: Project, key: str) -> dict[str, Any]:
-    """Make an asset's next version from its recipe, answering the owner's
+@command(name="regenerate", group="review", confirm=True)
+def review_regenerate(project: Project, key: str) -> dict[str, Any]:
+    """Make an item's next version from its recipe, answering the owner's
     feedback: runs the recipe's command, or dispatches an agent with its
     instruction. The page's Regenerate runs this."""
-    return Assets(project).regenerate(key)
+    return Items(project).regenerate(key)
 
 
 # --- consulting -----------------------------------------------------------------------

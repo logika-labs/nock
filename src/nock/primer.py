@@ -42,7 +42,7 @@ DECIDE = """\
   wait. When you do a todo or rework a rejected decision, edit it to say
   what you did.{tags}
 - **Show the owner what you made for them to look at** (a screenshot, a
-  video, a PDF, a page, a text): `.nock/nock assets add` (`--help` has the
+  video, a PDF, a page, a text): `.nock/nock review add` (`--help` has the
   fields), under a stable key, with a recipe to make it again. When the
   owner rejects or notes one, make the next version.
 - **Run noisy or long commands through `.nock/nock run -- COMMAND`**

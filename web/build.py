@@ -54,7 +54,7 @@ DOCS = {
         "concepts",
         "Agents record what they chose and what they passed over; you review it later. The map, and consulting before a change.",
     ),
-    "assets": (
+    "review": (
         "concepts",
         "Agents register what they made for you to see: screenshots, videos, pages, texts. You approve, reject, note or regenerate each, version by version.",
     ),

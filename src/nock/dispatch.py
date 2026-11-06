@@ -95,11 +95,11 @@ SEATS = {
         ),
         GIT_WRITING,
     ),
-    # Makes an asset's next version in its work directory and registers it;
-    # each regeneration adds that directory, and the recipe's command (`assets.Assets.seat`).
+    # Makes an item's next version in its work directory and registers it for review;
+    # each regeneration adds that directory, and the recipe's command (`review.Items.seat`).
     "regenerator": Seat(
         (*READING, "Edit", "Write"),
-        (nock("assets show"), nock("assets add"), nock("docs"), *GIT_READING),
+        (nock("review show"), nock("review add"), nock("docs"), *GIT_READING),
         GIT_WRITING,
     ),
     # Reads what identifies the project and answers in its last message.
