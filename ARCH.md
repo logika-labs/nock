@@ -413,7 +413,11 @@ main branch at once; it skips the commit, and says so, when the main
 checkout is mid-merge or mid-rebase. A ref is `topic/slug`; `resolve` also
 takes an alias (a migrated decision's number, `170`, `D170`, `topic/170`).
 
-`create_item` refuses a topic that is `finished` (every item decided, no
+A task item has no files: its `task` (brief, branch, worktree, state,
+`waiting_on`, `started`, `heard`) changes in place through `set_task`, any
+agent's update refreshing `heard`; done accepts it (`decided.by = "done"`,
+which `owner_moment` leaves out), and `awaits_owner` counts it only once
+failed. `create_item` refuses a topic that is `finished` (every item decided, no
 revival since the last verdict): `update_topic --revive` posts a revival note
 first, and `current_description` reads the latest one as the description.
 `add_version` writes a version from `Content` (decision, files, derived),

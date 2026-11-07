@@ -86,6 +86,11 @@ DEFAULTS: dict[str, Any] = {
         "deadline": 1800,
         "silence": 600,
     },
+    "topics": {
+        # Minutes a running task may go without a word before the studio shows
+        # it amber: silence only, which may be long work as well as a stuck one.
+        "silence": 30,
+    },
     "consult": {
         # Whether the consultant runs, and the primer asks agents to consult.
         "enabled": True,

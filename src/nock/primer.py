@@ -40,7 +40,9 @@ TOPICS = """\
   instruction or a routine detail), project files, or something you made to
   show part of the project (a screenshot, a page) with how to make it again.
   If it is the owner's call, submit the answer you would propose and carry
-  on; the owner gives verdicts later, so don't wait.
+  on; the owner gives verdicts later, so don't wait. Work dispatched to an
+  agent is a task item: keep its state current (`items update REF '{"state":
+  …}'`) and post progress in its thread; long silence looks stuck.
 - **Check what awaits you** with `.nock/nock topics list` when you start and
   before you finish: threads where the owner wrote last, items they
   rejected (rework one as a new version: `items update REF --version`).

@@ -412,7 +412,9 @@ def items_create(project: Project, topic: str, item: ItemDraft) -> dict[str, Any
     project `files` (paths in the repository, copied as they are now), or
     `derived` files (made to show part of the project: a screenshot of an
     email, with what it comes `from`, `when` it applies, and a `recipe` to
-    make it again). Bare: no notes; say more in the thread only when asked.
+    make it again). Or a `task`: work dispatched to an agent (its brief,
+    branch, worktree), created when it is dispatched and closed when it
+    merges. Bare: no notes; say more in the thread only when asked.
     Record a decision only when a later reader would ask "why" — a choice
     between real alternatives, a deliberate simplification, a reading of
     something ambiguous, a todo you leave; never the owner's own instruction
@@ -446,7 +448,9 @@ def items_update(
     reopened — or answer in its thread. An accepted or rejected item changes
     only by a new version. Rework a rejected item as a new version; when the
     owner is away, say briefly in the thread what changed, unless the new
-    version says it."""
+    version says it. A task's state changes in place (`{"state": "running"}`;
+    waiting with `waiting_on`; done accepts it, failed leaves it open for the
+    owner); progress goes in its thread, and every update is its last word."""
     record, problem = Topics(project).update_item(
         item, change or None, parsed_version(version), reply
     )

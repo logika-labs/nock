@@ -258,7 +258,11 @@ class TopicsTab(Tab):
 
     def get(self, route: str) -> Any:
         if not route:
-            return {"topics": self.everything(), "ask": self.asking.state()}
+            return {
+                "topics": self.everything(),
+                "ask": self.asking.state(),
+                "silence": float(self.project.configuration.get("topics.silence") or 30),
+            }
         parts = urllib.parse.unquote(route).split("/")
         if parts[0] != "file" or len(parts) < 5 or not parts[3].isdigit():
             raise NotFoundError("no such page")

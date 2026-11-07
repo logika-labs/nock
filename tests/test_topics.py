@@ -465,3 +465,43 @@ def test_an_earlier_nock_s_decisions_and_review_items_move_into_topics_once(
     assert topics.citation_problems() == []
     assert git(project.root, "status", "--porcelain") == ""
     assert Migration(project).run() == {"migrated": False}
+
+
+def test_a_task_keeps_its_state_and_is_accepted_when_done(
+    project: Project, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "orchestrator")
+    task = {
+        "title": "Build the topics",
+        "task": {"brief": "Topics replace decisions.", "branch": "topics"},
+    }
+    ref = submit(project.root, task)
+    mixed = nock(
+        project.root, "items", "create", "orders", json.dumps({**task, "files": ["README.md"]})
+    )
+    assert mixed.returncode == 40 and "a task holds nothing else" in mixed.stderr
+    shown = run(project.root, "items", "show", ref)
+    assert shown["task"]["state"] == "queued" and shown["task"]["started"] is None
+    vague = nock(project.root, "items", "update", ref, '{"state": "waiting"}')
+    assert vague.returncode == 40 and "waiting_on" in vague.stderr
+    run(project.root, "items", "update", ref, '{"state": "waiting", "waiting_on": "owner"}')
+    run(project.root, "items", "update", ref, '{"state": "running"}')
+    before = run(project.root, "items", "show", ref)["task"]
+    assert before["started"] and before["waiting_on"] is None
+    run(project.root, "items", "update", ref, "--reply", "Half the tests pass.")
+    assert run(project.root, "items", "show", ref)["task"]["heard"] >= before["heard"]
+    listed = run(project.root, "items", "list")
+    assert listed["summary"]["open"] == {}
+    assert listed["rows"][0]["state"] == "running" and listed["rows"][0]["kinds"] == ["task"]
+    other = submit(project.root, {"title": "Ship it", "task": {"brief": "Release."}})
+    no_version = nock(project.root, "items", "update", ref, "--version", "{}")
+    assert no_version.returncode == 40
+    done = run(
+        project.root, "items", "update", ref, '{"state": "done"}', "--reply", "Merged as abc123."
+    )
+    assert done["verdict"] == "accepted"
+    assert HookRunner(project, {"session_id": "orchestrator"}).handle("UserPromptSubmit") is None
+    run(project.root, "items", "update", other, '{"state": "failed"}')
+    failing = run(project.root, "items", "list")
+    assert failing["summary"]["open"] == {"orders": 1}
+    assert run(project.root, "items", "show", other)["verdict"] == "open"

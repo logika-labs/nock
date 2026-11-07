@@ -494,6 +494,25 @@ not there to ask, is a decision whose title is the answer the agent proposes
 agent carries on with it. An item has no notes: anything else the agent has
 to say goes in the thread, when asked.
 
+A **task** is the third kind of item: work an orchestrating agent
+dispatches to another, created when it is dispatched and closed when it is
+merged — a title, its brief (what was asked), its branch and worktree, and a
+state: queued, running, waiting (on the owner or on another task, which
+`waiting_on` names), done or failed.
+
+```sh
+$ .nock/nock items create charge-sweep '{"title": "Requeue dead charges",
+    "task": {"brief": "Make the sweep requeue only dead charges.", "branch": "sweep"}}'
+$ .nock/nock items update charge-sweep/requeue-dead-charges '{"state": "running"}'
+$ .nock/nock items update charge-sweep/requeue-dead-charges --reply "The sweep test passes; the backoff one next."
+$ .nock/nock items update charge-sweep/requeue-dead-charges '{"state": "done"}' --reply "Merged as 4e1f2a0."
+```
+
+The working agent posts progress in the task's thread, and every update is
+its last word. Done accepts it by itself, the thread keeping the final
+report; failed leaves it open for the owner. A task counts as new to the
+owner only once it failed.
+
 An item's ref is `topic/slug`, the slug made from its title (or given as
 `"slug"`), unique in the topic. Everything lives in the main checkout's
 `.nock/topics/TOPIC/` — the topic's `topic.json`, each item's `SLUG/item.json`
@@ -552,7 +571,14 @@ The studio's **Topics** tab (`nock studio`, or with `{"open": true}`) lists
 the topics, newest activity first, each with its open items; a topic with
 nothing open folds away. The tabs open, accepted and rejected only change
 which items show, expanding the topics that have them. A topic's page shows
-all its items, whatever their verdict, and its thread; an item's page shows
+all its items, whatever their verdict, and its thread, each kind in its own
+view: tasks as rows with a slider — the time since it started, coloured by
+how recently it said anything (amber after `topics.silence` minutes without
+a word, 30 by default: only silence, which may be long work as well as stuck
+work; red once it failed); decisions as rows that open in place on the
+answer and the alternatives; pictures as a grid of thumbnails; texts as
+previews of their first lines. A picture or a text opens on the whole
+screen, comparing its last two versions; an item's page shows
 any version — a decision rendered, a project file, a picture, a video, a
 PDF, a page (an HTML page runs no script there), a text — and "Compare" puts
 two side by side, a text's or a decision's as a line diff with the changed
@@ -1097,6 +1123,7 @@ one machine.
 | `reflect.logika.days` | 30 | in a Logika project, days after a logika round before the next is offered (once the ledger has changed) |
 | `agent.command`, `agent.model`, `agent.deadline` | `claude`, —, 1800 | the headless agent nock dispatches (consult, Ask, share); it may not bypass or set permissions (see [What nock's agents may do](#what-nocks-agents-may-do)) |
 | `permissions.confirm` | `ask` | how Claude Code treats a `confirm=True` command: `ask` has the owner approve each call (even in bypass mode); `allow` lets the agent run it, which it does only when the owner's request calls for it (see [What nock's agents may do](#what-nocks-agents-may-do)); `nock init` rewrites the rules after a change |
+| `topics.silence` | 30 | minutes a running task may go without a word before the studio shows it amber |
 | `consult.enabled`, `consult.deadline` | true, 600 | whether the consultant runs and the primer asks for it; seconds a consultation may take |
 | `upgrade.check`, `upgrade.auto`, `upgrade.index` | true, true, PyPI's `nock` | whether a session start looks for a newer nock (at most daily); whether it then upgrades a core vendored from PyPI by itself when the merge is clean (off, or on a conflict, it only says the release is out); and where releases are looked up |
 | `share` | — (unanswered) | the owner's answer to whether nock sends its makers the weekly usage report: unset sends nothing until they answer, false sends nothing, summaries included, only what you send yourself with `nock report` (see [What nock shares](#what-nock-shares)) |

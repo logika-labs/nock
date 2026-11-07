@@ -70,6 +70,19 @@ class Status(StrEnum):
     """Should be done, and is not yet."""
 
 
+class State(StrEnum):
+    """Where a task is."""
+
+    QUEUED = "queued"
+    RUNNING = "running"
+    WAITING = "waiting"
+    """On the owner or another task: `waiting_on` says which."""
+    DONE = "done"
+    """Merged or finished: accepted by itself, its thread keeping the final report."""
+    FAILED = "failed"
+    """Open for the owner."""
+
+
 class Author(StrEnum):
     OWNER = "owner"
     AGENT = "agent"
@@ -123,15 +136,40 @@ class Content(TypedDict):
     derived: NotRequired[list[Derived]]
 
 
+class Task(TypedDict):
+    """Work dispatched to an agent: what was asked, where it runs, where it is."""
+
+    brief: str
+    """What was asked, in a few lines."""
+    branch: NotRequired[str]
+    worktree: NotRequired[str]
+    state: NotRequired[State]
+    """queued (the default), running, waiting, done or failed."""
+    waiting_on: NotRequired[str]
+    """With `waiting`: `owner`, or the ref of the task it waits on."""
+
+
 class ItemDraft(Content):
     title: str
     """What it is, in a line; for a decision, what was decided, as a statement."""
     slug: NotRequired[str]
     """Its name in the topic (`topic/slug`); made from the title when left out."""
+    task: NotRequired[Task]
+    """A task instead of files: work dispatched, kept current by its state."""
 
 
 class ItemChange(Content):
     title: NotRequired[str]
+    brief: NotRequired[str]
+    branch: NotRequired[str]
+    worktree: NotRequired[str]
+    state: NotRequired[State]
+    """A task's state: done accepts it, failed leaves it open for the owner."""
+    waiting_on: NotRequired[str]
+
+
+# What of a change is a task's.
+TASK_FIELDS = ("brief", "branch", "worktree", "state", "waiting_on")
 
 
 class TopicDraft(TypedDict):
@@ -349,7 +387,7 @@ class Topics:
         """The open items by topic, and what waits on an agent."""
         open_counts = {}
         for name in self.names():
-            count = sum(1 for item in self.items(name) if item["verdict"] == Verdict.OPEN)
+            count = sum(1 for item in self.items(name) if awaits_owner(item))
             if count:
                 open_counts[name] = count
         return {
@@ -360,10 +398,13 @@ class Topics:
     def item_row(self, item: dict[str, Any]) -> dict[str, Any]:
         latest = item["versions"][-1]
         kinds = sorted({entry["kind"] for entry in latest["files"]})
+        if item.get("task"):
+            kinds = ["task"]
         return {
             "ref": item["ref"],
             "title": item["title"],
             "verdict": item["verdict"],
+            **({"state": item["task"]["state"]} if item.get("task") else {}),
             "kinds": kinds,
             "versions": len(item["versions"]),
             "updated": item["updated"],
@@ -374,6 +415,8 @@ class Topics:
     def item_text(self, item: dict[str, Any]) -> tuple[str, str]:
         """An item's title, and the rest of what it says, for search."""
         parts = [entry["text"] for entry in item["thread"]]
+        if item.get("task"):
+            parts += [item["task"]["brief"], item["task"].get("branch") or ""]
         latest = item["versions"][-1]
         decision = self.decision(item, latest)
         if decision:
@@ -546,7 +589,14 @@ class Topics:
                 "thread": [],
                 "versions": [],
             }
-            self.add_version(topic, item, draft, None)
+            if "task" in draft:
+                if any(key in draft for key in ("decision", "files", "derived")):
+                    raise UsageError("a task holds nothing else: submit files as their own item")
+                item["task"] = {"brief": "", "state": str(State.QUEUED), "started": None}
+                self.set_task(item, dict(draft["task"]))
+                item["versions"].append({"version": 1, **stamp, "files": []})
+            else:
+                self.add_version(topic, item, draft, None)
             path = self.save_item(topic, item)
             return self.with_ref(topic, item), self.commit(
                 [path.parent], f"Item {topic}/{slug}: {title}"
@@ -585,12 +635,25 @@ class Topics:
                     if not change["title"].strip():
                         raise UsageError("`title` is empty")
                     item["title"] = change["title"].strip()
-                content = {key: value for key, value in change.items() if key != "title"}
+                tasked = {key: value for key, value in change.items() if key in TASK_FIELDS}
+                content = {
+                    key: value
+                    for key, value in change.items()
+                    if key != "title" and key not in TASK_FIELDS
+                }
+                if item.get("task") and content:
+                    raise UsageError("a task holds nothing else: submit files as their own item")
+                if tasked:
+                    if not item.get("task"):
+                        raise UsageError(f"{', '.join(tasked)}: only a task has them")
+                    self.set_task(item, tasked)
                 if content:
                     latest = item["versions"].pop()
                     self.add_version(topic, item, content, latest)
                 said.append("updated")
             if version is not None:
+                if item.get("task"):
+                    raise UsageError("a task has no versions: change its state, or reply")
                 if "title" in version:
                     item["title"] = version["title"].strip() or item["title"]
                 self.add_version(topic, item, version, item["versions"][-1])
@@ -600,11 +663,46 @@ class Topics:
             if reply is not None:
                 item["thread"].append(message(author, reply, self.project.current_session()))
                 said.append("replied")
+            if item.get("task") and author is Author.AGENT:
+                item["task"]["heard"] = now()
             path = self.save_item(topic, item)
             return self.with_ref(topic, item), self.commit(
                 [path.parent, self.large / topic / item["slug"]],
                 f"Item {topic}/{item['slug']}, {', '.join(said)}: {item['title']}",
             )
+
+    def set_task(self, item: dict[str, Any], fields: dict[str, Any]) -> None:
+        """Fold a task's fields in: running starts its clock, waiting names
+        what on, done accepts it by itself, failed leaves it open."""
+        task = item["task"]
+        for key in ("brief", "branch", "worktree"):
+            if key in fields:
+                task[key] = str(fields[key]).strip() or None
+        if not task.get("brief"):
+            raise UsageError("a task's `brief` is empty: say what was asked")
+        state = State(fields.get("state") or task["state"])
+        waiting_on = str(fields.get("waiting_on") or "").strip() or None
+        if state is State.WAITING:
+            waiting_on = waiting_on or task.get("waiting_on")
+            if not waiting_on:
+                raise UsageError("`waiting` says on what: `waiting_on` is `owner` or a task's ref")
+            if waiting_on != "owner":
+                self.resolve(waiting_on)
+        else:
+            waiting_on = None
+        task["state"], task["waiting_on"] = str(state), waiting_on
+        if state is not State.QUEUED and not task.get("started"):
+            task["started"] = now()
+        task["heard"] = now()
+        if state is State.DONE:
+            item["verdict"] = str(Verdict.ACCEPTED)
+            item["decided"] = {
+                "moment": now(),
+                "session": self.project.current_session(),
+                "by": "done",
+            }
+        elif item["verdict"] == Verdict.ACCEPTED and item.get("decided", {}).get("by") == "done":
+            item["verdict"], item["decided"] = str(Verdict.OPEN), None
 
     def add_version(
         self,
@@ -763,7 +861,7 @@ class Topics:
             topic = self.topic(name)
             judged, paths = [], []
             for item in self.items(name):
-                if item["verdict"] == Verdict.OPEN:
+                if awaits_owner(item):
                     self.give(item, Word(verdict=word["verdict"]))
                     paths.append(self.save_item(name, item))
                     judged.append(item["ref"])
@@ -863,9 +961,18 @@ class Topics:
         return committed(self.project, relative, message) if relative else None
 
 
+def awaits_owner(item: dict[str, Any]) -> bool:
+    """Open, and the owner's to look at: a task only once it failed."""
+    if item["verdict"] != Verdict.OPEN:
+        return False
+    return not item.get("task") or item["task"]["state"] == State.FAILED
+
+
 def owner_moment(item: dict[str, Any]) -> str:
-    """When the owner last said something on an item: a verdict or a message."""
-    moments = [moment(item.get("decided"))]
+    """When the owner last said something on an item: a verdict (not a task
+    accepted by being done) or a message."""
+    decided = item.get("decided") or {}
+    moments = [moment(decided) if decided.get("by") != "done" else ""]
     moments += [entry["moment"] for entry in item["thread"] if entry["author"] == Author.OWNER]
     return max(moments)
 
