@@ -78,28 +78,30 @@ READING = ("Read", "Grep", "Glob", "Bash")
 GIT_READING = ("Bash(git log:*)", "Bash(git show:*)")
 GIT_WRITING = ("Bash(git * --ou*)",)
 SEATS = {
-    # Reads the decisions and advises through `nock advise`; changes nothing.
+    # Reads the topics and advises through `nock advise`; changes nothing.
     "consultant": Seat(
         READING,
-        (nock("decisions list"), nock("decisions show"), nock("docs"), nock("advise")),
+        (
+            nock("topics list"),
+            nock("topics show"),
+            nock("items list"),
+            nock("items show"),
+            nock("docs"),
+            nock("advise"),
+        ),
     ),
-    # Reads the code, its history and the decisions; edits the one decision.
-    "elaborator": Seat(
+    # Reads the topics, the code and its history, and answers the owner's
+    # question through `nock topics answer`; changes nothing.
+    "asker": Seat(
         READING,
         (
-            nock("decisions list"),
-            nock("decisions show"),
-            nock("docs"),
-            nock("decisions edit"),
+            nock("topics list"),
+            nock("topics show"),
+            nock("items list"),
+            nock("items show"),
+            nock("topics answer"),
             *GIT_READING,
         ),
-        GIT_WRITING,
-    ),
-    # Makes an item's next version in its work directory and registers it for review;
-    # each regeneration adds that directory, and the recipe's command (`review.Items.seat`).
-    "regenerator": Seat(
-        (*READING, "Edit", "Write"),
-        (nock("review show"), nock("review add"), nock("docs"), *GIT_READING),
         GIT_WRITING,
     ),
     # Reads what identifies the project and answers in its last message.

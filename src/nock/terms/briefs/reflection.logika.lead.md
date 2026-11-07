@@ -34,11 +34,12 @@ recorded the round.
 1. `.nock/nock reflect logika` prints the round's two material files and
    the report you write. The material shows what the ledger already says
    and measures, per component, event (with its risks) and param, what
-   changed since the last round, and the decisions and suggestions earlier
-   rounds left.
+   changed since the last round, and the items earlier rounds left in the
+   `logika` topic.
 2. Start with what is owed:
-   - the decisions the owner rejected or left a note on: act on each, then
-     edit it to say what you did;
+   - the items the owner rejected or wrote on: act on each, as a new
+     version (`items update REF --version`), answering in its thread when
+     the version doesn't say it;
    - the last round's rules that raised false alarms: fix them or take them
      out (`logika query` shows them).
 3. Find the gaps: `logika map` (`logika docs map`) prints, per file, each
@@ -66,10 +67,10 @@ recorded the round.
    to them) or a genuine ambiguity, where the docs, the copy, the tests and
    the code's intent leave the intended behaviour open. Ask a few at a time,
    each with the rule it settles and the answer you propose, and carry on
-   with your answer meanwhile; if they would rather answer later, record it
-   as a decision (`.nock/nock decide '{"status": "done", "tags": ["logika",
-   "important"], …}'`, your answer as the title; `.nock/nock docs
-   decisions.important`). Thresholds aren't questions: they come from the
+   with your answer meanwhile; if they would rather answer later, submit it
+   as a decision in the `logika` topic (`.nock/nock items create logika
+   '{"title": …, "decision": {"answer": …}}'`, your answer as the title;
+   `.nock/nock docs topics.decisions`; `topics create` it the first time). Thresholds aren't questions: they come from the
    data, with the margin you chose stated in the rule's evidence.
 6. Add the instrumentation the rules need, as Logika's docs describe
    (`logika docs instrument`): the raw input a decision read beside its

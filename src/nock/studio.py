@@ -1,8 +1,9 @@
 """The owner's page (`nock studio`): one local server, a tab for each thing
-nock keeps for the owner: the decisions agents recorded,
-reviewed in place, the items they made for review (screenshots, videos,
-pages, texts), looked at, compared and judged, and the evaluations, explored as a graph of their runs
-(`nock.explorer`). Local, and only while `nock studio` runs.
+nock keeps for the owner: the topics agents put their work in, each item (a
+decision, project files, something made to show part of the project) looked
+at, compared, accepted or rejected and talked over in its thread, with a bar
+to search them or ask about them; and the evaluations, explored as a graph
+of their runs (`nock.explorer`). Local, and only while `nock studio` runs.
 
 A tab is a `Tab` in `TABS`: its name is its address on the page (`#NAME`) and
 its routes on the server (`/NAME/…`); its page is the fragment
@@ -16,7 +17,10 @@ from __future__ import annotations
 import html
 import json
 import mimetypes
+import os
 import re
+import subprocess
+import sys
 import threading
 import urllib.parse
 import webbrowser
@@ -29,17 +33,18 @@ from typing import Any, NotRequired, TypedDict
 
 from nock.commands import schema_of
 from nock.comparison import Comparison, Query
-from nock.decisions import Change, Decisions, Review
 from nock.errors import Error, NotFoundError, UsageError
 from nock.evaluation import Evaluations, Run
 from nock.explorer import Explorer, View
 from nock.project import Project
-from nock.review import Items, Verdict
-from nock.review import Word as ItemWord
 from nock.schema import validate
+from nock.topics import Author, Topics, Verdict
+from nock.topics import Word as Verdicted
 from nock.usage import QUESTION, Answer, Usage, sharing
+from nock.utils import now
 
-PAGES = Path(__file__).resolve().with_name("pages")
+PACKAGE = Path(__file__).resolve().parent
+PAGES = PACKAGE / "pages"
 SHELL = PAGES / "studio.html"
 LOOK = PAGES / "studio.css"
 
@@ -62,45 +67,6 @@ class Tab:
 
     def post(self, route: str, body: Any) -> Any:
         raise NotFoundError("no such page")
-
-
-class Word(TypedDict):
-    """What the owner says about a decision on the page."""
-
-    review: NotRequired[Review]
-    note: NotRequired[str | None]
-    elaborate: NotRequired[bool]
-
-
-class DecisionsTab(Tab):
-    """`GET /decisions` every decision with the tags in use and the project's
-    vocabulary (empty when it fixes none), `POST
-    /decisions/N` the owner's word on one: a review, a note, or elaborate."""
-
-    name = "decisions"
-    title = "Decisions"
-
-    def __init__(self, project: Project) -> None:
-        super().__init__(project)
-        self.decisions = Decisions(project)
-
-    def get(self, route: str) -> Any:
-        if route:
-            raise NotFoundError("no such page")
-        return {
-            "decisions": self.decisions.all(),
-            "tags": self.decisions.tags(),
-            "vocabulary": self.decisions.vocabulary(),
-        }
-
-    def post(self, route: str, body: Any) -> Any:
-        if not route.isdigit():
-            raise NotFoundError("no such decision")
-        validate(body, schema_of(Word))
-        decision, _ = self.decisions.edit(Change(number=int(route), **body))
-        if body.get("elaborate"):
-            self.decisions.elaborate_in_background(int(route))
-        return decision
 
 
 class Draft(TypedDict):
@@ -192,61 +158,157 @@ class Raw:
     path: Path
 
 
-class Said(TypedDict):
-    """What the owner says about an item on the page: a verdict, a note, or
-    to regenerate it (answering the note)."""
+class Judged(TypedDict):
+    """The owner's verdict on the page: on an item (`ref`), or on every open item of a topic."""
 
-    key: str
-    verdict: NotRequired[Verdict]
-    feedback: NotRequired[str | None]
+    ref: NotRequired[str]
+    topic: NotRequired[str]
+    verdict: Verdict
+    comment: NotRequired[str]
 
 
-class ReviewTab(Tab):
-    """`GET /review` every item with all its versions, the tags in use and
-    the regenerations under way; `GET /review/file/KEY/VERSION/NAME` one of a
-    version's files, as it is; `POST /review/judge` the owner's word on the
-    latest version, `/regenerate` a new version made from the recipe in the
-    background, answering the note given."""
+class Replied(TypedDict):
+    """The owner's message in an item's thread (`ref`) or a topic's."""
 
-    name = "review"
-    title = "Review"
+    ref: NotRequired[str]
+    topic: NotRequired[str]
+    text: str
+
+
+class Question(TypedDict):
+    question: str
+
+
+class Asking:
+    """The one question being asked at a time: a `nock topics ask` run in its
+    own process, so it is cancelled by stopping it."""
+
+    def __init__(self, project: Project) -> None:
+        self.project = project
+        self.question: str | None = None
+        self.started: str | None = None
+        self.process: subprocess.Popen[bytes] | None = None
+        self.output = project.local / "answers" / "studio.json"
+        self.cancelled = False
+
+    def start(self, question: str) -> dict[str, Any]:
+        if not question.strip():
+            raise UsageError("the question is empty")
+        if self.process is not None and self.process.poll() is None:
+            raise UsageError("a question is being answered: wait for it, or cancel it")
+        self.output.parent.mkdir(parents=True, exist_ok=True)
+        with self.output.open("wb") as output:
+            self.process = subprocess.Popen(
+                [sys.executable, "-m", "nock", "topics", "ask", question.strip(), "--json"],
+                cwd=self.project.here,
+                env={**os.environ, "PYTHONPATH": str(PACKAGE.parent)},
+                stdin=subprocess.DEVNULL,
+                stdout=output,
+                stderr=subprocess.STDOUT,
+                start_new_session=True,
+            )
+        self.question, self.started, self.cancelled = question.strip(), now(), False
+        return self.state() or {}
+
+    def cancel(self) -> dict[str, Any]:
+        if self.process is not None and self.process.poll() is None:
+            self.process.terminate()
+            self.cancelled = True
+        return self.state() or {}
+
+    def state(self) -> dict[str, Any] | None:
+        if self.process is None:
+            return None
+        said = {"question": self.question, "started": self.started}
+        if self.cancelled:
+            return {**said, "running": False, "problem": "cancelled"}
+        if self.process.poll() is None:
+            return {**said, "running": True}
+        text = self.output.read_text() if self.output.is_file() else ""
+        if self.process.returncode == 0:
+            try:
+                answered = json.loads(text)
+            except json.JSONDecodeError:
+                answered = {"answer": text.strip(), "items": []}
+            return {**said, "running": False, **answered}
+        return {
+            **said,
+            "running": False,
+            "problem": text.strip()[-600:] or "the agent gave no answer",
+        }
+
+
+class TopicsTab(Tab):
+    """`GET /topics` every topic with its items (each version's decision and
+    files) and the question being asked; `GET /topics/file/TOPIC/SLUG/N/NAME`
+    one of a version's files, as it is; `POST /topics/judge` the owner's
+    verdict on an item or a whole topic, `/reply` their message in a thread,
+    `/ask` a question about the topics (one at a time), `/ask/cancel` stops it."""
+
+    name = "topics"
+    title = "Topics"
 
     def __init__(self, project: Project) -> None:
         super().__init__(project)
-        self.items = Items(project)
+        self.topics = Topics(project)
+        self.asking = Asking(project)
 
     def fragment(self) -> str:
-        return f"<style>\n{(PAGES / 'review.css').read_text()}</style>\n" + super().fragment()
+        return f"<style>\n{(PAGES / 'topics.css').read_text()}</style>\n" + super().fragment()
 
     def get(self, route: str) -> Any:
         if not route:
-            return {
-                "items": self.items.all(),
-                "tags": self.items.tags(),
-                "regenerating": self.items.running(),
-            }
-        kind, _, rest = route.partition("/")
-        place, _, name = urllib.parse.unquote(rest).rpartition("/")
-        key, _, version = place.rpartition("/")
-        if kind != "file" or not version.isdigit() or not key:
+            return {"topics": self.everything(), "ask": self.asking.state()}
+        parts = urllib.parse.unquote(route).split("/")
+        if parts[0] != "file" or len(parts) < 5 or not parts[3].isdigit():
             raise NotFoundError("no such page")
-        return Raw(self.items.file(key, int(version), name))
+        return Raw(self.topics.file(parts[1], parts[2], int(parts[3]), "/".join(parts[4:])))
+
+    def everything(self) -> list[dict[str, Any]]:
+        found = []
+        for name in self.topics.names():
+            record = self.topics.topic(name)
+            items = self.topics.items(name)
+            found.append(
+                {
+                    **record,
+                    "current": self.topics.current_description(record),
+                    "finished": self.topics.finished(record, items),
+                    "active": self.topics.activity(record, items),
+                    "counts": self.topics.counts(items),
+                    "items": [self.topics.shown(item) for item in items],
+                }
+            )
+        return sorted(found, key=lambda topic: topic["active"], reverse=True)
 
     def post(self, route: str, body: Any) -> Any:
-        if route not in ("judge", "regenerate"):
-            raise NotFoundError("no such page")
-        validate(body, schema_of(Said))
-        key = body["key"]
-        if route == "regenerate":
-            if "verdict" in body:
-                raise UsageError("regenerate takes the note, not a verdict")
-            return self.items.regenerate_in_background(key, body.get("feedback"))
-        word = {field: body[field] for field in ("verdict", "feedback") if field in body}
-        version, _ = self.items.judge(key, ItemWord(**word))
-        return version
+        if route == "judge":
+            validate(body, schema_of(Judged))
+            word = Verdicted(verdict=body["verdict"], comment=body.get("comment", ""))
+            if "ref" in body:
+                return {"judged": [self.topics.judge(body["ref"], word)[0]["ref"]]}
+            if "topic" in body:
+                return {"judged": self.topics.judge_topic(body["topic"], word)[0]}
+            raise UsageError("give `ref` or `topic`")
+        if route == "reply":
+            validate(body, schema_of(Replied))
+            where = body.get("ref") or body.get("topic")
+            if not where:
+                raise UsageError("give `ref` or `topic`")
+            if "ref" in body:
+                self.topics.update_item(body["ref"], None, reply=body["text"], author=Author.OWNER)
+            else:
+                self.topics.update_topic(body["topic"], {}, reply=body["text"], author=Author.OWNER)
+            return {"replied": where}
+        if route == "ask":
+            validate(body, schema_of(Question))
+            return self.asking.start(body["question"])
+        if route == "ask/cancel":
+            return self.asking.cancel()
+        raise NotFoundError("no such page")
 
 
-TABS: tuple[type[Tab], ...] = (DecisionsTab, ReviewTab, EvalsTab)
+TABS: tuple[type[Tab], ...] = (TopicsTab, EvalsTab)
 
 
 class Choice(TypedDict):
@@ -296,7 +358,7 @@ class Studio(ThreadingHTTPServer):
             f' aria-checked="{str(answer is Answer.YES).lower()}" aria-labelledby="share-label">'
             "<span></span></button></div>\n"
             '          <p class="hint">Weekly at most, counts and categories only: never code,'
-            " paths, names or what decisions say.</p>\n"
+            " paths, names or what items say.</p>\n"
             f"          <details><summary>What it holds</summary><p>{html.escape(QUESTION)}</p></details>\n"
             "        </div>\n"
             "      </div>"

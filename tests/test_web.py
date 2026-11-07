@@ -52,10 +52,10 @@ def test_every_readme_section_is_a_page_with_its_own_contents_and_thanks_stays_o
     assert "/getting-started/" in pages and "/docs/why/" in pages
     for text in pages.values():
         assert "Eyk" not in text and 'id="thanks"' not in text
-    decisions = pages["/docs/decisions/"]
-    contents = decisions.split('<nav class="contents"')[1].split("</nav>")[0]
+    topics = pages["/docs/topics/"]
+    contents = topics.split('<nav class="contents"')[1].split("</nav>")[0]
     assert re.findall(r'href="#([^"]+)"', contents) == ["the-map", "consulting"]
-    article = decisions.split('<article class="card article">')[1]
+    article = topics.split('<article class="card article">')[1]
     assert "**" not in re.sub(r"<pre>.*?</pre>|<code>.*?</code>", "", article, flags=re.S)
 
 
@@ -78,7 +78,7 @@ def test_every_link_between_pages_lands_and_old_anchors_are_sent_on(tmp_path: Pa
     }
     assert headings - {"concepts", "evaluation", "reference", "docs"} <= set(moved)
     assert moved["a-tool"] == "/docs/a-tool/"
-    assert moved["the-map"] == "/docs/decisions/#the-map"
+    assert moved["the-map"] == "/docs/topics/#the-map"
     assert moved["getting-started"] == "/getting-started/"
 
 

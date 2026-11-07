@@ -113,7 +113,7 @@
 :root .row .number { font: 600 14px/24px var(--mono); color: var(--foreground); }
 :root .row .title { font: 600 16px/24px var(--sans); }
 
-/* --- the decisions' controls: the review tabs, sort, search and filters as one glass card ------ */
+/* --- the topics' controls: the bar and the verdict tabs as one glass card --------------------- */
 
 :root .controls {
   margin-top: 16px; padding: 0 18px 16px; border-radius: var(--radius);
@@ -155,7 +155,6 @@
 }
 :root .chip[aria-pressed="true"]:hover, :root .evals .chip[aria-pressed="true"]:hover { background: rgb(185 166 255 / .34); }
 :root .chip[aria-pressed="true"] .count { color: inherit; }
-:root .chip[data-tag="important"][aria-pressed="true"] { background: rgb(255 226 122 / .35); border-color: rgb(138 79 0 / .55); color: var(--warning); }
 
 /* --- other buttons: a soft shadow in a mellow tint of their own on hover ---------------------- */
 
@@ -196,24 +195,24 @@
 
 /* --- cards: near-opaque grainy white, so a long list scrolls without blurring each card -------- */
 
-:root .decision, :root .evals .card {
+:root .sheet, :root .evals .card {
   border-radius: var(--radius); border: 1px solid rgb(255 255 255 / .95);
   background: var(--noise), rgb(255 255 255 / .95); background-blend-mode: soft-light, normal;
   box-shadow: 0 6px 24px rgb(60 20 120 / .1);
 }
 /* An open one takes a pair of foil colours by its number, so open ones tell apart. */
-:root .decision[data-hue="0"] { --one: var(--cyan); --two: var(--pink); }
-:root .decision[data-hue="1"] { --one: var(--yellow); --two: var(--cyan); }
-:root .decision[data-hue="2"] { --one: var(--lavender); --two: var(--yellow); }
-:root .decision[data-hue="3"] { --one: var(--pink); --two: var(--lavender); }
-:root .decision.open {
+:root .sheet[data-hue="0"] { --one: var(--cyan); --two: var(--pink); }
+:root .sheet[data-hue="1"] { --one: var(--yellow); --two: var(--cyan); }
+:root .sheet[data-hue="2"] { --one: var(--lavender); --two: var(--yellow); }
+:root .sheet[data-hue="3"] { --one: var(--pink); --two: var(--lavender); }
+:root .sheet.open {
   border: 2px solid #111116;
   box-shadow: 5px 5px 0 0 var(--one), -5px -5px 0 0 var(--two), 0 12px 32px rgb(60 20 120 / .18);
 }
-:root .decision.open .body { border-top: 1px dashed rgb(17 17 22 / .2); }
-:root .decision.open .section > .label { color: var(--foreground); }
-:root .decision.open .section li::marker { color: #111116; }
-:root .decision.open textarea:focus-visible { border-bottom: 2px solid #111116; }
+:root .sheet.open .body { border-top: 1px dashed rgb(17 17 22 / .2); }
+:root .sheet.open .section > .label { color: var(--foreground); }
+:root .sheet.open .section li::marker { color: #111116; }
+:root .sheet.open textarea:focus-visible { border-bottom: 2px solid #111116; }
 
 :root .panel.agent, :root .evals pre, :root .context code, :root .context pre, :root .links code { background: #f1eefa; }
 :root .empty { background: var(--glass); border-radius: var(--radius); }

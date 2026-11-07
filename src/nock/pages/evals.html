@@ -11,7 +11,7 @@
 // The evals tab (its look is pages/evals.css): the server folds a scenario's jobs into units per
 // column (`POST evals/NAME/explore` with the view below) and says each one's card; this script lays
 // them out, draws the wires, shows a card on hover, narrows on click, weighs a change, and polls
-// the statuses every few seconds while a run goes.
+// the statuses every few seconds.
 (() => {
   const view = {
     scenarios: [], name: null, page: null, mode: "graph",
@@ -65,7 +65,7 @@
       view.lanes = page.lanes ?? "";
       view.signature = page.signature;
       summary(page);
-      if (changed) render(polling); else live(page);
+      if (changed) render(polling);
       schedule(POLL);
     }).catch(error => { if (!polling) studio.toast(error.message || "Could not read the scenario"); schedule(POLL * 2); });
   }
@@ -141,20 +141,7 @@
       <option value=""${page.lanes ? "" : " selected"}>nothing (one row)</option></select></label>`;
     const modes = `<span class="views" role="group" aria-label="View">${["graph", "analyses"].map(mode =>
       `<button type="button" data-mode="${mode}" aria-pressed="${view.mode === mode}">${mode === "graph" ? "Graph" : `Comparisons${page.analyses.length ? ` · ${page.analyses.length}` : ""}`}</button>`).join("")}</span>`;
-    return `<div class="card toolbar">${targets}${rows}${modes}<span id="evals-live">${liveHtml(page)}</span>${whatIf(page)}</div>`;
-  }
-
-  function liveHtml(page) {
-    const run = page.run;
-    const refreshing = page.refreshing ? " · re-reading the workflow" : "";
-    if (!run) return `<span class="live" title="No Snakemake run holds this scenario's lock"><span class="pulse"></span>no run going${refreshing}</span>`;
-    const names = run.running.map(item => `${item.title}${item.since ? ` (since ${item.since.slice(11, 16)})` : ""}`).join("\n");
-    return `<span class="live on" title="${escape(`Running ${run.targets.join(" ") || "the default target"}\n${names}`)}"><span class="pulse"></span>running ${escape(run.targets.join(" "))} · ${run.done}/${run.total} steps · ${run.running.length} now${refreshing}</span>`;
-  }
-
-  function live(page) {
-    const element = $("evals-live");
-    if (element) studio.morph(element, liveHtml(page));
+    return `<div class="card toolbar">${targets}${rows}${modes}${whatIf(page)}</div>`;
   }
 
   function whatIf(page) {

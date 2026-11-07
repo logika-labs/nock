@@ -23,8 +23,8 @@ from nock.studio import Studio
 from nock.usage import IDENTITY, QUESTION, QUESTION_VERSION, UNMADE, Moment, Usage
 
 from .conftest import git, nock, write_tool
-from .test_decisions import decide, edit
 from .test_telemetry_and_reflection import transcript
+from .test_topics import judge, submit
 
 
 def configure(project: Project, old: str, new: str) -> Project:
@@ -44,8 +44,7 @@ def test_with_reminders_off_nock_says_nothing_unasked_and_still_records(
     project: Project,
 ) -> None:
     write_tool(project, "work", "import nock\n\n@nock.command\ndef deploy():\n    '''Ship it.'''\n")
-    number = decide(project.root)["number"]
-    edit(project.root, {"number": number, "review": "rejected", "note": "Postgres"})
+    judge(project.root, submit(project.root), "rejected", "Postgres")
     quiet = configure(project, "reminders = true", "reminders = false")
     assert HookRunner(quiet, {"session_id": "s1"}).handle("SessionStart") is None
     assert HookRunner(quiet, {"session_id": "s1"}).handle("UserPromptSubmit") is None
@@ -53,12 +52,12 @@ def test_with_reminders_off_nock_says_nothing_unasked_and_still_records(
     assert HookRunner(quiet, payload).handle("PostToolUse") is None
     primer = (project.root / ".nock" / "context.md").read_text()
     assert "It stays quiet here" in primer
-    assert "Record a decision" not in primer
+    assert "Put your work before the owner in Topics" not in primer
     path = transcript(quiet, "s1", ["Deploy it"], [("make deploy", 10, False)])
     HookRunner(quiet, {"session_id": "s1", "transcript_path": str(path)}).handle("SessionEnd")
     assert quiet.store.rows("SELECT id FROM sessions") == [{"id": "s1"}]
     assert "deploy" in nock(project.root).stdout
-    assert json.loads(nock(project.root, "status", "--json").stdout)["to_rework"]
+    assert json.loads(nock(project.root, "status", "--json").stdout)["topics"]["awaiting_you"]["rejected"]
 
 
 class Receiver(BaseHTTPRequestHandler):
@@ -118,8 +117,7 @@ def test_unanswered_is_asked_once_and_sends_nothing(
     assert "`.nock/nock usage share yes`" in started["ask_the_owner"]
     again = json.loads(nock(project.root, "reflect", "--json").stdout)
     assert "ask_the_owner" not in again
-    number = decide(project.root)["number"]
-    assert "ask_the_owner" not in edit(project.root, {"number": number, "review": "accepted"})
+    assert "ask_the_owner" not in judge(project.root, submit(project.root), "accepted")
     path = project.root / ".nock" / "local" / "usage.json"
     state = json.loads(path.read_text())
     assert state["asked"]["moment"] == "round" and state["asked"]["prompt"] == QUESTION_VERSION
@@ -280,5 +278,8 @@ def test_the_primer_follows_the_committed_settings_not_the_machine_s(project: Pr
     local.write_text("reminders = false\n" + local.read_text())
     quiet = Project.discover(project.root)
     assert HookRunner(quiet, {"session_id": "s1"}).handle("SessionStart") is None
-    assert "Record a decision" in (project.root / ".nock" / "context.md").read_text()
+    assert (
+        "Put your work before the owner in Topics"
+        in (project.root / ".nock" / "context.md").read_text()
+    )
     assert git(project.root, "status", "--porcelain") == ""

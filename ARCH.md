@@ -20,7 +20,7 @@ README covers what nock is for and how to use it.
   under `.nock/local/`, and caches are keyed on content.
 - **Telemetry on the main checkout, code in the working tree.** An agent may
   work in a git worktree. Its calls must use that worktree's tools, but must
-  record into the one database, and its decisions go to the main checkout. `Project` holds both places: `root` is
+  record into the one database, and its topics go to the main checkout. `Project` holds both places: `root` is
   the main checkout, and `here` is the working tree the call runs in.
 - **nock eats its own cooking.** nock's own commands, checks and fixtures are
   registered with the same decorators a project uses. `builtin.py` and
@@ -57,14 +57,18 @@ src/nock/
   logika.py          the `logika` kind: Ledger (logika.json read and counted), LogikaRound,
                      and what its two parts read: Material (rules), Analytics
   kinds.py           KINDS: the kinds of round, the default first; adding one is an entry here
-  decisions.py       Decisions (decide, edit, review, elaborate, what governs a file, the map's problems)
+  topics.py          Topics: topics and their items (decision, project and derived files, by
+                     version), the owner's verdicts, the threads, search, what waits on an
+                     agent, what an edited file's items are, the map's problems
+  migration.py       Migration: an earlier nock's decisions and review items into topics, once
+  asking.py          Asker: the studio's Ask, a fresh agent answering through `topics answer`
   studio.py          the owner's page (`nock studio`): a local server, a Tab per tab
   pages/             studio.html, the shell (band with the title and the menu, routing by
                      `#NAME/ROUTE`); studio.css, its look, put in the shell;
                      NAME.html, each tab's fragment (markup, style, a script registering it);
-                     evals.css, the Evaluations tab's own look, put before its fragment
-  status.py          Standing: a round due, decisions waiting, rejected ones to rework, important
-                     ones unreviewed, an unshared summary
+                     topics.css and evals.css, the two tabs' own looks, put before their fragments
+  status.py          Standing: a round due, the open items by topic, what waits on agents in
+                     Topics, an unshared summary
   share.py           Sharing: a round's summary, held to naming nothing, sent on the owner's word
   usage.py           Usage: the report shared with nock's makers on the owner's yes (`share`),
                      the question asked once, the project's random id, the weekly send
@@ -80,15 +84,15 @@ src/nock/
     briefs/          the long texts the installed skills and subagents follow:
                      reflection.lead and its parts reflection.toolbox, .map, .nock;
                      reflection.logika.lead and its parts .rules, .analytics;
-                     decisions.triage
+                     topics.triage
   briefs/
     nock-reflect/    the `/nock-reflect` skill (SKILL.md) and its three parts' subagent
                      types (agents/): each its front matter and one line pointing at
                      its brief in `nock docs`
     nock-reflect-logika/  the `/nock-reflect-logika` skill and its two parts' subagent types,
                      installed in Logika projects only; pointers likewise
-    nock-triage/     the `/nock-triage` skill, a pointer to `decisions.triage`
-    elaborate.md     the brief of the agent that elaborates on a decision
+    nock-triage/     the `/nock-triage` skill, a pointer to `topics.triage`
+    ask.md           the brief of the agent that answers the studio's Ask
     consult.md       the consultant's brief
     share.md         the brief of the agent that vets a summary before it is shared
 
@@ -121,7 +125,7 @@ src/nock/
 
 tests/               real git repositories and processes; no mocks
   conftest.py        a fresh repository with nock installed, per test; the `nock()` runner
-  fake_agent.py      the scripted stand-in for the dispatched agents (elaborator, consultant, sharer,
+  fake_agent.py      the scripted stand-in for the dispatched agents (consultant, asker, sharer,
                      an evaluation step's agent)
   toy/               the toy Snakefile test_eval.py runs: a word list, a planted bug (a fork), a
                      detector (a checkpoint), a fix when found, a score joining the arms
@@ -140,7 +144,7 @@ server/              api.nock.dev, where `nock share`, the usage reports and `no
 
 ```
              ┌─────────────────────────────────────────────────────┐
-  the loop   │ hooks.py  reflect.py  decisions.py  consult.py …     │
+  the loop   │ hooks.py  reflect.py  topics.py  consult.py …     │
              ├─────────────────────────────────────────────────────┤
  telemetry   │ telemetry.py   sessions.py   store.py (nock.db)      │
              ├─────────────────────────────────────────────────────┤
@@ -274,8 +278,8 @@ evidence, or it returns the `Output` when `check=False`.
 | `calls` | `telemetry.Calls` | every call, including refusals |
 | `runs` | `processes.Supervisor` | every supervised process |
 | `sessions`, `prompts`, `events`, `transcripts` | `sessions.Sessions.ingest` | at SessionEnd, after a dispatched session, and whenever telemetry is read (`catch_up`: a window, `usage`, `query`, `sessions`) |
-| `heard` | `decisions.Decisions.news_for` | when a session is told the owner's review of a decision it recorded |
-| `shown` | `decisions.Decisions.reminders_for` | when a session is shown the decisions governing a file it edited |
+| `told` | `topics.Topics.news_for` | when a session is told the owner's verdict or message on an item it submitted |
+| `shown_items` | `topics.Topics.governing` | when a session is shown the items about a file it edited |
 | `nudged` | `hooks.HookRunner.standing` | when a session start says the day's standing, a round's unshared summary, or a logika round's offer |
 
 Sessions are tied to calls through `CLAUDE_CODE_SESSION_ID`, which Claude Code
@@ -348,19 +352,21 @@ else and hands it to `hooks.run`, which:
    - **SessionStart** rewrites the primer when the committed settings say
      otherwise (`primer.refresh`), then returns the project's tools, any
      load failures, and, for a session the human started, `status.Standing`'s
-     short lines (the first few items of each kind): a round due, decisions
-     waiting on review, rejected ones to rework, important ones unreviewed, and —
-     once per round — an unshared summary. The standing is said once a day,
+     short lines (the first few items of each kind): a round due, "N new in
+     Topics (emails: 2, pricing: 1)", what waits on agents there (threads
+     where the owner wrote last, rejected items), and — once per round — an
+     unshared summary. The standing is said once a day,
      keyed in `nudged` by the date and a digest of what calls (a round due,
-     the rejected decisions, an unshared summary, a newer nock,
+     what waits on agents in Topics, an unshared summary, a newer nock,
      a logika round), so something new is said at once and the same thing
      not again that day. What calls for the human is said to them too, as
      `systemMessage`;
-   - **UserPromptSubmit** tells the session the owner's reviews and notes on
-     the decisions it recorded, once per change (the `heard` table);
+   - **UserPromptSubmit** tells the session the owner's verdicts and
+     messages on the items it submitted, once per change (the `told` table);
    - **PostToolUse**, wired with an edit-tools matcher unless a project hook
-     wants every tool, shows the standing decisions whose `touches` cover the
-     edited file, the rejected first, once per session (the `shown` table);
+     wants every tool, shows the items not rejected whose latest version holds
+     the edited file or was derived `from` it, once per session (the
+     `shown_items` table);
    - **SessionEnd** ingests the transcript and, for a session the human
      started, sends the usage statistics when due (`usage.Usage.send`);
 3. runs the project's `@nock.hook`s for the event, each in a fixture
@@ -369,8 +375,8 @@ else and hands it to `hooks.run`, which:
 4. **fails open**: any exception is printed to stderr, and the hook exits 0.
 
 `reminders = false` turns off everything nock's own handlers would add to
-the context (SessionStart's tools and standing, the prompt's reviews, the
-edit's decisions), and the primer becomes a short note on what nock is;
+the context (SessionStart's tools and standing, the prompt's verdicts, the
+edit's items), and the primer becomes a short note on what nock is;
 ingest, the usage send and the project's own hooks go on.
    A broken toolbox must never block the tool call that would fix it.
 
@@ -393,52 +399,56 @@ a `confirm` command has no ask rule (or, with `confirm = "allow"`, nock
 still has one), a command has no allow rule yet, or the blanket is still
 there.
 
-### Decisions
+### Topics
 
-`decisions.Decisions` keeps one JSON file per decision in the main
-checkout's `.nock/decisions/` and commits each change there with
-`git commit --only`, so a worktree's decision lands on the main branch at
-once. It skips the commit, and says so, when the main checkout is mid-merge
-or mid-rebase. `decide` and `edit` take the `Draft` and `Change` records;
-`edit` is also the owner's review (`review`, `note`, `elaborate`), from the
-studio's Decisions tab (`studio.DecisionsTab`, which accepts only those
-three) or from a session. A
-change to a field in `SUBSTANCE` resets the review. The owner's call is a
-decision tagged `important`, the agent's proposed answer as its title;
-`important` lists those unreviewed, for `status.Standing`. A file an earlier
-nock wrote with `status: question` is read (`upgraded`) as done and tagged
-`important`, its review kept, and saved so on its next write. `decide`
-refuses (`Failed`, exit 1, naming it) a title a standing decision not in its
-`supersedes` already has, compared `normalised` by `difflib` at `SIMILAR`,
-unless forced. `vocabulary` is the configuration's `decisions.tags` with
-`RESERVED` (`important`, and a logika round's tags); when set, `apply`
-refuses any other tag, `tags` counts from it, the CLI puts it in `decide
---help` (`cli.name_tags`), the primer names it, and `DecisionsTab` sends it
-for the tag filter. `delete` removes a file and commits it, clearing the
-`supersedes`/`superseded_by` links that named it. `edit` and `delete` are
-`revise` and `remove` (uncommitted) plus a commit; `batch` runs many under
-one lock and commits once, restoring every file if one is refused.
-`overturn` keeps both sides of a supersession in step (clearing
-`superseded_by` on what a decision no longer supersedes), `relink` does it
-for an edited `superseded_by`, and `overturnable` drops a deleted decision
-`supersedes` still names. "Elaborate" starts
-`nock decisions elaborate N` as a detached process, which dispatches the
-elaborator; the decision's `elaborating` flag holds until an edit changes
-it, or the elaborator ends without one.
+`topics.Topics` keeps, in the main checkout's `.nock/topics/`, a directory
+per topic (`topic.json`: name, description, created, thread) holding a
+directory per item (`SLUG/item.json`: title, aliases, verdict, decided,
+created, the thread, and the versions' records) and its versions' files
+(`SLUG/N/`: `decision.json`, project files under `project/PATH`, derived
+files by name); a file over `LARGE` goes under `.nock/local/topics/`
+instead, `"local": true`. Every change is committed there with
+`git commit --only` (`topics.committed`), so a worktree's item lands on the
+main branch at once; it skips the commit, and says so, when the main
+checkout is mid-merge or mid-rebase. A ref is `topic/slug`; `resolve` also
+takes an alias (a migrated decision's number, `170`, `D170`, `topic/170`).
 
-`citation_problems` is the `nock-map` check; `stale` (done decisions whose
-files are gone) goes to the round's knowledge material instead, and
-`unmatched` warns `decide` and `edit` of a `touches` entry that matches no
-file. `nock init` writes an empty `map.md`.
+`create_item` refuses a topic that is `finished` (every item decided, no
+revival since the last verdict): `update_topic --revive` posts a revival note
+first, and `current_description` reads the latest one as the description.
+`add_version` writes a version from `Content` (decision, files, derived),
+carrying over what it leaves out from the previous one, project files copied
+again from the working tree; `update_item` does it in place for an open item
+(the latest version rewritten) or as `--version` (a new one, reopening the
+item), refusing an in-place change to a decided item (`ConflictError`). The
+owner's word is `judge` and `judge_topic` (a `Word`: verdict and comment, the
+comment an owner message in the thread), from the studio or from the `judge`
+commands, which are `confirm=True`; studio messages are the owner's, CLI ones
+an agent's. `summary` is the open items by topic and `awaiting` (threads where
+the owner wrote last, rejected items), for the lists and `status.Standing`;
+`search_items` and `search_topics` rank plain full text. `news_for` and
+`governing` are the prompt and edit hooks'. `citation_problems` is the
+`nock-map` check, on `[topic/slug]` and `[D7]` citations. `nock init` writes
+an empty `map.md`.
+
+`migration.Migration` moves an earlier nock's `.nock/decisions/*.json` and
+`.nock/review/KEY/N/` into topics once, by `nock init` (so `nock upgrade`
+too, which runs the new core's init) or `nock topics migrate`: each old tag a
+topic (the first not `important`; none, `general`), each decision a decision
+item (summary, evidence and touches folded into the answer, its number an
+alias, its note an owner message, supersession a thread line), each review
+item an item of derived files with every version and its recipe (notes and
+feedback thread messages), verdicts kept, the map moved beside the topics and
+the `[decisions]` tags dropped from the config, in one commit.
 
 `consult.Consultant` renders `briefs/consult.md` with the caller's intent
 and context, the map, the project's tools and the checks, and dispatches a
 read-only consultant in the caller's working tree under `consult.deadline`,
 with `NOCK_CONSULTATION` naming the file its submission goes to. The
-consultant ends with `nock advise` (`Advice`: advice, decisions, tools,
-checks, feedback), which only that role may run and which refuses a
-decision, tool or check that doesn't exist. The caller prints the advice as
-submitted, then each named decision's title and standing, each tool's usage
+consultant ends with `nock advise` (`Advice`: advice, items, tools,
+checks, feedback), which only that role may run and which refuses an
+item, tool or check that doesn't exist. The caller prints the advice as
+submitted, then each named item's title and verdict, each tool's usage
 and the checks to run; a consultant that submits nothing (a project's own
 brief) is heard by its last message. The consultation is kept in
 `.nock/local/consultations/`, and its `feedback` goes to the next round's
@@ -453,14 +463,20 @@ primer.
 its look (`pages/studio.css`), each tab's link in the menu and its fragment
 (`pages/NAME.html`) put in; the browser
 shows the tab the address names (`#NAME`, or `#NAME/ROUTE` for something in
-it; an address naming no tab goes to the first, so `#7` opens decision 7).
+it; an address naming no tab goes to the first, so `#7` opens the item a
+decision 7 became).
 On the server, `/NAME/ROUTE` goes to that tab's `get` or `post`, JSON both
 ways, a nock `Error` becoming 404 or 400. A tab is a `studio.Tab` subclass
 listed in `TABS`, and a fragment whose script calls
 `studio.register(NAME, {show(route), hide()})`; the studio gives it
 `studio.summary` (the counts under the title) and `studio.toast`. Fragments
 share the page's scripts and styles, so a tab keeps its script in a closure
-and its style under its own class. Two tabs: `DecisionsTab`, and `EvalsTab`
+and its style under its own class. Two tabs: `TopicsTab`, which serves every
+topic with its items, a version's files as they are, the owner's verdicts
+and messages, and the Ask (`studio.Asking`: one `nock topics ask` process at a
+time, cancelled by stopping it; `asking.Asker` dispatches the asker seat,
+which answers through `nock topics answer`, held to naming items that
+exist), and `EvalsTab`
 (below), which also answers `POST /evals/NAME/dry` (a `Run`'s dry pass,
 nothing run) and `POST /evals/NAME/compare`.
 
@@ -511,7 +527,7 @@ tools and allow rules, which a step must state.
 
 `dispatch.Dispatcher.launch` runs `claude -p --output-format stream-json
 --session-id …` (`agent.command`, `agent.model`) for the sessions no human
-sits in: the elaborator and the consultant and the sharer. (A reflection
+sits in: the consultant, the asker and the sharer. (A reflection
 round's parts are the lead's own subagents, not dispatched: the types in
 `briefs/KIND/agents/`, which `nock init` installs in `.claude/agents/`, each
 with only the tools its part needs.) It:
@@ -527,8 +543,8 @@ with only the tools its part needs.) It:
   bypass flag (`dispatch.BYPASS`) or one of these flags of its own;
 - reads what Claude Code refused from the result's `permission_denials`
   into `Session.denied`, and appends it to the run's log; the consultant
-  keeps it in the consultation's record and its failure, the elaborator in
-  its result, the sharer in `outgoing.json` and the share's failure;
+  keeps it in the consultation's record and its failure, the asker in its
+  log, the sharer in `outgoing.json` and the share's failure;
 
 - runs under a Supervisor, with `agent.deadline` (or the caller's) and
   `agent.silence`;
@@ -573,8 +589,8 @@ toolbox brief names the `nock docs` terms the part reads before writing.
      kind, duration, bytes, capping, caching and retire candidates below
      ½·log₁₀(total calls), unknown commands, Bash commands grouped by
      `shape()`, the files read most, the sessions;
-   - `knowledge.md`, `reflect.Knowledge`: the decisions changed since the
-     window opened, every standing one, the tags in use, the map;
+   - `knowledge.md`, `reflect.Knowledge`: the items changed since the
+     window opened, every topic with its items in a line, the map;
    - `nock.md`, `reflect.Evidence`: the window's metrics beside every
      earlier round's, the first being the baseline.
 2. **The parts.** The lead runs three subagents on them, and writes
@@ -584,7 +600,7 @@ toolbox brief names the `nock docs` terms the part reads before writing.
    `ROUND_CHECKS` (`nock-tools`, `nock-generators`, `nock-map`,
    `nock-share`); writes `record.json` with the window, the metrics, the
    per-tool snapshot and `shared: null`; and commits `.nock/` (and the main
-   checkout's decisions, from a worktree).
+   checkout's topics, from a worktree).
 
 `Rounds` reads `.nock/reflections/*/record.json` (and the single-file records
 of earlier versions). Rounds are directories named by date, so records from
@@ -604,8 +620,8 @@ declares events, or `reflect.logika.days` after the last with commits to
 `logika.json` since — goes into `status.Standing` as an offer (`rounds`),
 and the session start says it at most once a week (`nudged` keys
 `KIND:LAST:WEEK`), as for any kind other than the default. `begin` writes
-its two parts' material from the ledger, git and the decisions tagged
-`logika`: `rules.md` (`logika.Material`) and `analytics.md`
+its two parts' material from the ledger, git and the items of the
+`logika` topic: `rules.md` (`logika.Material`) and `analytics.md`
 (`logika.Analytics`: params and their flags, funnels, milestones, views);
 the `reflection.logika.rules` and `reflection.logika.analytics` terms are
 the parts' briefs. The rules
@@ -618,7 +634,7 @@ dispatches a rules part per directory with gaps. Its end requires
 
 `usage.Usage` keeps `.nock/local/usage.json`: when this machine asked the
 owner whether nock shares (`ask`, called by a round's start, `studio` and
-the owner's first review or note through `decisions edit`, only while
+the owner's first verdict through `items judge` or `topics judge`, only while
 `share` is unanswered; the page asks under the title, with buttons posting
 to `POST /usage`, until it is answered), the answer (`answer`, from `nock
 usage share yes|no` or the page: `share` written with `with_setting` into
@@ -756,7 +772,7 @@ Everything a project adds lives in `.nock/` and is committed:
 | hook | `.nock/tools/*.py` | `@nock.hook(event)` | `hooks.HookRunner` |
 | generated file | `.nock/tools/*.py` | `@nock.generator(path)` | `generators.Generators` |
 | catalog | `.nock/generators/NAME/` | `nock gen new` | `generators.Catalog` |
-| brief | `.nock/briefs/NAME.md` (elaborate, consult) | the file's presence | `templates.Library`, before the packaged briefs |
+| brief | `.nock/briefs/NAME.md` (consult, ask) | the file's presence | `templates.Library`, before the packaged briefs |
 | skill | `.claude/skills/nock-reflect/`, `.claude/skills/nock-triage/`, `.claude/skills/nock-reflect-logika/` (Logika projects) | `nock init` | Claude Code; `nock init` rewrites them, and removes the retired `reflect` and `consolidate` and the briefs earlier versions put beside a skill |
 | settings | `.nock/config.toml`, `.nock/local/config.toml` | — | `configuration.Configuration` |
 | the core itself | `.nock/core/nock/` | edit it | kept by `nock upgrade`'s three-way merge |
@@ -846,9 +862,8 @@ a GitHub release.
 
 - `tests/` runs the vendored `.nock/nock` in real temporary repositories,
   with real git and real processes. The dispatched agents are
-  `tests/fake_agent.py`, configured as `agent.command`: it edits a
-  decision as the elaborator (or stays silent) and answers as the
-  consultant. It will not start with permissions bypassed, keeps its
+  `tests/fake_agent.py`, configured as `agent.command`: it answers as the
+  consultant and as the asker. It will not start with permissions bypassed, keeps its
   command line for a test to read, and refuses and reports a call its
   seat's rules don't allow, as Claude Code does in `dontAsk`. There are no
   mocks.

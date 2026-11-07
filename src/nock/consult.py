@@ -1,6 +1,6 @@
 """Consulting: before an agent changes code, a fresh one reads the project's
-decisions, their map, its tools and checks, and advises — short and
-specific, the decisions the work must keep to, the tools that do its steps,
+topics and their items, their map, its tools and checks, and advises — short
+and specific, the items the work must keep to, the tools that do its steps,
 the checks that judge it — through `nock advise`, which holds what it names
 to what exists. Behind `consult.enabled`: off, nothing is dispatched."""
 
@@ -13,11 +13,11 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, NotRequired, TypedDict
 
 from nock.checks import Checks
-from nock.decisions import Decisions
 from nock.dispatch import Dispatcher
 from nock.docs import Docs
 from nock.errors import Failed, NotFoundError, PolicyError, UsageError
 from nock.templates import Library
+from nock.topics import Topics
 from nock.utils import now, read_json, write_json
 
 if TYPE_CHECKING:
@@ -43,8 +43,8 @@ class Consultation(TypedDict):
 class Advice(TypedDict):
     advice: str
     """What the agent should know and do, as it should read it: short and specific."""
-    decisions: NotRequired[list[int]]
-    """The decisions that bear on the work, by number; the agent is shown each one's title and standing."""
+    items: NotRequired[list[str]]
+    """The items that bear on the work, as `topic/slug`; the agent is shown each one's title and verdict."""
     tools: NotRequired[list[str]]
     """The `.nock/nock` commands that do steps of the work; the agent is shown their usage."""
     checks: NotRequired[list[str]]
@@ -66,7 +66,7 @@ class Consultant:
     def consult(self, consultation: Consultation) -> str:
         if not self.enabled:
             return OFF
-        path = Decisions(self.project).map
+        path = Topics(self.project).map
         tools = [
             f"`.nock/nock {tool.command.usage()}`: {tool.command.summary}"
             for tool in self.project.registry.project_tools()
@@ -115,21 +115,15 @@ class Consultant:
         return answer
 
     def answer(self, submitted: dict[str, Any]) -> str:
-        """The advice exactly as submitted, then what it names: each decision's
-        standing, each tool's usage, the checks to pass."""
+        """The advice exactly as submitted, then what it names: each item's
+        verdict, each tool's usage, the checks to pass."""
         parts = [str(submitted["advice"]).strip()]
-        decisions = Decisions(self.project)
-        named = [decisions.get(number) for number in submitted.get("decisions") or []]
+        topics = Topics(self.project)
+        named = [topics.item(ref) for ref in submitted.get("items") or []]
         if named:
-            lines = [
-                "The decisions this rests on (`.nock/nock decisions show N` has the reasoning):"
-            ]
-            for decision in named:
-                note = f" The owner: {decision['note']}" if decision["note"] else ""
-                lines.append(
-                    f"- [D{decision['number']}] ({decision['status']}, {decision['review']}) "
-                    f"{decision['title']}.{note}"
-                )
+            lines = ["The items this rests on (`.nock/nock items show REF` has each in full):"]
+            for item in named:
+                lines.append(f"- [{item['ref']}] ({item['verdict']}) {item['title']}")
             parts.append("\n".join(lines))
         tools = [self.project.registry.tool(path) for path in submitted.get("tools") or []]
         if tools:
@@ -164,12 +158,12 @@ class Consultant:
             problems.append(
                 "`advice` is empty: say what the agent should know, or that nothing in nock bears on it"
             )
-        decisions = Decisions(self.project)
-        for number in advice.get("decisions") or []:
+        topics = Topics(self.project)
+        for ref in advice.get("items") or []:
             try:
-                decisions.get(number)
+                topics.resolve(ref)
             except NotFoundError:
-                problems.append(f"decisions: there is no decision {number}")
+                problems.append(f"items: there is no item {ref}")
         registry = self.project.registry
         paths = [tool.command.path for tool in registry.tools]
         for path in advice.get("tools") or []:
@@ -196,6 +190,6 @@ class Consultant:
             )
         write_json(Path(target), dict(advice))
         return (
-            "submitted: the agent reads your advice exactly as written, then the decisions, "
+            "submitted: the agent reads your advice exactly as written, then the items, "
             "tools and checks it names. You are done."
         )

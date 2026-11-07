@@ -3,7 +3,7 @@ categories, and a random id for the project so they can count projects
 without knowing which, never the project's code, paths, names or text. Only
 with the owner's yes: `share` unset is unanswered, and nothing is sent. nock
 asks once per machine, the first time the owner engages with it (a
-reflection round, the page, their word on a decision), and their answer is
+reflection round, the page, their verdict on an item), and their answer is
 written to `share` in the config, with when they gave it and which question
 they answered kept in the machine's state."""
 
@@ -72,9 +72,9 @@ QUESTION_VERSION = 1
 QUESTION = (
     "May nock share a weekly usage report with its makers, to improve nock? It holds counts"
     " and categories only (sessions, calls to nock's own commands and how they ended, how many"
-    " tools, checks and decisions there are, the versions of nock and Python) and a random id"
+    " tools, checks and topics there are, the versions of nock and Python) and a random id"
     " for this project, made when the first report is sent and committed in .nock/project.json"
-    " so its clones share it; never code, paths, names, prompts, arguments or what decisions"
+    " so its clones share it; never code, paths, names, prompts, arguments or what items"
     " say. Nothing is sent unless you say yes; the first report would go a week after, then at"
     " most weekly, and `.nock/nock usage` shows exactly what it would carry. You can change your"
     " answer at any time with `share` in .nock/config.toml."
@@ -142,7 +142,7 @@ class Usage:
     def __init__(self, project: Project) -> None:
         self.project = project
         self.path = project.local / STATE
-        # In the main checkout, like the decisions, so a worktree never makes a second id.
+        # In the main checkout, like the topics, so a worktree never makes a second id.
         self.identity_path = project.root / ".nock" / IDENTITY
 
     def state(self) -> dict[str, Any]:

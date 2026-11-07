@@ -3,10 +3,10 @@ stdin and answers in Claude Code's hook format. nock's own: a session starts
 knowing the toolbox, upgraded to a newer nock when the merge is clean
 (`upgrade.auto`), and — when the human started it, once a day or when
 something new calls — where things stand, in a few lines (a reflection round
-due, decisions waiting on review or rework, items to make again, another kind of round worth
+due, what is new in Topics and what waits on an agent there, another kind of round worth
 offering); a
-prompt brings the owner's reviews of the decisions the session recorded; an
-edit to a file shows the decisions that govern it; and when the session ends
+prompt brings the owner's verdicts and messages on the items the session
+submitted; an edit to a file shows the items about it; and when the session ends
 its transcript is read into telemetry and, when due, the usage statistics
 are shared. A turn that would end with a round this session started still
 open is refused once, saying what the round still needs. What calls for the owner is also said to the human. With
@@ -24,7 +24,6 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from nock.decisions import Decisions
 from nock.fixtures import Call, Scope
 from nock.kinds import kinds
 from nock.primer import refresh
@@ -33,6 +32,7 @@ from nock.releases import Updates
 from nock.sessions import Sessions
 from nock.status import Standing
 from nock.tools import CONFIRM_NOTES, NATIVE_EVENTS, Event
+from nock.topics import Author, Topics
 from nock.usage import Usage
 
 EVENTS = {native: event for event, native in NATIVE_EVENTS.items()}
@@ -85,7 +85,7 @@ class HookRunner:
         elif event is Event.PROMPT and self.reminding:
             messages.append(self.reviews())
         elif event is Event.AFTER_TOOL and self.reminding:
-            messages.append(self.decisions())
+            messages.append(self.items_about())
         elif event is Event.SESSION_END:
             self.session_end()
         blocks: list[str] = []
@@ -188,8 +188,7 @@ class HookRunner:
         offers = sorted(kind for kind, offer in collected["rounds"].items() if offer.get("due"))
         news = [
             bool(collected["reflection"]["due"]),
-            sorted(item["number"] for item in collected["to_rework"]),
-            sorted([item["key"], item["version"]] for item in collected["to_remake"]),
+            collected["topics"]["awaiting_you"],
             collected["unshared"],
             collected["newer_nock"],
             offers,
@@ -210,9 +209,9 @@ class HookRunner:
                 del collected["rounds"][kind]
         return standing.lines(collected)
 
-    def decisions(self) -> str:
-        """The standing decisions that govern the file just edited, the first
-        time this session edits it."""
+    def items_about(self) -> str:
+        """The items about the file just edited (holding it, or derived from
+        it), the first time this session edits it."""
         session = self.payload.get("session_id")
         tool_input = self.payload.get("tool_input")
         if not isinstance(session, str) or not isinstance(tool_input, dict):
@@ -225,38 +224,33 @@ class HookRunner:
         if not path.resolve().is_relative_to(self.project.here.resolve()):
             return ""
         relative = str(path.resolve().relative_to(self.project.here.resolve()))
-        found = Decisions(self.project).reminders_for(session, relative)
+        found = Topics(self.project).governing(session, relative)
         if not found:
             return ""
-        lines = [f"nock: decisions govern {relative} — keep to them, or record why not:"]
-        for decision in found:
-            note = f" The owner: {decision['note']}" if decision["note"] else ""
-            lines.append(
-                f"- [D{decision['number']}] ({decision['status']}, {decision['review']}) "
-                f"{decision['title']}.{note}"
-            )
-        lines.append("`.nock/nock decisions show N` has the reasoning.")
+        lines = [f"nock: items in Topics are about {relative} — keep to them, or say why not:"]
+        lines += [f"- [{item['ref']}] ({item['verdict']}) {item['title']}" for item in found]
+        lines.append("`.nock/nock items show REF` has each in full.")
         return "\n".join(lines)
 
     def reviews(self) -> str:
-        """The owner's reviews and notes on this session's decisions, the first time it sees them."""
+        """The owner's verdicts and messages on the items this session
+        submitted, the first time it sees them."""
         session = self.payload.get("session_id")
         if not isinstance(session, str):
             return ""
         lines = []
-        for decision in Decisions(self.project).news_for(session):
-            note = f": {decision['note']}" if decision["note"] else ""
-            lines.append(
-                f"- [D{decision['number']}] {decision['title']} — {decision['review']}{note}"
-            )
+        for item in Topics(self.project).news_for(session):
+            said = [entry["text"] for entry in item["thread"] if entry["author"] == Author.OWNER]
+            note = f": {said[-1]}" if said else ""
+            lines.append(f"- [{item['ref']}] {item['title']} — {item['verdict']}{note}")
         if not lines:
             return ""
         return "\n".join(
             [
-                "nock: the owner reviewed decision(s) you recorded:",
+                "nock: the owner said something on item(s) you submitted:",
                 *lines,
-                "Rework what was rejected, act on what they noted, and edit the decision to say what you did: "
-                "`.nock/nock decisions edit '{\"number\": N, …}'`.",
+                "Rework what was rejected as a new version (`.nock/nock items update REF --version '{…}'`);"
+                " answer a question in the thread (`--reply`), briefly, when the owner is away.",
             ]
         )
 

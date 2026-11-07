@@ -1,6 +1,6 @@
 """The logika topic: in a Logika project — a `logika.json` ledger, the `logika`
 CLI on PATH (here a stand-in script) — a round that reads the ledger and the
-decisions earlier rounds left, finishes with its report and a ledger that
+the items earlier rounds left in the `logika` topic, finishes with its report and a ledger that
 parses, commits both, and is offered gently, never run."""
 
 from __future__ import annotations
@@ -20,6 +20,7 @@ from nock.project import Project
 from nock.reflect import Reflection, Rounds
 
 from .conftest import git, nock
+from .test_topics import judge, submit
 
 LEDGER: dict[str, Any] = {
     "ledger": "shop",
@@ -128,20 +129,15 @@ def test_init_installs_the_logika_skill_in_a_logika_project(logika: Project) -> 
 
 
 def test_the_material_says_what_the_ledger_holds_and_what_was_decided(logika: Project) -> None:
-    asked = nock(
+    ref = submit(
         logika.root,
-        "decide",
-        json.dumps(
-            {
-                "title": "Refunds never exceed the charge",
-                "status": "done",
-                "summary": "A rule would hold every refund to its charge.",
-                "tags": ["logika", "important"],
-            }
-        ),
+        {
+            "title": "Refunds never exceed the charge",
+            "decision": {"answer": "A rule would hold every refund to its charge."},
+        },
+        topic="logika",
     )
-    assert asked.returncode == 0, asked.stderr
-    nock(logika.root, "decisions", "edit", '{"number": 1, "review": "rejected", "note": "110%"}')
+    judge(logika.root, ref, "rejected", "110%")
     started = start(logika)
     material = Path(started["material"]["rules"]).read_text()
     assert "3 events (1 spans; 1 with `validate`, 0 with paths, 1 with a timeout)" in material
@@ -155,7 +151,9 @@ def test_the_material_says_what_the_ledger_holds_and_what_was_decided(logika: Pr
     assert "shop,src,,yes,1," in material
     assert "Instrument the shop" in material
     assert "This is the first logika round." in material
-    assert "- [D1] done, rejected: Refunds never exceed the charge — the owner: 110%" in material
+    assert (
+        f"- [{ref}] done, rejected: Refunds never exceed the charge — the owner: 110%" in material
+    )
     assert started["write"] == [".nock/reflections/logika/" + started["round"] + "/report.md"]
     analytics = Path(started["material"]["analytics"]).read_text()
     assert "3 events, 3 params (0 identities, 0 dimensions), 0 funnels" in analytics

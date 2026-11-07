@@ -11,48 +11,42 @@ from pathlib import Path
 
 import pytest
 
+from nock.asking import ROLE as ASKER
 from nock.consult import ROLE as CONSULTANT
-from nock.decisions import ROLE as ELABORATOR
 from nock.dispatch import ARGUMENT_LIMIT, BYPASS, SEATS, Dispatcher
 from nock.project import Project
 from nock.reflect import Reflection
-from nock.review import ROLE as REGENERATOR
 from nock.share import ROLE as SHARER
 
 from .conftest import FAKE_AGENT, nock, write_tool
-from .test_decisions import decide, edit
 from .test_telemetry_and_reflection import RECORD, finish
+from .test_topics import submit
 
 ROOT = Path(__file__).resolve().parents[1]
 READING = "Read,Grep,Glob,Bash"
 EXPECTED = {
     CONSULTANT: [
-        "Bash(.nock/nock decisions list:*)",
-        "Bash(.nock/nock decisions show:*)",
+        "Bash(.nock/nock topics list:*)",
+        "Bash(.nock/nock topics show:*)",
+        "Bash(.nock/nock items list:*)",
+        "Bash(.nock/nock items show:*)",
         "Bash(.nock/nock docs:*)",
         "Bash(.nock/nock advise:*)",
     ],
-    ELABORATOR: [
-        "Bash(.nock/nock decisions list:*)",
-        "Bash(.nock/nock decisions show:*)",
-        "Bash(.nock/nock docs:*)",
-        "Bash(.nock/nock decisions edit:*)",
-        "Bash(git log:*)",
-        "Bash(git show:*)",
-    ],
-    REGENERATOR: [
-        "Bash(.nock/nock review show:*)",
-        "Bash(.nock/nock review add:*)",
-        "Bash(.nock/nock docs:*)",
+    ASKER: [
+        "Bash(.nock/nock topics list:*)",
+        "Bash(.nock/nock topics show:*)",
+        "Bash(.nock/nock items list:*)",
+        "Bash(.nock/nock items show:*)",
+        "Bash(.nock/nock topics answer:*)",
         "Bash(git log:*)",
         "Bash(git show:*)",
     ],
     SHARER: ["Bash(git log:*)"],
 }
 WRITING_GIT = ["--disallowedTools", "Bash(git * --ou*)"]
-DENIED = {CONSULTANT: [], ELABORATOR: WRITING_GIT, REGENERATOR: WRITING_GIT, SHARER: WRITING_GIT}
-# The regenerator writes too: an item's next version, in its own work directory.
-TOOLS = {REGENERATOR: f"{READING},Edit,Write"}
+DENIED = {CONSULTANT: [], ASKER: WRITING_GIT, SHARER: WRITING_GIT}
+TOOLS: dict[str, str] = {}
 
 
 def seat_flags(role: str, allowed: list[str]) -> list[str]:
@@ -89,13 +83,8 @@ def test_each_seat_gets_exactly_its_tools_and_rules(
 ) -> None:
     arguments = tmp_path / "arguments.json"
     monkeypatch.setenv("FAKE_ARGUMENTS", str(arguments))
-    monkeypatch.setenv("NOCK_DECISION", "1")
-    monkeypatch.setenv("NOCK_REVIEW_KEY", "email/report")
-    monkeypatch.setenv("NOCK_REVIEW_OUTPUT", "/nowhere")
-    monkeypatch.setenv("FAKE_REGENERATE", "silent")
     brief = (
-        "NOTHING TO SHARE: decision 1 <intent> When each of the project's decisions matters:"
-        " `email/report` /nowhere"
+        "NOTHING TO SHARE: <question> <intent> When each of the project's topics and items matters:"
     )
     session = Dispatcher(project).launch(role, brief, project.root)
     assert session.exit_code == 0 and session.denied == []
@@ -124,21 +113,22 @@ def test_a_consultant_refused_its_only_way_to_answer_says_what_was_refused(
     project: Project, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv("FAKE_ADVICE", "nothing")
-    monkeypatch.setenv("FAKE_TRY", json.dumps([".nock/nock", "decide", "{}"]))
+    monkeypatch.setenv("FAKE_TRY", json.dumps([".nock/nock", "items", "create", "x", "{}"]))
     consultation = {"intent": "Move orders to Postgres.", "context": "SQLite is slow."}
     result = nock(project.root, "consult", json.dumps(consultation))
-    assert "refused: Bash: .nock/nock decide {}" in result.stdout + result.stderr
+    assert "refused: Bash: .nock/nock items create x {}" in result.stdout + result.stderr
 
 
-def test_an_elaborator_that_tried_more_than_its_seat_allows_says_so(
+def test_an_asker_that_tried_more_than_its_seat_allows_says_so(
     project: Project, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    number = decide(project.root)["number"]
-    edit(project.root, {"number": number, "elaborate": True})
+    submit(project.root)
     monkeypatch.setenv("FAKE_TRY", json.dumps([".nock/nock", "run", "--", "curl", "example.com"]))
-    result = nock(project.root, "decisions", "elaborate", str(number), "--json")
+    result = nock(project.root, "topics", "ask", "Where do orders live?", "--json")
     assert result.returncode == 0, result.stdout + result.stderr
-    assert json.loads(result.stdout)["refused"] == ["Bash: .nock/nock run -- curl example.com"]
+    assert json.loads(result.stdout)["answer"] == "Nothing says so."
+    [log] = (project.root / ".nock" / "local" / "logs").glob("run-*.log")
+    assert "nock: Claude Code refused Bash: .nock/nock run -- curl example.com" in log.read_text()
 
 
 def test_a_long_brief_is_readable_and_nothing_else_outside(project: Project) -> None:
@@ -188,12 +178,13 @@ def test_init_allows_each_command_but_run_and_asks_for_the_owner_s(project: Proj
     allowed = permissions["allow"]
     assert "Bash(.nock/nock:*)" not in allowed
     assert not [rule for rule in allowed if "nock run" in rule]
-    assert {"Bash(.nock/nock)", "Bash(.nock/nock check:*)", "Bash(.nock/nock decide:*)"} <= {
+    assert {"Bash(.nock/nock)", "Bash(.nock/nock check:*)", "Bash(.nock/nock items create:*)"} <= {
         *allowed
     }
     assert all(rule.startswith("Bash(.nock/nock") for rule in allowed)
     assert permissions["ask"] == [
-        "Bash(.nock/nock review regenerate:*)",
+        "Bash(.nock/nock topics judge:*)",
+        "Bash(.nock/nock items judge:*)",
         "Bash(.nock/nock share:*)",
         "Bash(.nock/nock report:*)",
         "Bash(.nock/nock init:*)",
@@ -243,13 +234,12 @@ def test_a_round_s_parts_are_subagents_with_only_the_tools_they_need(project: Pr
 
 
 @pytest.mark.parametrize("option", ["--output=leak.txt", "--outp=leak.txt", "--ou=leak.txt"])
-@pytest.mark.parametrize("role", [ELABORATOR, SHARER])
+@pytest.mark.parametrize("role", [ASKER, SHARER])
 def test_git_that_would_write_a_file_is_refused(
     project: Project, role: str, option: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setenv("NOCK_DECISION", "1")
     monkeypatch.setenv("FAKE_TRY", json.dumps(["git", "log", "-p", option]))
-    session = Dispatcher(project).launch(role, "NOTHING TO SHARE: decision 1", project.root)
+    session = Dispatcher(project).launch(role, "NOTHING TO SHARE: <question>", project.root)
     assert session.denied == [f"Bash: git log -p {option}"]
     assert not (project.root / "leak.txt").exists()
 

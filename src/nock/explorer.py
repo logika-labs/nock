@@ -1042,7 +1042,7 @@ class Explorer:
                 "deriving": self.refreshing or self.problem is None,
                 "problem": self.problem,
             }
-        activity, facts = self.read(graph)
+        _, facts = self.read(graph)
         counts = {status.value: 0 for status in Status}
         for item in facts.values():
             counts[item.status.value] += 1
@@ -1050,24 +1050,8 @@ class Explorer:
             "name": self.scenario.name,
             "steps": len(facts),
             "counts": counts,
-            "run": self.run_words(activity, graph),
             "refreshing": self.refreshing,
             "problem": self.problem,
-        }
-
-    def run_words(self, activity: Activity, graph: Graph) -> dict[str, Any] | None:
-        if not activity.active:
-            return None
-        return {
-            "targets": activity.targets,
-            "done": activity.done,
-            "total": activity.total,
-            "running": sorted(
-                job_id
-                for job_id in set(activity.running) | activity.incomplete
-                if job_id in graph.jobs
-            ),
-            "started": activity.started_at,
         }
 
     def explore(self, view: View) -> dict[str, Any]:
@@ -1352,7 +1336,6 @@ class Exploration:
                 for (source, unit), counts in edges.items()
             ],
             "counts": self.counts(self.jobs),
-            "run": self.run(),
             "changes": self.change_options(),
             "change": self.change_json(change, affected) if change else None,
             "analyses": self.analyses(),
@@ -1364,26 +1347,7 @@ class Exploration:
         digest = hashlib.sha256()
         for job_id in sorted(self.jobs):
             digest.update(f"{job_id}:{self.facts[job_id].status}\n".encode())
-        digest.update(json.dumps(self.run(), sort_keys=True).encode())
         return digest.hexdigest()[:16]
-
-    def run(self) -> dict[str, Any] | None:
-        activity = self.activity
-        if not activity.active:
-            return None
-        running = sorted(
-            job_id for job_id in self.jobs if self.facts[job_id].status is Status.RUNNING
-        )
-        return {
-            "targets": activity.targets,
-            "done": activity.done,
-            "total": activity.total,
-            "started": activity.started_at,
-            "running": [
-                {"id": job_id, "title": self.title(job_id), "since": self.facts[job_id].since}
-                for job_id in running
-            ],
-        }
 
     def constant(self) -> list[dict[str, str]]:
         """The parameters every job that has them shares: said once, not on every box."""

@@ -276,10 +276,11 @@ def test_the_version_is_the_package_s() -> None:
     assert pyproject["project"]["version"] == VERSION and pyproject["project"]["name"] == NAME
 
 
-# nock's own commands that need the owner's word: re-wiring the permissions,
-# fetching code, sending a summary or a report out.
+# nock's own commands that need the owner's word: their verdicts, re-wiring the
+# permissions, fetching code, sending a summary or a report out.
 OWN_ASKED = [
-    "Bash(.nock/nock review regenerate:*)",
+    "Bash(.nock/nock topics judge:*)",
+    "Bash(.nock/nock items judge:*)",
     "Bash(.nock/nock share:*)",
     "Bash(.nock/nock report:*)",
     "Bash(.nock/nock init:*)",

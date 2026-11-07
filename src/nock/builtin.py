@@ -12,31 +12,26 @@ import sys
 from pathlib import Path
 from typing import Annotated, Any, Literal, NotRequired, TypedDict
 
+from nock.asking import Answer, Asker
 from nock.checks import Checks
-from nock.commands import Option
+from nock.commands import Option, read_record, schema_of
 from nock.comparison import Comparison, Query
 from nock.configuration import Confirm
 from nock.consult import Advice, Consultant, Consultation
-from nock.decisions import TAGS, Batch, Change, Decisions, Draft, Filter, row
 from nock.docs import Docs
 from nock.errors import Error, ExitCode, Failed, UsageError
 from nock.evaluation import SCENARIOS, Evaluations, Import, Run, Scenario
 from nock.fixtures import Shell
 from nock.generators import Catalogs, Generators
 from nock.kinds import DEFAULT, KINDS
+from nock.migration import Migration
 from nock.processes import Output
 from nock.project import Project
 from nock.reflect import Record, Reflection, Round, tool_rows
 from nock.render import Problem
 from nock.reports import Reports
 from nock.results import Results
-from nock.review import FROM_VARIABLE as REVIEW_FROM_VARIABLE
-from nock.review import KEY_VARIABLE as REVIEW_KEY_VARIABLE
-from nock.review import Draft as ReviewDraft
-from nock.review import Filter as ReviewFilter
-from nock.review import Items
-from nock.review import Word as ReviewWord
-from nock.schema import check_schema
+from nock.schema import check_schema, validate
 from nock.sessions import Sessions
 from nock.setup import (
     PERMISSION,
@@ -55,6 +50,7 @@ from nock.studio import Studio
 from nock.telemetry import UNRECORDED_VARIABLE
 from nock.templates import SYNTAX
 from nock.tools import NATIVE_EVENTS, check, command
+from nock.topics import SHORT, ItemChange, ItemDraft, TopicChange, TopicDraft, Topics, Word
 from nock.usage import QUESTION, Moment, Usage
 
 
@@ -249,9 +245,9 @@ def sessions(project: Project, *, limit: int = 15) -> list[dict[str, Any]]:
 @command
 def status(project: Project) -> dict[str, Any]:
     """Where the project stands with nock: whether a reflection round is due,
-    the decisions by status and review, the rejected ones to rework, those
-    tagged important and not yet reviewed, the items to review or make again, a
-    round summary not yet shared, and whether a newer nock is out."""
+    the open items by topic, what waits on an agent in the topics (threads
+    where the owner wrote last, rejected items), a round summary not yet
+    shared, and whether a newer nock is out."""
     return Standing(project).collect()
 
 
@@ -260,99 +256,229 @@ def studio(
     project: Project,
     options: StudioOptions = {},  # noqa: B006
 ) -> None:
-    """Serve the owner's page, a tab for each thing to look at — the
-    decisions, the items to review, the evaluations — until stopped (port
+    """Serve the owner's page, a tab for each thing to look at — the topics
+    and their items, the evaluations — until stopped (port
     8765 unless OPTIONS say otherwise)."""
     if Usage(project).ask(Moment.STUDIO):
         print(f"nock: {QUESTION} The page asks too; answer there.", flush=True)
     Studio(project, options.get("port", 8765)).run(options.get("open", False))
 
 
-# --- decisions ---------------------------------------------------------------------
+# --- topics and items ----------------------------------------------------------------
 
 
-@command
-def decide(project: Project, decision: Draft, *, force: bool = False) -> dict[str, Any]:
-    """Record a decision only when a later reader would ask "why": a choice
-    between real alternatives the owner has not already made, a deliberate
-    simplification, a reading of something ambiguous — or, as a todo,
-    something that should be done and is not yet. Never for carrying out the
-    owner's explicit instruction (the instruction is the record), a routine
-    implementation detail, a change to an existing decision (`decisions
-    edit` it), or twice for the same thing: a title a standing decision
-    already has, or nearly, is refused with its number unless FORCE. What
-    only the owner can settle, when they are not there to ask, is a decision
-    tagged `important`: the answer you propose as the title, the other
-    answers as alternatives, and carry on with it. Write it for someone who
-    knows what the system does, not how it is built; give only alternatives
-    you really weighed. A tag groups decisions on one topic the owner would
-    look at together (`pricing`, `emails`), never the project's or product's
-    name or a kind of decision: nock shows the status and whether it is
-    important. No tag fits, give none. The owner reviews it later; keep
-    going meanwhile."""
-    recorded, problem = Decisions(project).decide(decision, force)
-    return recorded_result(project, recorded, problem)
-
-
-def recorded_result(
-    project: Project, decision: dict[str, Any], problem: str | None
-) -> dict[str, Any]:
-    """The number, and the tags in use — so a near-duplicate tag is fixed while it is cheap."""
-    decisions = Decisions(project)
-    tags = decisions.tags()
-    fixed = decisions.vocabulary() or TAGS
-    result: dict[str, Any] = {
-        "number": decision["number"],
-        "new_tags": [tag for tag in decision["tags"] if tags.get(tag) == 1 and tag not in fixed],
-        "tags_in_use": list(tags),
-    }
-    unmatched = decisions.unmatched(decision)
-    if unmatched:
-        result["touches_no_file"] = unmatched
-        result["say"] = (
-            "`touches` names files the decision governs: these match none — "
-            "fix them with `decisions edit` unless the files are yet to be written"
-        )
+def not_committed(result: dict[str, Any], problem: str | None) -> dict[str, Any]:
     if problem:
         result["not_committed"] = problem
     return result
 
 
-@command(name="list", group="decisions")
-def decisions_list(project: Project, filter: Filter = {}) -> dict[str, Any]:  # noqa: B006
-    """The standing decisions — those matching FILTER — and how many there are
-    of each status and review."""
-    decisions = Decisions(project)
+def listed(rows: list[Any], full: bool, summary: dict[str, Any] | None) -> dict[str, Any]:
+    """A list as `list` prints it: the summary first and the list cut short,
+    or with `--full` the whole list and no summary."""
+    if full or summary is None:
+        return {"rows": rows}
+    result: dict[str, Any] = {"summary": summary, "rows": rows[:SHORT]}
+    if len(rows) > SHORT:
+        result["more"] = f"{len(rows) - SHORT} more — `--full` lists them all"
+    return result
+
+
+@command(name="list", group="topics")
+def topics_list(
+    project: Project,
+    *,
+    query: Annotated[str | None, Option(help="Plain words, ranked by how well they match.")] = None,
+    full: Annotated[bool, Option(help="The whole list, without the summary.")] = False,
+) -> dict[str, Any]:
+    """The topics, newest activity first, each with its open, accepted and
+    rejected counts — or those matching QUERY, the best first (topic names
+    and descriptions, item titles, decisions, threads, file paths, conditions).
+    Without `--full`, first a summary: the open items by topic, and what waits
+    on you — threads where the owner wrote last, items they rejected. Look at
+    it when you start and before you finish."""
+    topics = Topics(project)
+    names = topics.search_topics(query) if query else topics.names()
+    rows = [topics.row(name) for name in names]
+    if not query:
+        rows.sort(key=lambda row: row["active"], reverse=True)
+    return listed(rows, full, topics.summary())
+
+
+@command(name="create", group="topics")
+def topics_create(project: Project, topic: TopicDraft) -> dict[str, Any]:
+    """Open a topic for a piece of work: a name and why it exists, as part of
+    what work. Look for an existing one first (`topics list --query …`): what
+    you are doing may already have its topic, and a finished one that comes
+    back is revived, not made again."""
+    record, problem = Topics(project).create_topic(topic)
+    return not_committed({"name": record["name"]}, problem)
+
+
+@command(name="update", group="topics")
+def topics_update(
+    project: Project,
+    topic: str,
+    change: TopicChange = {},  # noqa: B006
+    *,
+    reply: Annotated[str | None, Option(help="Add this message (markdown) to its thread.")] = None,
+    revive: Annotated[
+        str | None, Option(help="Bring a finished topic back, saying why (markdown).")
+    ] = None,
+) -> dict[str, Any]:
+    """Change a topic in place (its name, its description), answer in its
+    thread, or revive it when it was finished and the work comes back: the
+    note says why it is back and reads as its description from then on."""
+    record, problem = Topics(project).update_topic(topic, change, reply, revive)
+    return not_committed({"name": record["name"]}, problem)
+
+
+@command(name="delete", group="topics")
+def topics_delete(project: Project, topic: str) -> dict[str, Any]:
+    """Delete an empty topic; git keeps it."""
+    problem = Topics(project).delete_topic(topic)
+    return not_committed({"deleted": topic}, problem)
+
+
+@command(name="show", group="topics")
+def topics_show(project: Project, topic: str) -> dict[str, Any]:
+    """A topic: its description, its items (the newest first), its thread."""
+    topics = Topics(project)
+    record = topics.topic(topic)
     return {
-        "counts": decisions.counts(),
-        "decisions": [row(item) for item in decisions.matching(filter)],
+        **topics.row(topic),
+        "items": [topics.item_row(item) for item in topics.items(topic)],
+        "thread": record["thread"],
     }
 
 
-@command(name="show", group="decisions")
-def decisions_show(project: Project, number: int) -> dict[str, Any]:
-    """One decision in full."""
-    return Decisions(project).get(number)
+@command(name="judge", group="topics", confirm=True)
+def topics_judge(project: Project, topic: str, word: Word) -> dict[str, Any]:
+    """The owner's verdict on every open item of a topic, with their comment
+    in its thread. Only on the owner's word: `/nock-triage` runs it with them."""
+    judged, problem = Topics(project).judge_topic(topic, word)
+    result = not_committed({"judged": judged, "verdict": word["verdict"]}, problem)
+    ask(project, result, Moment.REVIEW)
+    return result
 
 
-@command(name="edit", group="decisions")
-def decisions_edit(project: Project, change: Change) -> dict[str, Any]:
-    """Change a decision: rework one the owner rejected, act on the owner's
-    note, or mark a todo done and say what was done. A change to what it says asks for a fresh review.
-    `review` (accepted, rejected), `note` and `elaborate` are the owner's
-    word: set them only when the owner says so."""
-    decisions = Decisions(project)
-    decision, problem = decisions.edit(change)
-    if change.get("elaborate"):
-        decisions.elaborate_in_background(decision["number"])
-    result = {key: decision[key] for key in ("number", "title", "status", "review", "note")}
-    unmatched = decisions.unmatched(decision) if "touches" in change else []
-    if unmatched:
-        result["touches_no_file"] = unmatched
-    if problem:
-        result["not_committed"] = problem
-    if "review" in change or "note" in change:
-        ask(project, result, Moment.REVIEW)
+@command(name="ask", group="topics")
+def topics_ask(project: Project, question: str) -> dict[str, Any]:
+    """Have a fresh agent answer a question about the topics (`nock studio`'s
+    Ask runs this): the answer, in markdown, and the items it relied on."""
+    return Asker(project).ask(question)
+
+
+@command(name="answer", group="topics")
+def topics_answer(project: Project, answer: Answer) -> str:
+    """The asked agent's answer, submitted; only an agent the studio's Ask dispatched runs this."""
+    return Asker(project).submit(answer)
+
+
+@command(name="migrate", group="topics")
+def topics_migrate(project: Project) -> dict[str, Any]:
+    """Move an earlier nock's decisions and review items into topics, once:
+    each tag a topic (untagged: `general`), verdicts and notes kept. `init`
+    and `upgrade` run it; a project running nock from source runs it by hand."""
+    return Migration(project).run()
+
+
+@command(name="list", group="items")
+def items_list(
+    project: Project,
+    topic: str | None = None,
+    *,
+    query: Annotated[str | None, Option(help="Plain words, ranked by how well they match.")] = None,
+    full: Annotated[bool, Option(help="The whole list, without the summary.")] = False,
+) -> dict[str, Any]:
+    """The items (of TOPIC), newest first, each with its verdict — or those
+    matching QUERY, the best first. Without `--full`, first a summary: the
+    open items by topic, and what waits on you."""
+    topics = Topics(project)
+    if topic:
+        topics.topic(topic)
+    if query:
+        found = topics.search_items(query, topic)
+    else:
+        found = topics.items(topic) if topic else topics.every()
+        found.sort(key=lambda item: item["updated"], reverse=True)
+    return listed([topics.item_row(item) for item in found], full, topics.summary())
+
+
+@command(name="create", group="items")
+def items_create(project: Project, topic: str, item: ItemDraft) -> dict[str, Any]:
+    """Put an item before the owner, in its topic: a title and what it holds —
+    a `decision` (the answer, the alternatives you weighed, done or todo),
+    project `files` (paths in the repository, copied as they are now), or
+    `derived` files (made to show part of the project: a screenshot of an
+    email, with what it comes `from`, `when` it applies, and a `recipe` to
+    make it again). Bare: no notes; say more in the thread only when asked.
+    Record a decision only when a later reader would ask "why" — a choice
+    between real alternatives, a deliberate simplification, a reading of
+    something ambiguous, a todo you leave; never the owner's own instruction
+    or a routine detail. The owner gives the verdict later: carry on."""
+    record, problem = Topics(project).create_item(topic, item)
+    return not_committed({"ref": record["ref"]}, problem)
+
+
+def parsed_version(version: str | None) -> ItemChange | None:
+    if version is None:
+        return None
+    value = read_record(version)
+    validate(value, schema_of(ItemChange))
+    return value
+
+
+@command(name="update", group="items")
+def items_update(
+    project: Project,
+    item: str,
+    change: ItemChange = {},  # noqa: B006
+    *,
+    version: Annotated[
+        str | None,
+        Option(help="JSON: a new version (what it leaves out is carried over); reopens the item."),
+    ] = None,
+    reply: Annotated[str | None, Option(help="Add this message (markdown) to its thread.")] = None,
+) -> dict[str, Any]:
+    """Change an open item in place (its title, decision, files), add a new
+    version — project files copied again as they are now, a decided item
+    reopened — or answer in its thread. An accepted or rejected item changes
+    only by a new version. Rework a rejected item as a new version; when the
+    owner is away, say briefly in the thread what changed, unless the new
+    version says it."""
+    record, problem = Topics(project).update_item(
+        item, change or None, parsed_version(version), reply
+    )
+    return not_committed(
+        {"ref": record["ref"], "verdict": record["verdict"], "versions": len(record["versions"])},
+        problem,
+    )
+
+
+@command(name="delete", group="items")
+def items_delete(project: Project, item: str) -> dict[str, Any]:
+    """Delete an open item the owner has not written on — one that should not
+    have been submitted; git keeps it."""
+    problem = Topics(project).delete_item(item)
+    return not_committed({"deleted": item}, problem)
+
+
+@command(name="show", group="items")
+def items_show(project: Project, item: str) -> dict[str, Any]:
+    """An item: its verdict, every version (its decision, each file and where
+    it is kept), its thread. ITEM is `topic/slug`, or an earlier decision's number."""
+    topics = Topics(project)
+    return topics.shown(topics.item(item))
+
+
+@command(name="judge", group="items", confirm=True)
+def items_judge(project: Project, item: str, word: Word) -> dict[str, Any]:
+    """The owner's verdict on an item — accepted or rejected — with their
+    comment in its thread. Only on the owner's word: `/nock-triage` runs it with them."""
+    record, problem = Topics(project).judge(item, word)
+    result = not_committed({"ref": record["ref"], "verdict": record["verdict"]}, problem)
+    ask(project, result, Moment.REVIEW)
     return result
 
 
@@ -362,123 +488,6 @@ def ask(project: Project, result: dict[str, Any], moment: Moment) -> None:
     question = Usage(project).ask(moment)
     if question:
         result["ask_the_owner"] = question
-
-
-@command(name="batch", group="decisions")
-def decisions_batch(project: Project, batch: Batch) -> dict[str, Any]:
-    """Several edits and deletions at once, committed once — a clean-up, a
-    tag remap: `{"edit": [{"number": 7, "tags": […]}, …], "delete": [9]}`.
-    Each edit is what `decisions edit` takes; a refused one changes nothing."""
-    decisions = Decisions(project)
-    edited, deleted, problem = decisions.batch(batch)
-    for change in batch.get("edit", []):
-        if change.get("elaborate"):
-            decisions.elaborate_in_background(change["number"])
-    result: dict[str, Any] = {
-        "edited": [row(decision) for decision in edited],
-        "deleted": deleted,
-    }
-    if problem:
-        result["not_committed"] = problem
-    return result
-
-
-@command(name="delete", group="decisions")
-def decisions_delete(project: Project, number: int) -> dict[str, Any]:
-    """Delete a decision that should not have been recorded — a duplicate, the
-    owner's own instruction restated, a routine detail — and commit that; git
-    keeps it. A decision a later one overturns is superseded instead."""
-    problem = Decisions(project).delete(number)
-    return {"deleted": number, **({"not_committed": problem} if problem else {})}
-
-
-@command(name="elaborate", group="decisions")
-def decisions_elaborate(project: Project, number: int) -> dict[str, Any]:
-    """Have an agent elaborate on a decision, as the owner asked: it reads the
-    project and deepens the reasoning. The page and `edit` run this themselves."""
-    outcome = Decisions(project).elaborate(number)
-    if not outcome["elaborated"]:
-        raise Failed(f"decision {number} was not elaborated", outcome)
-    return outcome
-
-
-# --- review ----------------------------------------------------------------------------
-
-
-@command(name="add", group="review")
-def review_add(project: Project, item: ReviewDraft) -> dict[str, Any]:
-    """Show the owner something you made — a screenshot, a video, a PDF, an
-    HTML page, a text — to review in the studio: under a stable key, each
-    call a new version, the latest superseding the earlier ones. Give a
-    `recipe` (a command that writes the files into $NOCK_REVIEW_OUTPUT, or an
-    instruction for an agent) so the owner can have it made again. Files over
-    20 MB stay on this machine, uncommitted. A tag groups items on one topic
-    the owner would look at together, across keys (`pricing`, `onboarding`);
-    never the project's or product's name or the kind (`email`, `prompt`,
-    `screenshot`): the key and the studio already show those. Most items
-    need none; when the project fixes its tags, only those."""
-    regenerating = os.environ.get(REVIEW_KEY_VARIABLE) == item.get("key", "").strip("/")
-    regenerated = None
-    if regenerating:
-        items = Items(project)
-        source = int(os.environ.get(REVIEW_FROM_VARIABLE) or 0)
-        earlier = next(
-            (entry for entry in items.history(item["key"]) if entry["version"] == source), None
-        )
-        regenerated = {"from": source, "feedback": earlier and earlier["feedback"]}
-    version, problem = Items(project).add(item, regenerated)
-    result = {field: version[field] for field in ("key", "version", "title", "tags")}
-    result["files"] = [entry["name"] for entry in version["files"]]
-    if problem:
-        result["not_committed"] = problem
-    return result
-
-
-@command(name="list", group="review")
-def review_list(project: Project, filter: ReviewFilter = {}) -> dict[str, Any]:  # noqa: B006
-    """The items under review — those matching FILTER (by their latest
-    version) — and how many there are of each verdict."""
-    items = Items(project)
-    return {"counts": items.counts(), "items": items.matching(filter)}
-
-
-@command(name="show", group="review")
-def review_show(project: Project, key: str) -> list[dict[str, Any]]:
-    """Every version of an item, the earliest first, each file with its path."""
-    return Items(project).shown(key)
-
-
-@command(name="judge", group="review")
-def review_judge(project: Project, key: str, word: ReviewWord) -> dict[str, Any]:
-    """The owner's word on an item's latest version: `verdict` (approved,
-    rejected) and `feedback`. Set them only when the owner says so."""
-    version, problem = Items(project).judge(key, word)
-    result = {field: version[field] for field in ("key", "version", "title", "verdict", "feedback")}
-    if problem:
-        result["not_committed"] = problem
-    ask(project, result, Moment.REVIEW)
-    return result
-
-
-@command(name="delete", group="review")
-def review_delete(
-    project: Project,
-    key: str,
-    *,
-    version: Annotated[int | None, Option(help="Only this version.")] = None,
-) -> dict[str, Any]:
-    """Delete an item — or one version of it — that should not be shown, and
-    commit that; git keeps it."""
-    deleted, problem = Items(project).delete(key, version)
-    return {"key": key, "deleted": deleted, **({"not_committed": problem} if problem else {})}
-
-
-@command(name="regenerate", group="review", confirm=True)
-def review_regenerate(project: Project, key: str) -> dict[str, Any]:
-    """Make an item's next version from its recipe, answering the owner's
-    feedback: runs the recipe's command, or dispatches an agent with its
-    instruction. The page's Regenerate runs this."""
-    return Items(project).regenerate(key)
 
 
 # --- consulting -----------------------------------------------------------------------
@@ -787,10 +796,9 @@ def generated_files_in_step(project: Project, root: Path) -> list[str]:
 
 
 @check(name="nock-map", paths=[".nock/**"])
-def decisions_hold(project: Project) -> list[Problem]:
-    """Every decision the map cites stands. (Decisions whose files are gone
-    are for a reflection round to look at, not a failure.)"""
-    return Decisions(project).citation_problems()
+def map_holds(project: Project) -> list[Problem]:
+    """Every item the map of topics cites exists."""
+    return Topics(project).citation_problems()
 
 
 @check(name="nock-share", paths=[".nock/**"])

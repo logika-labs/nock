@@ -3,14 +3,12 @@ does what a scripted session would — through nock's own CLI, in the directory
 it was started in — and writes a transcript where Claude Code would. It will
 not start with its permissions bypassed, and, like Claude Code in `dontAsk`,
 refuses and reports a call no allow rule covers (FAKE_TRY is one more call to
-attempt). As the elaborator it deepens the decision it was given, unless
-FAKE_ELABORATE is `silent`; as the consultant it answers at once; as the
+attempt). As the consultant it answers at once; as the studio's asker it
+answers through `topics answer` (FAKE_ANSWER, or a stock one; FAKE_ANSWER
+`slow` waits to be cancelled first); as the
 sharer it reads the authors and hands back the vetted summary (FAKE_SHARE,
 or a stock one; `nothing` hands back nothing); as an evaluation step's
-agent it writes its brief to answer.txt, when its allow rules let it write;
-as the regenerator it writes an item's next version, answering the owner's
-note, into its output directory, when its rules let it write there, and
-registers it, unless FAKE_REGENERATE is `silent`."""
+agent it writes its brief to answer.txt, when its allow rules let it write."""
 
 from __future__ import annotations
 
@@ -20,6 +18,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -119,12 +118,10 @@ def main() -> int:
     prompt = arguments[-1]
     if os.environ.get("FAKE_TRY"):
         run(*json.loads(os.environ["FAKE_TRY"]))
-    if os.environ.get("NOCK_ROLE") == "elaborator":
-        return elaborate(session, prompt)
     if os.environ.get("NOCK_ROLE") == "consultant":
         return consult(session, prompt)
-    if os.environ.get("NOCK_ROLE") == "regenerator":
-        return regenerate(session, prompt)
+    if os.environ.get("NOCK_ROLE") == "asker":
+        return answer(session, prompt)
     if os.environ.get("NOCK_ROLE") == "sharer":
         assert "NOTHING TO SHARE:" in prompt
         authors = run("git", "log", "--format=%an %ae")
@@ -148,7 +145,7 @@ def consult(session: str, prompt: str) -> int:
     """Advise through `nock advise` (FAKE_ADVICE, else a stock answer), and
     once more, fixed, when the first is refused; FAKE_ADVICE=`silent` only
     answers in its last message, and `nothing` gives no answer at all."""
-    assert "<intent>" in prompt and "When each of the project's decisions matters:" in prompt
+    assert "<intent>" in prompt and "When each of the project's topics and items matters:" in prompt
     write_transcript(session, prompt)
     given = os.environ.get("FAKE_ADVICE", "")
     if given == "nothing":
@@ -168,40 +165,16 @@ def consult(session: str, prompt: str) -> int:
     return 0
 
 
-def elaborate(session: str, prompt: str) -> int:
-    number = os.environ["NOCK_DECISION"]
-    assert f"decision {number}" in prompt
-    if os.environ.get("FAKE_ELABORATE") != "silent":
-        change = {
-            "number": int(number),
-            "summary": "SQLite holds the load: 40 writes a second.",
-            "evidence": ["the busiest hour wrote 40 rows a second"],
-        }
-        result = run(".nock/nock", "decisions", "edit", json.dumps(change))
-        print(json.dumps({"type": "system", "message": result.stdout + result.stderr}), flush=True)
+def answer(session: str, prompt: str) -> int:
+    assert "<question>" in prompt
     write_transcript(session, prompt)
-    finish("elaborated")
-    return 0
-
-
-def regenerate(session: str, prompt: str) -> int:
-    key, output = os.environ["NOCK_REVIEW_KEY"], os.environ["NOCK_REVIEW_OUTPUT"]
-    assert f"`{key}`" in prompt and output in prompt
-    if os.environ.get("FAKE_REGENERATE") != "silent":
-        made = Path(output) / "text.txt"
-        writable = any(
-            rule.startswith("Write(/") and output.startswith(rule[len("Write(/") : -len("/**)")])
-            for rule in ALLOWED
-        )
-        if writable:
-            made.write_text(f"made again: {os.environ['NOCK_REVIEW_FEEDBACK']}\n")
-            draft = {"key": key, "files": [str(made)], "note": "Answered the note."}
-            result = run(".nock/nock", "review", "add", json.dumps(draft))
-            print(json.dumps({"type": "system", "message": result.stdout + result.stderr}))
-        else:
-            DENIED.append({"tool_name": "Write", "tool_input": {"file_path": str(made)}})
-    write_transcript(session, prompt)
-    finish("made again")
+    given = os.environ.get("FAKE_ANSWER", "")
+    if given == "slow":
+        time.sleep(60)
+    said = json.loads(given) if given and given != "slow" else {"answer": "Nothing says so."}
+    result = run(".nock/nock", "topics", "answer", json.dumps(said))
+    print(json.dumps({"type": "system", "message": result.stdout + result.stderr}), flush=True)
+    finish("answered")
     return 0
 
 

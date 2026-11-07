@@ -12,16 +12,17 @@ from pathlib import Path
 from typing import Any
 
 from nock.configuration import Confirm
-from nock.decisions import MAP
 from nock.errors import ConflictError, NotFoundError, PreconditionError
 from nock.git import Git, GitError
 from nock.hooks import BUILT_IN_EVENTS, EDIT_TOOLS
 from nock.kinds import KINDS
+from nock.migration import migrate_in
 from nock.primer import PRIMER, refresh
 from nock.project import NOCK_DIRECTORY, Project
 from nock.releases import PYPI, VERSION, Releases
 from nock.templates import Library
 from nock.tools import NATIVE_EVENTS, Event
+from nock.topics import MAP
 from nock.utils import read_json, write_atomic, write_json
 
 PACKAGE = Path(__file__).resolve().parent
@@ -45,7 +46,7 @@ branch = "main"
 
 # Whether nock speaks up unasked: the primer's advice, the toolbox and an
 # occasional word on where things stand at a session's start, the owner's
-# reviews, the decisions behind an edited file. false: silent unless asked.
+# word in the topics, the items about an edited file. false: silent unless asked.
 reminders = true
 
 # Whether nock shares a usage report with its makers, weekly: counts and
@@ -71,13 +72,8 @@ sessions = 15
 days = 7
 
 [agent]
-# The model of the agents nock dispatches (elaborate, consult); empty is Claude Code's default.
+# The model of the agents nock dispatches (consult, the studio's Ask); empty is Claude Code's default.
 model = ""
-
-# [decisions]
-# The project's fixed tags for decisions: `decide` and `edit` refuse any other
-# (but `important`). Unset, agents add their own.
-# tags = ["core", "web", "deploy"]
 
 [consult]
 # Whether agents are asked to consult nock's consultant before changing code.
@@ -94,12 +90,11 @@ confirm = "ask"
 GITIGNORE = "local/\n"
 
 MAP_STUB = """\
-# The map of decisions
+# The map of topics
 
-When each of the project's decisions matters, and how they bear on each
-other. Empty until the first reflection round writes it; until then,
-`.nock/nock decisions list` lists the decisions, and an edit to a file a
-decision governs shows it.
+When each topic and its items matter, and how they bear on each other,
+citing each item by its ref in brackets. Empty until the first reflection round
+writes it; until then, `.nock/nock topics list` lists the topics.
 """
 
 IMPORT_LINE = "@.nock/context.md"
@@ -244,6 +239,13 @@ class Installer:
         self.wire_claude()
         self.install_skills()
         self.start_map()
+        migrated = migrate_in(self.root)
+        if migrated:
+            self.report.written.append(
+                f"{NOCK_DIRECTORY}/topics/: {migrated['decisions']} decision(s) and"
+                f" {migrated['review_items']} review item(s) migrated into"
+                f" {len(migrated['topics'])} topic(s)"
+            )
         return self.report
 
     def install_skills(self) -> None:
@@ -279,9 +281,12 @@ class Installer:
                 self.report.written.append(f"removed .claude/skills/{name}")
 
     def start_map(self) -> None:
-        """An empty map of decisions, so an agent told to read it finds it."""
-        relative = f"{NOCK_DIRECTORY}/decisions/{MAP}"
-        if (self.root / relative).exists():
+        """An empty map of topics, so an agent told to read it finds it (an
+        earlier nock's map of decisions moves here when the project migrates)."""
+        relative = f"{NOCK_DIRECTORY}/topics/{MAP}"
+        if (self.root / relative).exists() or (
+            self.root / NOCK_DIRECTORY / "decisions" / MAP
+        ).exists():
             return
         write_atomic(self.root / relative, MAP_STUB)
         self.report.written.append(relative)

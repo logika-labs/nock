@@ -7,7 +7,7 @@ and `nock reflect [KIND] finish JSON` checks it and commits it.
 nock's own kind, `Reflection`, the default: an agent following the
 `/nock-reflect` skill has three subagents look at what the work has been
 since the last round — one improves the toolbox (`.nock/tools/`), one keeps
-the map of decisions (`.nock/decisions/map.md`), one weighs how well nock
+the map of topics (`.nock/topics/map.md`), one weighs how well nock
 itself is serving the project — and writes the owner a report, and a summary
 abstract enough to share. Each round keeps its numbers, so the next holds its
 changes to them, and the first is the baseline."""
@@ -28,11 +28,12 @@ from typing import TYPE_CHECKING, Any, Literal, NotRequired, TypedDict
 
 from nock.checks import Checks
 from nock.commands import schema_of
-from nock.decisions import Decisions, live
 from nock.errors import Failed, PreconditionError
 from nock.git import Git, GitError
 from nock.schema import validate
 from nock.sessions import HEADLESS, Sessions
+from nock.topics import CITATION, Topics
+from nock.topics import Verdict as ItemVerdict
 from nock.utils import format_duration, now, parse_moment, read_json, write_json
 
 if TYPE_CHECKING:
@@ -253,10 +254,10 @@ def schema() -> dict[str, Any]:
 
 def commit(project: Project, message: str, also: tuple[str, ...] = ()) -> None:
     """Commit a round: `.nock/` (and `also`) in the working tree, and the main
-    checkout's decisions when the round ran in a worktree; nothing else in either."""
+    checkout's topics when the round ran in a worktree; nothing else in either."""
     places = [(project.here, [".nock", *also])]
     if project.root != project.here:
-        places.append((project.root, [".nock/decisions"]))
+        places.append((project.root, [".nock/topics"]))
     for root, paths in places:
         git = Git(root)
         git("add", "--all", "--", *paths)
@@ -534,10 +535,10 @@ class Reflection(Round):
         cost, unpriced = window.spend()
         calls = self.project.store.rows("SELECT exit_code FROM calls WHERE started > ?", (since,))
         codes = Counter(row["exit_code"] for row in calls)
-        decisions = Decisions(self.project)
-        every = decisions.all()
-        recorded = [d for d in every if d["recorded"]["moment"] > since]
-        reviewed = [d for d in every if d["reviewed"] and d["reviewed"]["moment"] > since]
+        topics = Topics(self.project)
+        every = topics.every()
+        submitted = [item for item in every if item["created"]["moment"] > since]
+        decided = [item for item in every if item["decided"] and item["decided"]["moment"] > since]
         tools = [row for row in tool_rows(self.project, since) if row["source"] != "nock"]
         try:
             commits = int(
@@ -546,8 +547,8 @@ class Reflection(Round):
         except GitError:
             commits = 0
         cited = (
-            len(set(re.findall(r"\[D(\d+)\]", decisions.map.read_text())))
-            if decisions.map.is_file()
+            len({match.group(0) for match in CITATION.finditer(topics.map.read_text())})
+            if topics.map.is_file()
             else 0
         )
         return {
@@ -575,21 +576,21 @@ class Reflection(Round):
                 )
                 if row["exit_code"] == 0
             ),
-            "decisions_recorded": len(recorded),
-            "decisions_todo": sum(1 for d in recorded if d["status"] == "todo"),
-            "decisions_important": sum(1 for d in recorded if "important" in d["tags"]),
-            "decisions_reviewed": len(reviewed),
-            "decisions_accepted": sum(1 for d in reviewed if d["review"] == "accepted"),
-            "decisions_rejected": sum(1 for d in reviewed if d["review"] == "rejected"),
-            "decisions_unreviewed": sum(
-                1 for d in every if live(d) and d["review"] == "unreviewed"
+            "topics": len(topics.names()),
+            "items_submitted": len(submitted),
+            "items_decisions": sum(
+                1
+                for item in submitted
+                if any(entry["kind"] == "decision" for entry in item["versions"][-1]["files"])
             ),
+            "items_decided": len(decided),
+            "items_accepted": sum(1 for item in decided if item["verdict"] == ItemVerdict.ACCEPTED),
+            "items_rejected": sum(1 for item in decided if item["verdict"] == ItemVerdict.REJECTED),
+            "items_open": sum(1 for item in every if item["verdict"] == ItemVerdict.OPEN),
             "tools": len(tools),
             "tools_used": sum(1 for row in tools if row["calls"]),
             "tool_calls_to_project_tools": sum(row["calls"] for row in tools),
-            "map_lines": len(decisions.map.read_text().splitlines())
-            if decisions.map.is_file()
-            else 0,
+            "map_lines": len(topics.map.read_text().splitlines()) if topics.map.is_file() else 0,
             "map_citations": cited,
         }
 
@@ -1011,49 +1012,39 @@ output_bytes, duration — every tool call of every session). Example:
 
 
 class Knowledge:
-    """What the round's map part reads: the decisions recorded, changed or
-    reviewed since the last round in full, every standing one in a line, the
-    tags in use, and the map as it stands."""
+    """What the round's map part reads: the items submitted, changed or
+    decided since the last round in full, every topic with its items in a
+    line, and the map as it stands."""
 
     def __init__(self, project: Project, window: Window) -> None:
-        self.decisions = Decisions(project)
+        self.topics = Topics(project)
         self.since = window.since or ""
 
     def render(self) -> str:
-        every = self.decisions.all()
-        recent = [decision for decision in every if decision["updated"] > self.since]
+        topics = self.topics
+        every = topics.every()
+        recent = [item for item in every if item["updated"] > self.since]
         lines = [
-            f"# Recorded, changed or reviewed since the last round ({self.since or 'never'})",
+            f"# Submitted, changed or decided since the last round ({self.since or 'never'})",
             "",
         ]
         if not recent:
             lines.append("Nothing.")
-        for decision in recent:
-            lines += [f"## [D{decision['number']}] {decision['title']}", "", "```json"]
-            lines += [json.dumps(decision, indent=2, ensure_ascii=False), "```", ""]
-        lines += ["", "# Every standing decision", ""]
-        lines += [
-            f"- [D{decision['number']}] {decision['status']}, {decision['review']}: {decision['title']}"
-            + (f" — touches {', '.join(decision['touches'])}" if decision["touches"] else "")
-            for decision in every
-            if live(decision)
-        ] or ["None yet."]
-        tags = self.decisions.tags()
-        lines += [
-            "",
-            "# Tags in use",
-            "",
-            ", ".join(f"{tag} ({count})" for tag, count in tags.items()),
-        ]
-        stale = self.decisions.stale()
-        if stale:
-            lines += ["", "# Done decisions whose files are gone", ""]
+        for item in recent:
+            lines += [f"## [{item['ref']}] {item['title']}", "", "```json"]
+            lines += [json.dumps(topics.shown(item), indent=2, ensure_ascii=False), "```", ""]
+        lines += ["", "# Every topic and its items", ""]
+        for name in topics.names():
+            row = topics.row(name)
+            lines.append(f"## {name} ({row['open']} open): {row['description']}")
             lines += [
-                f"- [D{decision['number']}] {decision['title']}: {', '.join(patterns)}"
-                for decision, patterns in stale
+                f"- [{item['ref']}] {item['verdict']}: {item['title']}"
+                for item in topics.items(name)
             ]
-        problems = self.decisions.citation_problems()
-        current = self.decisions.map.read_text() if self.decisions.map.is_file() else ""
+        if not topics.names():
+            lines.append("None yet.")
+        problems = topics.citation_problems()
+        current = topics.map.read_text() if topics.map.is_file() else ""
         lines += ["", "# The map as it stands", "", current.strip() or "There is no map yet."]
         if problems:
             lines += ["", "Its citations that no longer hold:"]
@@ -1108,8 +1099,8 @@ did not dispatch, kept out of everything else; tokens, in all and by kind, of
 the sessions; `api_cost`, what they would cost at API prices (a subscription
 does not pay per token), over the priced ones, and `unpriced_sessions`; commits. `nock_*`: calls
 to nock, and how many said no (exit 1), were called wrong (40s) or broke
-(50s); `consultations` answered. `decisions_*`: recorded in the window (and how many as todos and
-tagged important),
-reviewed by the owner in it (accepted, rejected), and every standing one
-still unreviewed. `tools`: the project's own commands, how many were used,
-and how often. `map_*`: the map's length and the decisions it cites."""
+(50s); `consultations` answered. `topics`: how many there are. `items_*`:
+submitted in the window (and how many hold a decision), decided by the owner
+in it (accepted, rejected), and every one still open. `tools`: the project's
+own commands, how many were used, and how often. `map_*`: the map's length
+and the items it cites."""

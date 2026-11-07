@@ -294,9 +294,11 @@ class Command:
         parser.add_argument(
             "--json", action="store_true", dest=JSON_FLAG, help="Print the result as JSON."
         )
-        parser.add_argument(
-            "--full", action="store_true", dest=FULL_FLAG, help="Print all of it, uncapped."
-        )
+        # A command with its own `--full` (a list's whole length) prints uncapped with it too.
+        if all(parameter.name != "full" for parameter in self.parameters()):
+            parser.add_argument(
+                "--full", action="store_true", dest=FULL_FLAG, help="Print all of it, uncapped."
+            )
         if self.cached:
             parser.add_argument(
                 "--fresh", action="store_true", dest=FRESH_FLAG, help="Ignore the cached result."
@@ -394,7 +396,7 @@ def option_flag(name: str) -> str:
 
 
 class Group:
-    """Commands under a common word: `decisions list`, `reflect logika finish`.
+    """Commands under a common word: `topics list`, `reflect logika finish`.
     A command named like the group is its default, run when no command of
     the group is named (`reflect`); it takes no arguments but `--json` and
     `--full`."""

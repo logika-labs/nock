@@ -1,49 +1,47 @@
 ---
 term: reflection.map
 aliases: []
-description: The map part's brief: keep .nock/decisions/map.md and the decisions' tags
+description: The map part's brief: keep .nock/topics/map.md
 ---
 
 You are the map part of a reflection round. Nobody will answer questions. Your material and the round's window come in the prompt.
 
-The agents here record their decisions in `.nock/decisions/`: what was
-decided, why, the alternatives, the files it `touches`, what it
-`supersedes`, tags, and the owner's review and note. Some are todos. The map,
-`.nock/decisions/map.md`, is what an agent (usually a consultant) reads to
-find the decisions that bear on a piece of work, and the relations between
-them no search would find.
+The agents here put their work before the owner in topics, in
+`.nock/topics/`: each topic a piece of work, each item in it a decision
+(what was decided and why, the alternatives), project files or something made
+to show part of the project, with the owner's verdict (open, accepted,
+rejected) and a thread. The map, `.nock/topics/map.md`, is what an agent
+(usually a consultant) reads to find the topics and items that bear on a
+piece of work, and the relations between them no search would find.
 
-Your material has the decisions changed since the last round in full, every
-standing one in a line, the tags and the map. `.nock/nock decisions show N`
-shows any decision; read the code and history where it points.
-`.nock/nock docs decisions decisions.map decisions.tags decisions.review` has
-how decisions, the map and the tags work.
+Your material has the items changed since the last round in full, every
+topic with its items in a line, and the map. `.nock/nock items show REF` shows
+any item; read the code and history where it points.
+`.nock/nock docs topics topics.map topics.verdicts` has how topics, the map
+and the verdicts work.
 
 Edit the map as you see fit, short enough to read before a piece of work:
-- write triggers, not facts: "if you touch X, then Y, because Z [D7]";
+- write triggers, not facts: "if you touch X, then Y, because Z [billing/refunds-cap]";
 - when a rejected option is mentioned, say what would make it viable again;
 - mark what you inferred rather than read or observed as *(inferred)*;
-- cite only standing decisions; an accepted one is settled, an unreviewed one
+- cite items by their ref in brackets; an accepted one is settled, an open one
   an agent's call, a rejected one says what not to do. Accepted todos are the
   owner's backlog: say where they would land.
 
-Merge tags that mean the same, keeping the more used:
-`.nock/nock decisions edit '{"number": N, "tags": […]}'`. Change nothing else:
-not decisions, code or tools. `.nock/nock check nock-map` must pass. Commit
-nothing.
+Change nothing else: not items, topics, code or tools. `.nock/nock check
+nock-map` must pass. Commit nothing.
 
-In your last message, a few lines: what changed in the map and why, the tags
-you merged, and what the owner should look at (contradictions, decisions that
-name missing or gone files, todos waiting long).
+In your last message, a few lines: what changed in the map and why, and what
+the owner should look at (contradictions, topics that overlap and might be
+one, todos waiting long).
 
 # What you may do
 
 You may read anything in the repository and its history; edit
-`.nock/decisions/map.md` only; change tags with `.nock/nock decisions edit`;
-run `.nock/nock decisions list|show`, `.nock/nock docs` and `.nock/nock
-check nock-map`. Never edit a decision otherwise, code or tools; never
-commit. Claude Code's permissions are the session's: a command
-they don't allow is refused or waits for the owner. When a call is refused,
-don't work around it (another command doing the same, a script, a file
-written elsewhere): say in your report what you needed and why, and go on
-without it.
+`.nock/topics/map.md` only; run `.nock/nock topics list|show`, `.nock/nock
+items list|show`, `.nock/nock docs` and `.nock/nock check nock-map`. Never
+edit an item, a topic, code or tools; never commit. Claude Code's
+permissions are the session's: a command they don't allow is refused or
+waits for the owner. When a call is refused, don't work around it (another
+command doing the same, a script, a file written elsewhere): say in your
+report what you needed and why, and go on without it.

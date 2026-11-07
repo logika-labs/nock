@@ -1,7 +1,7 @@
 """The telemetry store: one SQLite database in `.nock/local/`, never committed —
 every call to a nock command, every supervised process, and what each Claude
-Code session did (and how far its transcript has been read), read from its transcript (and which decisions and reviews it
-was shown). Reflection reads it; so can any
+Code session did (and how far its transcript has been read), read from its transcript (and which items it was told of or
+shown). Reflection reads it; so can any
 agent, with `nock query`."""
 
 from __future__ import annotations
@@ -87,14 +87,14 @@ CREATE TABLE IF NOT EXISTS transcripts (
     offset INTEGER NOT NULL,     -- bytes read so far, to the end of a whole line
     state TEXT NOT NULL          -- JSON: the totals and open tool calls reading on needs
 );
-CREATE TABLE IF NOT EXISTS heard (
-    session TEXT NOT NULL,       -- a session told of the owner's review of a decision it recorded
-    decision INTEGER NOT NULL,
-    updated TEXT NOT NULL        -- the decision's `updated` when it was told
+CREATE TABLE IF NOT EXISTS told (
+    session TEXT NOT NULL,       -- a session told of the owner's word on an item it made
+    item TEXT NOT NULL,          -- the item's ref, topic/slug
+    updated TEXT NOT NULL        -- when the owner last said something on it, as told
 );
-CREATE TABLE IF NOT EXISTS shown (
-    session TEXT NOT NULL,       -- a session shown a decision governing a file it edited
-    decision INTEGER NOT NULL
+CREATE TABLE IF NOT EXISTS shown_items (
+    session TEXT NOT NULL,       -- a session shown an item about a file it edited
+    item TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS nudged (
     round TEXT NOT NULL          -- a round whose unshared summary, or a week's logika-round offer, a session start mentioned

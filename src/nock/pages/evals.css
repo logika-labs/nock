@@ -36,13 +36,6 @@
 .evals .unit .split:focus-visible, .evals .files button:focus-visible, .evals .analysis tr[tabindex]:focus-visible {
   outline: 2px solid #111116; outline-offset: 2px;
 }
-.evals .live {
-  margin-left: auto; display: inline-flex; align-items: center; gap: 8px; padding: 5px 12px; border-radius: 999px;
-  font: 500 12px/16px var(--mono); background: rgb(17 17 22 / .05); color: var(--muted); white-space: nowrap;
-}
-.evals .live.on { background: color-mix(in oklab, var(--cyan) 40%, white); color: var(--foreground); }
-.evals .live .pulse { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
-.evals .live.on .pulse { background: #0a8db5; animation: evals-pulse 1.4s ease-in-out infinite; }
 .evals .whatif { flex-basis: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
 .evals .whatif select { flex: 1 1 12rem; min-width: 0; width: 100%; max-width: 34rem; }
 .evals .whatif .said { flex-basis: 100%; font-size: 14px; }
@@ -200,7 +193,6 @@
 @media (max-width: 720px) {
   .evals .canvas { column-gap: 28px; padding: 12px 12px 18px; }
   .evals .toolbar select { max-width: 100%; }
-  .evals .live { margin-left: 0; }
   .evals .scroller { max-height: calc(100vh - 160px); }
 }
 @media (hover: none) {

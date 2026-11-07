@@ -70,8 +70,7 @@ button:not(:disabled), label[for] { cursor: pointer; }
   content: ""; width: 16px; height: 16px; flex: none; background: currentColor;
   -webkit-mask: var(--icon) center / contain no-repeat; mask: var(--icon) center / contain no-repeat;
 }
-.menu a[data-tab-link="decisions"] { --icon: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><path d='M2 2h12v3H2zM2 6.5h12v3H2zM2 11h8v3H2z'/></svg>"); }
-.menu a[data-tab-link="review"] { --icon: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><path fill-rule='evenodd' d='M1 2h14v12H1zM2.5 3.5v9h11v-9zM3.5 11.5l3-4 2 2.5 1.5-1.5 2.5 3zM10.5 4.6a1.3 1.3 0 1 1 0 2.6 1.3 1.3 0 0 1 0-2.6z'/></svg>"); }
+.menu a[data-tab-link="topics"] { --icon: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><path d='M2 2h12v3H2zM2 6.5h12v3H2zM2 11h8v3H2z'/></svg>"); }
 .menu a[data-tab-link="evals"] { --icon: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><path d='M1 13h3V8H1zM6.5 13h3V3h-3zM12 13h3V6h-3z'/></svg>"); }
 .top { display: flex; flex: none; align-items: center; gap: 8px; }
 .menu a:focus-visible, .notice button:focus-visible, .gear:focus-visible, .switch:focus-visible, .popover summary:focus-visible {
@@ -140,11 +139,10 @@ button:not(:disabled), label[for] { cursor: pointer; }
   .menu a { padding: 8px 12px; }
   .band h1 { font-size: 24px; }
 }
-/* The filters the decisions and review tabs share: the verdicts as tabs (with what a tab puts
-   beside them: sort, layout), search, then the tags. */
+/* The filters a tab puts under its bar: the verdicts as tabs, each with its count. */
 nav.reviews { display: flex; flex-wrap: wrap; align-items: center; gap: 0 24px; border-bottom: 1px solid var(--border); margin-top: 8px; }
 
-/* Search, with what a tab adds beside it, on one line under the verdicts; the tags on one scrolling line below. */
+/* Search, with what a tab adds beside it, on one line; a row of chips that scrolls. */
 .tools { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px; padding-top: 20px; }
 .search { position: relative; flex: 1 1 16rem; min-width: 0; display: flex; align-items: center; }
 .search svg { position: absolute; left: 0; width: 15px; height: 15px; color: var(--muted); pointer-events: none; }
@@ -200,7 +198,7 @@ input[type="search"]:focus-visible { border-bottom-color: var(--ring); }
 <script>
 // The studio: tabs register here, and the address says which is open (`#NAME`,
 // or `#NAME/ROUTE` for something in it). An address naming no tab goes to the
-// first, whole, as its route — so `#7` still opens decision 7.
+// first, whole, as its route — so `#7` still opens what was decision 7.
 const studio = {
   tabs: new Map(),
   summaries: new Map(),
@@ -233,24 +231,13 @@ const studio = {
   escape(text) {
     return String(text ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
   },
-  // The filters the decisions and review tabs share (their look is above). The verdicts: NAV's
-  // tabs, each `data-verdict` and holding a `.count`, the chosen one selected, each counting what
-  // it holds (none: blank).
+  // The verdict tabs (their look is above): NAV's tabs, each `data-verdict` and holding a
+  // `.count`, the chosen one selected, each counting what it holds (none: blank).
   verdicts(nav, chosen, counts) {
     for (const tab of nav.querySelectorAll('[role="tab"][data-verdict]')) {
       tab.setAttribute("aria-selected", String(tab.dataset.verdict === chosen));
       tab.querySelector(".count").textContent = counts[tab.dataset.verdict] || "";
     }
-  },
-  // The tags: ROW's chips, from `[tag, count]` pairs in their order, each counting what it would
-  // show and marked `data-ATTRIBUTE`; a tag that would show nothing is left out unless CHOSEN
-  // holds it, and the row is hidden when no tag is left.
-  tags(row, counted, chosen, attribute) {
-    const chips = counted.filter(([tag, count]) => count > 0 || chosen.has(tag)).map(([tag, count]) =>
-      `<button type="button" class="chip" data-key="${attribute}:${this.escape(tag)}" data-${attribute}="${this.escape(tag)}" aria-pressed="${chosen.has(tag)}">${this.escape(tag)} <span class="count">${count}</span></button>`);
-    this.morph(row.querySelector(".chips"), chips.join(""));
-    row.hidden = !chips.length;
-    this.fade(row);
   },
   // A scrolling row of chips fades at an edge only where there is more to scroll to.
   fade(row) {
@@ -258,7 +245,7 @@ const studio = {
     row.classList.toggle("more-after", row.scrollLeft + row.clientWidth < row.scrollWidth - 2);
   },
   // Other names an address may use for a tab.
-  aliases: { evaluations: "evals" },
+  aliases: { evaluations: "evals", decisions: "topics", review: "topics" },
   route() {
     const hash = decodeURIComponent(location.hash.slice(1));
     const [said, ...rest] = hash.split("/");

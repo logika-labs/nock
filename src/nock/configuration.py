@@ -15,8 +15,8 @@ DEFAULTS: dict[str, Any] = {
     # The project's main branch.
     "branch": "main",
     # Whether nock speaks up unasked: the primer's advice, the toolbox and the
-    # occasional standing at a session's start, the owner's reviews at a prompt,
-    # the decisions behind an edited file. False keeps nock silent unless asked
+    # occasional standing at a session's start, the owner's word at a prompt,
+    # the items about an edited file. False keeps nock silent unless asked
     # (telemetry is still recorded).
     "reminders": True,
     "output": {
@@ -79,18 +79,12 @@ DEFAULTS: dict[str, Any] = {
         "logika": {"days": 30},
     },
     "agent": {
-        # The headless agent nock dispatches (elaborate, consult) and its model
+        # The headless agent nock dispatches (consult, the studio's Ask) and its model
         # ("" is Claude Code's default); bounds in seconds.
         "command": ["claude"],
         "model": "",
         "deadline": 1800,
         "silence": 600,
-    },
-    "decisions": {
-        # The project's fixed tags, lowercase: `decide` and `edit` refuse any
-        # other (but `important`, and a logika round's `logika` and
-        # `instrumentation`). Empty lets agents add their own.
-        "tags": [],
     },
     "consult": {
         # Whether the consultant runs, and the primer asks agents to consult.

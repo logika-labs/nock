@@ -50,13 +50,9 @@ DOCS = {
         "concepts",
         "Every call and session in a local SQLite file, never committed, and how to read it.",
     ),
-    "decisions": (
+    "topics": (
         "concepts",
-        "Agents record what they chose and what they passed over; you review it later. The map, and consulting before a change.",
-    ),
-    "review": (
-        "concepts",
-        "Agents register what they made for you to see: screenshots, videos, pages, texts. You approve, reject, note or regenerate each, version by version.",
+        "Agents put their work before you in topics: decisions, project files, what they made to show it. You accept or reject each and talk in its thread. The map, and consulting before a change.",
     ),
     "reflection": (
         "concepts",

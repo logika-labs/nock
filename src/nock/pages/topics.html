@@ -1,0 +1,590 @@
+<div class="frame topics" id="topics">
+  <div class="controls">
+    <div class="bar">
+      <div class="modes" role="group" aria-label="Search or ask">
+        <button type="button" data-bar-mode="search" aria-pressed="true">Search</button>
+        <button type="button" data-bar-mode="ask" aria-pressed="false">Ask</button>
+      </div>
+      <label class="search" for="topics-input">
+        <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="7" cy="7" r="4.75" stroke="currentColor" stroke-width="1.5"/><path d="m10.5 10.5 3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        <input type="search" id="topics-input" placeholder="search topics and items" autocomplete="off" aria-label="Search topics and items">
+      </label>
+      <button type="button" class="button primary" id="topics-ask" hidden>Ask</button>
+    </div>
+    <div class="answer" id="topics-answer" aria-live="polite" hidden></div>
+    <nav class="reviews" role="tablist" aria-label="Which items" id="topics-verdicts">
+      <button type="button" role="tab" data-verdict="open" aria-selected="true">open <span class="count"></span></button>
+      <button type="button" role="tab" data-verdict="accepted" aria-selected="false">accepted <span class="count"></span></button>
+      <button type="button" role="tab" data-verdict="rejected" aria-selected="false">rejected <span class="count"></span></button>
+    </nav>
+  </div>
+  <main id="topics-main"></main>
+</div>
+<script>
+// The topics tab (its look is pages/topics.css): `GET topics` every topic with its items, each
+// version's decision and files, and the question being asked, polled while shown and drawn in
+// place (`studio.morph`), so nothing flashes and what is typed stays. The address says the view:
+// `#topics` the list, `#topics/TOPIC` a topic's page, `#topics/TOPIC/SLUG` an item's (`#170`: the
+// item an earlier decision 170 became). The owner's verdicts go to `POST topics/judge`, their
+// messages to `topics/reply`, a question to `topics/ask` (`topics/ask/cancel` stops it).
+(() => {
+  const $ = id => document.getElementById(id);
+  const escape = studio.escape;
+  const MAC = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
+  const POLL = 3000;
+  const VERDICTS = ["open", "accepted", "rejected"];
+  const TONE = { open: "", accepted: "ok", rejected: "error" };
+  const state = {
+    shown: false, seen: "", topics: [], ask: null, verdict: "open", search: "", mode: "search",
+    route: "", drafts: new Map(), compare: false, single: null, left: null, right: null, dismissed: null,
+  };
+
+  // --- time ---------------------------------------------------------------------------------------
+
+  const RELATIVE = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
+  const UNITS = [["year", 31536000], ["month", 2592000], ["week", 604800], ["day", 86400], ["hour", 3600], ["minute", 60]];
+  function ago(moment) {
+    const seconds = (new Date(moment).getTime() - Date.now()) / 1000;
+    if (Math.abs(seconds) < 45) return "just now";
+    for (const [unit, size] of UNITS) if (Math.abs(seconds) >= size || unit === "minute") return RELATIVE.format(Math.round(seconds / size), unit);
+  }
+  const time = moment => moment ? `<time datetime="${escape(moment)}" title="${escape(new Date(moment).toLocaleString())}">${escape(ago(moment))}</time>` : "";
+
+  // --- markdown, as much as agents and the owner write ----------------------------------------------
+
+  function inline(text) {
+    return escape(text)
+      .replace(/`([^`]+)`/g, "<code>$1</code>")
+      .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+      .replace(/(^|[^*])\*([^*\s][^*]*)\*/g, "$1<em>$2</em>")
+      .replace(/\[([^\]]+)\]\((https?:[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>')
+      .replace(/\[([a-z0-9][a-z0-9-]*\/[a-z0-9][a-z0-9-]*|D\d+)\]/g, '<a href="#topics/$1">$1</a>');
+  }
+  function markdown(source) {
+    const lines = String(source || "").replace(/\r/g, "").split("\n");
+    const out = [];
+    let paragraph = [], list = null;
+    const flush = () => {
+      if (paragraph.length) out.push(`<p>${inline(paragraph.join(" "))}</p>`);
+      paragraph = [];
+      if (list) out.push(`<${list.tag}>${list.items.map(item => `<li>${inline(item)}</li>`).join("")}</${list.tag}>`);
+      list = null;
+    };
+    for (let index = 0; index < lines.length; index++) {
+      const line = lines[index];
+      if (line.trimStart().startsWith("```")) {
+        flush();
+        const code = [];
+        while (++index < lines.length && !lines[index].trimStart().startsWith("```")) code.push(lines[index]);
+        out.push(`<pre><code>${escape(code.join("\n"))}</code></pre>`);
+        continue;
+      }
+      const heading = line.match(/^(#{1,4})\s+(.*)$/);
+      const bullet = line.match(/^\s*[-*]\s+(.*)$/);
+      const numbered = line.match(/^\s*\d+[.)]\s+(.*)$/);
+      if (heading) { flush(); const level = heading[1].length + 2; out.push(`<h${level}>${inline(heading[2])}</h${level}>`); }
+      else if (bullet || numbered) {
+        const tag = bullet ? "ul" : "ol";
+        if (paragraph.length || (list && list.tag !== tag)) flush();
+        list = list || { tag, items: [] };
+        list.items.push((bullet || numbered)[1]);
+      }
+      else if (!line.trim()) flush();
+      else if (list && /^\s{2,}/.test(line)) list.items[list.items.length - 1] += " " + line.trim();
+      else { if (list) flush(); paragraph.push(line.trim()); }
+    }
+    flush();
+    return out.join("");
+  }
+
+  // --- the diff: an LCS over lines, then over the words of a changed line -------------------------
+
+  function steps(before, after) {
+    let start = 0;
+    while (start < before.length && start < after.length && before[start] === after[start]) start++;
+    let end = 0;
+    while (end < before.length - start && end < after.length - start && before[before.length - 1 - end] === after[after.length - 1 - end]) end++;
+    const left = before.slice(start, before.length - end), right = after.slice(start, after.length - end);
+    const head = before.slice(0, start).map(value => ["equal", value, value]);
+    const tail = before.slice(before.length - end).map(value => ["equal", value, value]);
+    const n = left.length, m = right.length, middle = [];
+    if (n * m > 4_000_000) {
+      for (const value of left) middle.push(["removed", value, null]);
+      for (const value of right) middle.push(["added", null, value]);
+      return [...head, ...middle, ...tail];
+    }
+    const table = new Uint32Array((n + 1) * (m + 1));
+    for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--) {
+      table[i * (m + 1) + j] = left[i] === right[j] ? table[(i + 1) * (m + 1) + j + 1] + 1 : Math.max(table[(i + 1) * (m + 1) + j], table[i * (m + 1) + j + 1]);
+    }
+    let i = 0, j = 0;
+    while (i < n && j < m) {
+      if (left[i] === right[j]) { middle.push(["equal", left[i], right[j]]); i++; j++; }
+      else if (table[(i + 1) * (m + 1) + j] >= table[i * (m + 1) + j + 1]) middle.push(["removed", left[i++], null]);
+      else middle.push(["added", null, right[j++]]);
+    }
+    while (i < n) middle.push(["removed", left[i++], null]);
+    while (j < m) middle.push(["added", null, right[j++]]);
+    return [...head, ...middle, ...tail];
+  }
+  function words(before, after) {
+    const split = line => line.match(/\s+|[\p{L}\p{N}_]+|[^\s\p{L}\p{N}_]/gu) || [];
+    const marked = { before: "", after: "" };
+    for (const [kind, left, right] of steps(split(before), split(after))) {
+      if (kind === "equal") { marked.before += escape(left); marked.after += escape(right); }
+      else if (kind === "removed") marked.before += /^\s+$/.test(left) ? escape(left) : `<del>${escape(left)}</del>`;
+      else marked.after += /^\s+$/.test(right) ? escape(right) : `<ins>${escape(right)}</ins>`;
+    }
+    marked.before = marked.before.replace(/<\/del>(\s+)<del>/g, "$1");
+    marked.after = marked.after.replace(/<\/ins>(\s+)<ins>/g, "$1");
+    return marked;
+  }
+  function diff(before, after, names) {
+    const walked = steps(before.split("\n"), after.split("\n"));
+    const found = [];
+    let numberBefore = 0, numberAfter = 0;
+    for (let index = 0; index < walked.length;) {
+      if (walked[index][0] === "equal") { found.push({ kind: "equal", before: walked[index][1], after: walked[index][2], left: ++numberBefore, right: ++numberAfter }); index++; continue; }
+      const removed = [], added = [];
+      while (index < walked.length && walked[index][0] !== "equal") {
+        if (walked[index][0] === "removed") removed.push(walked[index][1]); else added.push(walked[index][2]);
+        index++;
+      }
+      for (let k = 0; k < Math.max(removed.length, added.length); k++) {
+        const left = removed[k], right = added[k];
+        if (left?.trim() && right?.trim()) { found.push({ kind: "changed", before: left, after: right, left: ++numberBefore, right: ++numberAfter }); continue; }
+        if (left !== undefined) found.push({ kind: "removed", before: left, after: null, left: ++numberBefore, right: null });
+        if (right !== undefined) found.push({ kind: "added", before: null, after: right, left: null, right: ++numberAfter });
+      }
+    }
+    const near = found.map((row, index) => row.kind !== "equal" || found.slice(Math.max(0, index - 3), index + 4).some(other => other.kind !== "equal"));
+    let html = `<tr class="side-names"><td></td><td>${escape(names[0])}</td><td class="after-side"></td><td>${escape(names[1])}</td></tr>`, folded = 0;
+    const fold = () => { if (folded) html += `<tr class="fold"><td colspan="4">${folded} unchanged ${folded === 1 ? "line" : "lines"}</td></tr>`; folded = 0; };
+    found.forEach((row, index) => {
+      if (!near[index] && found.length > 40) { folded++; return; }
+      fold();
+      let left = row.before === null ? "" : escape(row.before), right = row.after === null ? "" : escape(row.after);
+      if (row.kind === "changed") ({ before: left, after: right } = words(row.before, row.after));
+      html += `<tr class="${row.kind}"><td class="number">${row.left ?? ""}</td><td class="before">${left}</td><td class="number after-side">${row.right ?? ""}</td><td class="after">${right}</td></tr>`;
+    });
+    fold();
+    return `<table class="diff"><colgroup><col class="number"><col><col class="number"><col></colgroup><tbody>${html}</tbody></table>`;
+  }
+
+  // --- reading the data ---------------------------------------------------------------------------
+
+  const topicNamed = name => state.topics.find(topic => topic.name === name);
+  const everyItem = () => state.topics.flatMap(topic => topic.items);
+  const itemAt = ref => everyItem().find(item => item.ref === ref || (item.aliases || []).some(alias => ref === alias || ref === `D${alias}` || ref === `${item.topic}/${alias}`));
+  const last = item => item.versions[item.versions.length - 1];
+  const versionOf = (item, number) => item.versions.find(version => version.version === number) || last(item);
+  const fileUrl = (item, version, name) => `topics/file/${encodeURIComponent(item.topic)}/${encodeURIComponent(item.slug)}/${version.version}/${name.split("/").map(encodeURIComponent).join("/")}`;
+  const texts = new Map();
+  function text(address) {
+    if (!texts.has(address)) texts.set(address, fetch(address).then(response => response.ok ? response.text() : Promise.reject(new Error("gone"))));
+    return texts.get(address);
+  }
+  // A decision as text, so versions of it compare as lines.
+  const decisionText = decision => [`status: ${decision.status}`, "", decision.answer, ...(decision.alternatives.length ? ["", "Considered instead:", ...decision.alternatives.map(entry => `- ${entry.option} — ${entry.why_not}`)] : [])].join("\n");
+
+  function itemWords(item) {
+    const latest = last(item);
+    return [item.ref, item.title, ...(item.aliases || []), ...item.thread.map(entry => entry.text),
+      latest.decision ? decisionText(latest.decision) : "", ...latest.files.flatMap(file => [file.name, ...(file.from || []), file.when || ""])].join(" ").toLowerCase();
+  }
+  function topicWords(topic) { return [topic.name, topic.description, topic.current, ...topic.thread.map(entry => entry.text)].join(" ").toLowerCase(); }
+  function searched(topic, item) {
+    const said = state.search.toLowerCase().split(/\s+/).filter(Boolean);
+    if (!said.length) return true;
+    const words = `${topicWords(topic)} ${itemWords(item)}`;
+    return said.every(word => words.includes(word));
+  }
+
+  // --- drawing -----------------------------------------------------------------------------------
+
+  function badges(item) {
+    const latest = last(item);
+    const kinds = [...new Set(latest.files.map(file => file.kind))];
+    if (latest.decision) kinds.unshift(latest.decision.status === "todo" ? "todo" : "decision");
+    const found = kinds.map(kind => `<span class="badge${kind === "todo" ? " info" : ""}">${escape(kind)}</span>`);
+    if (item.versions.length > 1) found.push(`<span class="badge">v${latest.version}</span>`);
+    const owner = item.thread.length && item.thread[item.thread.length - 1].author === "agent" && item.thread.some(entry => entry.author === "owner");
+    if (owner) found.push('<span class="badge info">answered</span>');
+    if (item.verdict !== "open") found.push(`<span class="badge ${TONE[item.verdict]}">${item.verdict}</span>`);
+    return found.join("");
+  }
+  const row = item => `<button type="button" class="item-row" data-key="${escape(item.ref)}" data-go="${escape(item.ref)}">
+      <span class="title">${escape(item.title)}</span><span class="side">${badges(item)}${time(item.updated)}</span></button>`;
+  const mini = item => `<button type="button" class="mini" data-key="mini:${escape(item.ref)}" data-go="${escape(item.ref)}"><span class="title">${escape(item.title)}</span><span class="ref">${escape(item.ref)} · ${item.verdict}</span></button>`;
+  const hue = name => [...name].reduce((sum, character) => sum + character.charCodeAt(0), 0) % 4;
+
+  function drawCounts() {
+    const counts = { open: 0, accepted: 0, rejected: 0 };
+    for (const item of everyItem()) counts[item.verdict]++;
+    studio.verdicts($("topics-verdicts"), state.verdict, counts);
+    const busy = state.topics.filter(topic => topic.counts.open).length;
+    const said = counts.open ? `${counts.open} open in ${busy} ${busy === 1 ? "topic" : "topics"}` : "nothing waits on you";
+    studio.summary("topics", state.topics.length ? said : "no topics yet");
+  }
+
+  function drawList() {
+    const shown = [], folded = [];
+    for (const topic of state.topics) {
+      const items = topic.items.filter(item => item.verdict === state.verdict && searched(topic, item));
+      if (items.length) shown.push([topic, items]);
+      else if (!state.search.trim() || topicWords(topic).includes(state.search.trim().toLowerCase())) folded.push(topic);
+    }
+    const sheets = shown.map(([topic, items]) => `<article class="sheet" data-key="topic:${escape(topic.name)}" data-hue="${hue(topic.name)}">
+        <header><button type="button" class="name" data-go="${escape(topic.name)}">${escape(topic.name)}</button>
+          <span class="side">${topic.counts.open ? `<span class="badge">${topic.counts.open} open</span>` : ""}${time(topic.active)}</span>
+          <p class="about">${inline(topic.current)}</p></header>
+        <div class="rows">${items.map(row).join("")}</div></article>`);
+    const fold = folded.length ? `<details class="folded" data-key="folded"><summary>${folded.length} ${folded.length === 1 ? "topic" : "topics"} with nothing ${state.verdict}</summary>
+        <div class="names">${folded.map(topic => `<button type="button" class="chip" data-key="fold:${escape(topic.name)}" data-go="${escape(topic.name)}">${escape(topic.name)} <span class="count">${topic.items.length}</span></button>`).join("")}</div></details>` : "";
+    const empty = !state.topics.length
+      ? '<div class="empty" data-key="empty"><strong>No topics yet</strong><span>Agents open a topic for their work with <code>.nock/nock topics create</code> and submit items into it; they appear here.</span></div>'
+      : !shown.length ? `<div class="empty" data-key="empty"><strong>${state.search.trim() ? "No matches" : `Nothing ${state.verdict}`}</strong><span>${state.search.trim() ? "No item fits the search in this tab." : "Every topic is folded below."}</span></div>` : "";
+    studio.morph($("topics-main"), empty + sheets.join("") + fold);
+  }
+
+  function thread(entries, where) {
+    const messages = entries.map((entry, index) => `<div class="message ${entry.author}" data-key="message:${index}">
+        <span class="who">${entry.author === "owner" ? "you" : "agent"}${entry.kind === "revival" ? " · revived it" : ""}${entry.verdict ? ` · ${entry.verdict}` : ""} ${time(entry.moment)}</span>
+        <div class="context">${markdown(entry.text)}</div></div>`).join("");
+    return `<div class="section" data-key="thread"><span class="label">Thread</span><div class="thread">${messages || '<span class="hint">Nothing said yet.</span>'}</div>
+      <textarea data-draft="reply:${escape(where)}" data-own rows="1" placeholder="Write in the thread (markdown); the agent answers when it is next at work" aria-label="Reply"></textarea>
+      <div class="actions"><span class="hint"><kbd>${MAC ? "⌘" : "Ctrl"}</kbd> <kbd>↵</kbd> sends</span><div class="buttons"><button type="button" class="button secondary" data-reply="${escape(where)}">Send</button></div></div></div>`;
+  }
+
+  function verdictBlock(key, decided, verdict, openCount) {
+    const panel = verdict && verdict !== "open"
+      ? `<div class="panel ${verdict === "accepted" ? "ok" : "rejected"}"><span class="label">${verdict} ${time(decided?.moment)}</span><div>${verdict === "accepted" ? "It stands." : "An agent reworks it as a new version, as the thread says."}</div></div>` : "";
+    if (openCount === 0) return panel;
+    const buttons = ["rejected", "accepted"].filter(choice => choice !== verdict).map(choice =>
+      `<button type="button" class="button ${choice === "accepted" ? "primary" : "secondary"}" data-judge="${escape(key)}" data-verdict-choice="${choice}">${choice === "accepted" ? "Accept" : "Reject"}${openCount > 1 ? ` all ${openCount}` : ""}</button>`).join("");
+    return `${panel}<textarea data-draft="comment:${escape(key)}" data-own rows="1" placeholder="A comment, if you like — with a rejection, what should change" aria-label="Comment"></textarea>
+      <div class="actions"><span class="hint" data-problem="${escape(key)}"></span><div class="buttons">${buttons}</div></div>`;
+  }
+
+  function drawTopic(topic) {
+    const rounds = topic.thread.filter(entry => entry.kind === "revival").map(entry => entry.moment).sort().reverse();
+    const groups = [];
+    let rest = [...topic.items];
+    for (const since of rounds) {
+      groups.push([since, rest.filter(item => item.created.moment >= since)]);
+      rest = rest.filter(item => item.created.moment < since);
+    }
+    groups.push([null, rest]);
+    const revivals = topic.thread.filter(entry => entry.kind === "revival");
+    const itemsHtml = groups.map(([since, items], index) => {
+      const head = since ? `<div class="round" data-key="round:${escape(since)}"><strong>Back ${time(since)}:</strong> ${inline(revivals.find(entry => entry.moment === since)?.text || "")}</div>`
+        : rounds.length ? `<div class="round" data-key="round:first"><strong>Before:</strong> ${inline(topic.description)}</div>` : "";
+      return head + items.map(row).join("") + (!items.length && index === 0 && !since ? '<div class="round" data-key="none">No items yet.</div>' : "");
+    }).join("");
+    const open = topic.counts.open;
+    studio.morph($("topics-main"), `<article class="sheet open page" data-key="page:${escape(topic.name)}" data-hue="${hue(topic.name)}">
+      <button type="button" class="back" data-go="">← Topics</button>
+      <div class="section"><h2>${escape(topic.name)}</h2><div class="where">${topic.counts.open} open · ${topic.counts.accepted} accepted · ${topic.counts.rejected} rejected · opened ${time(topic.created.moment)}</div>
+        <div class="context">${markdown(topic.current)}</div></div>
+      <div class="rows" data-key="rows">${itemsHtml}</div>
+      ${open ? `<div class="section" data-key="judge"><span class="label">Every open item</span>${verdictBlock(`topic:${topic.name}`, null, null, open)}</div>` : ""}
+      ${thread(topic.thread, topic.name)}
+    </article>`);
+  }
+
+  function chosen(item) {
+    const numbers = item.versions.map(version => version.version);
+    if (!state.compare) return [numbers.includes(state.single) ? state.single : numbers[numbers.length - 1]];
+    const right = numbers.includes(state.right) ? state.right : numbers[numbers.length - 1];
+    const left = numbers.includes(state.left) ? state.left : numbers[Math.max(0, numbers.length - 2)];
+    return [left, right];
+  }
+
+  function versionChips(item, side, number) {
+    return `<span class="chips" role="group" aria-label="${side} version">${item.versions.map(version =>
+      `<button type="button" class="chip" data-key="${side}:${version.version}" data-pick="${side}" data-number="${version.version}" aria-pressed="${version.version === number}">v${version.version}</button>`).join("")}</span>`;
+  }
+
+  function facts(file) {
+    const lines = [];
+    if (file.kind === "derived") {
+      if (file.from?.length) lines.push(`<span>from ${file.from.map(path => `<code>${escape(path)}</code>`).join(" ")}</span>`);
+      if (file.when) lines.push(`<span>when ${inline(file.when)}</span>`);
+      if (file.recipe) lines.push(`<span>made by ${file.recipe.command ? `<code>${escape(file.recipe.command)}</code>` : ""}${file.recipe.command && file.recipe.instruction ? " — " : ""}${file.recipe.instruction ? inline(file.recipe.instruction) : ""}</span>`);
+    }
+    if (file.local) lines.push("<span>kept on this machine only (too large to commit)</span>");
+    return lines.length ? `<div class="facts">${lines.join("")}</div>` : "";
+  }
+
+  function pane(item, version, file) {
+    if (!file) return `<div class="pane"><p class="missing">Not in version ${version.version}.</p></div>`;
+    const address = fileUrl(item, version, file.name);
+    if (file.type === "image") return `<div class="pane"><img data-key="${address}" src="${address}" alt="${escape(file.name)}, version ${version.version}"></div>`;
+    if (file.type === "video") return `<div class="pane"><video data-key="${address}" src="${address}" controls preload="metadata" playsinline></video></div>`;
+    if (file.type === "pdf") return `<div class="pane"><iframe data-key="${address}" src="${address}" title="${escape(file.name)}"></iframe></div>`;
+    if (file.type === "html") return `<div class="pane"><iframe data-key="${address}" src="${address}" sandbox="" title="${escape(file.name)}"></iframe></div>`;
+    if (file.type === "binary") return `<div class="pane"><a href="${address}" download>${escape(file.name)}</a></div>`;
+    return `<div class="pane"><pre class="text" data-key="${address}" data-text="${address}" data-own>…</pre></div>`;
+  }
+
+  function fileCard(item, versions, name) {
+    const found = versions.map(version => version.files.find(file => file.name === name));
+    const file = found[found.length - 1] || found[0];
+    const head = `<div class="head"><span class="path">${escape(name)}</span><span class="badge">${file.kind === "project" ? "project file" : "derived"}</span><span class="badge">${escape(file.type)}</span></div>`;
+    let body;
+    if (versions.length === 2 && found.every(entry => entry && entry.type === "text")) {
+      body = `<div class="panes"><div class="pane" data-own data-pair="${escape(versions.map((version, index) => fileUrl(item, version, found[index].name)).join(" "))}" data-names="v${versions[0].version} v${versions[1].version}"><p class="missing">…</p></div></div>`;
+    } else {
+      body = `<div class="panes ${versions.length === 2 ? "two" : ""}">${versions.map((version, index) => pane(item, version, found[index])).join("")}</div>`;
+    }
+    return `<div class="file" data-key="file:${escape(name)}">${head}${facts(file)}${body}</div>`;
+  }
+
+  function decisionCard(versions) {
+    const decisions = versions.map(version => version.decision);
+    if (!decisions.some(Boolean)) return "";
+    if (versions.length === 2) {
+      const [before, after] = decisions.map(decision => decision ? decisionText(decision) : "");
+      return `<div class="file" data-key="decision"><div class="head"><span class="path">decision</span></div><div class="panes">${diff(before, after, versions.map(version => `v${version.version}`))}</div></div>`;
+    }
+    const decision = decisions[0];
+    const alternatives = decision.alternatives.length ? `<div class="section"><span class="label">considered instead</span><ul class="alternatives">${decision.alternatives.map(entry =>
+      `<li><span class="option">${inline(entry.option)}</span> — <span class="why">${inline(entry.why_not)}</span></li>`).join("")}</ul></div>` : "";
+    return `<div class="file" data-key="decision"><div class="head"><span class="path">decision</span>${decision.status === "todo" ? '<span class="badge info">todo</span>' : '<span class="badge">done</span>'}</div>
+      <div class="body section"><div class="context">${markdown(decision.answer)}</div>${alternatives}</div></div>`;
+  }
+
+  function drawItem(item) {
+    const numbers = chosen(item);
+    const versions = numbers.map(number => versionOf(item, number));
+    const names = [];
+    for (const version of versions) for (const file of version.files) if (!names.includes(file.name)) names.push(file.name);
+    const picking = state.compare
+      ? `<span class="label">before</span>${versionChips(item, "left", numbers[0])}<span class="label">after</span>${versionChips(item, "right", numbers[1])}`
+      : item.versions.length > 1 ? versionChips(item, "single", numbers[0]) : "";
+    const latest = last(item);
+    const current = versions[versions.length - 1];
+    studio.morph($("topics-main"), `<article class="sheet open page" data-key="item:${escape(item.ref)}" data-hue="${hue(item.topic)}">
+      <button type="button" class="back" data-go="${escape(item.topic)}">← ${escape(item.topic)}</button>
+      <div class="section"><h2>${escape(item.title)}</h2><div class="where"><span>${escape(item.ref)}${item.aliases?.length ? ` · was decision ${escape(item.aliases.join(", "))}` : ""}</span>${badges(item)}</div>
+        <span class="hint">Version ${current.version}${current.version === latest.version ? ", the latest," : ""} made ${time(current.moment)}${current.role && current.role !== "interactive" ? ` by the ${escape(current.role)}` : ""}.</span></div>
+      <div class="versions" data-key="versions">${picking}<span class="grow"></span>
+        <button type="button" class="toggle" data-compare aria-pressed="${state.compare}" ${item.versions.length < 2 ? "disabled" : ""}><span class="switch" aria-hidden="true"><span></span></span>Compare</button></div>
+      ${decisionCard(versions)}
+      ${names.map(name => fileCard(item, versions, name)).join("")}
+      <div class="section" data-key="judge">${verdictBlock(item.ref, item.decided, item.verdict, 1)}</div>
+      ${thread(item.thread, item.ref)}
+    </article>`);
+    fill($("topics-main"));
+  }
+
+  // A text's content, fetched once per address; a pair of them, diffed once per pair.
+  function fill(scope) {
+    for (const pre of scope.querySelectorAll("pre[data-text]")) {
+      const address = pre.dataset.text;
+      if (pre.filled === address) continue;
+      pre.filled = address;
+      text(address).then(content => { if (pre.filled === address) pre.textContent = content; })
+        .catch(() => { if (pre.filled === address) pre.textContent = "This file could not be read."; });
+    }
+    for (const place of scope.querySelectorAll("[data-pair]")) {
+      const pair = place.dataset.pair;
+      if (place.filled === pair) continue;
+      place.filled = pair;
+      Promise.all(pair.split(" ").map(text)).then(([left, right]) => { if (place.filled === pair) place.innerHTML = diff(left, right, place.dataset.names.split(" ")); })
+        .catch(() => { if (place.filled === pair) place.innerHTML = '<p class="missing">These files could not be read.</p>'; });
+    }
+  }
+
+  // What the owner is typing stays as it was, whatever a poll redraws.
+  function restoreDrafts() {
+    for (const field of document.querySelectorAll("#topics [data-draft]")) {
+      const kept = state.drafts.get(field.dataset.draft) ?? "";
+      if (document.activeElement !== field && field.value !== kept) field.value = kept;
+      grow(field);
+    }
+  }
+  function grow(field) {
+    if (CSS.supports("field-sizing", "content")) return;
+    field.style.height = "auto";
+    field.style.height = `${field.scrollHeight + 1}px`;
+  }
+
+  function drawAnswer() {
+    const place = $("topics-answer");
+    const ask = state.ask;
+    if (!ask || ask.started === state.dismissed) { place.hidden = true; studio.morph(place, ""); return; }
+    place.hidden = false;
+    const close = '<button type="button" class="button ghost" data-ask-dismiss aria-label="Close the answer">×</button>';
+    if (ask.running) {
+      studio.morph(place, `<div class="head"><span class="spinner" aria-hidden="true"></span><span class="question">${escape(ask.question)}</span><span>asking since ${time(ask.started)}</span><button type="button" class="button secondary" data-ask-cancel>Cancel</button></div>`);
+      return;
+    }
+    const cards = (ask.items || []).map(ref => itemAt(ref)).filter(Boolean).map(mini).join("");
+    studio.morph(place, `<div class="head"><span class="question">${escape(ask.question)}</span>${close}</div>
+      ${ask.problem ? `<pre class="problem">${escape(ask.problem)}</pre>` : `<div class="context">${markdown(ask.answer)}</div>`}
+      ${cards ? `<div class="cards">${cards}</div>` : ""}`);
+  }
+
+  function drawBar() {
+    for (const button of document.querySelectorAll("[data-bar-mode]")) button.setAttribute("aria-pressed", String(button.dataset.barMode === state.mode));
+    const input = $("topics-input");
+    input.placeholder = state.mode === "search" ? "search topics and items" : "ask about the topics, the items, what was decided";
+    $("topics-ask").hidden = state.mode !== "ask";
+    $("topics-ask").disabled = !!state.ask?.running;
+  }
+
+  function draw() {
+    drawCounts();
+    drawBar();
+    drawAnswer();
+    const route = state.route;
+    const topic = topicNamed(route);
+    const item = !topic && route ? itemAt(route) : null;
+    $("topics-verdicts").hidden = !!(topic || item);
+    if (item) drawItem(item);
+    else if (topic) drawTopic(topic);
+    else drawList();
+    restoreDrafts();
+  }
+
+  // --- talking to nock ----------------------------------------------------------------------------
+
+  async function load() {
+    try {
+      const response = await fetch("topics");
+      const raw = await response.text();
+      if (raw === state.seen) return;
+      state.seen = raw;
+      const data = JSON.parse(raw);
+      state.topics = data.topics;
+      state.ask = data.ask;
+      draw();
+    } catch {
+      studio.summary("topics", "Lost touch with nock — is `nock studio` still running?");
+    }
+  }
+
+  async function post(path, body) {
+    const response = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    const answer = await response.json();
+    if (!response.ok) throw new Error(answer.error);
+    return answer;
+  }
+
+  function go(route) {
+    if (route !== state.route) { state.compare = false; state.single = state.left = state.right = null; }
+    state.route = route;
+    const wanted = route ? `#topics/${route}` : "#topics";
+    if (decodeURIComponent(location.hash) !== wanted) history.replaceState(null, "", wanted);
+    draw();
+    scrollTo({ top: 0 });
+  }
+
+  async function judge(key, verdict) {
+    const comment = (state.drafts.get(`comment:${key}`) || "").trim();
+    const body = key.startsWith("topic:") ? { topic: key.slice(6), verdict } : { ref: key, verdict };
+    if (comment) body.comment = comment;
+    try {
+      const done = await post("topics/judge", body);
+      state.drafts.delete(`comment:${key}`);
+      studio.toast(`${done.judged.length === 1 ? done.judged[0] : `${done.judged.length} items`} ${verdict}.`);
+    } catch (error) {
+      const hint = document.querySelector(`[data-problem="${CSS.escape(key)}"]`);
+      if (hint) { hint.textContent = error.message; hint.className = "hint error"; } else studio.toast(error.message);
+      return;
+    }
+    state.seen = "";
+    await load();
+  }
+
+  async function reply(where) {
+    const written = (state.drafts.get(`reply:${where}`) || "").trim();
+    if (!written) return;
+    const isItem = !!itemAt(where) && !topicNamed(where);
+    try {
+      await post("topics/reply", isItem ? { ref: itemAt(where).ref, text: written } : { topic: where, text: written });
+    } catch (error) { studio.toast(error.message); return; }
+    state.drafts.delete(`reply:${where}`);
+    document.activeElement?.blur();
+    state.seen = "";
+    await load();
+  }
+
+  async function ask() {
+    const question = $("topics-input").value.trim();
+    if (!question || state.ask?.running) return;
+    try { state.ask = await post("topics/ask", { question }); } catch (error) { studio.toast(error.message); return; }
+    state.dismissed = null;
+    state.seen = "";
+    draw();
+  }
+
+  // --- events -------------------------------------------------------------------------------------
+
+  const root = $("topics");
+  root.addEventListener("click", event => {
+    const target = event.target;
+    const tab = target.closest("#topics-verdicts [data-verdict]");
+    if (tab) { state.verdict = tab.dataset.verdict; draw(); return; }
+    const mode = target.closest("[data-bar-mode]");
+    if (mode) {
+      state.mode = mode.dataset.barMode;
+      if (state.mode === "ask") { state.search = ""; } else state.search = $("topics-input").value;
+      draw();
+      $("topics-input").focus();
+      return;
+    }
+    if (target.closest("#topics-ask")) { ask(); return; }
+    if (target.closest("[data-ask-cancel]")) { post("topics/ask/cancel", {}).then(found => { state.ask = found; draw(); }); return; }
+    if (target.closest("[data-ask-dismiss]")) { state.dismissed = state.ask?.started; draw(); return; }
+    const going = target.closest("[data-go]");
+    if (going) { go(itemAt(going.dataset.go)?.ref ?? going.dataset.go); return; }
+    if (target.closest("[data-compare]")) { state.compare = !state.compare; state.left = state.right = null; draw(); return; }
+    const pick = target.closest("[data-pick]");
+    if (pick) { state[pick.dataset.pick] = Number(pick.dataset.number); draw(); return; }
+    const judging = target.closest("[data-judge]");
+    if (judging) { judge(judging.dataset.judge, judging.dataset.verdictChoice); return; }
+    const replying = target.closest("[data-reply]");
+    if (replying) reply(replying.dataset.reply);
+  });
+  root.addEventListener("input", event => {
+    const field = event.target;
+    if (field.id === "topics-input") { if (state.mode === "search") { state.search = field.value; draw(); } return; }
+    if (field.dataset.draft) { state.drafts.set(field.dataset.draft, field.value); grow(field); }
+  });
+  document.addEventListener("keydown", event => {
+    if (!state.shown) return;
+    const target = event.target;
+    if (target.id === "topics-input") {
+      if (event.key === "Enter" && state.mode === "ask") { event.preventDefault(); ask(); }
+      else if (event.key === "Escape") { target.value = ""; state.search = ""; target.blur(); draw(); }
+      return;
+    }
+    if (target.dataset?.draft?.startsWith("reply:") && event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+      event.preventDefault();
+      reply(target.dataset.draft.slice(6));
+      return;
+    }
+    if (["TEXTAREA", "INPUT"].includes(target.tagName)) return;
+    if (event.key === "/") { event.preventDefault(); $("topics-input").focus(); }
+    else if (event.key === "Escape" && state.route) {
+      const item = itemAt(state.route);
+      go(item && !topicNamed(state.route) ? item.topic : "");
+    }
+  });
+
+  // Shown, the tab keeps up with what agents submit: it asks again every few seconds.
+  studio.register("topics", {
+    show(route) {
+      state.shown = true;
+      state.route = route || "";
+      state.seen = "";
+      load();
+    },
+    hide() { state.shown = false; },
+  });
+  setInterval(() => { if (state.shown) load(); }, POLL);
+  setInterval(() => { if (state.shown) for (const element of document.querySelectorAll("#topics time")) element.textContent = ago(element.dateTime); }, 30000);
+})();
+</script>

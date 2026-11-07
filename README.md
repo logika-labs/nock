@@ -349,19 +349,19 @@ when one of them has drifted.
 Every session starts with the project's tools listed, through Claude Code's
 SessionStart hook. CLAUDE.md imports a short primer, `.nock/context.md`: why
 the project uses nock (to stay coherent across sessions), to consult before
-changing code, recording decisions, `nock run`, and offering to tell nock's
+changing code, putting work before the owner in topics, `nock run`, and offering to tell nock's
 makers what nock lacks with `nock report` (see [Telling nock's makers what
 you need](#telling-nocks-makers-what-you-need)). A session the human
 starts also hears where things stand, in a few lines — once a day, or sooner
-when something new calls (a round falls due, the owner rejects a
-decision) — with a word on what to do with it: take into account
+when something new calls (a round falls due, the owner rejects an
+item) — with a word on what to do with it: take into account
 what bears on the request, and mention the rest to the human only when
 relevant or once the work is done. `.nock/nock` with no arguments lists the
 toolbox.
 
 **`reminders = false`** in `.nock/config.toml` keeps nock silent unless
-asked: no toolbox or standing at a session's start, no reviews at a prompt,
-no decisions after an edit, and a primer that only says what nock is. Every
+asked: no toolbox or standing at a session's start, no verdicts at a prompt,
+no items after an edit, and a primer that only says what nock is. Every
 session and call is still recorded, `nock status` still answers, and the
 project's own hooks still run. The primer follows the committed settings (a
 session start rewrites it when they change), so set it in
@@ -398,8 +398,8 @@ committed:
 | `sessions` | each Claude Code session's role, title, tokens by kind, API-equivalent cost, prompts, interrupts and compactions |
 | `prompts` | what the human typed |
 | `events` | every tool call of every session: the command, path or pattern, whether it failed, the bytes returned, and the duration |
-| `heard` | which sessions were told the owner's reviews of the decisions they recorded |
-| `shown` | which sessions were shown the decisions behind a file they edited |
+| `told` | which sessions were told the owner's verdicts and messages on the items they submitted |
+| `shown_items` | which sessions were shown the items about a file they edited |
 | `nudged` | what a session start said and when: the day's standing, a round's unshared summary, a logika round's offer |
 | `transcripts` | how far each session's transcript has been read, and what reading on needs |
 
@@ -438,118 +438,153 @@ To look:
 - `nock calls`, `nock stats` and `nock sessions` summarize the data;
 - `nock query "SELECT …"` runs read-only SQL.
 
-## Decisions
+## Topics
 
-Agents record their decisions as they make them, and the owner reviews them
-afterwards. Nothing waits on the owner: the agent goes ahead, and the record
-says what it chose, why, and what it passed over.
+Agents put their work before the owner in topics, and the owner looks at it
+afterwards. Nothing waits on the owner: the agent goes ahead, and what it
+submitted says what it chose, or shows what it made.
+
+A **topic** is a piece of work: a name, a short description of why it exists
+and as part of what work, and a thread. An agent looks for the topic of what
+it is doing, or opens one:
 
 ```sh
-$ .nock/nock decide '{"title": "The charge sweep requeues dead charges only",
-    "status": "done",
-    "summary": "The nightly sweep picks up charges whose job died, not ones still retrying…",
-    "evidence": ["42 duplicate attempts last week came from requeued failed jobs"],
-    "alternatives": [{"option": "Requeue failed and dead jobs",
-                      "why_not": "failed jobs are still on their backoff; it doubles the attempts"}],
-    "tags": ["important", "payments"], "touches": ["billing/sweeper.py"]}'
+$ .nock/nock topics list --query "charge sweep"
+$ .nock/nock topics create '{"name": "charge-sweep",
+    "description": "The nightly sweep of failed charges, for the payments rework."}'
 ```
 
-A decision is recorded only when a later reader would ask "why": a choice
+An **item** is bare: a title, and in each of its versions a set of files of
+three kinds, any of them together:
+
+- a **decision**, nock's own JSON: the answer (markdown, for someone who
+  knows what the system does but not how it is built), the alternatives
+  really weighed, and done or todo;
+- **project files**, paths in the repository, copied as they are when the
+  version is made, so versions compare;
+- **derived files**, made to show part of the project — a screenshot of an
+  email, a video of a flow, a rendered page, a PDF — with `from` (the project
+  files it shows), `when` (the condition it shows: "the payment lapsed") and
+  a `recipe` to make it again (a command, an instruction for an agent, or
+  both).
+
+```sh
+$ .nock/nock items create charge-sweep '{"title": "The sweep requeues dead charges only",
+    "decision": {"answer": "The nightly sweep picks up charges whose job died, not ones still retrying…",
+                 "alternatives": [{"option": "Requeue failed and dead jobs",
+                                   "why_not": "failed jobs are on their backoff; it doubles the attempts"}]}}'
+$ .nock/nock items create charge-sweep '{"title": "The lapsed payment email",
+    "files": ["billing/emails/lapsed.py"],
+    "derived": [{"path": "out/lapsed.png", "from": ["billing/emails/lapsed.py"],
+                 "when": "the payment lapsed",
+                 "recipe": {"command": "uv run python dev/render.py lapsed --output out/"}}]}'
+```
+
+A decision is submitted only when a later reader would ask "why": a choice
 between real alternatives the owner hasn't already made, a deliberate
-simplification, or a reading of something ambiguous. Carrying out the
-owner's explicit instruction is not a decision (the instruction is the
-record), nor is a routine implementation detail, a change to an existing
-decision (edit it instead), or the same thing twice: `decide` refuses a
-title a standing decision already has, or nearly (normalised text
-similarity), naming its number, unless `--force`. An alternative nobody
-weighed is not an alternative. With `"status": "todo"` it is something that should be
-done and is not yet; a possible improvement is a todo tagged `improvement`.
-What only the owner can settle, when they are not there to ask, is a
-decision tagged `important`: the title is the answer the agent proposes
-("Refunds never exceed the charge"), the alternatives the other answers it
-sees, and the agent carries on with it. The summary is written for someone who knows what the system does,
-but not how it is built.
+simplification, a reading of something ambiguous, or, as a todo, something
+that should be done and is not yet. Carrying out the owner's explicit
+instruction is not a decision (the instruction is the record), nor is a
+routine implementation detail. What only the owner can settle, when they are
+not there to ask, is a decision whose title is the answer the agent proposes
+("Refunds never exceed the charge"), the other answers its alternatives; the
+agent carries on with it. An item has no notes: anything else the agent has
+to say goes in the thread, when asked.
 
-Each decision is a file, `.nock/decisions/0007.json`, written and committed in
-the main checkout whichever worktree recorded it. A project can fix its tags
-in `.nock/config.toml`:
+An item's ref is `topic/slug`, the slug made from its title (or given as
+`"slug"`), unique in the topic. Everything lives in the main checkout's
+`.nock/topics/TOPIC/` — the topic's `topic.json`, each item's `SLUG/item.json`
+and its versions' files in `SLUG/N/` — written and committed there whichever
+worktree wrote it, so the owner sees it at once; a file over 20 MB (most
+videos) stays on the machine, under `.nock/local/topics/`, uncommitted, and
+the record says so (`"local": true`).
 
-```toml
-[decisions]
-tags = ["core", "web", "deploy", "billing"]
-```
-
-Then `decide` and `edit` refuse any other tag, naming the allowed ones, and
-`decide --help`, the primer and the studio's tag filter list them (the filter
-only those that would show something), and review items draw from the same
-list; `important`
-is always allowed, and so are a logika round's `logika` and `instrumentation`.
-Without a vocabulary, tags are `important`, `technical`, `product`,
-`improvement` and the agent's own: a topic the owner would look at together
-(`pricing`, `emails`), never the project's or product's name, and none when
-nothing fits; `decide` prints the
-tags in use, so a near-duplicate is caught early. `touches` names the files or
-globs it governs, and `supersedes` the decisions it overturns, which stay as
-history. A decision that should never have been recorded is deleted,
-`nock decisions delete 7`, in one commit; git keeps it.
-
-| | unreviewed | accepted | rejected |
+| | open | accepted | rejected |
 |---|---|---|---|
-| **done** | done; please check | it stands | rework it |
-| **todo** | worth doing later? | on the backlog | do not do it |
+| **a decision, done** | done; please check | it stands | rework it |
+| **a decision, todo** | worth doing later? | on the backlog | do not do it |
+| **files** | please look | it stands | make it again |
 
-A decision tagged `important` is the owner's call: accepted, it holds as
-proposed; rejected, it is reworked as the note says. While it is unreviewed,
-the session start lists it, once a day. (A decision an earlier nock recorded
-as a question reads as one done and tagged `important`, its review kept.)
+- **Verdicts are the owner's.** In the studio, or in a session with
+  `/nock-triage`, which goes through the open items with the owner one at a
+  time (`nock items judge REF '{"verdict": "accepted"|"rejected", "comment":
+  …}'`, or `nock topics judge TOPIC …` for every open item of a topic; Claude
+  Code asks the owner before each). A comment goes into the item's thread.
+- **The threads are where the two sides talk.** `--reply "markdown"` on
+  `topics update` or `items update` adds a message. When the owner is in the
+  session, the agent discusses with them there and leaves at most a line in
+  the thread; when they are away, or told it to work in the background, it
+  answers briefly in the thread, and says nothing if it just did what was
+  asked and the new version shows it.
+- **Work changes an item.** `nock items update REF '{…}'` changes an open
+  item in place. `--version '{…}'` adds a version — what it leaves out
+  carried over, project files copied again as they are now — and reopens a
+  decided item: an accepted or rejected one changes only so. `items delete
+  REF` removes only an open item the owner has not written on; `topics delete`
+  only an empty topic; git keeps both.
+- **A finished topic comes back.** A topic whose items are all decided is
+  finished: new items are refused until it is revived, `nock topics update
+  TOPIC --revive "why it is back"`. The note reads as its description from
+  then on, and its page shows the newest items on top, the earlier rounds
+  below: the same topic, its history kept.
+- **The session that submitted it hears.** When the owner next types there,
+  the prompt hook tells it their verdict or message, once.
+- **An edit shows the items about a file.** The first time a session edits a
+  file an item holds, or a derived file shows (`from`), the edit hook names
+  the item.
 
-- **The owner reviews.** In the studio, `nock studio` (or with
-  `{"open": true}`), the owner's local page: its Decisions tab lists the
-  decisions to review, accepted and rejected, searchable and
-  filtered by status, important and tag, each card's tags at its foot; `#decisions/7` (or just `#7`) in its address
-  opens decision 7. Or in a
-  session, with `/nock-triage`, which goes through them one at a time. Each
-  can be accepted, rejected or noted; asked for more, the session looks into
-  it itself.
-- **The session that recorded it hears.** When the owner next types there,
-  the prompt hook tells it what they said, once.
-- **Work changes the record.** `nock decisions edit` reworks a rejected
-  decision, or marks a todo done, in place; git keeps the history. It sets
-  `superseded_by` too (null: the decision stands again), keeping the other
-  side's `supersedes` in step; a `supersedes` entry naming a deleted decision
-  is dropped. Each call is a commit; `nock decisions batch '{"edit": […],
-  "delete": […]}'` makes many changes in one, or none if one is refused. A change
-  to what a decision says asks for a fresh review, and keeps the owner's
-  note. `review` and `note` are the owner's word: agents set them only when
-  told to.
-- **An edit shows the decisions behind a file.** The first time a session
-  edits a file a standing decision touches, the edit hook shows it — the
-  rejected ones first, with the owner's note.
-- **"Elaborate" starts an agent at once.** It reads the project and deepens
-  the summary, evidence and alternatives, answering the owner's note
-  (`nock decisions elaborate N`).
+`nock topics list` and `nock items list [TOPIC]` start with a summary — the
+open items by topic, and what waits on the agent: threads where the owner
+wrote last, items they rejected — then the list, cut short; `--full` prints
+the whole list and no summary. `--query "words"` ranks by plain full text
+across topic names and descriptions, item titles, decisions, threads, file
+paths and `when` conditions. `topics show TOPIC` has its items and thread,
+`items show REF` every version, each file and where it is kept, and the
+thread. Agents look at it when they start and before they finish. Once a
+day (sooner when something new calls) a session the human starts says
+"N new in Topics (emails: 2, pricing: 1)" and what waits on it; `nock status`
+says it all in full.
 
-Once a day (sooner when something new calls), a session the human starts
-says how many important decisions, todos and done decisions wait on review,
-the important ones not yet reviewed and the rejected ones to rework (the
-first few of each), and how many todos the owner accepted and notes they
-left since the last round — a note often asks for something. `nock status`
-says it all in full, and whether a reflection round is due.
+The studio's **Topics** tab (`nock studio`, or with `{"open": true}`) lists
+the topics, newest activity first, each with its open items; a topic with
+nothing open folds away. The tabs open, accepted and rejected only change
+which items show, expanding the topics that have them. A topic's page shows
+all its items, whatever their verdict, and its thread; an item's page shows
+any version — a decision rendered, a project file, a picture, a video, a
+PDF, a page (an HTML page runs no script there), a text — and "Compare" puts
+two side by side, a text's or a decision's as a line diff with the changed
+words marked. Accept and Reject (with a comment, if wanted) are the same for
+every item, and on a whole topic; each thread renders its markdown and takes
+a reply. One bar toggles **Search**, which filters as you type, and **Ask**:
+a question goes to a headless agent (the asker seat) that reads the topics
+and answers in markdown, with the items it relied on as cards that open
+them, one question at a time, cancellable. The tab keeps up with what agents
+submit without drawing again what did not change. `#topics/TOPIC/SLUG` opens
+an item; `#170` the item an earlier nock's decision 170 became.
+
+A project an earlier nock set up has `.nock/decisions/` and `.nock/review/`:
+`nock upgrade` (it runs `nock init`, which does it) moves them into topics
+once, in one commit — each decision a decision item (its number kept as an
+alias, so `items show 170` and the map's `[D170]` still find it), each review
+item an item of derived files with its versions and recipe, each old tag a
+topic (an item with several goes to its first; one with none to `general`),
+notes and the owner's feedback thread messages, verdicts kept — and drops
+the `[decisions]` tags from `.nock/config.toml`. A project running nock from
+source runs `nock topics migrate`.
 
 ### The map
 
-`.nock/decisions/map.md` says what the decisions mean for the work: when
+`.nock/topics/map.md` says what the topics and items mean for the work: when
 each matters, and how they bear on each other. A consultant is given it
 with its brief. A reflection round keeps it, within three rules:
 
-- triggers, not facts: "if you touch X, then Y, because Z [D7]";
+- triggers, not facts: "if you touch X, then Y, because Z [charge-sweep/dead-charges-only]";
 - a rejected option comes with what would make it viable again;
 - what was inferred, rather than read or observed, is marked *(inferred)*.
 
-`nock init` starts it empty. The `nock-map` check fails when the map cites a
-decision that is missing or superseded. A done decision whose files are gone
-is not a failure: the round's material lists it, for the map part to look
-at; and `decide` says at once when `touches` names a file that doesn't exist.
+`nock init` starts it empty. It cites items by ref in brackets (an earlier
+decision as `[D7]`); the `nock-map` check fails when it cites one that does
+not exist.
 
 ### Consulting
 
@@ -560,17 +595,17 @@ $ .nock/nock consult '{"intent": "Move orders to Postgres.", "context": "SQLite 
 ```
 
 A fresh headless agent is given the map, the project's tools and checks,
-and reads the decisions that govern what the work touches. It changes
+and reads the topics and items about what the work touches. It changes
 nothing, and takes the intent as given: it doesn't redesign the task. It
-advises in a few lines — what the decisions mean for this work (what to keep
-to, a rejected option the work would bring back, a todo it could
-close, and first, plainly, an accepted decision the intent
+advises in a few lines — the topic to submit into, what the items mean for
+this work (what to keep to, a rejected option the work would bring back, a
+todo it could close, and first, plainly, an accepted decision the intent
 goes against), the tools that do its steps, a choice the work is about to
-make that should be recorded, and the checks to pass — or says that nothing
-in nock bears on it. It submits with `nock advise`, which refuses a decision,
-tool or check that doesn't exist, so it fixes the name; the calling agent
-reads the advice exactly as submitted, followed by each named decision's
-title and standing, each tool's usage and the `nock check` to run. Where
+make that should be submitted, and the checks to pass — or says that
+nothing in nock bears on it. It submits with `nock advise`, which refuses an
+item, tool or check that doesn't exist, so it fixes the name; the calling
+agent reads the advice exactly as submitted, followed by each named item's
+title and verdict, each tool's usage and the `nock check` to run. Where
 nock fell short for the task goes to the next reflection round. The caller
 waits up to `consult.deadline` seconds.
 
@@ -578,74 +613,6 @@ The primer asks agents to consult before changing code, unless the task is
 really straightforward and unambiguous. **`consult.enabled = false`** turns
 it off: the primer no longer mentions it, and `nock consult` says so and
 dispatches nothing.
-
-## Review
-
-What an agent makes for the owner to look at — a screenshot of a page it
-changed, a video of a flow, a PDF, an HTML email, the text a command prints —
-it registers for review, an item the owner judges in the studio. Each has a
-stable key, and registering the key again adds a version: the latest
-supersedes the earlier ones, which stay to compare against.
-
-```sh
-$ .nock/nock review add '{"key": "email/anomaly-report",
-    "title": "The anomaly report email", "tags": ["anomalies"],
-    "files": ["out/anomaly-report.html"],
-    "note": "The headline leads with the count.", "decision": 12,
-    "recipe": {"command": "uv run python dev/render.py anomaly --output $NOCK_REVIEW_OUTPUT",
-               "instruction": "Render the anomaly email with the fixture, as the owner asks."}}'
-```
-
-`files` are images, videos, PDFs, HTML pages and text files (`.txt`, `.md`,
-`.json`, …); `text` is a text given inline. A version leaves out what it
-keeps of the last: the title, tags, decision and recipe carry over. The `note`
-says what this version is, or what changed; `decision` is the decision it
-illustrates. A tag names a topic the owner would look at together across keys
-(`anomalies` groups the email with the queue's screenshot), never the
-product, the project or what the key and the kind already say (`email` on
-`email/…`, `prompt`, `screenshot`); most items need none. When the project
-fixes its tags (`decisions.tags`), an item's come from them, `important`
-aside, and `review add --help` lists them; without, any lowercase tag goes. Each version is a directory, `.nock/review/KEY/N/`, its record
-`version.json` beside its files, written and committed in the main checkout
-whichever worktree registered it, as decisions are. A file over 20 MB (most
-videos) stays on the machine, under `.nock/local/review/`, uncommitted, and
-the record says so (`"local": true`).
-
-`nock review list` lists the items by their latest version (filtered by
-`tag`, `verdict` or a key `prefix`), `review show KEY` has every version and
-where each file is, and `review delete KEY` (or `--version N`) removes one
-that should not be shown, in a commit; git keeps it.
-
-- **The owner judges the latest version.** On the studio's Review tab, or
-  `nock review judge KEY '{"verdict": "approved"|"rejected", "feedback": …}'`:
-  approved, rejected, or a note (`feedback`); like a decision's review, it is
-  the owner's word, which agents set only when told to.
-- **Rejected or noted, it is made again.** Until a new version comes, the
-  session start lists it (the first few, once a day, sooner when something
-  new calls), with the owner's note and a pointer to how it was made.
-- **"Regenerate" makes the next version.** `recipe.command` runs in the
-  working tree (`sh -c`) with the owner's note in `$NOCK_REVIEW_FEEDBACK`, and
-  what it writes into `$NOCK_REVIEW_OUTPUT` is registered as the next version.
-  With `recipe.instruction`, nock dispatches an agent (the regenerator seat)
-  with the instruction, the note and the current version; it makes the
-  files in its own work directory, may run the recipe's command, and
-  registers them. Either way the new version records what it was made from
-  and the note it answers. `nock review regenerate KEY` does the same from a
-  terminal; Claude Code asks the owner first, since it runs the recipe.
-
-The Review tab shows the items as a grid of thumbnails or a list, filtered as
-the Decisions tab filters: by verdict (to review, approved, rejected), by tag
-(only the tags that would show something in that tab) and by a search on the
-key and title; `#review/KEY` opens one, in its verdict's tab. The viewer shows a picture (fit, or
-zoomed and scrolled), a video, a PDF, a page (an HTML page runs no script
-there) or a text, and any version; "Compare" puts two side by side — the
-last two, unless picked — and a text's as a line diff, the changed words of
-a changed line marked. Next to Approve, Reject and Note, Regenerate saves
-the note and makes the next version, which shows up when it is registered;
-the tab keeps up with what agents register without drawing again what did
-not change, so a picture, page or video loads once, and a note being written
-stays. Keys: `a` approve, `r` reject, `n` note, `g` regenerate, `c` compare,
-`←`/`→` between items, `esc` back.
 
 ## Reflection
 
@@ -673,8 +640,8 @@ first.
      round's expectations — and adds, changes or retires tools, checks and
      generators (retired tools go to `.nock/tools/archive/`), or changes
      nothing, when nothing earns a change;
-   - **the map** reads the decisions recorded, changed and reviewed since
-     the last round, rewrites the map and merges near-duplicate tags;
+   - **the map** reads the items submitted, changed and decided since the
+     last round, and every topic, and rewrites the map;
    - **nock** reads the window's numbers beside every earlier round's — the
      first round's are the baseline — looks behind them, and forms an
      opinion: what works, what does not, what nock should change.
@@ -728,8 +695,8 @@ status` always says.
    that touched each component since the last round); for analytics, each
    param with its flags and the events that carry it, and the funnels,
    milestones and views declared; for both, the ledger's history, the last
-   logika round's changes and expectations, and the decisions and
-   suggestions tagged `logika`.
+   logika round's changes and expectations, and the items of the `logika`
+   topic.
 2. **The session decides what must hold and what to measure.** `logika
    map` lists, per file, function and event, each risk "guarded by" a
    rule, at "no rule yet" or "ruled out": the gaps. A rules part per
@@ -746,7 +713,7 @@ status` always says.
    fires.
 3. **The owner settles only directions and genuine ambiguities**, asked in
    the session with the answer the session proposes and carries on with; a
-   question for later becomes a decision tagged `logika` and `important`.
+   question for later becomes a decision item in the `logika` topic.
    The rest the owner reviews in the round's report. A rule or a measure
    that needs state the code doesn't record gets it: the session adds the
    field to the code and the ledger (kind `instrumentation`), not a weaker
@@ -805,19 +772,17 @@ Reading files in the directory it runs in needs no rule.
 
 | seat | tools | may run |
 |---|---|---|
-| consultant | Read, Grep, Glob, Bash | `.nock/nock decisions list`, `decisions show`, `docs`, `advise` |
-| elaborator | Read, Grep, Glob, Bash | `.nock/nock decisions list`, `decisions show`, `docs`, `decisions edit`; `git log`, `git show` |
-| regenerator | Read, Grep, Glob, Bash, Edit, Write | `.nock/nock review show`, `review add`, `docs`; `git log`, `git show`; the item's recipe command; reading and writing only its own work directory, `.nock/local/regenerations/…` |
+| consultant | Read, Grep, Glob, Bash | `.nock/nock topics list`, `topics show`, `items list`, `items show`, `docs`, `advise` |
+| asker | Read, Grep, Glob, Bash | `.nock/nock topics list`, `topics show`, `items list`, `items show`, `topics answer`; `git log`, `git show` |
 | sharer | Read, Grep, Glob, Bash | `git log` |
 
 `git log` and `git show` are allowed without `--output` (or any
 abbreviation of it git accepts, down to `--ou`), which a deny rule refuses:
 it would write their output to a file.
 
-None but the regenerator can edit a file, and it only in its work
-directory; none can reach the network or run any other command. What
+None can edit a file, reach the network or run any other command. What
 Claude Code refused comes back with the session: in the consultation's
-record and its failure, in the elaboration's result, in the vetted summary's
+record and its failure, in the asker's log, in the vetted summary's
 record and the share's failure, and in the run's log.
 The owner's user-level Claude Code settings still apply to these sessions:
 they are the owner's.
@@ -847,13 +812,13 @@ answer, and has no default:
   reflection round also keeps (how many days, sessions and headless ones,
   requests, interrupts, compactions, tool calls and failed ones, tokens in
   all and by kind, the API-equivalent cost and how many sessions are unpriced,
-  commits, nock calls by how they ended, consultations, decisions by status
-  and review, how many of the project's tools were used and how often, the
+  commits, nock calls by how they ended, consultations, topics and items by
+  verdict, how many of the project's tools were used and how often, the
   map's length and citations); calls and failures per nock command (`check`,
-  `decide`, …: nock's own names); how many tools, checks, hooks and
+  `items create`, …: nock's own names); how many tools, checks, hooks and
   generators the toolbox has and how many failed to load; and how many
   rounds have run. Never code, paths, file or tool names, prompts, command
-  arguments, what decisions say, or anything else written in the project.
+  arguments, what items say, or anything else written in the project.
   It also carries the project's id: a random UUID, committed in
   `.nock/project.json` so every clone of the project sends the same one. It
   is made only as the first report is sent, after the owner said yes (until
@@ -873,7 +838,7 @@ is replaced.
 
 nock asks the owner once on a machine, while nobody has answered, the first
 time they engage with nock there: the first reflection round, opening the
-studio (`nock studio`), or their first review or note on a decision. The
+studio (`nock studio`), or their first verdict on an item. The
 page shows the question under the title with **Share** and **Don't share**
 until it is answered; the round and `/nock-triage` ask it in the session
 (`ask_the_owner`), and the agent records exactly what the owner says with
@@ -1072,13 +1037,13 @@ repetitions, write the comparison down first.
 | `nock run -- COMMAND` | run anything supervised and condensed (Claude Code asks, as for the command itself) |
 | `nock docs [TERM…]` | nock's documentation for agents, a short article per term: with no term, the terms |
 | `nock calls`, `stats`, `sessions`, `query SQL` | the telemetry |
-| `nock status` | a round due, decisions waiting, rejected ones to rework, important ones unreviewed, items to review or make again, an unshared summary, a logika round to offer |
-| `nock decide JSON [--force]` | record a decision (`--force` past the duplicate guard) |
-| `nock decisions list [JSON]`, `show N`, `edit JSON`, `delete N`, `batch JSON`, `elaborate N` | the decisions: filtered, in full, changed or reviewed, deleted, many at once in one commit, elaborated |
-| `nock review add JSON`, `list [JSON]`, `show KEY`, `judge KEY JSON`, `delete KEY [--version N]`, `regenerate KEY` | review: register a version of an item, the items filtered, every version, the owner's verdict, deleted, made again from the recipe (asks the owner) |
-| `nock studio [JSON]` | the owner's page, a tab for each thing to look at: the decisions, the items to review, the evaluations |
+| `nock status` | a round due, the open items by topic, what waits on agents in Topics, an unshared summary, a logika round to offer |
+| `nock topics list [--query Q] [--full]`, `create JSON`, `update TOPIC [JSON] [--reply MD] [--revive MD]`, `delete TOPIC`, `show TOPIC`, `judge TOPIC JSON`, `migrate` | the topics: a summary and the list (or ranked by a query), opened, changed or answered in, revived, deleted when empty, in full, every open item judged (asks the owner), an earlier nock's decisions and review items moved in |
+| `nock items list [TOPIC] [--query Q] [--full]`, `create TOPIC JSON`, `update REF [JSON] [--version JSON] [--reply MD]`, `delete REF`, `show REF`, `judge REF JSON` | the items: a summary and the list, submitted, changed in place or by a new version or answered in, deleted while open and unanswered, in full, judged (asks the owner) |
+| `nock topics ask QUESTION`, `topics answer JSON` | the studio's Ask: a fresh agent answers a question about the topics; only that agent submits the answer |
+| `nock studio [JSON]` | the owner's page, a tab for each thing to look at: the topics and their items, the evaluations |
 | `nock eval init NAME`, `run [TARGETS…] [--dry] [--budget USD] [--limit NAME=N] [--retry]`, `import JSON`, `show [NAME]`, `query SQL`, `compare QUERY`, `prune [NAME] [--dry]` | evaluations: scaffold a Snakemake scenario, run it restoring what the cache has (or the failed again), import outputs computed elsewhere, read it, query it with SQL, compare its outputs, delete stale and failed cache entries |
-| `nock consult JSON` | a fresh agent advises on a task: the decisions, tools, checks and docs that bear on it; the caller waits |
+| `nock consult JSON` | a fresh agent advises on a task: the topics, items, tools, checks and docs that bear on it; the caller waits |
 | `nock advise JSON` | the consultant's advice, submitted; only a consultant nock dispatched runs it |
 | `nock usage` | what nock shares with its makers, the owner's answer, and exactly what the next report carries |
 | `nock usage share yes\|no` | records the owner's answer on sharing the usage report |
@@ -1127,7 +1092,7 @@ one machine.
 | `checks.concurrency` | 2 | checks run at once, machine-wide |
 | `reflect.sessions`, `reflect.days` | 15, 7 | when a round is due, whichever comes first |
 | `reflect.logika.days` | 30 | in a Logika project, days after a logika round before the next is offered (once the ledger has changed) |
-| `agent.command`, `agent.model`, `agent.deadline` | `claude`, —, 1800 | the headless agent nock dispatches (elaborate, consult, share, regenerate); it may not bypass or set permissions (see [What nock's agents may do](#what-nocks-agents-may-do)) |
+| `agent.command`, `agent.model`, `agent.deadline` | `claude`, —, 1800 | the headless agent nock dispatches (consult, Ask, share); it may not bypass or set permissions (see [What nock's agents may do](#what-nocks-agents-may-do)) |
 | `permissions.confirm` | `ask` | how Claude Code treats a `confirm=True` command: `ask` has the owner approve each call (even in bypass mode); `allow` lets the agent run it, which it does only when the owner's request calls for it (see [What nock's agents may do](#what-nocks-agents-may-do)); `nock init` rewrites the rules after a change |
 | `consult.enabled`, `consult.deadline` | true, 600 | whether the consultant runs and the primer asks for it; seconds a consultation may take |
 | `upgrade.check`, `upgrade.auto`, `upgrade.index` | true, true, PyPI's `nock` | whether a session start looks for a newer nock (at most daily); whether it then upgrades a core vendored from PyPI by itself when the merge is clean (off, or on a conflict, it only says the release is out); and where releases are looked up |

@@ -1,37 +1,26 @@
 """Where the project stands with nock, in one place: whether a reflection round
-is due, the decisions by status and review, those rejected and waiting to be
-redone, those tagged important that wait on the owner's review, the items
-waiting on review and those to make again, a round
-summary not yet shared, a
-newer nock, and whether another kind of round (a logika round, in a Logika
-project) is worth offering. `nock status` prints it; a
-session the human starts begins with it."""
+is due, the open items by topic (new to the owner), what waits on an agent in
+the topics (threads where the owner wrote last, items they rejected), a round
+summary not yet shared, a newer nock, and whether another kind of round (a
+logika round, in a Logika project) is worth offering. `nock status` prints
+it; a session the human starts begins with it."""
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from nock.decisions import Decisions, Review, Status
 from nock.kinds import offered
 from nock.reflect import Reflection
 from nock.releases import Updates
-from nock.review import Items, Verdict
 from nock.share import Sharing
+from nock.topics import Topics
 
 if TYPE_CHECKING:
     from nock.project import Project
 
 
-def brief(decision: dict[str, Any]) -> dict[str, Any]:
-    return {"number": decision["number"], "title": decision["title"], "note": decision["note"]}
-
-
 # The most items of a kind the session start lists; `nock status` has them all.
 SHOWN = 3
-
-
-def said(decision: dict[str, Any]) -> str:
-    return f" — the owner: {decision['note']}" if decision["note"] else ""
 
 
 class Standing:
@@ -41,8 +30,7 @@ class Standing:
     def collect(self) -> dict[str, Any]:
         reflection = Reflection(self.project)
         window = reflection.window()
-        decisions = Decisions(self.project)
-        items = Items(self.project)
+        topics = Topics(self.project)
         return {
             "reflection": {
                 "due": reflection.due() or None,
@@ -50,36 +38,8 @@ class Standing:
                 "sessions_since": len(window.sessions),
                 "days_since": round(reflection.days(window), 1),
             },
-            "decisions": decisions.counts(),
-            "to_rework": [brief(decision) for decision in decisions.to_rework()],
-            # What the owner approved and has not been done, and what they said since the last round.
-            "backlog": [
-                brief(decision)
-                for decision in decisions.matching(
-                    {"status": Status.TODO, "review": Review.ACCEPTED}
-                )
-            ],
-            # The owner's calls, each answered as the agent proposed until they review it.
-            "important": [brief(decision) for decision in decisions.important()],
-            "notes": [
-                brief(decision)
-                for decision in decisions.matching({})
-                if decision["note"]
-                and decision["review"] != Review.REJECTED
-                and decision["updated"] > (window.since or "")
-            ],
-            "review": items.counts(),
-            # The latest versions the owner rejected or left a note on: someone makes the next.
-            "to_remake": [
-                {
-                    "key": version["key"],
-                    "version": version["version"],
-                    "title": version["title"],
-                    "verdict": version["verdict"],
-                    "feedback": version["feedback"],
-                }
-                for version in items.to_remake()
-            ],
+            # The open items by topic, and what waits on an agent.
+            "topics": topics.summary(),
             "unshared": Sharing(self.project).unshared(),
             "newer_nock": Updates(self.project).newer(),
             # The other kinds of round that can run here, each offered when due.
@@ -99,75 +59,34 @@ class Standing:
         due = standing["reflection"]["due"]
         if due:
             lines.append(f"nock: {due} — offer the human `/nock-reflect`, which runs one.")
-        counts = standing["decisions"]
-        waiting = [
-            f"{len(standing['important'])} important",
-            f"{counts[Status.TODO][Review.UNREVIEWED]} todo(s)",
-            f"{counts[Status.DONE][Review.UNREVIEWED]} done unreviewed",
-            f"{counts[Status.DONE][Review.REJECTED]} rejected to rework",
-        ]
-        if any(not part.startswith("0 ") for part in waiting):
-            parts = ", ".join(part for part in waiting if not part.startswith("0 "))
+        summary = standing["topics"]
+        opened = summary["open"]
+        if opened:
+            total = sum(opened.values())
+            by_topic = ", ".join(f"{name}: {count}" for name, count in list(opened.items())[:5])
+            more = ", …" if len(opened) > 5 else ""
             lines.append(
-                f"nock: decisions — {parts}: review them on `.nock/nock studio`, or with `/nock-triage`."
+                f"nock: {total} new in Topics ({by_topic}{more}) — on"
+                " `.nock/nock studio`, or with `/nock-triage`."
             )
-        rework = standing["to_rework"]
-        lines += [
-            f"- rework [D{decision['number']}] {decision['title']}{said(decision)}"
-            for decision in rework[:SHOWN]
-        ]
-        if len(rework) > SHOWN:
-            lines.append(f"- and {len(rework) - SHOWN} more — `.nock/nock status` lists them")
-        important = standing["important"]
-        if important:
-            lines.append(
-                "nock: important decisions awaiting review — agents carry on with each as"
-                " proposed until it is accepted or rejected:"
-            )
-            lines += [
-                f"- [D{item['number']}] {item['title']}{said(item)}" for item in important[:SHOWN]
-            ]
-            if len(important) > SHOWN:
-                lines.append(
-                    f"- and {len(important) - SHOWN} more — `.nock/nock status` lists them"
-                )
-        review = standing["review"]
-        remake = standing["to_remake"]
-        if review[Verdict.UNREVIEWED] or remake:
+        awaiting = summary["awaiting_you"]
+        threads, rejected = awaiting["owner_wrote_last"], awaiting["rejected"]
+        if threads or rejected:
             parts = [
                 f"{count} {what}"
                 for count, what in (
-                    (review[Verdict.UNREVIEWED], "unreviewed"),
-                    (len(remake), "to make again"),
-                )
-                if count
-            ]
-            lines.append(f"nock: review — {', '.join(parts)}: look at them on `.nock/nock studio`.")
-        lines += [
-            f"- make again `{item['key']}` (version {item['version']}, {item['verdict']})"
-            f" {item['title']}{said({'note': item['feedback']})}"
-            for item in remake[:SHOWN]
-        ]
-        if len(remake) > SHOWN:
-            lines.append(f"- and {len(remake) - SHOWN} more — `.nock/nock status` lists them")
-        if remake:
-            lines.append(
-                "  (`.nock/nock review show KEY` has how each was made; `review add` registers"
-                " the next version, answering the note.)"
-            )
-        notes = [item for item in standing["notes"] if item not in standing["backlog"]]
-        if standing["backlog"] or notes:
-            parts = [
-                f"{count} {what}"
-                for count, what in (
-                    (len(standing["backlog"]), "todo(s) the owner accepted"),
-                    (len(notes), "note(s) the owner left on decisions lately"),
+                    (len(threads), "thread(s) where the owner wrote last"),
+                    (len(rejected), "rejected item(s) to rework"),
                 )
                 if count
             ]
             lines.append(
-                f"nock: the owner's backlog — {', '.join(parts)}: `.nock/nock status` lists them."
+                f"nock: waiting on you in Topics — {', '.join(parts)}: `.nock/nock topics list`."
             )
+            lines += [f"- answer in {ref}" for ref in threads[:SHOWN]]
+            lines += [f"- rework {ref} (`--version`)" for ref in rejected[:SHOWN]]
+            if len(threads) > SHOWN or len(rejected) > SHOWN:
+                lines.append("- and more — `.nock/nock topics list` has them all")
         if standing["newer_nock"]:
             lines.append(
                 f"nock: nock {standing['newer_nock']} is out (this project has "

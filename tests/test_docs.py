@@ -89,7 +89,7 @@ def test_nock_docs_lists_the_terms_reads_them_and_answers_a_miss(project: Projec
     assert listed.returncode == 0, listed.stderr
     index = json.loads(listed.stdout)
     assert index["tools.caching"] == Docs().find("cache").description  # pyright: ignore[reportOptionalMemberAccess]
-    assert "decisions.important" in index and "studio" in index
+    assert "topics.verdicts" in index and "studio" in index
 
     by_alias = nock(project.root, "docs", "CACHE")
     assert by_alias.returncode == 0 and by_alias.stdout.startswith("`@nock.command(cache=")
@@ -127,7 +127,7 @@ def test_the_briefs_point_only_at_terms_and_the_toolbox_brief_at_the_framework()
     for term in docs.terms:
         if term.term.split(".")[0] in FRAMEWORK:
             assert term.term in toolbox, f"the toolbox brief doesn't point at {term.term}"
-    for brief in ("consult.md", "elaborate.md", "reflection.map.md", "reflection.nock.md"):
+    for brief in ("consult.md", "ask.md", "reflection.map.md", "reflection.nock.md"):
         assert brief in named, brief
 
 

@@ -25,30 +25,29 @@ CONSULT = """\
 - **Consult before you change code,** unless the task is really
   straightforward and unambiguous: `.nock/nock consult '{"intent": …,
   "context": …}'`. A fresh agent reads the project and tells you the
-  decisions, tools and checks that bear on what you are about to do; do as
-  it says, or record why not.
+  topics, items, tools and checks that bear on what you are about to do; do
+  as it says, or say why not.
 """
 
-DECIDE = """\
-- **Record a decision only when a later reader would ask "why":**
-  `.nock/nock decide` (`--help` has the fields) for a choice between real
-  alternatives the owner hasn't already made, a deliberate simplification,
-  your reading of something ambiguous, or a todo you are leaving. Never for
-  carrying out the owner's explicit instruction (the instruction is the
-  record), a routine implementation detail, a change to an existing
-  decision (edit it: `.nock/nock decisions edit`), or twice for the same
-  thing. If it is the owner's call, record the answer you would propose,
-  tag it `important`, and carry on; the owner reviews later, so don't
-  wait. When you do a todo or rework a rejected decision, edit it to say
-  what you did.{tags}
-- **Show the owner what you made for them to look at** (a screenshot, a
-  video, a PDF, a page, a text): `.nock/nock review add` (`--help` has the
-  fields), under a stable key, with a recipe to make it again. When the
-  owner rejects or notes one, make the next version.
-- **A tag, on a decision or an item, names a topic** the owner would look
-  at together (`pricing`, `emails`), or there is none: never the project's
-  or product's name, nor a kind (`prompt`, `screenshot`) or what the key
-  says; nock shows those.
+TOPICS = """\
+- **Put your work before the owner in Topics:** find the topic for what you
+  are doing (`.nock/nock topics list --query …`) or open one (`topics
+  create`); a finished one that comes back is revived, not made again. Into
+  it, submit items bare (`items create`, `--help` has the fields): a
+  decision when a later reader would ask "why" (a choice between real
+  alternatives the owner hasn't made, a deliberate simplification, your
+  reading of something ambiguous, a todo you leave; never the owner's own
+  instruction or a routine detail), project files, or something you made to
+  show part of the project (a screenshot, a page) with how to make it again.
+  If it is the owner's call, submit the answer you would propose and carry
+  on; the owner gives verdicts later, so don't wait.
+- **Check what awaits you** with `.nock/nock topics list` when you start and
+  before you finish: threads where the owner wrote last, items they
+  rejected (rework one as a new version: `items update REF --version`).
+  When the owner is in the session, discuss with them here and leave at
+  most a line in the thread; when they are away, or told you to work in the
+  background, answer briefly in the thread (`--reply`), and say nothing if
+  you just did what was asked and the new version shows it.
 - **Run noisy or long commands through `.nock/nock run -- COMMAND`**
   (Claude Code asks about it as about the command itself), and
   `.nock/nock check --changed` before you finish: the checks your changes
@@ -69,7 +68,7 @@ QUIET = """\
 ## nock
 
 This project has nock (`.nock/nock`): a toolbox agents build for the project,
-and the decisions they record for the owner to review. It stays quiet here:
+and the topics where they put their work before the owner. It stays quiet here:
 use it when the human asks. `.nock/nock` lists the tools, `.nock/nock status`
 says where things stand{consult}. When the human needs something nock lacks
 or finds it broken, offer to send that to nock's makers with
@@ -81,15 +80,13 @@ def primer(configuration: Configuration) -> str:
     consulting = configuration.get("consult.enabled") is not False
     if configuration.get("reminders") is False:
         consult = (
-            ", and `.nock/nock consult` has a fresh agent find the decisions and tools that"
+            ", and `.nock/nock consult` has a fresh agent find the items and tools that"
             " bear on a task"
             if consulting
             else ""
         )
         return QUIET.format(consult=consult)
-    fixed = [tag for tag in configuration.get("decisions.tags") or [] if tag != "important"]
-    tags = f"\n  Tags: {', '.join(f'`{tag}`' for tag in fixed)} and `important`." if fixed else ""
-    return INTRODUCTION + "\n" + (CONSULT if consulting else "") + DECIDE.format(tags=tags) + REPORT
+    return INTRODUCTION + "\n" + (CONSULT if consulting else "") + TOPICS + REPORT
 
 
 def refresh(directory: Path) -> bool:

@@ -21,10 +21,10 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from nock.decisions import Decisions, Status
 from nock.errors import Failed, PreconditionError
 from nock.git import Git, GitError
 from nock.reflect import Record, Round
+from nock.topics import Author, Topics, Verdict
 from nock.utils import parse_moment, read_json
 
 if TYPE_CHECKING:
@@ -33,8 +33,8 @@ if TYPE_CHECKING:
 LEDGER = "logika.json"
 PROGRAM = "logika"
 SKILL = "nock-reflect-logika"
-# What a round asks about, and suggests, is tagged so the next round finds it.
-TAG = "logika"
+# What a round decides, and suggests, goes in this topic so the next round finds it.
+TOPIC = "logika"
 # The round's parts: each a brief in `nock docs` (`reflection.logika.PART`), and a material file.
 PARTS = ("rules", "analytics")
 SECTION_ROWS = 40
@@ -400,32 +400,27 @@ class Material:
         return "\n".join(lines)
 
     def decided(self) -> str:
-        """What earlier rounds decided and suggested (tagged `logika`), and where each stands."""
-        found = Decisions(self.logika.project).matching({"tag": TAG})
+        """What earlier rounds decided and suggested (the `logika` topic), and where each stands."""
+        topics = Topics(self.logika.project)
+        found = topics.items(TOPIC) if TOPIC in topics.names() else []
         if not found:
-            return f"# Decisions and suggestions\n\nNone tagged `{TAG}` yet."
+            return f"# Decisions and suggestions\n\nNothing in the `{TOPIC}` topic yet."
         lines = [
             "# Decisions and suggestions",
             "",
-            f"Decisions tagged `{TAG}`, the owner's calls (tagged `important`) first. Each title "
-            "is what was decided, or proposed for the owner to settle: accepted, it holds; "
-            "rejected, the note says what holds instead. An accepted todo is on the owner's "
-            "backlog.",
+            f"The items of the `{TOPIC}` topic, the open ones first. Each title is what was"
+            " decided, or proposed for the owner to settle: accepted, it holds; rejected, its"
+            " thread says what holds instead. An accepted todo is on the owner's backlog.",
             "",
         ]
-        for decision in sorted(
-            found,
-            key=lambda item: (
-                "important" not in item["tags"],
-                item["status"] != Status.TODO,
-                item["number"],
-            ),
+        for item in sorted(
+            found, key=lambda item: (item["verdict"] != Verdict.OPEN, item["created"]["moment"])
         ):
-            note = f" — the owner: {decision['note']}" if decision["note"] else ""
-            lines.append(
-                f"- [D{decision['number']}] {decision['status']}, {decision['review']}: "
-                f"{decision['title']}{note}"
-            )
+            said = [entry["text"] for entry in item["thread"] if entry["author"] == Author.OWNER]
+            note = f" — the owner: {said[-1]}" if said else ""
+            decision = topics.decision(item, item["versions"][-1])
+            status = f"{decision['status']}, " if decision else ""
+            lines.append(f"- [{item['ref']}] {status}{item['verdict']}: {item['title']}{note}")
         return "\n".join(lines)
 
 

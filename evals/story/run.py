@@ -14,8 +14,8 @@ A scripted owner answers what the agents ask. `report` compares the arms.
 
 Arms: `bare` keeps nothing between sessions; `skills` keeps `CLAUDE.md` and
 `.claude/`, which a reflection session rewrites each week; `nock` has nock
-installed and keeps `.nock/` (toolbox, decisions, map) and its skills,
-running `/nock-reflect` each week. The owner reviews the nock arm's
+installed and keeps `.nock/` (toolbox, topics, map) and its skills,
+running `/nock-reflect` each week. The owner judges the nock arm's
 decisions now and then, as a real owner would.
 """
 
@@ -72,7 +72,7 @@ The engineer's last message:
 If the message asks you something or waits on you — a question, a request
 for your OK, "say yes and I'll do it" — answer as the owner would, in a few
 sentences, as a chat reply. If it does not, reply with exactly NOTHING."""
-REVIEW = """You are the owner of a small software company. Your engineers record the
+REVIEW = """You are the owner of a small software company. Your engineers submit the
 decisions they make as they work, and you review them when you get round to
 it. You know the business, not the code: judge what each decision means for
 the business, from what you know about the report it came from; leave
@@ -81,10 +81,10 @@ alone what you cannot judge.
 {decisions}
 
 Reply with JSON only: a list of
-{{"number": N, "review": "accepted" or "rejected" or null, "note": "…" or null}}
-for each decision — null to leave it unreviewed. Reject a decision when it
-goes against what you know, and say why in the note; accept it when it fits.
-Add a note when there is something the engineers should know."""
+{{"ref": REF, "verdict": "accepted" or "rejected" or null, "comment": "…" or null}}
+for each decision — null to leave it open. Reject a decision when it goes
+against what you know, and say why in the comment; accept it when it fits,
+with a comment when there is something the engineers should know."""
 # How often the owner gets round to reviewing, after a session (seeded, so runs repeat).
 REVIEW_CHANCE = 0.5
 OWNER_MODEL = "claude-sonnet-5-5"
@@ -393,14 +393,20 @@ class Arm:
         }  # fmt: skip
 
     def decisions(self, identity: str | None = None) -> list[dict[str, Any]]:
-        """The arm's decisions — those a session recorded, when it is named."""
-        directory = self.repo / ".nock" / "decisions"
-        if not directory.is_dir():
-            return []
-        found = [json.loads(path.read_text()) for path in sorted(directory.glob("[0-9]*.json"))]
+        """The arm's decision items — those a session submitted, when it is named —
+        each with its topic's ref and the latest version's decision."""
+        found = []
+        for path in sorted((self.repo / ".nock" / "topics").glob("*/*/item.json")):
+            item = json.loads(path.read_text())
+            latest = path.parent / str(item["versions"][-1]["version"]) / "decision.json"
+            if not latest.is_file():
+                continue
+            item["ref"] = f"{path.parent.parent.name}/{item['slug']}"
+            item["decision"] = json.loads(latest.read_text())
+            found.append(item)
         if identity is None:
             return found
-        return [decision for decision in found if decision["recorded"].get("session") == identity]
+        return [item for item in found if item["created"].get("session") == identity]
 
     def owner(self, report: dict[str, Any], record: dict[str, Any]) -> str:
         """The scripted owner's reply, when the session's last message waits on them."""
@@ -419,25 +425,21 @@ class Arm:
 
     def review(self) -> int:
         """The owner gets round to the decisions waiting on them: each judged
-        from what they know of the report it came from. How many they reviewed."""
-        waiting = [
-            decision
-            for decision in self.decisions()
-            if decision["review"] == "unreviewed" and not decision.get("superseded_by")
-        ]
+        from what they know of the report it came from. How many they judged."""
+        waiting = [item for item in self.decisions() if item["verdict"] == "open"]
         if not waiting:
             return 0
         blocks = []
         for decision in waiting:
-            report = self.sessions.get(decision["recorded"].get("session") or "")
+            report = self.sessions.get(decision["created"].get("session") or "")
             known = (
                 self.world.file(report, "owner.md").read_text()
                 if report
                 else "(a decision from a reflection round, not a report — judge it on its face)"
             )
-            shown = {key: decision[key] for key in ("number", "title", "status", "summary", "evidence", "alternatives", "tags")}  # fmt: skip
+            shown = {"ref": decision["ref"], "title": decision["title"], **decision["decision"]}
             blocks.append(
-                f"## Decision {decision['number']}\n\nWhat you know about its report:\n\n{known}\n\n```json\n{json.dumps(shown, indent=2)}\n```"
+                f"## Decision {decision['ref']}\n\nWhat you know about its report:\n\n{known}\n\n```json\n{json.dumps(shown, indent=2)}\n```"
             )
         with tempfile.TemporaryDirectory() as scratch:
             answer = claude(
@@ -454,15 +456,11 @@ class Arm:
             return 0
         reviewed = 0
         for verdict in verdicts if isinstance(verdicts, list) else []:
-            change = {"number": int(verdict["number"])}
-            if verdict.get("review") in ("accepted", "rejected"):
-                change["review"] = verdict["review"]
-            if verdict.get("note"):
-                change["note"] = verdict["note"]
-            if len(change) == 1:
+            if verdict.get("verdict") not in ("accepted", "rejected"):
                 continue
+            word = {"verdict": verdict["verdict"], **({"comment": verdict["comment"]} if verdict.get("comment") else {})}  # fmt: skip
             subprocess.run(
-                [str(self.repo / ".nock" / "nock"), "decisions", "edit", json.dumps(change)],
+                [str(self.repo / ".nock" / "nock"), "items", "judge", str(verdict["ref"]), json.dumps(word)],
                 cwd=self.repo, capture_output=True, text=True, env=environment(),
             )  # fmt: skip
             reviewed += 1

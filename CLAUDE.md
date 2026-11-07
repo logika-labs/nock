@@ -3,11 +3,13 @@
 A toolbox coding agents build for themselves: an agent-friendly CLI framework
 (`commands.py`, `fixtures.py`, `render.py`, woven together in `cli.py`),
 telemetry of every call and session (`store.py`, `telemetry.py`,
-`sessions.py`), the decisions agents record — the owner's calls tagged
-`important` among them — and the owner reviews (`decisions.py`, the owner's page in `studio.py`), consultation
-(`consult.py`), and
+`sessions.py`), the topics where agents put their work before the owner —
+items holding decisions, project files and derived files, with the owner's
+verdicts and the threads (`topics.py`, moved in from an earlier nock's
+decisions and review by `migration.py`; the owner's page in `studio.py`, its
+Ask in `asking.py`), consultation (`consult.py`), and
 reflection rounds that turn it all into better tools, a map of the
-decisions and an account of how nock is doing (`reflect.py`, `share.py`,
+topics and an account of how nock is doing (`reflect.py`, `share.py`,
 the `/nock-reflect` skill in `briefs/nock-reflect/`; in a Logika project, the
 logika round in `logika.py` and `briefs/nock-reflect-logika/`). It is vendored into
 the projects that use it (`nock init` copies `src/nock` into their

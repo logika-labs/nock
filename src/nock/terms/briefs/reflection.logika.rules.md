@@ -100,7 +100,7 @@ Each rule takes the most local form that states it: a **path**, a
 time), a **timeout**, **error marking**. Each gets a one-sentence
 `description`, the anomaly's title, saying what must hold and why, in words
 the woken agent can act on. When the reason needs more than a sentence, give
-it too: the lead records it as a decision tagged `logika`.
+it too: the lead submits it as a decision in the `logika` topic.
 
 A risk gets a reason instead of a rule only when it can't happen here (the
 ids come from a provider that never reuses them), or Logika or the types

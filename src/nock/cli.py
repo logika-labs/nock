@@ -16,7 +16,6 @@ from typing import Any
 from nock import hooks
 from nock.commands import FRESH_FLAG, FULL_FLAG, JSON_FLAG, Command, Group
 from nock.configuration import Confirm
-from nock.decisions import Decisions
 from nock.docs import Article
 from nock.environment import Environment
 from nock.errors import Error, Exit, ExitCode, PreconditionError, UsageError
@@ -25,7 +24,6 @@ from nock.processes import Output
 from nock.project import Project
 from nock.releases import VERSION
 from nock.render import PACKAGE_INTERNAL, as_json, capped, crash, plain, render
-from nock.review import Items
 from nock.telemetry import UNRECORDED_VARIABLE, Cache, Calls, digest, tree_state
 from nock.tools import BUILT_IN_SOURCE, CONFIRM_NOTES, Registry, Tool
 
@@ -62,20 +60,6 @@ def build(registry: Registry) -> Group:
     for tool in registry.tools:
         root.add(tool.command)
     return root
-
-
-def name_tags(project: Project, registry: Registry) -> None:
-    """`decide --help` and `review add --help` name the project's tags, when it fixes them."""
-    for path, vocabulary in (
-        ("decide", Decisions(project).vocabulary()),
-        ("review add", Items(project).vocabulary()),
-    ):
-        tool = registry.tool(path)
-        if tool is not None and vocabulary:
-            tool.command.epilog = (
-                "Tags, the project's (`decisions.tags` in .nock/config.toml):"
-                f" {', '.join(vocabulary)}"
-            )
 
 
 def listing(registry: Registry, confirm: Confirm = Confirm.ASK) -> str:
@@ -123,8 +107,6 @@ class Invocation:
                 sys.stderr.write(f"nock: {error}\n")
                 return error.exit_code
         registry = self.project.registry if self.project else Registry.load(None)
-        if self.project:
-            name_tags(self.project, registry)
         for failure in registry.failures:
             sys.stderr.write(f"nock: a tool did not load — {failure}\n")
         if self.arguments in ([], ["--help"]):
@@ -319,7 +301,12 @@ class Invocation:
                 return full, full
             return result.excerpt(self.characters()), full
         full = render(result)
-        if options.get(FULL_FLAG) or not full or isinstance(result, Article):
+        if (
+            options.get(FULL_FLAG)
+            or options.get("full") is True
+            or not full
+            or isinstance(result, Article)
+        ):
             return full, full
         project = self.project
         rows = int(project.configuration.get("output.rows")) if project else 60

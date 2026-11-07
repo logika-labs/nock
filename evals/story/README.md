@@ -32,7 +32,7 @@ that keeps nothing, and with one that keeps prose and skills?
    - **bare** keeps nothing between sessions;
    - **skills** keeps `CLAUDE.md` and `.claude/`, rewritten each week by a
      reflection session over the week's transcripts (`reflect-skills.md`);
-   - **nock** has nock installed, keeps `.nock/` (toolbox, decisions, map)
+   - **nock** has nock installed, keeps `.nock/` (toolbox, topics, map)
      and runs `/nock-reflect` each week.
 
    Weeks 1–3 are for learning. Then what each arm keeps is frozen, and week 4

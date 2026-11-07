@@ -18,12 +18,12 @@ material, not from memory.
 
    | part | subagent type | brief | material | may change |
    |---|---|---|---|---|
-   | toolbox | `nock-reflect-toolbox` | `reflection.toolbox` | `process` | `.nock/`, not the decisions |
-   | map | `nock-reflect-map` | `reflection.map` | `knowledge` | `.nock/decisions/map.md`, tags |
+   | toolbox | `nock-reflect-toolbox` | `reflection.toolbox` | `process` | `.nock/`, not the topics |
+   | map | `nock-reflect-map` | `reflection.map` | `knowledge` | `.nock/topics/map.md` |
    | nock | `nock-reflect-nock` | `reflection.nock` | `nock` | nothing (it has no editing tool) |
 
    If one fails, say so in the report; don't do its part yourself.
-3. Write `report.md` for the owner: what needs them (decisions to review,
+3. Write `report.md` for the owner: what needs them (items open in Topics,
    rejected ones to rework, what the parts want settled), what changed in the
    toolbox and the map and why, and how nock is doing here. Only what they
    would act on or want to know.
