@@ -745,6 +745,8 @@ def upgrade(
         cwd=project.here,
         capture_output=True,
         text=True,
+        # The core just merged re-wires, not a checkout NOCK_SOURCE points at.
+        env={name: value for name, value in os.environ.items() if name != "NOCK_SOURCE"},
     )
     if rewired.returncode != 0:
         raise Failed(

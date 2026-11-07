@@ -94,7 +94,9 @@ uvx nock init
 
 `nock init`:
 
-- vendors nock into `.nock/core/` and writes the `.nock/nock` shim;
+- vendors nock into `.nock/core/` (only when there is none: a core already
+  vendored is kept, and says so, since `nock upgrade` is what changes it) and
+  writes the `.nock/nock` shim;
 - writes `.nock/config.toml` and an empty `.nock/tools/`;
 - writes the primer `.nock/context.md`, and imports it into CLAUDE.md;
 - wires Claude Code's hooks;
@@ -115,7 +117,9 @@ asks (see [What nock shares](#what-nock-shares)).
 
 To upgrade, `.nock/nock upgrade`. It merges the latest release from PyPI into
 the vendored core, keeping any local edits to it (a three-way merge against
-the release you have), and re-wires the project: primer, hooks and skills.
+the release you have), and re-wires the project: primer, hooks and skills,
+rewritten by the core just merged (its `nock init`, with `NOCK_SOURCE` left
+out).
 nock also upgrades itself: once a day at most, a session you start asks PyPI
 whether a newer nock is out and, when it is and the core came from PyPI,
 runs that upgrade with `--only-clean`. A clean merge applies by itself and
@@ -288,7 +292,9 @@ creates is its own.
 Two variables choose how `.nock/nock` starts nock itself: `NOCK_PYTHON` the
 interpreter (`python3`), and `NOCK_SOURCE` the directory nock's code is
 imported from (`.nock/core`). `NOCK_SOURCE=/path/to/nock/src` runs a project
-on a checkout of nock without vendoring it again.
+on a checkout of nock without vendoring it again: its `nock init` re-wires the
+project with the checkout's primer, hooks and skills and keeps the vendored
+core, which `nock upgrade` updates.
 
 ### Long-running and interactive commands
 
@@ -1146,7 +1152,7 @@ See [ARCH.md](ARCH.md) for how the code is laid out.
 uv sync
 uv run pytest -n 4        # real repositories and processes, no mocks
 uv run ruff check && uv run ruff format && uv run basedpyright
-uv run nock init          # in another repository: vendor this checkout into it
+uv run nock init          # in another repository: vendor this checkout into it (or re-wire, keeping its core)
 ```
 
 Nothing in CI runs automatically. The gate (`.github/workflows/gate.yml`:

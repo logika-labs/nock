@@ -6,6 +6,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import threading
 import tomllib
 import zipfile
@@ -81,6 +82,63 @@ def test_nock_source_runs_nock_from_a_checkout_instead(project: Project, tmp_pat
         [str(project.root / ".nock" / "nock")], cwd=project.root, capture_output=True, text=True
     )
     assert "CHECKOUT" not in vendored.stdout
+
+
+def checkout_of(project: Project, tmp_path: Path) -> Path:
+    """A checkout's src/ for NOCK_SOURCE, a copy of the vendored core."""
+    source = tmp_path / "checkout" / "src"
+    shutil.copytree(project.root / ".nock" / "core" / "nock", source / "nock")
+    return source
+
+
+def test_init_from_a_checkout_rewires_and_keeps_the_vendored_core(
+    project: Project, tmp_path: Path
+) -> None:
+    source = checkout_of(project, tmp_path)
+    ours = project.root / ".nock" / "core" / "nock" / "utils.py"
+    ours.write_text(ours.read_text() + "\n\ndef local_helper() -> int:\n    return 1\n")
+    vendored = core_files(ours.parent)
+    skill = project.root / ".claude" / "skills" / "nock-triage" / "SKILL.md"
+    skill.unlink()
+    result = subprocess.run(
+        [str(project.root / ".nock" / "nock"), "init"],
+        cwd=project.root,
+        capture_output=True,
+        text=True,
+        env={**os.environ, "NOCK_PYTHON": sys.executable, "NOCK_SOURCE": str(source)},
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "kept the vendored core (.nock/core/)" in result.stdout
+    assert "`nock upgrade` updates the core" in result.stdout
+    assert core_files(ours.parent) == vendored
+    assert skill.is_file()
+
+
+def test_upgrade_from_a_checkout_rewires_with_the_new_core(
+    project: Project, tmp_path: Path
+) -> None:
+    index = Index()
+    base = core_files(PACKAGE)
+    index.releases[VERSION] = base
+    theirs = dict(base)
+    theirs["briefs/nock-triage/SKILL.md"] = base["briefs/nock-triage/SKILL.md"] + b"\nUPSTREAM\n"
+    index.releases["9.0.0"] = theirs
+    use(project, index, check=False)
+    source = checkout_of(project, tmp_path)
+    result = subprocess.run(
+        [str(project.root / ".nock" / "nock"), "upgrade"],
+        cwd=project.root,
+        capture_output=True,
+        text=True,
+        env={**os.environ, "NOCK_PYTHON": sys.executable, "NOCK_SOURCE": str(source)},
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "kept the vendored core" not in result.stdout
+    version = json.loads((project.root / ".nock" / "core" / "VERSION.json").read_text())
+    assert version["version"] == "9.0.0"
+    skill = project.root / ".claude" / "skills" / "nock-triage" / "SKILL.md"
+    assert skill.read_text().rstrip().endswith("UPSTREAM")
+    index.server.shutdown()
 
 
 def test_upgrade_merges_upstream_into_a_locally_edited_core(

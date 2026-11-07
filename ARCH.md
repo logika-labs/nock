@@ -829,7 +829,10 @@ worktree's install is that branch's change, never the main checkout's):
   project (`logika.json` at the root) `/nock-reflect-logika`, with their
   parts' subagent types in `.claude/agents/`.
 
-It is idempotent, so running it again re-wires.
+It is idempotent, so running it again re-wires. It copies the core only when
+there is none; a vendored core is the project's, changed only by
+`nock upgrade`'s merge, so an `init` run from elsewhere (`NOCK_SOURCE`, a
+checkout) re-wires around it and says it kept it.
 
 `setup.Upgrader.upgrade` fetches the source — the latest release on PyPI
 (`releases.Releases`, which reads the wheel), or a git URL or a local
@@ -842,7 +845,9 @@ checkout — and does a per-file three-way merge with `git merge-file`:
 
 Conflicts are left marked and reported. Without a findable base, it refuses
 unless `--force` is given. `nock upgrade` then runs the upgraded core's
-`nock init`, which rewrites the primer and the skills and re-wires the hooks.
+`nock init`, which rewrites the primer and the skills and re-wires the hooks;
+that subprocess runs without `NOCK_SOURCE`, so what re-wires is the core just
+merged, not the checkout the upgrade itself may run from.
 
 `releases.Updates.newer` is what the session start and `nock status` say
 about a newer release: it asks `upgrade.index` at most once a day, with a

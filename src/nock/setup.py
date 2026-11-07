@@ -183,9 +183,10 @@ class Report:
     written: list[str] = field(default_factory=list)
     kept: list[str] = field(default_factory=list)
     conflicts: list[str] = field(default_factory=list)
+    notes: list[str] = field(default_factory=list)
 
     def lines(self) -> list[str]:
-        lines = []
+        lines = list(self.notes)
         if self.written:
             lines.append("wrote: " + ", ".join(self.written))
         if self.kept:
@@ -221,13 +222,18 @@ class Installer:
     def install(self, source: str | None = None) -> Report:
         source = source or DEFAULT_SOURCE
         core = self.directory / "core" / "nock"
-        if core.resolve() != PACKAGE:
-            if core.exists():
-                raise ConflictError(f"{core} exists — use `nock upgrade` to update a vendored core")
+        if not core.exists():
             self.copy_core(core)
             write_json(
                 self.directory / "core" / "VERSION.json",
                 {"version": VERSION, "source": source, "commit": self.source_commit()},
+            )
+        elif core.resolve() != PACKAGE:
+            # Run from elsewhere (NOCK_SOURCE): re-wire with this nock, but the
+            # vendored core is the project's, changed only by a merge.
+            self.report.notes.append(
+                f"kept the vendored core ({NOCK_DIRECTORY}/core/) — this nock runs from {PACKAGE}; "
+                "`nock upgrade` updates the core"
             )
         self.write("nock", SHIM, executable=True, replace=True)
         self.write(".gitignore", GITIGNORE, replace=False)
