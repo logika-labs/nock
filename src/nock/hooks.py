@@ -1,6 +1,7 @@
 """Claude Code's hook events, handled: `nock hook EVENT` reads the payload on
 stdin and answers in Claude Code's hook format. nock's own: a session starts
-knowing the toolbox and — when the human started it, once a day or when
+knowing the toolbox, upgraded to a newer nock when the merge is clean
+(`upgrade.auto`), and — when the human started it, once a day or when
 something new calls — where things stand, in a few lines (a reflection round
 due, decisions waiting on review or rework, items to make again, another kind of round worth
 offering); a
@@ -17,6 +18,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import subprocess
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
@@ -27,6 +29,7 @@ from nock.fixtures import Call, Scope
 from nock.kinds import kinds
 from nock.primer import refresh
 from nock.project import NOCK_DIRECTORY, Project
+from nock.releases import Updates
 from nock.sessions import Sessions
 from nock.status import Standing
 from nock.tools import CONFIRM_NOTES, NATIVE_EVENTS, Event
@@ -43,6 +46,8 @@ BUILT_IN_EVENTS = (
 )
 # The tools whose use is an edit, as a Claude Code matcher: the after-tool handler's.
 EDIT_TOOLS = "Edit|MultiEdit|Write|NotebookEdit"
+# The longest a session start waits on an upgrade, in seconds: two wheels downloaded, a merge.
+UPGRADE_DEADLINE = 120
 # What the standing a session starts with is, and what to do with it.
 STANDING_PREFACE = (
     "Where the project stands with nock (not your task: take into account what bears on the"
@@ -71,6 +76,10 @@ class HookRunner:
         messages: list[str] = []
         if event is Event.SESSION_START:
             refresh(self.project.here / NOCK_DIRECTORY)
+            if self.project.current_role() is None:
+                upgraded = self.upgrade_itself()
+                messages.append(upgraded)
+                self.notices += [upgraded] if upgraded else []
             if self.reminding:
                 messages.append(self.session_start())
         elif event is Event.PROMPT and self.reminding:
@@ -135,6 +144,33 @@ class HookRunner:
                 line for line in said if line.startswith("nock:") and "the owner" not in line
             ]
         return "\n".join(lines)
+
+    def upgrade_itself(self) -> str:
+        """A newer release merged into the core by itself, when the merge is
+        clean, said in a line; on a conflict nothing changes, and the standing
+        says the release is out, as it does with `upgrade.auto` off. The owner
+        made it the default, so it runs without the ask `nock upgrade` has."""
+        updates = Updates(self.project)
+        latest = updates.automatic()
+        if latest is None:
+            return ""
+        before = updates.installed()
+        try:
+            done = subprocess.run(
+                [str(self.project.here / NOCK_DIRECTORY / "nock"), "upgrade", "--only-clean"],
+                cwd=self.project.here,
+                capture_output=True,
+                text=True,
+                timeout=UPGRADE_DEADLINE,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            return ""
+        if done.returncode != 0:
+            return ""
+        return (
+            f"nock: upgraded itself to {updates.installed()} (from {before}), a clean merge; "
+            "`.nock/` and `.claude/` changed, to commit (`upgrade.auto = false` turns this off)."
+        )
 
     def standing(self) -> list[str]:
         """Where things stand, said once a day — sooner when something new

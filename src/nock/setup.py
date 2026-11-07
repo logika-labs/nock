@@ -369,11 +369,15 @@ class Upgrader:
         self.core = project.code_path("core", "nock")
         self.version_file = project.code_path("core", "VERSION.json")
 
-    def upgrade(self, source: str | None = None, force: bool = False) -> Report:
+    def upgrade(
+        self, source: str | None = None, force: bool = False, only_clean: bool = False
+    ) -> Report:
+        """The upgrade, merged into the core; with `only_clean`, a ConflictError
+        naming the files that would conflict, and nothing changed."""
         version = read_json(self.version_file) if self.version_file.is_file() else {}
         source = str(source or version.get("source") or DEFAULT_SOURCE)
         if source == PYPI:
-            return self.from_pypi(version, force)
+            return self.from_pypi(version, force, only_clean)
         report = Report()
         with tempfile.TemporaryDirectory() as scratch:
             upstream = self.fetch(source, Path(scratch))
@@ -384,7 +388,7 @@ class Upgrader:
                     "cannot find the version this core was vendored from upstream, so local edits "
                     "cannot be merged safely — `--force` replaces the core, losing them"
                 )
-            self.merge_all(report, theirs, base, force)
+            self.merge_all(report, theirs, base, force, only_clean)
             commit = Git(upstream).head() if Git(upstream).succeeds("rev-parse", "HEAD") else None
             upstream_version = self.upstream_version(upstream)
         write_json(
@@ -392,7 +396,7 @@ class Upgrader:
         )
         return report
 
-    def from_pypi(self, version: dict[str, Any], force: bool) -> Report:
+    def from_pypi(self, version: dict[str, Any], force: bool, only_clean: bool) -> Report:
         """The latest release on PyPI merged in, the vendored release's own
         files the base."""
         releases = Releases(str(self.project.configuration.get("upgrade.index")))
@@ -413,23 +417,39 @@ class Upgrader:
             {name: content for name, content in theirs.items() if "__pycache__" not in name},
             base,
             force,
+            only_clean,
         )
         write_json(self.version_file, {"version": latest, "source": PYPI, "commit": None})
         return report
 
     def merge_all(
-        self, report: Report, theirs: dict[str, bytes], base: dict[str, bytes] | None, force: bool
+        self,
+        report: Report,
+        theirs: dict[str, bytes],
+        base: dict[str, bytes] | None,
+        force: bool,
+        only_clean: bool = False,
     ) -> None:
         ours = core_files(self.core)
         names: set[str] = {*theirs, *ours, *(base or {})}
-        for relative in sorted(names):
-            merged = self.merge(
+        plan = {
+            relative: self.merge(
                 relative,
                 ours.get(relative),
                 (base or {}).get(relative),
                 theirs.get(relative),
                 force,
             )
+            for relative in sorted(names)
+        }
+        conflicted = [relative for relative, merged in plan.items() if merged and merged[1]]
+        if only_clean and conflicted:
+            raise ConflictError(
+                "the upgrade would conflict with local edits to the core, so nothing changed — "
+                "`.nock/nock upgrade` merges it, leaving the conflicts to resolve",
+                conflicted,
+            )
+        for relative, merged in plan.items():
             path = self.core / relative
             if merged is None:
                 if path.exists():

@@ -102,6 +102,9 @@ DEFAULTS: dict[str, Any] = {
         # Whether a session the human starts says when a newer nock is out
         # (PyPI is asked at most once a day), and where releases are looked up.
         "check": True,
+        # Whether that session upgrades a core vendored from PyPI to it by
+        # itself, once per release, when the merge is clean; off, it only says so.
+        "auto": True,
         "index": "https://pypi.org/pypi/nock",
     },
     # `share`, whether nock shares a usage report with its makers (counts and

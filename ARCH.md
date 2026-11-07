@@ -823,7 +823,14 @@ unless `--force` is given. `nock upgrade` then runs the upgraded core's
 `releases.Updates.newer` is what the session start and `nock status` say
 about a newer release: it asks `upgrade.index` at most once a day, with a
 two-second timeout, keeps the answer in `.nock/local/latest.json`, and is
-silent on any failure.
+silent on any failure. A session the human starts first upgrades itself
+(`hooks.HookRunner.upgrade_itself`): when `Updates.automatic` names a newer
+release (`upgrade.auto` on, a core vendored from PyPI, the release not tried
+since the last look-up, which it marks in `latest.json`), it runs
+`.nock/nock upgrade --only-clean` as a subprocess, so the new core re-wires
+the project; `only_clean` plans every file's merge before writing any and
+raises a `ConflictError` with nothing changed if one conflicts. A clean
+upgrade is said in one line, to the agent and the human.
 
 Nothing in `.github/workflows/` runs on an ordinary push. `gate.yml` (ruff
 check, ruff format --check, basedpyright, and the suite on Python 3.12 and

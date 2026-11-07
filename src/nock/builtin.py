@@ -703,11 +703,15 @@ def upgrade(
         str | None, Option(help="`pypi` (the default), a git URL or a local checkout.")
     ] = None,
     force: Annotated[bool, Option(help="Replace the core, losing local edits to it.")] = False,
+    only_clean: Annotated[
+        bool, Option(help="Upgrade only when the merge is clean; otherwise change nothing.")
+    ] = False,
 ) -> list[str]:
     """Upgrade the vendored core to the latest release, keeping local edits to
     it (a three-way merge); then the upgraded core re-wires the project —
-    primer, hooks, skills — as `nock init` does."""
-    report = Upgrader(project).upgrade(source, force)
+    primer, hooks, skills — as `nock init` does. A session start runs it with
+    `--only-clean` when a newer release is out, unless `upgrade.auto` is off."""
+    report = Upgrader(project).upgrade(source, force, only_clean)
     lines = report.lines()
     if report.conflicts:
         return [*lines, "resolve the conflicts, then `.nock/nock init` re-wires the project"]

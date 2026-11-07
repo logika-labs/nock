@@ -1,7 +1,7 @@
 """nock's releases, published on PyPI as `nock`: this one's version, the
 latest one — looked up at most once a day, so a session the human starts can
-say when there is a newer one — and a release's files, which `nock upgrade`
-merges into the vendored core."""
+upgrade to a newer one by itself, or say it is out — and a release's files,
+which `nock upgrade` merges into the vendored core."""
 
 from __future__ import annotations
 
@@ -112,3 +112,20 @@ class Updates:
         if latest and parsed(str(latest)) > parsed(self.installed()):
             return str(latest)
         return None
+
+    def automatic(self) -> str | None:
+        """The newer release to upgrade to by itself, marked tried so a release
+        whose merge conflicts is tried again only when the daily look-up
+        is: with `upgrade.auto` on, a core vendored from PyPI (one from
+        a checkout or a git URL has no release to follow), and not tried yet."""
+        latest = self.newer()
+        version = self.project.root / ".nock" / "core" / "VERSION.json"
+        if not latest or not self.project.configuration.get("upgrade.auto"):
+            return None
+        if not version.is_file() or read_json(version).get("source", PYPI) != PYPI:
+            return None
+        kept = read_json(self.cache)
+        if kept.get("tried") == latest:
+            return None
+        write_json(self.cache, {**kept, "tried": latest})
+        return latest

@@ -169,10 +169,13 @@ class Index:
         return buffer.getvalue()
 
 
-def use(project: Project, index: Index, check: bool) -> None:
+def use(project: Project, index: Index, check: bool, auto: bool = False) -> None:
     local = project.root / ".nock" / "local" / "config.toml"
     text = re.sub(r"\[upgrade\]\n(?:[^\[\n].*\n)*", "", local.read_text())
-    local.write_text(text + f'[upgrade]\ncheck = {str(check).lower()}\nindex = "{index.url}"\n')
+    local.write_text(
+        text + f"[upgrade]\ncheck = {str(check).lower()}\nauto = {str(auto).lower()}\n"
+        f'index = "{index.url}"\n'
+    )
 
 
 def test_upgrade_merges_the_latest_release_from_pypi_and_rewires(project: Project) -> None:
@@ -219,6 +222,52 @@ def test_a_session_start_says_when_a_newer_nock_is_out_once_a_day(project: Proje
     assert json.loads(nock(project.root, "status", "--json").stdout)["newer_nock"] == "9.0.0"
     use(project, index, check=False)
     assert json.loads(nock(project.root, "status", "--json").stdout)["newer_nock"] is None
+    index.server.shutdown()
+
+
+def test_a_session_start_upgrades_nock_by_itself_when_the_merge_is_clean(
+    project: Project,
+) -> None:
+    index = Index()
+    base = core_files(PACKAGE)
+    index.releases[VERSION] = base
+    theirs = dict(base)
+    theirs["utils.py"] = b'"""Upstream changed it."""\n' + base["utils.py"].split(b"\n", 1)[1]
+    index.releases["9.0.0"] = theirs
+    use(project, index, check=True, auto=True)
+    ours = project.root / ".nock" / "core" / "nock" / "utils.py"
+    ours.write_text('"""A local edit, in the way."""\n' + ours.read_text().split("\n", 1)[1])
+    conflicted = ours.read_text()
+
+    def start(session: str) -> str:
+        begun = HookRunner(project, {"session_id": session}).handle("SessionStart") or {}
+        return begun.get("systemMessage", "")
+
+    said = start("s1")
+    assert ours.read_text() == conflicted and "upgraded itself" not in said
+    assert f"nock 9.0.0 is out (this project has {VERSION})" in said
+    asked = index.asked
+    assert "upgraded itself" not in start("s2") and index.asked == asked
+
+    ours.write_bytes(base["utils.py"])
+    Updates(project).cache.unlink()
+    said = start("s3")
+    assert f"nock: upgraded itself to 9.0.0 (from {VERSION}), a clean merge" in said
+    assert ours.read_text().startswith('"""Upstream changed it."""')
+    version = json.loads((project.root / ".nock" / "core" / "VERSION.json").read_text())
+    assert version["version"] == "9.0.0" and Updates(project).newer() is None
+    index.server.shutdown()
+
+
+def test_with_auto_off_a_session_start_only_says_a_newer_nock_is_out(project: Project) -> None:
+    index = Index()
+    index.releases[VERSION] = core_files(PACKAGE)
+    index.releases["9.0.0"] = core_files(PACKAGE)
+    use(project, index, check=True, auto=False)
+    begun = HookRunner(project, {"session_id": "s1"}).handle("SessionStart") or {}
+    assert "nock 9.0.0 is out" in begun.get("systemMessage", "")
+    version = json.loads((project.root / ".nock" / "core" / "VERSION.json").read_text())
+    assert version["version"] == VERSION
     index.server.shutdown()
 
 

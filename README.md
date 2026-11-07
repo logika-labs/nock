@@ -116,8 +116,14 @@ asks (see [What nock shares](#what-nock-shares)).
 To upgrade, `.nock/nock upgrade`. It merges the latest release from PyPI into
 the vendored core, keeping any local edits to it (a three-way merge against
 the release you have), and re-wires the project: primer, hooks and skills.
-Once a day at most, a session you start asks PyPI whether a newer nock is out
-and says so; `upgrade.check = false` turns that off. Once a day at most, too,
+nock also upgrades itself: once a day at most, a session you start asks PyPI
+whether a newer nock is out and, when it is and the core came from PyPI,
+runs that upgrade with `--only-clean`. A clean merge applies by itself and
+the session says so in one line (the changes to `.nock/` and `.claude/` are
+yours to commit); a merge that would conflict with your edits to the core
+changes nothing, and the session says the release is out, for you to run
+`.nock/nock upgrade` and resolve. `upgrade.auto = false` leaves only that
+word; `upgrade.check = false` turns both off. Once a day at most, too,
 nock fetches LiteLLM's public price table from GitHub (`pricing.table`), a
 plain GET that sends nothing about the project, to cost sessions at API
 prices; `pricing.fetch = false` turns that off.
@@ -773,7 +779,9 @@ runs arbitrary shell:
   commands, nock's and the project's, which read, record in `.nock/`, or
   run the project's own committed tools and checks;
 - `ask`: every `confirm=True` command, the project's and nock's own:
-  `init` (it rewrites these rules), `upgrade` (it fetches and merges code)
+  `init` (it rewrites these rules), `upgrade` (it fetches and merges code;
+  the one exception is the clean upgrade a session start runs by itself,
+  which the owner made the default and `upgrade.auto = false` turns off)
   `share` (it sends a summary out) and `report` (it sends what you wrote
   to nock's makers). Claude Code asks about these even
   in bypass mode; `permissions.confirm = "allow"` in `.nock/config.toml`
@@ -884,6 +892,12 @@ the owner sees what they are asked about).
 
 A round's summary is sent only with `nock share` and the owner's yes (see
 [Reflection](#reflection)).
+
+Apart from these, nock reaches out only to fetch, sending nothing about the
+project: PyPI's `nock` page, at most daily, to learn of a newer release, and
+that release's wheel (and the vendored one's, the merge's base) when it
+upgrades itself (`upgrade.check`, `upgrade.auto`); and LiteLLM's price
+table (`pricing.fetch`).
 
 ### Telling nock's makers what you need
 
@@ -1116,7 +1130,7 @@ one machine.
 | `agent.command`, `agent.model`, `agent.deadline` | `claude`, —, 1800 | the headless agent nock dispatches (elaborate, consult, share, regenerate); it may not bypass or set permissions (see [What nock's agents may do](#what-nocks-agents-may-do)) |
 | `permissions.confirm` | `ask` | how Claude Code treats a `confirm=True` command: `ask` has the owner approve each call (even in bypass mode); `allow` lets the agent run it, which it does only when the owner's request calls for it (see [What nock's agents may do](#what-nocks-agents-may-do)); `nock init` rewrites the rules after a change |
 | `consult.enabled`, `consult.deadline` | true, 600 | whether the consultant runs and the primer asks for it; seconds a consultation may take |
-| `upgrade.check`, `upgrade.index` | true, PyPI's `nock` | whether a session start says a newer nock is out, and where releases are looked up |
+| `upgrade.check`, `upgrade.auto`, `upgrade.index` | true, true, PyPI's `nock` | whether a session start looks for a newer nock (at most daily); whether it then upgrades a core vendored from PyPI by itself when the merge is clean (off, or on a conflict, it only says the release is out); and where releases are looked up |
 | `share` | — (unanswered) | the owner's answer to whether nock sends its makers the weekly usage report: unset sends nothing until they answer, false sends nothing, summaries included, only what you send yourself with `nock report` (see [What nock shares](#what-nock-shares)) |
 | `endpoints.reflections`, `endpoints.usage`, `endpoints.reports` | `https://api.nock.dev/reflections`, `https://api.nock.dev/usage`, `https://api.nock.dev/reports` | where `nock share` sends a summary, where the usage reports go, and where `nock report` sends what you wrote |
 | `environment.python`, `setup`, `path`, `dotenv` | —, —, `[]`, — | what tools run in: the project's interpreter and how to make it, PATH entries, a dotenv file |
