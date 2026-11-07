@@ -8,13 +8,12 @@ which events form a sequence the owner cares about. That is declared in the
 ledger, and this part proposes it, so the owner's questions are answered
 from real captures instead of from a query someone writes later.
 
-Logika's docs are the authority on syntax: never write a form from memory.
-Run `logika docs analytics` and its children (`analytics.series`,
-`analytics.breakdown`, `analytics.actives`, `analytics.funnel`), then
-`logika docs ledger.params`, `ledger.funnels` and `ledger.views`, and
-`query.analytics` for what is kept. Declared late, a flag, funnel or
-milestone is filled in from the last 30 days, so nothing here is urgent and
-nothing is lost by asking first.
+Logika's docs hold the syntax, and forms written from memory tend to be
+refused: `logika docs analytics` (flags, funnels, milestones, views,
+backfill and what is kept), `logika docs query` and `logika docs investigate`
+for the readers. Declared late, a flag, funnel or milestone is filled in
+from the last 30 days, so nothing here is urgent and nothing is lost by
+asking first.
 
 Take the system one flow at a time, through the steps below.
 
@@ -25,18 +24,18 @@ the product's own words. For each flow (signing up, buying, publishing,
 paying, inviting), write the questions someone running the product asks:
 how many people do it, do they come back, how many who start it finish it,
 how long it takes them, which plans, regions or channels dominate. Logika's
-numbers already answer how much, how often it fails and how slow: don't
-propose those again.
+numbers already answer how much, how often it fails and how slow, with
+nothing declared.
 
 ## 2. Map each question to a declaration
 
 - **An identity**: a param that names someone or something worth following
   over time (a user, an account, a tenant, a device). It is what actives,
-  retention, funnels and milestones count. One per kind of someone; mark
-  the one the events already carry, never a per-request id.
+  retention, funnels and milestones count. Usually one per kind of someone,
+  the one the events already carry; a per-request id follows no one.
 - **A dimension**: a small, stable set worth breaking down by (a plan, a
-  method, a reason, a region). Never an id, never free text, never a value
-  with more than a few dozen distinct values in the data.
+  method, a reason, a region). An id, free text, or anything with more than
+  a few dozen distinct values in the data makes a breakdown of noise.
 - **A funnel**: steps that the same identity takes in order, within a time
   (`within`): each step an event and the same identity param.
 - **A milestone**: the time from one event to another, for the same
@@ -47,12 +46,12 @@ propose those again.
   `answer`, the sentence the console opens it with, filled from the data
   through the panel kind's placeholders (`logika docs ledger.views`):
   "{total} checkouts {range} · {change}". Write them from what the owner
-  said they care about; a panel without them is worded from its event's
+  would care about; a panel without them is worded from its event's
   description, which reads like a report, not an answer.
 
 ## 3. Check it against real captures
 
-With `logika show query`, bounded by `_environment` and `_start`, confirm
+With `logika query sql`, bounded by `_environment` and `_start`, confirm
 that each event a declaration names occurs, that the identity param is
 there on every step and means the same someone on each, and that a
 dimension's distinct values are few and stable. A funnel whose steps carry
@@ -60,28 +59,33 @@ different ids for the same person, or a dimension with hundreds of values,
 is wrong, however reasonable it looks. Say in the change's `tested` which
 captures showed it.
 
-## 4. When the data isn't there, propose instrumentation
+## 4. When the data isn't there, ask for the fields
 
 If a question needs something the code doesn't emit — the identity on a
-step, a step as an event of its own, the plan as a param — propose the
-instrumentation instead of a declaration that would stay empty. Each
-proposal becomes a todo tagged `logika` and `instrumentation`, naming the
-event, its params, where in the code it goes, and the question it would
-answer.
+step, a step as an event of its own, the plan as a param — ask for it
+instead of a declaration that would stay empty: the event, the param, where
+in the code it goes, the value it takes there, and the question it would
+answer. The round's lead adds it, with the declaration over it.
 
-## Keeping it honest
+## Common cases
 
-- A person's identity is personal data: mark it `pii` when it is one (`logika
-  docs pii`), and never make free text a dimension.
+What usually keeps the numbers worth opening; judgement on the case wins.
+
+- A person's identity that is personal data (an email, a name) is marked
+  `pii` (`logika docs pii`); an opaque user id usually isn't.
 - Fewer, sharper funnels beat one per page: each should answer a question
-  the owner said they have.
+  the owner has.
 - Reuse a param that already means the thing before adding one.
-- Ask the owner what they want to measure before declaring it; a guess here
-  costs their attention every time they open a view.
+- Infer what the owner would want measured from the product itself (its
+  flows, its plans and pricing, its copy, what the README says it is for);
+  ask only where it truly can't be inferred, with the answer you'd propose:
+  a guess here costs their attention every time they open a view.
 
-## What you change
+## What you bring back
 
-Only `logika.json`: params' `identity` and `dimension` flags, `funnels`,
-`milestones` and `views`, each panel with its `title` and `answer`. Change nothing else, not the code and not
-`.nock/`, except by recording decisions and todos. Commit
-nothing: `.nock/nock reflect logika finish` commits.
+You change nothing: the rules part reads the same tree at the same time.
+Bring back proposals for `logika.json` (params' `identity` and `dimension`
+flags, `funnels`, `milestones` and `views`, each panel with its `title` and
+`answer`), the fields they need, and the few questions only the owner can
+answer. The round's lead writes them, and `.nock/nock reflect logika
+finish` commits.

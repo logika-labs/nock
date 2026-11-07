@@ -717,19 +717,23 @@ status` always says.
    milestones and views declared; for both, the ledger's history, the last
    logika round's changes and expectations, and the decisions and
    suggestions tagged `logika`.
-2. **The session works through it with the owner.** It learns the forms
-   from Logika's own docs (`logika docs …`) instead of a copy, explores real
-   captures with `logika show query`, and agrees with the owner what must
-   hold and what to measure. It lands a rule only once it has seen the rule
-   stay quiet on a real capture (`logika test`) and fire on a replay
-   (`logika test --replay`), and a declaration only once captures show the
-   events and params it names. False positives are the cost it guards
-   against first.
-3. **What only the owner knows** is asked in the session. A question for
-   later becomes a decision tagged `logika` and `important`, the answer the
-   session proposes and carries on with, for the owner to accept or reject. A rule or a measure that needs state the code
-   doesn't record becomes a todo tagged `logika` and `instrumentation`, not
-   a weaker rule or an empty funnel.
+2. **The session decides what must hold and what to measure.** It derives
+   the product's promises from its docs, copy, tests and code, learns the
+   forms from Logika's own docs (`logika docs …`) instead of a copy, and
+   explores real captures with `logika query sql`. It lands a rule only
+   once it has seen the rule stay quiet on a real capture (`logika test`),
+   fire on a replay (`logika test --replay`) and fire on its breach planted
+   in the code for a moment and reverted, and a declaration only once
+   captures show the events and params it names. False positives are the
+   cost it guards against first; thresholds come from the data, with a
+   stated margin.
+3. **The owner settles only directions and genuine ambiguities**, asked in
+   the session with the answer the session proposes and carries on with; a
+   question for later becomes a decision tagged `logika` and `important`.
+   The rest the owner reviews in the round's report. A rule or a measure
+   that needs state the code doesn't record gets it: the session adds the
+   field to the code and the ledger (kind `instrumentation`), not a weaker
+   rule or an empty funnel.
 4. **`nock reflect logika finish JSON`** requires the round's
    `report.md`, a `logika.json` that parses, and every rule changed to say
    how it was `tested`. It records the rules and declarations

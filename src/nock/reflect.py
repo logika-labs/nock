@@ -61,11 +61,12 @@ class Change(TypedDict):
     kind: Literal[
         "add", "change", "retire", "check", "generator",
         "validate", "path", "timeout", "rule", "invariant", "error",
-        "identity", "dimension", "funnel", "milestone", "view", "other",
+        "instrumentation", "identity", "dimension", "funnel", "milestone", "view", "other",
     ]  # fmt: skip
     """add, change, retire, check, generator — the toolbox; validate, path,
-    timeout, rule, invariant, error — a logika round's rules; identity,
-    dimension, funnel, milestone, view — its analytics; other."""
+    timeout, rule, invariant, error — a logika round's rules; instrumentation
+    — the fields it added to the code for them; identity, dimension, funnel,
+    milestone, view — its analytics; other."""
     target: str
     """The tool, check or file: `failures`, `.nock/tools/db.py`; in a logika
     round, the event or rule: `checkout`, `receipt_continuity`."""
@@ -74,8 +75,9 @@ class Change(TypedDict):
     expect: str
     """What should be measurably different by the next round, and how to tell."""
     tested: NotRequired[str]
-    """A logika round's: for a rule, the capture it stayed silent on and the
-    replay it fired on (required); for analytics, the captures that showed
+    """A logika round's: for a rule, the capture it stayed silent on, the
+    replay it fired on and the breach planted in the code it fired on
+    (required); for instrumentation and analytics, the captures that showed
     the events and params it names."""
 
 

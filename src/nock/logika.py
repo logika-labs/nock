@@ -1,12 +1,13 @@
 """The `logika` kind of reflection round. In a Logika project — a
 `logika.json` ledger, and the `logika` CLI on PATH — the owner runs a round
 with the `/nock-reflect-logika` skill, in two parts: **rules** turns the
-instrumented code and the data it captures into what must hold
+product's promises, the code and the data it captures into what must hold
 (validations, paths, timeouts, rules, invariants, error marking), each shown
-silent on real captures and firing on a replay; **analytics** declares what
-the owner wants to measure (identities, dimensions, funnels, milestones,
-views), so Logika's analytics fill from real captures. Both ask the owner
-what only they know, and suggest the instrumentation the data lacks. `nock reflect logika` writes what it reads, and `nock
+silent on real captures, firing on a replay and firing on its breach planted
+in the code; **analytics** declares what is worth measuring (identities,
+dimensions, funnels, milestones, views), so Logika's analytics fill from
+real captures. The session decides them itself, asks the owner only general
+directions and genuine ambiguities, and adds the instrumentation they need. `nock reflect logika` writes what it reads, and `nock
 reflect logika finish` requires the ledger to parse and every rule changed
 to say how it was tested, records it and commits `.nock/` and `logika.json`.
 Its rounds are kept apart from nock's own, so neither moves the other's
@@ -211,7 +212,8 @@ class LogikaRound(Round):
             problems.append(f"{error}: {error.value}" if error.value else str(error))
         return problems + [
             f"the {change['kind']} on `{change['target']}` does not say how it was tested: "
-            "`tested`, the capture it stayed silent on and the replay it fired on"
+            "`tested`, the capture it stayed silent on, the replay it fired on and the breach "
+            "planted in the code it fired on"
             for change in (record or {}).get("changes", [])
             if change["kind"] in RULE_KINDS and not str(change.get("tested") or "").strip()
         ]

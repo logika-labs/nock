@@ -46,8 +46,15 @@ RECORD = {
             "target": "refund",
             "why": "no refund of 0 or less in 30 days of data",
             "expect": "fires only on a refund of 0 or less",
-            "tested": "silent on the test suite's capture; fired on a replay setting -1",
-        }
+            "tested": "silent on the test suite's capture; fired on a replay setting -1; "
+            "fired with the refund's sign flipped in src/refund.py",
+        },
+        {
+            "kind": "instrumentation",
+            "target": "refund",
+            "why": "the validate reads the amount refunded, which wasn't logged",
+            "expect": "amount on every refund",
+        },
     ],
 }
 
@@ -106,7 +113,7 @@ def test_init_installs_the_logika_skill_in_a_logika_project(logika: Project) -> 
     lead = (skill / "SKILL.md").read_text()
     assert lead.startswith("---\nname: nock-reflect-logika\n")
     assert "`.nock/nock reflect logika` prints" in lead
-    assert "## 4. Prove each rule both ways" in (skill / "rules.md").read_text()
+    assert "## 6. Prove each rule three ways" in (skill / "rules.md").read_text()
 
 
 def test_the_material_says_what_the_ledger_holds_and_what_was_decided(logika: Project) -> None:
