@@ -32,7 +32,11 @@ LEDGER: dict[str, Any] = {
             "span": {"timeout": "2m"},
             "children": [{"name": "reserved", "params": ["sku"]}],
         },
-        {"name": "refund", "params": ["order_id", "amount"]},
+        {
+            "name": "refund",
+            "params": ["order_id", "amount"],
+            "risks": {"refunds.overpaid": ["amount"], "refunds.once": "one refund per order"},
+        },
     ],
     "rules": [{"on": "checkout.order_id", "expect": ["refund.order_id"], "within": "7d"}],
     "invariants": [],
@@ -46,8 +50,13 @@ RECORD = {
             "target": "refund",
             "why": "no refund of 0 or less in 30 days of data",
             "expect": "fires only on a refund of 0 or less",
-            "tested": "silent on the test suite's capture; fired on a replay setting -1; "
-            "fired with the refund's sign flipped in src/refund.py",
+            "tested": "quiet in the noise check over the test suite's capture",
+        },
+        {
+            "kind": "risk",
+            "target": "refund: refunds.once",
+            "why": "the provider refuses a second refund of an order",
+            "expect": "no rule while refunds go through the provider",
         },
         {
             "kind": "instrumentation",
@@ -136,9 +145,12 @@ def test_the_material_says_what_the_ledger_holds_and_what_was_decided(logika: Pr
     started = start(logika)
     material = Path(started["material"]["rules"]).read_text()
     assert "3 events (1 spans; 1 with `validate`, 0 with paths, 1 with a timeout)" in material
-    assert 'checkout,span,order_id amount,"amount > 0",-,2m,on,-' in material
-    assert "checkout.reserved,leaf,sku,-,-,-,-,-" in material
-    assert "refund,leaf,order_id amount,-,-,-,expected,-" in material
+    assert 'checkout,span,order_id amount,"amount > 0",-,2m,on,-,-' in material
+    assert "checkout.reserved,leaf,sku,-,-,-,-,-,-" in material
+    assert (
+        'refund,leaf,order_id amount,-,-,-,expected,-,"refunds.overpaid by amount; '
+        'refunds.once ruled out"' in material
+    )
     assert "- rule: checkout.order_id → refund.order_id within 7d" in material
     assert "shop,src,,yes,1," in material
     assert "Instrument the shop" in material
@@ -185,10 +197,6 @@ def test_a_logika_round_finishes_and_commits_the_ledger_apart_from_nock_s_rounds
     (logika.root / "logika.json").write_text("{ not json")
     broken = finish(logika, RECORD)
     assert broken.returncode == 1 and "logika.json does not parse" in broken.stdout
-    untested = copy.deepcopy(RECORD)
-    del untested["changes"][0]["tested"]
-    refused = finish(logika, untested)
-    assert refused.returncode == 1 and "does not say how it was tested" in refused.stdout
     ledger = copy.deepcopy(LEDGER)
     ledger["events"][1]["validate"] = "amount > 0"
     write_ledger(logika, ledger)
@@ -201,7 +209,8 @@ def test_a_logika_round_finishes_and_commits_the_ledger_apart_from_nock_s_rounds
     assert "logika.json" in git(logika.root, "show", "--name-only", "--format=", "HEAD")
     (record,) = LogikaRound(logika).rounds.all()
     assert record["ledger_before"]["validated"] == 1 and record["ledger"]["validated"] == 2
-    assert record["changes"][0]["tested"].startswith("silent on")
+    assert record["changes"][0]["tested"].startswith("quiet in the noise check")
+    assert "tested" not in record["changes"][1]
     assert Rounds(logika).all() == [] and Reflection(logika).window().since is None
 
     again = start(logika)

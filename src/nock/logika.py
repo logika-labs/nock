@@ -1,15 +1,15 @@
 """The `logika` kind of reflection round. In a Logika project — a
 `logika.json` ledger, and the `logika` CLI on PATH — the owner runs a round
-with the `/nock-reflect-logika` skill, in two parts: **rules** turns the
-product's promises, the code and the data it captures into what must hold
-(validations, paths, timeouts, rules, invariants, error marking), each shown
-silent on real captures, firing on a replay and firing on its breach planted
-in the code; **analytics** declares what is worth measuring (identities,
-dimensions, funnels, milestones, views), so Logika's analytics fill from
-real captures. The session decides them itself, asks the owner only general
-directions and genuine ambiguities, and adds the instrumentation they need. `nock reflect logika` writes what it reads, and `nock
-reflect logika finish` requires the ledger to parse and every rule changed
-to say how it was tested, records it and commits `.nock/` and `logika.json`.
+with the `/nock-reflect-logika` skill, in two parts: **rules**, a subagent
+per directory, gives each event's `risks` (a `concern.risk` key mapped to its
+evidence params, or to why it doesn't apply) its rule over that evidence, or
+the reason it gets none, from what `logika map` shows; **analytics** declares
+what is worth measuring (identities, dimensions, funnels, milestones,
+views). The session decides them itself, asks the owner only general
+directions and genuine ambiguities, adds the instrumentation they need, and
+ends with one `logika replay` noise check. `nock reflect logika` writes what
+it reads, and `nock reflect logika finish` requires the ledger to parse,
+records the round and commits `.nock/` and `logika.json`.
 Its rounds are kept apart from nock's own, so neither moves the other's
 window."""
 
@@ -35,9 +35,7 @@ PROGRAM = "logika"
 SKILL = "nock-reflect-logika"
 # What a round asks about, and suggests, is tagged so the next round finds it.
 TAG = "logika"
-# The changes that are rules, each of which must say how it was tested.
-RULE_KINDS = ("validate", "path", "timeout", "rule", "invariant", "error")
-# The round's parts: each a brief beside the skill, and a material file.
+# The round's parts: each a brief in `nock docs` (`reflection.logika.PART`), and a material file.
 PARTS = ("rules", "analytics")
 SECTION_ROWS = 40
 
@@ -56,6 +54,19 @@ def flattened(events: Any, prefix: str = "") -> list[tuple[str, dict[str, Any]]]
 def event_of(reference: Any) -> str:
     """The event an `event.param` reference names: `checkout.captured.order_id` → `checkout.captured`."""
     return str(reference).rsplit(".", 1)[0]
+
+
+def risks(declared: Any) -> str:
+    """An event's risks, in a cell: `webhooks.retry by attempt will_retry; webhooks.once ruled out`."""
+    if not isinstance(declared, dict) or not declared:
+        return "-"
+    said = [
+        f"{key} by {' '.join(map(str, evidence))}"
+        if isinstance(evidence, list)
+        else f"{key} ruled out"
+        for key, evidence in declared.items()
+    ]
+    return json.dumps("; ".join(said))
 
 
 class Ledger:
@@ -204,19 +215,12 @@ class LogikaRound(Round):
         }
 
     def problems(self, record: Record | None) -> list[str]:
-        """The ledger parses, and every rule the round changed says how it was tested."""
-        problems = []
+        """The ledger parses."""
         try:
             self.ledger.read()
         except Failed as error:
-            problems.append(f"{error}: {error.value}" if error.value else str(error))
-        return problems + [
-            f"the {change['kind']} on `{change['target']}` does not say how it was tested: "
-            "`tested`, the capture it stayed silent on, the replay it fired on and the breach "
-            "planted in the code it fired on"
-            for change in (record or {}).get("changes", [])
-            if change["kind"] in RULE_KINDS and not str(change.get("tested") or "").strip()
-        ]
+            return [f"{error}: {error.value}" if error.value else str(error)]
+        return []
 
     def kept(self, name: str, started: dict[str, Any]) -> dict[str, Any]:
         return {
@@ -320,9 +324,10 @@ class Material:
             "# Events",
             "",
             "What each declared event already says must hold; `-` is nothing yet. on/expected: "
-            "a rule's trigger or follow-up.",
+            "a rule's trigger or follow-up. risks: each `concern.risk` by its evidence params, "
+            "or ruled out (`logika map` says which a rule guards).",
             "",
-            "event,kind,params,validate,paths,timeout,rules,anomaly",
+            "event,kind,params,validate,paths,timeout,rules,anomaly,risks",
         ]
         for path, event in events:
             span = event.get("span") if isinstance(event.get("span"), dict) else None
@@ -340,6 +345,7 @@ class Material:
                         str(span.get("timeout")) if span and span.get("timeout") else "-",
                         " ".join(role) or "-",
                         "yes" if event.get("anomaly") else "-",
+                        risks(event.get("risks")),
                     ]
                 )
             )

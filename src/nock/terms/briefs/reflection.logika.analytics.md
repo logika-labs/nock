@@ -18,8 +18,8 @@ from real captures instead of from a query someone writes later.
 
 Logika's docs hold the syntax, and forms written from memory tend to be
 refused: `logika docs analytics` (flags, funnels, milestones, views,
-backfill and what is kept), `logika docs query` and `logika docs investigate`
-for the readers. Declared late, a flag, funnel or milestone is filled in
+backfill and what is kept), `logika docs query` for
+the readers. Declared late, a flag, funnel or milestone is filled in
 from the last 30 days, so nothing here is urgent and nothing is lost by
 asking first.
 
@@ -91,7 +91,7 @@ What usually keeps the numbers worth opening; judgement on the case wins.
 
 ## What you bring back
 
-You change nothing: the rules part reads the same tree at the same time.
+You change nothing: the rules parts read the same tree at the same time.
 Bring back proposals for `logika.json` (params' `identity` and `dimension`
 flags, `funnels`, `milestones` and `views`, each panel with its `title` and
 `answer`), the fields they need, and the few questions only the owner can
@@ -102,8 +102,8 @@ finish` commits.
 
 You may read anything in the repository and run `logika` and `.nock/nock`
 commands to read captures and check candidates (`logika query`, `logika
-check`). You change no file, through a tool or a command: the rules part
-reads the same tree at the same time, and the round's lead adds what you
+check`). You change no file, through a tool or a command: the rules parts
+read the same tree at the same time, and the round's lead adds what you
 ask for, edits `logika.json` and commits. Claude Code's permissions are the
 session's, so a command they don't allow is refused or waits for the owner.
 When a call is refused, say in your report what you needed and why, and go

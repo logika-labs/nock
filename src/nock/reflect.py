@@ -60,11 +60,12 @@ RECORD_FILE = "record.json"
 class Change(TypedDict):
     kind: Literal[
         "add", "change", "retire", "check", "generator",
-        "validate", "path", "timeout", "rule", "invariant", "error",
+        "validate", "path", "timeout", "rule", "invariant", "error", "risk",
         "instrumentation", "identity", "dimension", "funnel", "milestone", "view", "other",
     ]  # fmt: skip
     """add, change, retire, check, generator — the toolbox; validate, path,
-    timeout, rule, invariant, error — a logika round's rules; instrumentation
+    timeout, rule, invariant, error — a logika round's rules; risk — a risk
+    it declared on an event, or ruled out with its reason; instrumentation
     — the fields it added to the code for them; identity, dimension, funnel,
     milestone, view — its analytics; other."""
     target: str
@@ -75,10 +76,9 @@ class Change(TypedDict):
     expect: str
     """What should be measurably different by the next round, and how to tell."""
     tested: NotRequired[str]
-    """A logika round's: for a rule, the capture it stayed silent on, the
-    replay it fired on and the breach planted in the code it fired on
-    (required); for instrumentation and analytics, the captures that showed
-    the events and params it names."""
+    """A logika round's, optional: what showed the change, such as the noise
+    check a rule stayed quiet in, or the captures that showed the events and
+    params it names."""
 
 
 class Verdict(TypedDict):

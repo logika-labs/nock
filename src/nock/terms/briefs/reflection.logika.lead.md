@@ -7,48 +7,61 @@ description: /nock-reflect-logika: how the lead runs a logika round, step by ste
 # A logika round
 
 The owner asked for this round. Its job is to write down in `logika.json`
-how this system is expected to behave, so that Logika wakes an agent when it
-doesn't and stays quiet when it does, and what is worth measuring, so that
-Logika's analytics answer the owner's questions from real captures. You
-decide what lands, from the code, the docs, the copy users see and the data;
-the owner settles only general directions and genuine ambiguities, and
-reviews the rest in your report, after the round rather than before each
-rule. Whatever this session was doing waits.
+what must hold, so that Logika wakes an agent when the system breaks it, and
+what is worth measuring, so that Logika's analytics answer the owner's
+questions from real captures. You decide what lands, from the code, the
+docs, the copy users see and the data; the owner settles only general
+directions and genuine ambiguities, and reviews the rest in your report,
+after the round rather than before each rule. Whatever this session was
+doing waits.
 
-Done when: the rules and declarations you decided on are in `logika.json`,
-each rule proved quiet, firing on a replay and firing on its breach planted
-in the code; the instrumentation they need is in the code; `logika check`
-passes; and `.nock/nock reflect logika finish` has recorded the round.
+Every event in the ledger carries its `risks`: each a `concern.risk` key
+mapped to the event's params that are its evidence, or to the reason it
+doesn't apply here:
+
+    "risks": {"webhooks.retry": ["attempt", "will_retry"], "webhooks.once": "why it doesn't apply"}
+
+`logika docs <concern>.<risk>` says what a risk is and how a rule guards it.
+The round gives each risk with evidence its rule over those params, or the
+reason it gets none; `logika map` shows where that stands.
+
+Done when: the rules and declarations you decided on are in `logika.json`;
+`logika map` leaves no risk at "no rule yet" that a rule could guard; the
+instrumentation they need is in the code; the noise check fires on nothing
+normal; `logika check` passes; and `.nock/nock reflect logika finish` has
+recorded the round.
 
 1. `.nock/nock reflect logika` prints the round's two material files and
    the report you write. The material shows what the ledger already says
-   and measures, per component, event and param, what changed since the
-   last round, and the decisions and suggestions earlier rounds left.
+   and measures, per component, event (with its risks) and param, what
+   changed since the last round, and the decisions and suggestions earlier
+   rounds left.
 2. Start with what is owed:
    - the decisions the owner rejected or left a note on: act on each, then
      edit it to say what you did;
    - the last round's rules that raised false alarms: fix them or take them
      out (`logika query` shows them).
-3. Dispatch the two parts as subagents, in one message, each of its type
-   (in `.claude/agents/`). Give each its material and the round's window
-   (each reads its own brief, `.nock/nock docs TERM`). They read and run commands but change
-   nothing, so both can work over the tree at once while you keep it: each
-   comes back with candidates (each with its evidence and how it was
-   checked), the instrumentation each candidate needs, for a rule the breach
-   to plant in the code, and the few questions only the owner can settle.
+3. Find the gaps: `logika map` (`logika docs map`) prints, per file, each
+   function's events and each event's risks, "by <params>, guarded by …",
+   "no rule yet" or "ruled out", and ends with "To look at". That is the
+   round's work list: the gaps come from it.
+4. Dispatch the parts as subagents, in one message, each of its type (in
+   `.claude/agents/`; each reads its own brief): one rules part per
+   directory the map shows gaps in (a component's paths, or a top-level
+   source directory where the map names no components), and one analytics
+   part for the whole. Give each its material and the round's window, and
+   a rules part its directory. They read and run commands but change
+   nothing, so all can work over the tree at once while you keep it: you
+   alone write `logika.json` and the code.
 
-   | part | subagent type | brief | material | proposes |
+   | part | subagent type | brief | material | brings back |
    |---|---|---|---|---|
-   | rules | `nock-logika-rules` | `reflection.logika.rules` | `rules` | validate, paths, timeouts, rules, invariants, error marking |
+   | rules, one per directory | `nock-logika-rules` | `reflection.logika.rules` | `rules` | for each risk, its rule over its evidence or the reason it gets none; risks an event lacks; the fields a rule needs |
    | analytics | `nock-logika-analytics` | `reflection.logika.analytics` | `analytics` | identities, dimensions, funnels, milestones, views |
 
-   The rules part derives the product's promises itself, across every
-   user-facing area rather than where the instrumentation is densest, and
-   mines the clean captures for what they missed; each candidate names the
-   promise it guards and the breach it catches. For a large project it may
-   take one component at a time. If a part fails, say so in the report
-   rather than doing its part yourself: its brief is what makes it careful.
-4. Clear with the owner only what you can't settle yourself: a general
+   If a part fails, say so in the report rather than doing its part
+   yourself: its brief is what makes it careful.
+5. Clear with the owner only what you can't settle yourself: a general
    direction (which areas matter most, what a whole class of failure means
    to them) or a genuine ambiguity, where the docs, the copy, the tests and
    the code's intent leave the intended behaviour open. Ask a few at a time,
@@ -58,72 +71,67 @@ passes; and `.nock/nock reflect logika finish` has recorded the round.
    "important"], …}'`, your answer as the title; `.nock/nock docs
    decisions.important`). Thresholds aren't questions: they come from the
    data, with the margin you chose stated in the rule's evidence.
-5. Add the instrumentation the candidates need, as the logika-instrument
-   skill's common cases describe (`logika docs instrument`): the raw input a
-   decision read beside its outcome, an effect's real result, the id it
-   acted on, a step as a child event. Change the code and the ledger
-   together, keep every existing event and param, run `logika check`, then
-   capture again (`logika test "<the command that exercises it>"`) and see
-   the new fields filled. Commit it on its own (the code and the ledger),
-   saying what the code now logs.
-6. Write the rules you decided on, most important first: money, stock,
-   access, and anything else that changes shared state. Each carries its
-   one-sentence `description` (the anomaly's title) saying what must hold
-   and why. Prove each three ways, and record all three in its `tested`:
-   - **quiet**: `logika test` on the clean behaviour raises nothing, and a
-     query counts no existing row that breaks it;
-   - **firing on a replay**: `logika test --replay` with the breach raises
-     exactly this anomaly, with evidence an agent could act on;
-   - **firing on the breach in the code**: plant it where the subagent
-     said (flip the condition, drop a part of the key, skip the retry,
-     report the failure as a success), run `logika test` again and see this
-     rule fire, then revert it (`git diff` shows only your intended
-     changes). This is what shows the rule catches the bug and not only the
-     data's shape; a rule the planted breach doesn't fire is reworked or
-     dropped.
-   The common cases:
-   - a rule that fires on today's behaviour, where the docs or copy state
-     the promise, usually lands, with what it fires on reported as a known
-     issue (or the code fixed): loosening it to fit would encode the bug;
-   - a rule one form of Logika refused is usually tried in an equivalent
-     form before it's dropped;
-   - in doubt about whether a rule would fire on normal behaviour, it
-     waits: a missing rule costs nothing until the day it would have fired,
-     a false alarm costs the owner's trust every time.
-7. Run `logika check` until it passes. Write the report for the owner, as
-   what you decided, for them to review:
-   - the rules you added or changed, with the evidence for each, the margin
-     behind each threshold, and how each was proved, the planted breach
-     included;
+6. Add the instrumentation the rules need, as Logika's docs describe
+   (`logika docs instrument`): the raw input a decision read beside its
+   outcome, an effect's real result, the id it acted on, a step as a child
+   event. Change the code and the ledger together, point the event's risks
+   at the new params, keep every existing event and param, run `logika
+   check`, then capture again (`logika test "<the command that exercises
+   it>"`) and see the new fields filled. Commit it on its own (the code and
+   the ledger), saying what the code now logs.
+7. Write what the parts brought back into `logika.json`, most important
+   first: money, stock, access, and anything else that changes shared
+   state. Each rule carries its one-sentence `description` (the anomaly's
+   title) saying what must hold and why (`logika docs rules`); each risk
+   maps to its evidence or its reason. Run `logika check` until it passes.
+   Then run `logika map` again: if it shows much the parts didn't cover
+   (risks the new instrumentation brought, a directory they missed), run
+   steps 4 to 7 once more over those directories only, then stop.
+8. One noise check, at the end (`logika docs replay`): judge real traffic
+   against the new ledger, `logika replay '{"on": "capture"}'` for the last
+   local capture, or `logika replay '{"on": "query", "query":
+   "<condition>"}'` for production's events that match a condition. Fix what
+   fires on normal behaviour; where the docs or copy state the promise it
+   breaks, the rule stands and what it fires on is a known issue (or the
+   code is fixed), since loosening it would encode the bug. Keep the rest:
+   a little noise is calibrated in production, and a missing rule never
+   fires.
+9. Write the report for the owner, as what you decided, for them to review:
+   - the rules you added or changed, each with its risk, its evidence and
+     the margin behind its threshold;
+   - the risks you ruled out, and why;
    - the instrumentation you added, and the rules it made possible;
    - what is now measured, and the questions it answers;
-   - what you left out, and why;
+   - what the noise check fired on, and what you did about it;
    - the directions and ambiguities you settled, the answers you got or
      the ones you chose;
    - the known issues today's behaviour breaks.
-8. Finish:
+10. Finish:
 
-       .nock/nock reflect logika finish '{"summary": "the round in a sentence or two",
-         "changes": [{"kind": "validate", "target": "refund", "why": "the evidence",
-                      "expect": "what it should catch, and that it stays quiet otherwise",
-                      "tested": "silent on <capture>; fired on <replay>; fired with <breach> planted in <file>"},
-                     {"kind": "instrumentation", "target": "refund", "why": "the rule it made possible",
-                      "expect": "the field filled on every sighting", "tested": "the capture that shows it"},
-                     {"kind": "funnel", "target": "activation", "why": "the question it answers",
-                      "expect": "what it should show", "tested": "the captures that carry it"}],
-         "verdicts": [{"expectation": "…", "held": true, "evidence": "…"}],
-         "notes": "what the next round should look at"}'
+        .nock/nock reflect logika finish '{"summary": "the round in a sentence or two",
+          "changes": [{"kind": "validate", "target": "refund", "why": "refunds.overpaid, by amount and charged",
+                       "expect": "what it should catch, and that it stays quiet otherwise",
+                       "tested": "quiet in the noise check over a week of production refunds"},
+                      {"kind": "risk", "target": "delivery: webhooks.once", "why": "the provider never reuses a delivery id",
+                       "expect": "no rule while ids come from the provider"},
+                      {"kind": "instrumentation", "target": "refund", "why": "the rule it made possible",
+                       "expect": "the field filled on every sighting", "tested": "the capture that shows it"},
+                      {"kind": "funnel", "target": "activation", "why": "the question it answers",
+                       "expect": "what it should show", "tested": "the captures that carry it"}],
+          "verdicts": [{"expectation": "…", "held": true, "evidence": "…"}],
+          "notes": "what the next round should look at"}'
 
-   The kinds are validate, path, timeout, rule, invariant and error (the
-   rules, each with how it was `tested`), instrumentation, identity,
-   dimension, funnel, milestone and view (the analytics), and other. The
-   verdicts cover the last round's expectations. Finishing commits `.nock/`
-   and `logika.json`; nock says what a round left open still needs
-   (`.nock/nock docs reflection.kinds`).
-9. Tell the owner in a few lines what changed, what you decided that they
-   may want to look at, and where the report is. If `reflect logika` gave
-   `ask_the_owner`, ask them that too, in its words, and record exactly
-   their answer with `.nock/nock usage share yes` or `no` (nothing if they
-   don't answer). Production is judged against the new rules, and measured
-   by the new declarations, once `logika sync` deploys the ledger, which is
-   the owner's to run.
+    The kinds are validate, path, timeout, rule, invariant and error (the
+    rules), risk (a risk declared or ruled out), instrumentation, identity,
+    dimension, funnel, milestone and view (the analytics), and other.
+    `tested`, what showed a change (the noise check, a capture), is
+    optional. The verdicts cover the last round's expectations. Finishing
+    commits `.nock/` and `logika.json`; nock says what a round left open
+    still needs (`.nock/nock docs reflection.kinds`).
+11. Tell the owner in a few lines what changed, what you decided that they
+    may want to look at, and where the report is. If `reflect logika` gave
+    `ask_the_owner`, ask them that too, in its words, and record exactly
+    their answer with `.nock/nock usage share yes` or `no` (nothing if they
+    don't answer). Production is judged against the new rules, and measured
+    by the new declarations, once `logika sync` deploys the ledger, which is
+    the owner's to run.

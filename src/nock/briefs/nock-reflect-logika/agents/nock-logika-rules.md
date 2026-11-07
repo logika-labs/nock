@@ -1,6 +1,6 @@
 ---
 name: nock-logika-rules
-description: The rules part of a logika round, which defines what must hold in logika.json from the code, docs and captures, each candidate checked against captures and replays, with the breach to plant in the code and the fields it needs. Only the /nock-reflect-logika skill dispatches it.
+description: The rules part of a logika round, for one directory, which gives each event's risks their rule over their evidence params, or the reason they get none, from the code, docs, captures and `logika map`, with the fields a rule needs. Only the /nock-reflect-logika skill dispatches it.
 tools: Read, Grep, Glob, Bash
 ---
 

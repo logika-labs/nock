@@ -608,9 +608,11 @@ its two parts' material from the ledger, git and the decisions tagged
 `logika`: `rules.md` (`logika.Material`) and `analytics.md`
 (`logika.Analytics`: params and their flags, funnels, milestones, views);
 the `reflection.logika.rules` and `reflection.logika.analytics` terms are
-the parts' briefs. Its end
-requires `report.md`, a parsing ledger and a `tested` on every rule
-changed (validate, path, timeout, rule, invariant, error), and commits
+the parts' briefs. The rules
+material lists each event's `risks` (`concern.risk` by its evidence params,
+or ruled out); the round's work list is `logika map`, and the lead
+dispatches a rules part per directory with gaps. Its end requires
+`report.md` and a parsing ledger (`tested` is optional), and commits
 `logika.json` too. The round itself reads Logika's docs through the
 `logika` CLI rather than copying them.
 
