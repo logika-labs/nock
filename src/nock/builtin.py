@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Annotated, Any, Literal, NotRequired, TypedDict
 
 from nock.checks import Checks
-from nock.commands import Option
+from nock.commands import Group, Option
 from nock.comparison import Comparison, Query
 from nock.configuration import Confirm
 from nock.consult import Advice, Consultant, Consultation
@@ -54,7 +54,7 @@ from nock.status import Standing
 from nock.studio import Studio
 from nock.telemetry import UNRECORDED_VARIABLE
 from nock.templates import SYNTAX
-from nock.tools import NATIVE_EVENTS, check, command
+from nock.tools import NATIVE_EVENTS, Tool, check, command
 from nock.usage import QUESTION, Moment, Usage
 
 
@@ -735,7 +735,9 @@ def upgrade(
 @check(name="nock-tools", paths=[".nock/**"])
 def tools_load_and_examples_run(project: Project, root: Path) -> list[str]:
     """Every tool loads, and every example a tool gives runs without being
-    called wrong or breaking."""
+    called wrong or breaking. A `confirm=True` tool's examples are only
+    parsed against its arguments, never run: running them would set off
+    what only the owner may, without asking."""
     problems = [f"does not load — {failure}" for failure in project.registry.failures]
     environment = {
         **os.environ,
@@ -752,6 +754,9 @@ def tools_load_and_examples_run(project: Project, root: Path) -> list[str]:
             continue
         for example in tool.command.examples:
             arguments = [*tool.command.path.split(), *shlex.split(example)]
+            if tool.confirm:
+                problems += example_parse_problems(tool, arguments)
+                continue
             try:
                 result = subprocess.run(
                     [sys.executable, "-m", "nock", *arguments],
@@ -771,6 +776,18 @@ def tools_load_and_examples_run(project: Project, root: Path) -> list[str]:
                     f"`{' '.join(arguments)}` ({tool.source}) exited {result.returncode}: {result.stderr.strip()[-600:]}"
                 )
     return problems
+
+
+def example_parse_problems(tool: Tool, arguments: list[str]) -> list[str]:
+    """Whether an example of a tool that is never run calls it right."""
+    group = Group("nock", "")
+    group.add(tool.command)
+    try:
+        _, namespace = group.parse(arguments)
+        tool.command.values(namespace)
+    except Error as error:
+        return [f"`{' '.join(arguments)}` ({tool.source}) is called wrong: {error}"]
+    return []
 
 
 @check(name="nock-generators")

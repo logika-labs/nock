@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import time
+from pathlib import Path
 
 from nock.checks import Checks, Outcome
 from nock.project import Project
@@ -115,6 +116,39 @@ def test_examples_are_run_so_a_broken_tool_fails_the_gate(project: Project) -> N
     assert "`rows --table users` (.nock/tools/db.py) exited 42" in result.stdout
     assert "the database is gone" in result.stdout
     assert project.store.rows("SELECT tool FROM calls WHERE tool = 'rows'") == []
+
+
+def release_tool(project: Project, examples: list[str]) -> Path:
+    """A `confirm=True` tool whose run leaves a marker file; the marker's path."""
+    marker = project.root / "released"
+    write_tool(
+        project,
+        "release",
+        "import nock\nfrom pathlib import Path\n\n"
+        f"@nock.command(confirm=True, examples={examples!r})\n"
+        "def release(version: str = 'next', *, push: bool = False) -> str:\n"
+        "    '''Tag and push a release.'''\n"
+        f"    Path({str(marker)!r}).write_text(version)\n"
+        "    return version\n",
+    )
+    return marker
+
+
+def test_a_confirm_tool_s_examples_are_parsed_never_run(project: Project) -> None:
+    marker = release_tool(project, ["", "1.2.3 --push"])
+    assert nock(project.root, "check", "nock-tools").returncode == 0
+    assert not marker.exists()
+    assert project.store.rows("SELECT tool FROM calls WHERE tool = 'release'") == []
+    assert nock(project.root, "release", "--help").stdout.count(".nock/nock release 1.2.3") == 1
+
+
+def test_a_confirm_tool_s_example_that_calls_it_wrong_fails_the_check(project: Project) -> None:
+    marker = release_tool(project, ["--psh", "a b"])
+    result = nock(project.root, "check", "nock-tools")
+    assert result.returncode == 1
+    assert "`release --psh` (.nock/tools/release.py) is called wrong" in result.stdout
+    assert "`release a b` (.nock/tools/release.py) is called wrong" in result.stdout
+    assert not marker.exists()
 
 
 def test_a_hook_needs_its_event_wired(project: Project) -> None:
