@@ -131,6 +131,7 @@
 :root .menu a[aria-current="page"],
 :root .button.primary,
 :root .notice button[data-share="true"] {
+  --one: var(--cyan); --two: var(--pink);
   background: #111116; color: #fff; border-color: #111116;
   box-shadow: 2px 2px 0 0 var(--one), -2px -2px 0 0 var(--two);
   transition: box-shadow .18s ease, background-color .18s;
