@@ -113,7 +113,7 @@
 :root .row .number { font: 600 14px/24px var(--mono); color: var(--foreground); }
 :root .row .title { font: 600 16px/24px var(--sans); }
 
-/* --- the topics' controls: the bar and the verdict tabs as one glass card --------------------- */
+/* --- the topics' controls: the bar on one glass card ----------------------------------------- */
 
 :root .controls {
   margin-top: 16px; padding: 0 18px 16px; border-radius: var(--radius);
