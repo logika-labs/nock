@@ -178,6 +178,13 @@
   const everyItem = () => state.topics.flatMap(topic => topic.items);
   const itemAt = ref => everyItem().find(item => item.ref === ref || (item.aliases || []).some(alias => ref === alias || ref === `D${alias}` || ref === `${item.topic}/${alias}`));
   const last = item => item.versions[item.versions.length - 1];
+  // An item's aliases: the numbers of the earlier decision it became, the refs it had before a move.
+  function wasOnce(item) {
+    const aliases = item.aliases || [];
+    const numbers = aliases.filter(alias => /^\d+$/.test(alias));
+    const refs = aliases.filter(alias => alias.includes("/"));
+    return (numbers.length ? ` · was decision ${escape(numbers.join(", "))}` : "") + (refs.length ? ` · was ${escape(refs.join(", "))}` : "");
+  }
   const versionOf = (item, number) => item.versions.find(version => version.version === number) || last(item);
   const fileUrl = (item, version, name) => `topics/file/${encodeURIComponent(item.topic)}/${encodeURIComponent(item.slug)}/${version.version}/${name.split("/").map(encodeURIComponent).join("/")}`;
   const texts = new Map();
@@ -474,7 +481,7 @@
     const wide = ["image", "text"].includes(kindOf(item)) ? " fullscreen" : "";
     studio.morph($("topics-main"), `<article class="sheet open page${wide}" data-key="item:${escape(item.ref)}" data-hue="${hue(item.topic)}">
       <button type="button" class="back" data-go="${escape(item.topic)}">← ${escape(item.topic)}</button>
-      <div class="section"><h2>${escape(item.title)}</h2><div class="where"><span>${escape(item.ref)}${item.aliases?.length ? ` · was decision ${escape(item.aliases.join(", "))}` : ""}</span>${badges(item)}</div>
+      <div class="section"><h2>${escape(item.title)}</h2><div class="where"><span>${escape(item.ref)}${wasOnce(item)}</span>${badges(item)}</div>
         <span class="hint">Version ${current.version}${current.version === latest.version ? ", the latest," : ""} made ${time(current.moment)}${current.role && current.role !== "interactive" ? ` by the ${escape(current.role)}` : ""}.</span></div>
       <div class="versions" data-key="versions">${picking}<span class="grow"></span>
         <button type="button" class="toggle" data-compare aria-pressed="${state.compare}" ${item.versions.length < 2 ? "disabled" : ""}><span class="switch" aria-hidden="true"><span></span></span>Compare</button></div>

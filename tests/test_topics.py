@@ -187,6 +187,50 @@ def test_only_an_open_item_the_owner_has_not_written_on_is_deleted(project: Proj
     assert git(project.root, "status", "--porcelain") == ""
 
 
+def test_an_item_moves_to_another_topic_whatever_its_verdict_and_its_old_refs_resolve(
+    project: Project, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    ref = submit(project.root, {**DECISION, "derived": [{"text": "big", "name": "big.txt"}]})
+    item = project.root / ".nock" / "topics" / "orders" / "orders-live-in-sqlite" / "item.json"
+    record = json.loads(item.read_text())
+    item.write_text(json.dumps({**record, "aliases": ["7"]}))
+    git(project.root, "commit", "-qam", "An earlier decision's number")
+    run(project.root, "items", "update", ref, "--reply", "Why not Postgres?")
+    judge(project.root, ref, "accepted")
+    open_topic(project.root, {"name": "storage", "description": "Where data is kept."})
+    taken = submit(project.root, DECISION, topic="storage")
+    assert taken == "storage/orders-live-in-sqlite"
+    (project.root / ".nock" / "topics" / "map.md").write_text(f"- [{ref}] and [D7] hold.\n")
+    git(project.root, "add", "-A")
+    git(project.root, "commit", "-qm", "The map")
+    topics = Topics(project)
+    monkeypatch.setattr("nock.topics.LARGE", 2)
+    topics.update_item(ref, None, version={"derived": [{"text": "bigger", "name": "big.txt"}]})
+    large = project.local / "topics" / "orders" / "orders-live-in-sqlite" / "2" / "big.txt"
+    assert large.is_file()
+    moved = run(project.root, "items", "update", ref, json.dumps({"topic": "storage"}))
+    assert moved["ref"] == "storage/orders-live-in-sqlite-2"
+    record = topics.item(moved["ref"])
+    assert record["verdict"] == "open" and record["thread"][0]["text"] == "Why not Postgres?"
+    assert [version["version"] for version in record["versions"]] == [1, 2]
+    assert record["aliases"] == ["7", ref]
+    assert topics.item("7")["ref"] == topics.item("D7")["ref"] == topics.item(ref)["ref"]
+    assert topics.item("storage/7")["ref"] == moved["ref"]
+    assert (
+        project.local / "topics" / "storage" / "orders-live-in-sqlite-2" / "2" / "big.txt"
+    ).is_file()
+    assert topics.file("storage", "orders-live-in-sqlite-2", 1, "big.txt").read_text() == "big"
+    assert topics.citation_problems() == []
+    assert not (project.root / ".nock" / "topics" / "orders" / "orders-live-in-sqlite").exists()
+    assert git(project.root, "status", "--porcelain") == ""
+    judge(project.root, moved["ref"], "accepted")
+    again = run(project.root, "items", "update", moved["ref"], json.dumps({"topic": "orders"}))
+    assert again["ref"] == "orders/orders-live-in-sqlite-2" and again["verdict"] == "accepted"
+    assert topics.item(ref)["aliases"] == ["7", ref, "storage/orders-live-in-sqlite-2"]
+    refused = nock(project.root, "items", "update", ref, json.dumps({"topic": "nowhere"}))
+    assert refused.returncode != 0 and "no topic 'nowhere'" in refused.stderr
+
+
 def test_list_summarises_what_is_open_and_what_awaits_an_agent_unless_full(
     project: Project, page: str
 ) -> None:

@@ -541,7 +541,11 @@ the record says so (`"local": true`).
 - **Work changes an item.** `nock items update REF '{…}'` changes an open
   item in place. `--version '{…}'` adds a version — what it leaves out
   carried over, project files copied again as they are now — and reopens a
-  decided item: an accepted or rejected one changes only so. `items delete
+  decided item: an accepted or rejected one changes only so. `{"topic":
+  "OTHER"}` moves an item, whatever its verdict, to another existing topic —
+  re-filing, not editing: its versions, files and thread go with it, its
+  slug is kept (suffixed if taken there), and its old ref and decision
+  number still resolve, so citations of it hold. `items delete
   REF` removes only an open item the owner has not written on; `topics delete`
   only an empty topic; git keeps both.
 - **A finished topic comes back.** A topic whose items are all decided is

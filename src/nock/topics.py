@@ -160,6 +160,9 @@ class ItemDraft(Content):
 
 class ItemChange(Content):
     title: NotRequired[str]
+    topic: NotRequired[str]
+    """Move it to this existing topic: re-filing, whatever its verdict; its slug
+    kept (suffixed if taken there), its old ref kept as an alias."""
     brief: NotRequired[str]
     branch: NotRequired[str]
     worktree: NotRequired[str]
@@ -279,15 +282,18 @@ class Topics:
         return [item for name in self.names() for item in self.items(name)]
 
     def resolve(self, ref: str) -> tuple[str, str]:
-        """A ref's topic and slug: `topic/slug`, or a number an item keeps as an
-        alias (`170`, `D170`, `topic/170`)."""
+        """A ref's topic and slug: `topic/slug`, a number an item keeps as an
+        alias (`170`, `D170`, `topic/170`), or a ref it had before it moved."""
         ref = ref.strip().strip("/")
         topic, _, slug = ref.rpartition("/")
         if topic and (self.directory / topic / slug / ITEM_FILE).is_file():
             return topic, slug
         alias = slug.removeprefix("D")
-        for item in self.every() if topic == "" or alias != slug or slug.isdigit() else []:
-            if alias in item.get("aliases", []) and topic in ("", item["topic"]):
+        for item in self.every():
+            aliases = item.get("aliases", [])
+            if ref in aliases or (
+                alias.isdigit() and alias in aliases and topic in ("", item["topic"])
+            ):
                 return item["topic"], item["slug"]
         if topic:
             self.topic(topic)
@@ -621,10 +627,15 @@ class Topics:
     ) -> tuple[dict[str, Any], str | None]:
         if not change and version is None and reply is None:
             raise UsageError("nothing to do: give a change, `--version`, or `--reply`")
+        change = ItemChange(**change) if change else None
+        moving = change.pop("topic", None) if change else None
         with self.project.lock("topics"):
             item = self.item(ref)
-            topic = item["topic"]
             said = []
+            touched = [self.directory / item["topic"] / item["slug"]]
+            if moving is not None:
+                said.append(self.move(item, moving))
+            topic = item["topic"]
             if change:
                 if item["verdict"] != Verdict.OPEN:
                     raise ConflictError(
@@ -667,9 +678,35 @@ class Topics:
                 item["task"]["heard"] = now()
             path = self.save_item(topic, item)
             return self.with_ref(topic, item), self.commit(
-                [path.parent, self.large / topic / item["slug"]],
+                [*touched, path.parent, self.large / topic / item["slug"]],
                 f"Item {topic}/{item['slug']}, {', '.join(said)}: {item['title']}",
             )
+
+    def move(self, item: dict[str, Any], target: str) -> str:
+        """Re-file an item in another topic, whatever its verdict: its folders
+        (and large files) moved, its slug kept unless taken there, its old ref
+        an alias, so citations of it still resolve."""
+        source, slug = item["topic"], item["slug"]
+        target = target.strip()
+        if target == source:
+            raise UsageError(f"{item['ref']} is in {target} already")
+        self.topic(target)
+        taken = {other["slug"] for other in self.items(target)}
+        moved, number = slug, 2
+        while moved in taken:
+            moved, number = f"{slug}-{number}", number + 1
+        (self.directory / target).mkdir(parents=True, exist_ok=True)
+        (self.directory / source / slug).rename(self.directory / target / moved)
+        if (self.large / source / slug).is_dir():
+            (self.large / target).mkdir(parents=True, exist_ok=True)
+            (self.large / source / slug).rename(self.large / target / moved)
+        old, new = item["ref"], f"{target}/{moved}"
+        item["aliases"] = [*item.get("aliases", []), old]
+        item["slug"], item["topic"], item["ref"] = moved, target, new
+        with self.project.store.connection() as connection:
+            for table in ("told", "shown_items"):
+                connection.execute(f"UPDATE {table} SET item = ? WHERE item = ?", (new, old))
+        return f"moved from {old}"
 
     def set_task(self, item: dict[str, Any], fields: dict[str, Any]) -> None:
         """Fold a task's fields in: running starts its clock, waiting names

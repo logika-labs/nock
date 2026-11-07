@@ -446,7 +446,8 @@ def items_update(
     """Change an open item in place (its title, decision, files), add a new
     version — project files copied again as they are now, a decided item
     reopened — or answer in its thread. An accepted or rejected item changes
-    only by a new version. Rework a rejected item as a new version; when the
+    only by a new version; any item moves to another existing topic
+    (`{"topic": "OTHER"}`), its old ref kept as an alias. Rework a rejected item as a new version; when the
     owner is away, say briefly in the thread what changed, unless the new
     version says it. A task's state changes in place (`{"state": "running"}`;
     waiting with `waiting_on`; done accepts it, failed leaves it open for the
