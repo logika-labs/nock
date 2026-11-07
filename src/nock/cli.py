@@ -17,6 +17,7 @@ from nock import hooks
 from nock.commands import FRESH_FLAG, FULL_FLAG, JSON_FLAG, Command, Group
 from nock.configuration import Confirm
 from nock.decisions import Decisions
+from nock.docs import Article
 from nock.environment import Environment
 from nock.errors import Error, Exit, ExitCode, PreconditionError, UsageError
 from nock.fixtures import Call, Scope
@@ -318,7 +319,7 @@ class Invocation:
                 return full, full
             return result.excerpt(self.characters()), full
         full = render(result)
-        if options.get(FULL_FLAG) or not full:
+        if options.get(FULL_FLAG) or not full or isinstance(result, Article):
             return full, full
         project = self.project
         rows = int(project.configuration.get("output.rows")) if project else 60

@@ -102,7 +102,10 @@ uvx nock init
   per command, except `run` (it runs any command, so Claude Code treats it
   as that command) and the commands that need the owner's word, which Claude
   Code asks about (see [What nock's agents may do](#what-nocks-agents-may-do));
-- installs the skills, and the subagents a round's parts run as.
+- installs the skills, and the subagents a round's parts run as. Each is
+  its trigger and one line, "Run `.nock/nock docs TERM` and do what it
+  says.": the text it follows is in nock's docs, so it always matches the
+  vendored core, and an upgrade never rewrites a skill.
 
 Commit the result. From then on, every agent session in the repository starts
 with the project's tools listed, and is recorded when it ends. nock speaks up

@@ -1,3 +1,11 @@
+---
+term: reflection.logika.rules
+aliases: []
+description: The rules part's brief: what must hold in logika.json, from promises, code and captures
+---
+
+You are the rules part of a logika round. Your material and the round's window come in the prompt.
+
 # From promises to rules
 
 This is the rules part of a logika round: what must hold. The analytics
@@ -226,3 +234,16 @@ each candidate with its promise, its form for `logika.json` (params, events'
 margin, the proofs you ran, the breach to plant, and the fields it needs;
 then the questions only the owner can settle, each with your answer. The
 lead writes them, and `.nock/nock reflect logika finish` commits.
+
+# What you may do
+
+You may read anything in the repository and run `logika` and `.nock/nock`
+commands to read captures and check candidates (`logika query`, `logika
+test`, `logika check`). You change no file, through a tool or a command:
+the analytics part reads the same tree at the same time, and the round's
+lead plants breaches in it, adds the instrumentation you ask for, edits
+`logika.json` and commits. Claude Code's permissions are the
+session's, so a command they don't allow is refused or waits for the owner.
+When a call is refused, say in your report what you needed and why, and go
+on without it: working around it (another command doing the same, a script,
+a file written elsewhere) would defeat the owner's permissions.

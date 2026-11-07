@@ -1,6 +1,6 @@
 ---
 term: reflection.logika
-aliases: [logika-round, nock-reflect-logika]
+aliases: [logika-round]
 description: The logika round: rules and analytics for the ledger, from the data, with the owner
 ---
 

@@ -2,7 +2,9 @@
 each a file in `terms/` named by its dotted term (`tools.caching.md`), opening
 with front matter — `term`, `aliases`, `description` — between `---` lines.
 A dotted term is a child of the term before its last dot, which must exist;
-an article lists its children."""
+an article lists its children. A term in `terms/briefs/` is a brief a skill or
+a subagent nock installs follows (`Run .nock/nock docs TERM and do what it
+says.`), so it may run long, and is printed whole."""
 
 from __future__ import annotations
 
@@ -15,8 +17,10 @@ from pathlib import Path
 from nock.errors import NotFoundError, PreconditionError
 
 TERMS = Path(__file__).resolve().with_name("terms")
-# The longest article and description, in characters.
+BRIEFS = "briefs"
+# The longest article and description, in characters; a brief's article may be longer.
 LIMIT = 500
+BRIEF_LIMIT = 16000
 DESCRIPTION_LIMIT = 100
 FIELDS = ("term", "aliases", "description")
 NAME = re.compile(r"^[a-z0-9-]+(\.[a-z0-9-]+)*$")
@@ -25,6 +29,11 @@ SUGGESTIONS = 3
 
 class TermError(PreconditionError):
     """A term file that breaks the rules, naming the file."""
+
+
+class Article(str):
+    """An article as `nock docs` prints it: whole, never capped, since an agent
+    follows it to the end."""
 
 
 @dataclass(frozen=True)
@@ -43,7 +52,7 @@ class Term:
         return self.term.rpartition(".")[0] or None
 
 
-def parse(path: Path) -> Term:
+def parse(path: Path, limit: int = LIMIT) -> Term:
     """The term in `path`, or a TermError saying what is wrong with it."""
 
     def fail(problem: str) -> TermError:
@@ -83,8 +92,8 @@ def parse(path: Path) -> Term:
     if not description or len(description) > DESCRIPTION_LIMIT:
         raise fail(f"the description is {len(description)} characters; 1 to {DESCRIPTION_LIMIT}")
     article = body.strip()
-    if not article or len(article) > LIMIT:
-        raise fail(f"the article is {len(article)} characters; 1 to {LIMIT}")
+    if not article or len(article) > limit:
+        raise fail(f"the article is {len(article)} characters; 1 to {limit}")
     return Term(term, aliases, description, article)
 
 
@@ -92,7 +101,9 @@ class Docs:
     """Every term in `directory`, parents before their children."""
 
     def __init__(self, directory: Path = TERMS) -> None:
-        terms = [parse(path) for path in directory.glob("*.md")]
+        terms = [parse(path) for path in directory.glob("*.md")] + [
+            parse(path, BRIEF_LIMIT) for path in (directory / BRIEFS).glob("*.md")
+        ]
         self.terms = sorted(terms, key=lambda term: term.term.split("."))
 
     def problems(self) -> list[str]:
@@ -129,7 +140,7 @@ class Docs:
         more = [f"- `.nock/nock docs {child.term}`: {child.description}" for child in children]
         return "\n\n".join([term.article, "More:\n" + "\n".join(more)])
 
-    def read(self, words: list[str]) -> str:
+    def read(self, words: list[str]) -> Article:
         """The articles `words` name, one after another; NotFoundError for any
         name that isn't a term, with the closest."""
         found: list[Term] = []
@@ -142,8 +153,8 @@ class Docs:
                 )
             found.append(term)
         if len(found) == 1:
-            return self.article(found[0])
-        return "\n\n".join(f"# {term.term}\n\n{self.article(term)}" for term in found)
+            return Article(self.article(found[0]))
+        return Article("\n\n".join(f"# {term.term}\n\n{self.article(term)}" for term in found))
 
     def closest(self, word: str) -> list[Term]:
         """The terms nearest `word`: those with a name it nearly spells, then

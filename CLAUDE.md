@@ -33,7 +33,7 @@ Schema subset in `schema.py`.
 - The README is the product's documentation; keep it true when behavior
   changes; nock.dev's docs page is built from it (`web/`, the site, outside
   the vendored core: `web/README.md`). `terms/` is the agents' documentation
-  (`nock docs`, a short article per term, which the briefs point at): keep it
+  (`nock docs`, a short article per term, which the briefs point at; `terms/briefs/` the long texts every installed skill and subagent points at): keep it
   true too.
 
 ## How the code is shaped

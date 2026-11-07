@@ -238,8 +238,8 @@ def test_a_round_s_parts_are_subagents_with_only_the_tools_they_need(project: Pr
         "nock-reflect-map": "Read, Grep, Glob, Edit, Bash",
         "nock-reflect-nock": "Read, Grep, Glob, Bash",
     }
-    skill = (project.root / ".claude" / "skills" / "nock-reflect" / "SKILL.md").read_text()
-    assert all(f"`{name}`" in skill for name in tools)
+    lead = nock(project.root, "docs", "reflection.lead").stdout
+    assert all(f"`{name}`" in lead for name in tools)
 
 
 @pytest.mark.parametrize("option", ["--output=leak.txt", "--outp=leak.txt", "--ou=leak.txt"])

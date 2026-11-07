@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from nock.docs import DESCRIPTION_LIMIT, LIMIT, NAME, TERMS, Docs, TermError
+from nock.docs import BRIEF_LIMIT, BRIEFS, DESCRIPTION_LIMIT, LIMIT, NAME, TERMS, Docs, TermError
 from nock.project import Project
 
 from .conftest import nock
@@ -43,9 +43,11 @@ def write_term(directory: Path, term: str, front: str, article: str = "An articl
 def test_every_term_holds_to_the_rules() -> None:
     docs = Docs()
     assert docs.problems() == []
-    assert len(docs.terms) == len(list(TERMS.glob("*.md")))
+    briefs = {path.stem for path in (TERMS / BRIEFS).glob("*.md")}
+    assert len(docs.terms) == len(list(TERMS.glob("*.md"))) + len(briefs)
     for term in docs.terms:
-        assert len(term.article) <= LIMIT and len(term.description) <= DESCRIPTION_LIMIT
+        limit = BRIEF_LIMIT if term.term in briefs else LIMIT
+        assert len(term.article) <= limit and len(term.description) <= DESCRIPTION_LIMIT
         assert all(NAME.match(name) for name in term.names)
     assert [term.term for term in docs.terms][:2] == ["checks", "checks.chains"]
 
@@ -110,16 +112,48 @@ def test_nock_docs_lists_the_terms_reads_them_and_answers_a_miss(project: Projec
 def test_the_briefs_point_only_at_terms_and_the_toolbox_brief_at_the_framework() -> None:
     docs = Docs()
     named: dict[str, set[str]] = {}
-    sources = [*PACKAGE.joinpath("briefs").rglob("*.md"), *PACKAGE.parent.parent.glob("*.md")]
+    sources = [
+        *PACKAGE.joinpath("briefs").rglob("*.md"),
+        *(TERMS / BRIEFS).glob("*.md"),
+        *PACKAGE.parent.parent.glob("*.md"),
+    ]
     for path in sources:
         for pointer in POINTER.findall(path.read_text()):
             for word in pointer.split():
                 if word != "--full":
                     assert docs.find(word), f"{path.name} points at `{word}`, not a term"
                     named.setdefault(path.name, set()).add(word)
-    toolbox = named["process.md"]
+    toolbox = named["reflection.toolbox.md"]
     for term in docs.terms:
         if term.term.split(".")[0] in FRAMEWORK:
             assert term.term in toolbox, f"the toolbox brief doesn't point at {term.term}"
-    for brief in ("SKILL.md", "consult.md", "elaborate.md", "knowledge.md", "nock.md"):
+    for brief in ("consult.md", "elaborate.md", "reflection.map.md", "reflection.nock.md"):
         assert brief in named, brief
+
+
+def test_every_skill_and_subagent_nock_installs_points_at_its_brief() -> None:
+    """Their text lives in `nock docs`, so it always matches the vendored core
+    and an upgrade never rewrites a skill: each keeps only its front matter
+    and one line."""
+    docs = Docs()
+    installed = [
+        path
+        for path in PACKAGE.joinpath("briefs").rglob("*.md")
+        if path.name == "SKILL.md" or path.parent.name == "agents"
+    ]
+    assert len(installed) == 8
+    for path in installed:
+        front, _, body = path.read_text()[4:].partition("\n---\n")
+        name = path.parent.name if path.name == "SKILL.md" else path.stem
+        assert front.startswith(f"name: {name}\ndescription: "), path
+        pointer = re.fullmatch(
+            r"Run `\.nock/nock docs ([a-z.-]+)` and do what it says\.", body.strip()
+        )
+        assert pointer and docs.find(pointer.group(1)), path
+
+
+def test_a_brief_is_printed_whole_however_long(project: Project) -> None:
+    printed = nock(project.root, "docs", "reflection.logika.rules")
+    assert printed.returncode == 0, printed.stderr
+    article = Docs().find("reflection.logika.rules").article  # pyright: ignore[reportOptionalMemberAccess]
+    assert len(article) > 8000 and printed.stdout.strip() == article

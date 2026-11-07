@@ -103,11 +103,18 @@ decision governs shows it.
 """
 
 IMPORT_LINE = "@.nock/context.md"
-# Claude Code skills, from `briefs/NAME/` (a SKILL.md and what it reads), besides
-# each kind of round's where it is wanted.
+# Claude Code skills, from `briefs/NAME/`, besides each kind of round's where it is
+# wanted. Each SKILL.md and subagent (`agents/`) is its trigger and one line pointing
+# at its brief in `nock docs`, so the text always matches the vendored core and an
+# upgrade never rewrites a skill.
 SKILLS = ("nock-triage",)
 # Skills earlier versions installed, removed on install.
 RETIRED_SKILLS = ("reflect", "consolidate")
+# The briefs earlier versions installed beside a skill, now `nock docs` terms.
+RETIRED_SKILL_FILES = {
+    "nock-reflect": ("process.md", "knowledge.md", "nock.md"),
+    "nock-reflect-logika": ("rules.md", "analytics.md"),
+}
 HOOK_COMMAND = '"$CLAUDE_PROJECT_DIR"/.nock/nock hook {event}'
 # The rules nock writes into `.claude/settings.json`, and no others: one per
 # command, so the file says exactly what an agent runs unasked.
@@ -257,6 +264,12 @@ class Installer:
                 relative = f".claude/agents/{source.name}"
                 write_atomic(self.root / relative, library.render(f"{name}/agents/{source.name}"))
                 self.report.written.append(relative)
+        for name, files in RETIRED_SKILL_FILES.items():
+            for file in files:
+                path = self.root / ".claude" / "skills" / name / file
+                if path.is_file():
+                    path.unlink()
+                    self.report.written.append(f"removed .claude/skills/{name}/{file}")
         for name in RETIRED_SKILLS:
             skill = self.root / ".claude" / "skills" / name / "SKILL.md"
             if skill.is_file() and skill.read_text().startswith(f"---\nname: {name}\n"):

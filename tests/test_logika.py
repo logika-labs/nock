@@ -112,8 +112,10 @@ def test_init_installs_the_logika_skill_in_a_logika_project(logika: Project) -> 
     skill = logika.root / ".claude" / "skills" / "nock-reflect-logika"
     lead = (skill / "SKILL.md").read_text()
     assert lead.startswith("---\nname: nock-reflect-logika\n")
-    assert "`.nock/nock reflect logika` prints" in lead
-    assert "## 6. Prove each rule three ways" in (skill / "rules.md").read_text()
+    assert lead.endswith("Run `.nock/nock docs reflection.logika.lead` and do what it says.\n")
+    assert {path.name for path in skill.iterdir()} == {"SKILL.md"}
+    rules = (logika.root / ".claude" / "agents" / "nock-logika-rules.md").read_text()
+    assert rules.endswith("Run `.nock/nock docs reflection.logika.rules` and do what it says.\n")
 
 
 def test_the_material_says_what_the_ledger_holds_and_what_was_decided(logika: Project) -> None:

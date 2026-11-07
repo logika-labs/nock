@@ -77,13 +77,17 @@ src/nock/
   docs.py            Docs: the terms of `nock docs`, parsed and validated; the closest to a miss
   terms/             one article per term (`tools.caching.md`): front matter term, aliases,
                      description; at most 500 characters. The briefs point at the terms
+    briefs/          the long texts the installed skills and subagents follow:
+                     reflection.lead and its parts reflection.toolbox, .map, .nock;
+                     reflection.logika.lead and its parts .rules, .analytics;
+                     decisions.triage
   briefs/
-    nock-reflect/    the `/nock-reflect` skill: SKILL.md (the lead) and its three parts'
-                     briefs — process.md, knowledge.md, nock.md
-    nock-reflect-logika/  the `/nock-reflect-logika` skill, installed in Logika projects only:
-                     SKILL.md (the round, with the owner) and its two parts' briefs,
-                     rules.md (from data to rules) and analytics.md (from questions to analytics)
-    nock-triage/     the `/nock-triage` skill: going through decisions with the owner
+    nock-reflect/    the `/nock-reflect` skill (SKILL.md) and its three parts' subagent
+                     types (agents/): each its front matter and one line pointing at
+                     its brief in `nock docs`
+    nock-reflect-logika/  the `/nock-reflect-logika` skill and its two parts' subagent types,
+                     installed in Logika projects only; pointers likewise
+    nock-triage/     the `/nock-triage` skill, a pointer to `decisions.triage`
     elaborate.md     the brief of the agent that elaborates on a decision
     consult.md       the consultant's brief
     share.md         the brief of the agent that vets a summary before it is shared
@@ -314,7 +318,9 @@ merge. What is shared is the reflection record (see below).
 
 `nock docs` serves `terms/`, one Markdown file per term, named by it
 (`tools.caching.md`). Its front matter holds `term`, `aliases` and a
-one-line `description` (at most 100 characters); the article is at most 500.
+one-line `description` (at most 100 characters); the article is at most 500,
+but for the briefs in `terms/briefs/`, which may run to 16,000 and are
+printed whole (`docs.Article`, which the output cap passes through).
 A dotted term is the child of the term before its last dot, and its parent's
 article ends by listing it. `docs.Docs` reads them all on each call, sorted
 parents first; `problems` finds a name taken twice or a child without its
@@ -323,6 +329,11 @@ closest: names it nearly spells (`difflib`), then the articles that mention
 it most, then the most alike names. The briefs name the terms their agents
 read (`.nock/nock docs TERM …`), and a test holds each name to a term. A new
 area is a new root term with its children, such as `eval.*`.
+
+Every skill and subagent nock installs is its front matter (the trigger)
+and one line, "Run `.nock/nock docs TERM` and do what it says.": the text
+it follows is a brief term, so it always matches the vendored core, and an
+upgrade changes what a skill says without rewriting the skill.
 
 ## The loop
 
@@ -546,7 +557,9 @@ the end of a turn of a session that started a round still open, with
 and the finish to run.
 
 nock's own kind is the `/nock-reflect` skill in an ordinary session. `nock init`
-renders `briefs/nock-reflect/` into `.claude/skills/nock-reflect/`; the
+renders `briefs/nock-reflect/` into `.claude/skills/nock-reflect/`, a pointer
+at `reflection.lead`; each part's subagent points at its brief
+(`reflection.toolbox`, `reflection.map`, `reflection.nock`), and the
 toolbox brief names the `nock docs` terms the part reads before writing.
 
 1. **Start.** `nock reflect` catches up on transcripts
@@ -594,7 +607,8 @@ and the session start says it at most once a week (`nudged` keys
 its two parts' material from the ledger, git and the decisions tagged
 `logika`: `rules.md` (`logika.Material`) and `analytics.md`
 (`logika.Analytics`: params and their flags, funnels, milestones, views);
-the skill's `rules.md` and `analytics.md` briefs are the parts'. Its end
+the `reflection.logika.rules` and `reflection.logika.analytics` terms are
+the parts' briefs. Its end
 requires `report.md`, a parsing ledger and a `tested` on every rule
 changed (validate, path, timeout, rule, invariant, error), and commits
 `logika.json` too. The round itself reads Logika's docs through the
@@ -741,7 +755,7 @@ Everything a project adds lives in `.nock/` and is committed:
 | generated file | `.nock/tools/*.py` | `@nock.generator(path)` | `generators.Generators` |
 | catalog | `.nock/generators/NAME/` | `nock gen new` | `generators.Catalog` |
 | brief | `.nock/briefs/NAME.md` (elaborate, consult) | the file's presence | `templates.Library`, before the packaged briefs |
-| skill | `.claude/skills/nock-reflect/`, `.claude/skills/nock-triage/`, `.claude/skills/nock-reflect-logika/` (Logika projects) | `nock init` | Claude Code; `nock init` rewrites them, and removes the retired `reflect` and `consolidate` |
+| skill | `.claude/skills/nock-reflect/`, `.claude/skills/nock-triage/`, `.claude/skills/nock-reflect-logika/` (Logika projects) | `nock init` | Claude Code; `nock init` rewrites them, and removes the retired `reflect` and `consolidate` and the briefs earlier versions put beside a skill |
 | settings | `.nock/config.toml`, `.nock/local/config.toml` | — | `configuration.Configuration` |
 | the core itself | `.nock/core/nock/` | edit it | kept by `nock upgrade`'s three-way merge |
 

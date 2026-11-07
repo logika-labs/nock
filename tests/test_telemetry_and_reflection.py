@@ -309,21 +309,23 @@ def test_a_summary_is_vetted_and_shared_only_when_sent(
 def test_init_installs_the_skills_and_retires_the_old_ones(project: Project) -> None:
     skills = project.root / ".claude" / "skills"
     lead = (skills / "nock-reflect" / "SKILL.md").read_text()
-    assert lead.startswith("---\nname: nock-reflect\n") and "`.nock/nock reflect` prints" in lead
-    process = (skills / "nock-reflect" / "process.md").read_text()
-    assert ".nock/nock docs --full tools tools.signature" in process
-    assert {path.name for path in (skills / "nock-reflect").iterdir()} == {
-        "SKILL.md",
-        "process.md",
-        "knowledge.md",
-        "nock.md",
-    }
+    assert lead.startswith("---\nname: nock-reflect\n")
+    assert lead.endswith("\n---\n\nRun `.nock/nock docs reflection.lead` and do what it says.\n")
+    assert "`.nock/nock reflect` prints" in nock(project.root, "docs", "reflection.lead").stdout
+    assert {path.name for path in (skills / "nock-reflect").iterdir()} == {"SKILL.md"}
+    toolbox = (project.root / ".claude" / "agents" / "nock-reflect-toolbox.md").read_text()
+    assert toolbox.endswith("Run `.nock/nock docs reflection.toolbox` and do what it says.\n")
+    assert ".nock/nock docs --full tools tools.signature" in (
+        nock(project.root, "docs", "reflection.toolbox").stdout
+    )
+    stale = skills / "nock-reflect" / "process.md"
+    stale.write_text("an earlier version's brief\n")
     assert (skills / "nock-triage" / "SKILL.md").read_text().startswith("---\nname: nock-triage\n")
     old = skills / "consolidate" / "SKILL.md"
     old.parent.mkdir()
     old.write_text("---\nname: consolidate\n---\n")
     assert nock(project.root, "init").returncode == 0
-    assert not old.parent.exists()
+    assert not old.parent.exists() and not stale.exists()
 
 
 def test_a_round_s_window_opens_at_its_moment_whatever_the_machine_s_time_zone(
