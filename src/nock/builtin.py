@@ -273,6 +273,14 @@ def not_committed(result: dict[str, Any], problem: str | None) -> dict[str, Any]
     return result
 
 
+def answered(record: dict[str, Any], reply: str | None) -> dict[str, Any]:
+    """`answered`, when the reply answered the owner's waiting message: the
+    page shows them it is in, and opens their chat again."""
+    if reply is not None and record["thread"] and "answers" in record["thread"][-1]:
+        return {"answered": record["thread"][-1]["answers"]}
+    return {}
+
+
 def listed(rows: list[Any], full: bool, summary: dict[str, Any] | None) -> dict[str, Any]:
     """A list as `list` prints it: the summary first and the list cut short,
     or with `--full` the whole list and no summary."""
@@ -321,7 +329,13 @@ def topics_update(
     topic: str,
     change: TopicChange = {},  # noqa: B006
     *,
-    reply: Annotated[str | None, Option(help="Add this message (markdown) to its thread.")] = None,
+    reply: Annotated[
+        str | None,
+        Option(
+            help="Add this message (markdown) to its thread: the one answer to the owner's"
+            " waiting message, when there is one."
+        ),
+    ] = None,
     revive: Annotated[
         str | None, Option(help="Bring a finished topic back, saying why (markdown).")
     ] = None,
@@ -330,7 +344,7 @@ def topics_update(
     thread, or revive it when it was finished and the work comes back: the
     note says why it is back and reads as its description from then on."""
     record, problem = Topics(project).update_topic(topic, change, reply, revive)
-    return not_committed({"name": record["name"]}, problem)
+    return not_committed({"name": record["name"], **answered(record, reply)}, problem)
 
 
 @command(name="delete", group="topics")
@@ -452,7 +466,13 @@ def items_update(
         str | None,
         Option(help="JSON: a new version (what it leaves out is carried over); reopens the item."),
     ] = None,
-    reply: Annotated[str | None, Option(help="Add this message (markdown) to its thread.")] = None,
+    reply: Annotated[
+        str | None,
+        Option(
+            help="Add this message (markdown) to its thread: the one answer to the owner's"
+            " waiting message, when there is one."
+        ),
+    ] = None,
 ) -> dict[str, Any]:
     """Change an open item in place (its title, decision, files), add a new
     version — project files copied again as they are now, a decided item
@@ -467,7 +487,12 @@ def items_update(
         item, change or None, parsed_version(version), reply
     )
     return not_committed(
-        {"ref": record["ref"], "verdict": record["verdict"], "versions": len(record["versions"])},
+        {
+            "ref": record["ref"],
+            "verdict": record["verdict"],
+            "versions": len(record["versions"]),
+            **answered(record, reply),
+        },
         problem,
     )
 

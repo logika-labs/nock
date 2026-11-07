@@ -38,10 +38,10 @@ from nock.evaluation import Evaluations, Run
 from nock.explorer import Explorer, View
 from nock.project import Project
 from nock.schema import validate
-from nock.topics import Author, Topics, Verdict
+from nock.topics import Author, Topics, Verdict, chat_state
 from nock.topics import Word as Verdicted
 from nock.usage import QUESTION, Answer, Usage, sharing
-from nock.utils import now
+from nock.utils import now, read_json, write_json
 
 PACKAGE = Path(__file__).resolve().parent
 PAGES = PACKAGE / "pages"
@@ -164,7 +164,6 @@ class Judged(TypedDict):
     ref: NotRequired[str]
     topic: NotRequired[str]
     verdict: Verdict
-    comment: NotRequired[str]
 
 
 class Replied(TypedDict):
@@ -175,8 +174,31 @@ class Replied(TypedDict):
     text: str
 
 
+class Where(TypedDict):
+    """An item's thread (`ref`) or a topic's."""
+
+    ref: NotRequired[str]
+    topic: NotRequired[str]
+
+
 class Question(TypedDict):
     question: str
+
+
+class Seen:
+    """When the owner last looked at each chat, kept on this machine
+    (`.nock/local/studio/seen.json`): what the agent said since is new."""
+
+    def __init__(self, project: Project) -> None:
+        self.path = project.local / "studio" / "seen.json"
+        self.lock = threading.Lock()
+
+    def all(self) -> dict[str, str]:
+        return read_json(self.path) if self.path.is_file() else {}
+
+    def look(self, where: str) -> None:
+        with self.lock:
+            write_json(self.path, {**self.all(), where: now()})
 
 
 class Asking:
@@ -240,10 +262,13 @@ class Asking:
 
 class TopicsTab(Tab):
     """`GET /topics` every topic with its items (each version's decision and
-    files) and the question being asked; `GET /topics/file/TOPIC/SLUG/N/NAME`
-    one of a version's files, as it is; `POST /topics/judge` the owner's
-    verdict on an item or a whole topic, `/reply` their message in a thread,
-    `/ask` a question about the topics (one at a time), `/ask/cancel` stops it."""
+    files), where each chat stands (`chat`: pending, unseen) and the question
+    being asked; `GET /topics/file/TOPIC/SLUG/N/NAME` one of a version's
+    files, as it is; `POST /topics/judge` the owner's verdict on an item or a
+    whole topic, `/reply` their message in a chat, `/withdraw` takes it back
+    while it waits for its answer, `/seen` records that they looked at a
+    chat, `/ask` a question about the topics (one at a time), `/ask/cancel`
+    stops it."""
 
     name = "topics"
     title = "Topics"
@@ -252,6 +277,7 @@ class TopicsTab(Tab):
         super().__init__(project)
         self.topics = Topics(project)
         self.asking = Asking(project)
+        self.seen = Seen(project)
 
     def fragment(self) -> str:
         return f"<style>\n{(PAGES / 'topics.css').read_text()}</style>\n" + super().fragment()
@@ -270,6 +296,7 @@ class TopicsTab(Tab):
 
     def everything(self) -> list[dict[str, Any]]:
         found = []
+        seen = self.seen.all()
         for name in self.topics.names():
             record = self.topics.topic(name)
             items = self.topics.items(name)
@@ -280,7 +307,16 @@ class TopicsTab(Tab):
                     "finished": self.topics.finished(record, items),
                     "active": self.topics.activity(record, items),
                     "counts": self.topics.counts(items),
-                    "items": [self.topics.shown(item) for item in items],
+                    "chat": chat_state(record["thread"], seen.get(name)),
+                    "items": [
+                        {
+                            **self.topics.shown(item),
+                            "chat": chat_state(
+                                item["thread"], seen.get(item["ref"]), item.get("decided")
+                            ),
+                        }
+                        for item in items
+                    ],
                 }
             )
         return sorted(found, key=lambda topic: topic["active"], reverse=True)
@@ -288,7 +324,7 @@ class TopicsTab(Tab):
     def post(self, route: str, body: Any) -> Any:
         if route == "judge":
             validate(body, schema_of(Judged))
-            word = Verdicted(verdict=body["verdict"], comment=body.get("comment", ""))
+            word = Verdicted(verdict=body["verdict"])
             if "ref" in body:
                 return {"judged": [self.topics.judge(body["ref"], word)[0]["ref"]]}
             if "topic" in body:
@@ -304,6 +340,19 @@ class TopicsTab(Tab):
             else:
                 self.topics.update_topic(body["topic"], {}, reply=body["text"], author=Author.OWNER)
             return {"replied": where}
+        if route == "withdraw":
+            validate(body, schema_of(Where))
+            return {"text": self.topics.withdraw(body.get("ref"), body.get("topic"))}
+        if route == "seen":
+            validate(body, schema_of(Where))
+            if "ref" in body:
+                where = self.topics.item(body["ref"])["ref"]
+            elif "topic" in body:
+                where = self.topics.topic(body["topic"])["name"]
+            else:
+                raise UsageError("give `ref` or `topic`")
+            self.seen.look(where)
+            return {"seen": where}
         if route == "ask":
             validate(body, schema_of(Question))
             return self.asking.start(body["question"])

@@ -6,7 +6,9 @@ own JSON: the answer, the alternatives weighed, done or todo), project files
 (something made to show part of the project, with what it comes from, when
 it applies and how to make it again). The owner alone gives an item its
 verdict (accepted, rejected; open until then), on the page or with
-`/nock-triage`; both sides talk in the threads. Everything lives in the main
+`/nock-triage`; both sides talk in the threads, a chat: the owner's
+message waits for the agent's one answer (`pending`), and is withdrawn
+until it comes. Everything lives in the main
 checkout's `.nock/topics/TOPIC/` (a file over `LARGE` bytes under
 `.nock/local/topics/` instead, uncommitted), committed as it is written,
 whichever worktree writes it, so the owner sees it at once.
@@ -540,7 +542,7 @@ class Topics:
                     )
                 topic["thread"].append(message(author, revive, session, kind="revival"))
             if reply is not None:
-                topic["thread"].append(message(author, reply, session))
+                topic["thread"].append(said_in(topic["thread"], author, reply, session))
             if "name" in change and change["name"] != name:
                 renamed = check_name(change["name"])
                 if (self.directory / renamed).exists():
@@ -672,8 +674,15 @@ class Topics:
                 item["decided"] = None
                 said.append(f"version {item['versions'][-1]['version']}")
             if reply is not None:
-                item["thread"].append(message(author, reply, self.project.current_session()))
-                said.append("replied")
+                said_now = said_in(
+                    item["thread"],
+                    author,
+                    reply,
+                    self.project.current_session(),
+                    item.get("decided"),
+                )
+                item["thread"].append(said_now)
+                said.append("answered" if "answers" in said_now else "replied")
             if item.get("task") and author is Author.AGENT:
                 item["task"]["heard"] = now()
             path = self.save_item(topic, item)
@@ -919,6 +928,30 @@ class Topics:
                 paths, f"Topic {name}, {word['verdict']}: {len(judged)} item(s)"
             )
 
+    def withdraw(self, ref: str | None = None, topic: str | None = None) -> str:
+        """Take back the owner's message still waiting for its answer, in an
+        item's thread (`ref`) or a topic's: its text, to write again."""
+        with self.project.lock("topics"):
+            if ref is not None:
+                record = self.item(ref)
+                where = record["ref"]
+            elif topic is not None:
+                record = self.topic(topic)
+                where = topic
+            else:
+                raise UsageError("give `ref` or `topic`")
+            if not pending(record["thread"], record.get("decided")):
+                raise ConflictError(f"{where} has no message of yours waiting: nothing to withdraw")
+            text = record["thread"].pop()["text"]
+            if ref is not None:
+                path = self.save_item(record["topic"], record)
+            else:
+                path = self.save_topic(record)
+            self.commit(
+                [path], f"{'Item' if ref is not None else 'Topic'} {where}, a message withdrawn"
+            )
+            return text
+
     def reply(self, ref: str, text: str, author: Author) -> str | None:
         """A message in a topic's thread (a ref without `/`) or an item's."""
         if "/" in ref.strip("/") or ref.strip().removeprefix("D").isdigit():
@@ -1020,6 +1053,57 @@ class Topics:
             str(path.relative_to(root)) for path in paths if path.is_relative_to(self.directory)
         ]
         return committed(self.project, relative, message) if relative else None
+
+
+def pending(thread: list[dict[str, Any]], decided: dict[str, Any] | None = None) -> bool:
+    """The owner wrote last, and not with a verdict: their message waits for
+    the agent's answer, and the chat is closed to them until it comes. A
+    verdict given since (`decided`) overrides it: the verdict is the answer."""
+    if not thread or thread[-1]["author"] != Author.OWNER or thread[-1].get("verdict"):
+        return False
+    return moment(decided) < thread[-1]["moment"]
+
+
+def said_in(
+    thread: list[dict[str, Any]],
+    author: Author,
+    text: str,
+    session: str | None,
+    decided: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """A message for this thread: the owner's only once their last has its
+    answer (or they withdraw it); the agent's answers the owner's waiting one,
+    and may follow it with more."""
+    if author is Author.OWNER and pending(thread, decided):
+        raise ConflictError(
+            "your last message waits for the agent's answer: withdraw it to change it"
+        )
+    if author is Author.AGENT and pending(thread, decided):
+        return message(author, text, session, answers=thread[-1]["moment"])
+    return message(author, text, session)
+
+
+def chat_state(
+    thread: list[dict[str, Any]], seen: str | None, decided: dict[str, Any] | None = None
+) -> dict[str, Any]:
+    """Where a thread stands for the owner: `pending`, their message waiting
+    for its answer; `unseen`, the agent's messages since they last looked
+    (or last wrote), and whether one of them is the answer they waited for.
+    A thread they never opened nor wrote in shows nothing as new."""
+    wrote = [index for index, entry in enumerate(thread) if entry["author"] == Author.OWNER]
+    after = thread[wrote[-1] + 1 :] if wrote else thread
+    new = [
+        entry
+        for entry in after
+        if entry["author"] == Author.AGENT and (seen is None or entry["moment"] > seen)
+    ]
+    if not wrote and seen is None:
+        new = []
+    return {
+        "pending": pending(thread, decided),
+        "unseen": len(new),
+        "answered": any("answers" in entry for entry in new),
+    }
 
 
 def awaits_owner(item: dict[str, Any]) -> bool:

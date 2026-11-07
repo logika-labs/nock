@@ -294,7 +294,11 @@ def test_the_owner_judges_on_the_page_and_the_submitting_session_hears_once(
     assert topic["items"][1]["versions"][0]["decision"]["answer"].startswith("One file")
     status, _ = post(page, "judge", {"ref": ref, "verdict": "maybe"})
     assert status == 400
+    # A verdict on the page takes no comment: the words go through the chat.
     status, _ = post(page, "judge", {"ref": ref, "verdict": "rejected", "comment": "Postgres."})
+    assert status == 400
+    post(page, "reply", {"ref": ref, "text": "Postgres."})
+    status, _ = post(page, "judge", {"ref": ref, "verdict": "rejected"})
     assert status == 200
     assert git(project.root, "status", "--porcelain") == ""
 
@@ -311,6 +315,51 @@ def test_the_owner_judges_on_the_page_and_the_submitting_session_hears_once(
     assert Topics(project).topic("orders")["thread"][-1]["author"] == "owner"
 
 
+def chat_of(address: str, ref: str) -> dict[str, Any]:
+    with urllib.request.urlopen(f"{address}topics") as response:
+        listed = json.loads(response.read())
+    items = [item for topic in listed["topics"] for item in topic["items"]]
+    return next(item["chat"] for item in items if item["ref"] == ref)
+
+
+def test_the_owner_s_message_waits_for_the_agent_s_one_answer_and_is_withdrawn_until_then(
+    project: Project, page: str
+) -> None:
+    ref = submit(project.root)
+    assert chat_of(page, ref) == {"pending": False, "unseen": 0, "answered": False}
+    post(page, "reply", {"ref": ref, "text": "Why not Postgres?"})
+    assert chat_of(page, ref)["pending"] is True
+    status, refused = post(page, "reply", {"ref": ref, "text": "And MySQL?"})
+    assert status == 400 and "withdraw it" in refused["error"]
+    status, taken = post(page, "withdraw", {"ref": ref})
+    assert status == 200 and taken == {"text": "Why not Postgres?"}
+    assert Topics(project).item(ref)["thread"] == []
+    status, nothing = post(page, "withdraw", {"ref": ref})
+    assert status == 400 and "nothing to withdraw" in nothing["error"]
+    post(page, "reply", {"ref": ref, "text": "Why not Postgres, then?"})
+    answered = run(project.root, "items", "update", ref, "--reply", "A server to run.")
+    asked = Topics(project).item(ref)["thread"][0]["moment"]
+    assert answered["answered"] == asked
+    assert chat_of(page, ref) == {"pending": False, "unseen": 1, "answered": True}
+    assert "answered" not in run(project.root, "items", "update", ref, "--reply", "And backups.")
+    assert chat_of(page, ref)["unseen"] == 2
+    status, _ = post(page, "seen", {"ref": ref})
+    assert status == 200 and chat_of(page, ref)["unseen"] == 0
+    # A verdict given after the owner's message is the answer: the chat opens again.
+    post(page, "reply", {"ref": ref, "text": "Hm."})
+    post(page, "judge", {"ref": ref, "verdict": "rejected"})
+    assert chat_of(page, ref)["pending"] is False
+    status, _ = post(page, "reply", {"ref": ref, "text": "Postgres, please."})
+    assert status == 200
+    # A topic's chat is the same.
+    post(page, "reply", {"topic": "orders", "text": "Is this all?"})
+    status, _ = post(page, "reply", {"topic": "orders", "text": "Hello?"})
+    assert status == 400
+    assert run(project.root, "topics", "update", "orders", "--reply", "Yes.")["answered"]
+    status, _ = post(page, "seen", {"topic": "nowhere"})
+    assert status == 404
+
+
 def test_a_session_starts_with_what_is_new_in_topics_and_what_awaits_it_once_a_day(
     project: Project, page: str
 ) -> None:
@@ -322,7 +371,8 @@ def test_a_session_starts_with_what_is_new_in_topics_and_what_awaits_it_once_a_d
     assert "nock: 3 new in Topics (emails: 2, orders: 1)" in context
     assert "3 new in Topics" in begun["systemMessage"]
     assert HookRunner(project, {"session_id": "s2"}).handle("SessionStart") is None
-    post(page, "judge", {"ref": ref, "verdict": "rejected", "comment": "Postgres."})
+    post(page, "reply", {"ref": ref, "text": "Postgres."})
+    post(page, "judge", {"ref": ref, "verdict": "rejected"})
     context = start(project, "s3")["hookSpecificOutput"]["additionalContext"]
     assert f"- rework {ref} (`--version`)" in context
     assert HookRunner(project, {"session_id": "s4"}).handle("SessionStart") is None
