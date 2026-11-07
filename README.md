@@ -1153,13 +1153,14 @@ ruff check, ruff format --check, basedpyright, and the tests on Python 3.12
 and 3.14) runs when you start it, `gh workflow run gate --ref BRANCH` (or
 Actions → gate → Run workflow), and when a release calls it.
 
-A release goes:
+A release is one command, with the gate green:
 
-1. Bump `version` in `pyproject.toml` in a commit, with the gate green.
-2. `python3 scripts/release.py VERSION`: on a clean tree whose
-   `pyproject.toml` declares VERSION, with no tag `vVERSION` here or on
-   `origin`, it asks y/N, then creates the annotated tag and pushes it.
-3. The tag starts `.github/workflows/release.yaml`: the gate on the tagged
+1. `python3 scripts/release.py [VERSION]` (the next patch when left out):
+   on a clean tree, on a branch, with no tag `vVERSION` here or on
+   `origin`, it asks y/N, and only then bumps the version in
+   `pyproject.toml`, `src/nock/releases.py` and `uv.lock` in a commit,
+   creates the annotated tag and pushes the branch and the tag.
+2. The tag starts `.github/workflows/release.yaml`: the gate on the tagged
    commit, a check that the tag names the package's version, the sdist and
    the wheel built, published to PyPI through trusted publishing (environment
    `pypi`), and attached with their SHA-256 sums to a GitHub release

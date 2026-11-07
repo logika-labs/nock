@@ -1,7 +1,7 @@
 name: release
 
-# Releases nock to PyPI from a tag `v<version>` (`python3 scripts/release.py VERSION` creates and pushes it,
-# asking first), once the gate passes on the tagged commit and the tag names the version pyproject.toml declares.
+# Releases nock to PyPI from a tag `v<version>` (`python3 scripts/release.py [VERSION]` bumps, tags and pushes
+# it, asking first), once the gate passes on the tagged commit and the tag names the version pyproject.toml declares.
 # Publishing uses PyPI trusted publishing (no token) from the environment `pypi`, which also uploads the PyPI
 # attestations. The sdist, the wheel and their SHA-256 sums are attached to the GitHub release.
 
