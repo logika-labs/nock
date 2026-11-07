@@ -150,7 +150,8 @@ def command(
       the same arguments while those files are unchanged, it replays the last
       result instead of running.
     - `examples`: argument strings that show how to call it; `--help` lists
-      them and `nock check` runs each, so they cannot go stale.
+      them and `nock check` runs each, so they cannot go stale (a `confirm`
+      tool's it only parses against its arguments: never runs them).
     - `pinned`: reflection keeps it however rarely it is used.
     - `confirm`: it acts on the world in a way only the owner may set off (a
       deploy, a release, a payment): Claude Code asks the owner before an
