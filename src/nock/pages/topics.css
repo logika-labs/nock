@@ -346,7 +346,7 @@
 .topics .zoom {
   position: fixed; inset: 0; z-index: 30; display: grid; place-items: center; padding: 28px 28px 52px; background: rgb(17 17 22 / .86); cursor: zoom-out;
 }
-.topics .zoom img { max-width: 100%; max-height: 100%; object-fit: contain; background: #fff; border-radius: 6px; box-shadow: 0 20px 60px rgb(0 0 0 / .4); }
+.topics .zoom img { max-width: calc(100vw - 56px); max-height: calc(100vh - 80px); object-fit: contain; background: #fff; border-radius: 6px; box-shadow: 0 20px 60px rgb(0 0 0 / .4); }
 .topics .zoom .which { position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%); color: #fff; font: 500 12px/18px var(--mono); letter-spacing: .04em; white-space: nowrap; }
 
 /* A line diff, side by side. */
