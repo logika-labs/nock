@@ -603,7 +603,9 @@ item an item of derived files with its versions and recipe, each old tag a
 topic (an item with several goes to its first; one with none to `general`),
 notes and the owner's feedback thread messages, verdicts kept — and drops
 the `[decisions]` tags from `.nock/config.toml`. A project running nock from
-source runs `nock topics migrate`.
+source runs `nock topics migrate`. What the owner said before the migration counts
+as told, so no session hears it as news; a project that migrated before
+that runs `nock topics migrate --mark-seen` once.
 
 ### The map
 
@@ -1071,7 +1073,7 @@ repetitions, write the comparison down first.
 | `nock docs [TERM…]` | nock's documentation for agents, a short article per term: with no term, the terms |
 | `nock calls`, `stats`, `sessions`, `query SQL` | the telemetry |
 | `nock status` | a round due, the open items by topic, what waits on agents in Topics, an unshared summary, a logika round to offer |
-| `nock topics list [--query Q] [--full]`, `create JSON`, `update TOPIC [JSON] [--reply MD] [--revive MD]`, `delete TOPIC`, `show TOPIC`, `judge TOPIC JSON`, `migrate` | the topics: a summary and the list (or ranked by a query), opened, changed or answered in, revived, deleted when empty, in full, every open item judged (asks the owner), an earlier nock's decisions and review items moved in |
+| `nock topics list [--query Q] [--full]`, `create JSON`, `update TOPIC [JSON] [--reply MD] [--revive MD]`, `delete TOPIC`, `show TOPIC`, `judge TOPIC JSON`, `migrate [--mark-seen]` | the topics: a summary and the list (or ranked by a query), opened, changed or answered in, revived, deleted when empty, in full, every open item judged (asks the owner), an earlier nock's decisions and review items moved in |
 | `nock items list [TOPIC] [--query Q] [--full]`, `create TOPIC JSON`, `update REF [JSON] [--version JSON] [--reply MD]`, `delete REF`, `show REF`, `judge REF JSON` | the items: a summary and the list, submitted, changed in place or by a new version or answered in, deleted while open and unanswered, in full, judged (asks the owner) |
 | `nock topics ask QUESTION`, `topics answer JSON` | the studio's Ask: a fresh agent answers a question about the topics; only that agent submits the answer |
 | `nock studio [JSON]` | the owner's page, a tab for each thing to look at: the topics and their items, the evaluations |

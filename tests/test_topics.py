@@ -22,7 +22,7 @@ from nock.hooks import HookRunner
 from nock.migration import Migration
 from nock.project import Project
 from nock.studio import PAGES, TABS, Studio
-from nock.topics import Topics
+from nock.topics import Author, Topics
 
 from .conftest import git, nock
 
@@ -509,6 +509,27 @@ def test_an_earlier_nock_s_decisions_and_review_items_move_into_topics_once(
     assert topics.citation_problems() == []
     assert git(project.root, "status", "--porcelain") == ""
     assert Migration(project).run() == {"migrated": False}
+    assert outcome["marked_told"] == 2
+    assert HookRunner(project, {"session_id": "s1"}).handle("UserPromptSubmit") is None
+    topics.reply("7", "Revisit at scale.", Author.OWNER)
+    prompt = HookRunner(project, {"session_id": "s1"}).handle("UserPromptSubmit")
+    assert prompt is not None
+    told = prompt["hookSpecificOutput"]["additionalContext"]
+    assert "[storage/orders-live-in-sqlite]" in told and "emails/email-report" not in told
+
+
+def test_a_project_migrated_before_marks_what_the_owner_said_as_told_once(
+    project: Project, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "s1")
+    ref = submit(project.root)
+    judge(project.root, ref, "accepted", "Fine.")
+    assert run(project.root, "topics", "migrate", "--mark-seen") == {
+        "migrated": False,
+        "marked_told": 1,
+    }
+    assert run(project.root, "topics", "migrate", "--mark-seen")["marked_told"] == 0
+    assert HookRunner(project, {"session_id": "s1"}).handle("UserPromptSubmit") is None
 
 
 def test_a_task_keeps_its_state_and_is_accepted_when_done(

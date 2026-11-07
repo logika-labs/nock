@@ -376,11 +376,22 @@ def topics_answer(project: Project, answer: Answer) -> str:
 
 
 @command(name="migrate", group="topics")
-def topics_migrate(project: Project) -> dict[str, Any]:
+def topics_migrate(
+    project: Project,
+    *,
+    mark_seen: Annotated[
+        bool,
+        Option(
+            help="Already migrated: mark everything the owner has said so far as told"
+            " (local state only), so the hooks announce only what is said from now on."
+        ),
+    ] = False,
+) -> dict[str, Any]:
     """Move an earlier nock's decisions and review items into topics, once:
-    each tag a topic (untagged: `general`), verdicts and notes kept. `init`
-    and `upgrade` run it; a project running nock from source runs it by hand."""
-    return Migration(project).run()
+    each tag a topic (untagged: `general`), verdicts and notes kept, and
+    counted as told already. `init` and `upgrade` run it; a project running
+    nock from source runs it by hand."""
+    return Migration(project).run(mark_seen=mark_seen)
 
 
 @command(name="list", group="items")

@@ -66,9 +66,14 @@ class Migration:
             self.review.is_dir() and any(self.review.rglob("version.json"))
         )
 
-    def run(self) -> dict[str, Any]:
-        """Migrate, and commit; what it made, by topic."""
+    def run(self, mark_seen: bool = False) -> dict[str, Any]:
+        """Migrate, and commit; what it made, by topic. The owner's notes and
+        verdicts it carries over were acted on long ago, so they count as
+        told already. A project that migrated before that, `mark_seen`, has
+        every word the owner has said so far marked told instead."""
         if not self.pending():
+            if mark_seen:
+                return {"migrated": False, "marked_told": self.topics.mark_told()}
             return {"migrated": False}
         with self.project.lock("topics"):
             self.made: dict[str, dict[str, Any]] = {}
@@ -76,6 +81,9 @@ class Migration:
             refs = self.migrate_decisions()
             items = self.migrate_review(refs)
             self.write_topics()
+            marked = self.topics.mark_told(
+                {f"{topic}/{slug}" for topic, made in self.made.items() for slug in made["items"]}
+            )
             moved_map = self.move_map()
             config = self.drop_tags()
             paths = [".nock/topics", ".nock/decisions", ".nock/review"]
@@ -97,6 +105,7 @@ class Migration:
             "decisions": len(refs),
             "review_items": items,
             "topics": dict(sorted(counts.items(), key=lambda pair: (-pair[1], pair[0]))),
+            "marked_told": marked,
             **({"map": moved_map} if moved_map else {}),
             **({"not_committed": problem} if problem else {}),
         }

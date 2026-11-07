@@ -443,7 +443,11 @@ item (summary, evidence and touches folded into the answer, its number an
 alias, its note an owner message, supersession a thread line), each review
 item an item of derived files with every version and its recipe (notes and
 feedback thread messages), verdicts kept, the map moved beside the topics and
-the `[decisions]` tags dropped from the config, in one commit.
+the `[decisions]` tags dropped from the config, in one commit. The owner's words it carries over count as told already (`told` rows for
+every session that made a version), so the prompt hook announces only what
+the owner says afterwards; `topics migrate --mark-seen`, on a project already
+migrated, records every word said so far as told (local state, nothing
+committed), idempotently.
 
 `consult.Consultant` renders `briefs/consult.md` with the caller's intent
 and context, the map, the project's tools and the checks, and dispatches a

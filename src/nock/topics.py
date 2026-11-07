@@ -949,6 +949,30 @@ class Topics:
             )
         return news
 
+    def mark_told(self, refs: set[str] | None = None) -> int:
+        """Record the owner's word so far on these items (all, without refs)
+        as told to every session that made a version of them, so `news_for`
+        announces only what is said later; how many tellings it recorded."""
+        told = {
+            (row["session"], row["item"], row["updated"])
+            for row in self.project.store.rows("SELECT session, item, updated FROM told")
+        }
+        marked = 0
+        for item in self.every():
+            said = owner_moment(item)
+            if not said or (refs is not None and item["ref"] not in refs):
+                continue
+            sessions = {
+                version["session"] for version in item["versions"] if version.get("session")
+            }
+            for session in sorted(sessions):
+                if (session, item["ref"], said) not in told:
+                    self.project.store.insert(
+                        "told", {"session": session, "item": item["ref"], "updated": said}
+                    )
+                    marked += 1
+        return marked
+
     def governing(self, session: str, path: str) -> list[dict[str, Any]]:
         """The items not rejected whose latest version holds this project file
         or was derived from it, not yet shown this session; showing them is
