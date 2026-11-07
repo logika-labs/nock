@@ -536,9 +536,11 @@
     let content;
     if (!file) content = '<p class="missing">No files.</p>';
     else if (two && found.every(entry => entry && entry.type === "text")) {
-      content = `<div class="panes" data-own data-pair="${escape(versions.map((version, index) => fileUrl(item, version, found[index].name)).join(" "))}"><p class="missing">…</p></div>`;
+      const pair = versions.map((version, index) => fileUrl(item, version, found[index].name)).join(" ");
+      content = `<div class="panes" data-key="pair:${escape(pair)}" data-own data-pair="${escape(pair)}"><p class="missing">…</p></div>`;
     } else {
-      content = `<div class="panes${two ? " two" : ""}">${versions.map((version, index) => pane(item, version, found[index], two ? (index ? "right" : "left") : "single")).join("")}</div>`;
+      // Keyed apart from a diff, so a diff filled once is not taken for this.
+      content = `<div class="panes${two ? " two" : ""}" data-key="panes">${versions.map((version, index) => pane(item, version, found[index], two ? (index ? "right" : "left") : "single")).join("")}</div>`;
     }
     let zoom = "";
     if (state.zoom && file?.type === "image") {
