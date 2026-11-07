@@ -428,7 +428,10 @@ item), refusing an in-place change to a decided item (`ConflictError`). The
 owner's word is `judge` and `judge_topic` (a `Word`: verdict and comment, the
 comment an owner message in the thread), from the studio or from the `judge`
 commands, which are `confirm=True`; studio messages are the owner's, CLI ones
-an agent's. `summary` is the open items by topic and `awaiting` (threads where
+an agent's. A thread is a chat: `said_in` refuses the owner a second
+message while their last is `pending` (no answer yet, no verdict since) and
+marks an agent's reply to it `answers`; `withdraw` pops a pending message.
+`summary` is the open items by topic and `awaiting` (threads where
 the owner wrote last, rejected items), for the lists and `status.Standing`;
 `search_items` and `search_topics` rank plain full text. `news_for` and
 `governing` are the prompt and edit hooks'. `citation_problems` is the
@@ -480,8 +483,10 @@ listed in `TABS`, and a fragment whose script calls
 `studio.summary` (the counts under the title) and `studio.toast`. Fragments
 share the page's scripts and styles, so a tab keeps its script in a closure
 and its style under its own class. Two tabs: `TopicsTab`, which serves every
-topic with its items, a version's files as they are, the owner's verdicts
-and messages, and the Ask (`studio.Asking`: one `nock topics ask` process at a
+topic with its items and where each chat stands (`topics.chat_state`:
+pending, unseen since `studio.Seen`'s last look, kept in
+`.nock/local/studio/seen.json`), a version's files as they are, the owner's
+verdicts and messages (`withdraw` takes back one still waiting), and the Ask (`studio.Asking`: one `nock topics ask` process at a
 time, cancelled by stopping it; `asking.Asker` dispatches the asker seat,
 which answers through `nock topics answer`, held to naming items that
 exist), and `EvalsTab`

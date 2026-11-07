@@ -4,4 +4,4 @@ aliases: [page, web, owner-page]
 description: nock studio: the owner's local page
 ---
 
-`.nock/nock studio` (with `'{"open": true}'` or `'{"port": N}'`) serves the owner's page on 127.0.0.1 until stopped. Topics: newest activity first, those with nothing open folded; a topic's page and an item's (any version, two compared: a text or a decision as a diff); accept, reject, the threads; a bar searches, or asks an agent. `#170` opens what was decision 170. Evaluations: each scenario as a graph of its runs, never running a step. It is the owner's: an agent starts it only when asked.
+`.nock/nock studio` (`'{"open": true}'`, `'{"port": N}'`) serves the owner's page locally until stopped. Topics: rows that open in place on their decisions, pictures and texts; a picture or a text opens in a viewer, its versions compared. Every word goes through a chat: the owner's message waits for your one answer (`--reply`). A bar searches, or asks an agent. `#170` opens what was decision 170. Evaluations: each scenario's runs as a graph. It is the owner's: an agent starts it only when asked.

@@ -537,9 +537,11 @@ the record says so (`"local": true`).
   `/nock-triage`, which goes through the open items with the owner one at a
   time (`nock items judge REF '{"verdict": "accepted"|"rejected", "comment":
   …}'`, or `nock topics judge TOPIC …` for every open item of a topic; Claude
-  Code asks the owner before each). A comment goes into the item's thread.
+  Code asks the owner before each). A comment goes into the item's thread;
+  on the page the owner's words go through the chat instead.
 - **The threads are where the two sides talk.** `--reply "markdown"` on
-  `topics update` or `items update` adds a message. When the owner is in the
+  `topics update` or `items update` adds a message; while the owner's last
+  message waits, it is that message's one answer. When the owner is in the
   session, the agent discusses with them there and leaves at most a line in
   the thread; when they are away, or told it to work in the background, it
   answers briefly in the thread, and says nothing if it just did what was
@@ -557,8 +559,8 @@ the record says so (`"local": true`).
 - **A finished topic comes back.** A topic whose items are all decided is
   finished: new items are refused until it is revived, `nock topics update
   TOPIC --revive "why it is back"`. The note reads as its description from
-  then on, and its page shows the newest items on top, the earlier rounds
-  below: the same topic, its history kept.
+  then on, the revival a message in its chat, its items newest first, the
+  earlier rounds after them: the same topic, its history kept.
 - **The session that submitted it hears.** When the owner next types there,
   the prompt hook tells it their verdict or message, once.
 - **An edit shows the items about a file.** The first time a session edits a
@@ -578,28 +580,41 @@ day (sooner when something new calls) a session the human starts says
 says it all in full.
 
 The studio's **Topics** tab (`nock studio`, or with `{"open": true}`) lists
-the topics, newest activity first, each with its open items; a topic with
-nothing open folds away. The tabs open, accepted and rejected only change
-which items show, expanding the topics that have them. A topic's page shows
-all its items, whatever their verdict, and its thread, each kind in its own
-view: tasks as rows with a slider — the time since it started, coloured by
-how recently it said anything (amber after `topics.silence` minutes without
-a word, 30 by default: only silence, which may be long work as well as stuck
-work; red once it failed); decisions as rows that open in place on the
-answer and the alternatives; pictures as a grid of thumbnails; texts as
-previews of their first lines. A picture or a text opens on the whole
-screen, comparing its last two versions; an item's page shows
-any version — a decision rendered, a project file, a picture, a video, a
-PDF, a page (an HTML page runs no script there), a text — and "Compare" puts
-two side by side, a text's or a decision's as a line diff with the changed
-words marked. Accept and Reject (with a comment, if wanted) are the same for
-every item, and on a whole topic; each thread renders its markdown and takes
-a reply. One bar toggles **Search**, which filters as you type, and **Ask**:
-a question goes to a headless agent (the asker seat) that reads the topics
-and answers in markdown, with the items it relied on as cards that open
-them, one question at a time, cancellable. The tab keeps up with what agents
-submit without drawing again what did not change. `#topics/TOPIC/SLUG` opens
-an item; `#170` the item an earlier nock's decision 170 became.
+the topics, newest activity first, each a row: its name, what it holds ("4
+decisions · 6 images · 3 texts") and its verdicts ("3 open · 12 accepted"),
+its time ("21m", "3h", "2d") and its description. A topic opens in place, its
+items in sections, each with its count: decisions as bubbles that open in
+place on the answer, the alternatives and Accept and Reject, tagged todo or
+done, accepted or rejected; pictures as one line of thumbnails and texts as
+one line of previews, both scrolling sideways; other files as rows; tasks
+as bubbles with a slider — the time since it started, coloured by how
+recently it said anything (amber after `topics.silence` minutes without a
+word, 30 by default: only silence, which may be long work as well as stuck
+work; red once it failed). Accept all and Reject all close it. A picture or
+a text opens in a viewer over the list: a version picked ("Version 3 (2d)"),
+or Compare for two side by side, the newest and the one before by default (a
+text's as a line diff with the changed words marked); a Markdown file
+rendered, code and data highlighted, plain text as it is; the file's name
+shows its path, or for a derived file how it was made; a picture opens
+larger, and in a comparison the arrows switch sides. ← and → step through the
+topic's pictures and texts, Esc closes. A video, a PDF, a page (an HTML page
+runs no script there) open there too.
+
+Every word goes through a chat — a topic's, a decision's, a file's — opened
+by its icon beside the time: the agent's messages on one side, the owner's
+on the other. The owner's message waits for the agent's answer, the item
+"pending" meanwhile: the chat takes nothing more until it comes, and the
+owner can withdraw the message to edit it; a verdict given since overrides
+it. An agent's `--reply` while one waits is its answer (the command says
+`answered`); it may say more afterwards. The icon marks what the agent said
+since the owner last opened the chat (kept on the machine). Verdicts take no
+comment on the page. One bar toggles **Search**, which filters as you type,
+and **Ask**: a question goes to a headless agent (the asker seat) that reads
+the topics and answers in markdown, with the items it relied on as cards
+that open them, one question at a time, cancellable. The tab keeps up with
+what agents submit without drawing again what did not change.
+`#topics/TOPIC` opens a topic, `#topics/TOPIC/SLUG` an item; `#170` the item
+an earlier nock's decision 170 became.
 
 A project an earlier nock set up has `.nock/decisions/` and `.nock/review/`:
 `nock upgrade` (it runs `nock init`, which does it) moves them into topics
