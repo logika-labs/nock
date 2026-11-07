@@ -257,7 +257,10 @@ last result as long as those files and the tool's own code are unchanged.
 `--fresh` runs the tool anyway.
 
 **Examples.** The strings in `examples=[...]` appear in `--help`, and
-`nock check` runs them, so a tool that breaks fails the gate.
+`nock check` runs them, so a tool that breaks fails the gate. A
+`confirm=True` tool's examples are never run, since that would set off what
+only the owner may without asking: the check only parses each against the
+tool's arguments, so one that calls it wrong still fails the gate.
 
 ### The project's environment
 
@@ -650,7 +653,7 @@ first.
 4. **The summary to share**, `share.md` beside it: the same, abstractly
    enough that nobody could tell which project it is.
 5. **`nock reflect finish JSON`** requires both, runs nock's checks — the tools
-   load and their examples run, the map's citations hold, the summary names
+   load and their examples run (a `confirm` tool's are only parsed), the map's citations hold, the summary names
    nothing of the project (no paths, file names, the project's or its
    authors' names, addresses or links) — and records the round in
    `record.json`: the toolbox's changes with what each should do by the next
