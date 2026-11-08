@@ -251,10 +251,14 @@ class HookRunner:
         if not isinstance(session, str):
             return ""
         lines = []
-        for item in Topics(self.project).news_for(session):
-            said = [entry["text"] for entry in item["thread"] if entry["author"] == Author.OWNER]
-            note = f": {said[-1]}" if said else ""
+        topics = Topics(self.project)
+        for item in topics.news_for(session):
+            said = [entry for entry in item["thread"] if entry["author"] == Author.OWNER]
+            note = f": {said[-1]['text']}" if said and said[-1]["text"] else ""
             lines.append(f"- [{item['ref']}] {item['title']} — {item['verdict']}{note}")
+            files = topics.attached(said[-1], item["topic"], item["slug"]) if said else []
+            if files:
+                lines.append(f"  attached (Read them): {', '.join(files)}")
         if not lines:
             return ""
         return "\n".join(

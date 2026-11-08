@@ -545,7 +545,9 @@ An item's ref is `topic/slug`, the slug made from its title (or given as
 and its versions' files in `SLUG/N/` — written and committed there whichever
 worktree wrote it, so the owner sees it at once; a file over 20 MB (most
 videos) stays on the machine, under `.nock/local/topics/`, uncommitted, and
-the record says so (`"local": true`).
+the record says so (`"local": true`). The files a message carries are kept
+beside its thread, in the topic's `attachments/MOMENT/` or the item's
+`SLUG/attachments/MOMENT/`, the same way.
 
 | | open | accepted | rejected |
 |---|---|---|---|
@@ -565,7 +567,11 @@ the record says so (`"local": true`).
   session, the agent discusses with them there and leaves at most a line in
   the thread; when they are away, or told it to work in the background, it
   answers briefly in the thread, and says nothing if it just did what was
-  asked and the new version shows it.
+  asked and the new version shows it. The owner's message may carry files
+  (dropped into the chat on the page): it lists each as `attachments`, with
+  its name, type, size in `bytes` and `path`; `items show`, `topics show`, the
+  `awaiting_you` summary (`attachments`, the paths by thread) and the prompt
+  hook give each one's absolute path (`where`), for the agent to read.
 - **Work changes an item.** `nock items update REF '{…}'` changes an open
   item in place. `--version '{…}'` adds a version — what it leaves out
   carried over, project files copied again as they are now — and reopens a
@@ -590,7 +596,8 @@ the record says so (`"local": true`).
 
 `nock topics list` and `nock items list [TOPIC]` start with a summary — the
 open items by topic, and what waits on the agent: threads where the owner
-wrote last, items they rejected — then the list, cut short; `--full` prints
+wrote last (with the paths of the files their message carries), items they
+rejected — then the list, cut short; `--full` prints
 the whole list and no summary. `--query "words"` ranks by plain full text
 across topic names and descriptions, item titles, decisions, threads, file
 paths and `when` conditions; `topics list --state active` keeps one state,
@@ -651,8 +658,20 @@ it. An agent's `--reply` while one waits is its answer (the command says
 since the owner last opened the chat (kept on the machine) with a glowing
 foil dot; while the owner's message waits for its answer, the icon's outline
 swirls slowly in the foil's colours (still, for reduced motion). A long
-message grows the field to a limit, then scrolls inside it. Verdicts take no
-comment on the page. One bar toggles **Search**, which filters as you type —
+message grows the field to a limit, then scrolls inside it. Files dropped on
+a chat (or pasted into its field, or picked with its clip) go up at once and
+wait in the composer as chips, each removable, until the message goes with
+them (a message of files alone is fine); in the thread a message shows its
+pictures as thumbnails that open enlarged, zooming like the viewer's, and
+its other files as chips that open or download. A withdrawn message's files
+come back to the composer. The microphone beside the field records (the
+browser asks for the microphone once; 127.0.0.1 counts as secure): a pulsing
+foil dot and the time while it records, a click to stop, a spinner while the
+studio has the recording made text by the Whisper server
+`studio.transcribe_url` names, and the text lands where the cursor was, to
+edit and send; it is never sent by itself. A failed transcription says why,
+the recording kept to try again. Without a URL the microphone stays, faded,
+saying how to set one. Verdicts take no comment on the page. One bar toggles **Search**, which filters as you type —
 from three letters it opens the topics and decisions (and unfolds the
 sections) holding what it finds, rings each such item in foil, scrolls to
 the first and washes the words found pink to cyan; Enter, Shift+Enter or the
@@ -1203,6 +1222,7 @@ one machine.
 | `reflect.logika.days` | 30 | in a Logika project, days after a logika round before the next is offered (once the ledger has changed) |
 | `agent.command`, `agent.model`, `agent.deadline` | `claude`, —, 1800 | the headless agent nock dispatches (consult, Ask, share); it may not bypass or set permissions (see [What nock's agents may do](#what-nocks-agents-may-do)) |
 | `permissions.confirm` | `ask` | how Claude Code treats a `confirm=True` command: `ask` has the owner approve each call (even in bypass mode); `allow` lets the agent run it, which it does only when the owner's request calls for it (see [What nock's agents may do](#what-nocks-agents-may-do)); `nock init` rewrites the rules after a change |
+| `studio.transcribe_url`, `studio.transcribe_model`, `studio.transcribe_key_variable` | —, `whisper-1`, — | where the studio's recorder has what the owner says made text: a Whisper server taking OpenAI's `/v1/audio/transcriptions` form (multipart `file`, `model`, `response_format=json`) — OpenAI's `https://api.openai.com/v1/audio/transcriptions`, whisper.cpp's server (its `--inference-path /v1/audio/transcriptions`, `--convert` for the browser's WebM), faster-whisper-server; a bare server or one ending in `/v1` gets the path added; empty turns the recorder off. The `model` sent with each recording. The name of the environment variable holding the server's key, sent as a bearer token (never the key itself) |
 | `consult.enabled`, `consult.deadline` | true, 600 | whether the consultant runs and the primer asks for it; seconds a consultation may take |
 | `upgrade.check`, `upgrade.auto`, `upgrade.index` | true, true, PyPI's `nock` | whether a session start looks for a newer nock (at most daily); whether it then upgrades a core vendored from PyPI by itself when the merge is clean (off, or on a conflict, it only says the release is out); and where releases are looked up |
 | `share` | — (unanswered) | the owner's answer to whether nock sends its makers the weekly usage report: unset sends nothing until they answer, false sends nothing, summaries included, only what you send yourself with `nock report` (see [What nock shares](#what-nock-shares)) |

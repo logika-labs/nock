@@ -13,7 +13,9 @@ message waits for the agent's one answer (`pending`), and is withdrawn
 until it comes. Everything lives in the main
 checkout's `.nock/topics/TOPIC/` (a file over `LARGE` bytes under
 `.nock/local/topics/` instead, uncommitted), committed as it is written,
-whichever worktree writes it, so the owner sees it at once.
+whichever worktree writes it, so the owner sees it at once. The files the
+owner attaches to a message are kept beside its thread, in the topic's or the
+item's `attachments/MOMENT/`, the message naming each (`attachments`).
 
 A topic's progress is its own: a `state` (planned, active, done, abandoned)
 and a `status`, a line its agent keeps current as it works; each change is a
@@ -25,11 +27,13 @@ session nock dispatched, its parent session."""
 
 from __future__ import annotations
 
+import contextlib
 import fnmatch
 import json
 import re
 import shutil
 from collections import Counter
+from collections.abc import Callable
 from enum import StrEnum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, NotRequired, TypedDict
@@ -45,6 +49,8 @@ TOPIC_FILE = "topic.json"
 ITEM_FILE = "item.json"
 DECISION_FILE = "decision.json"
 PROJECT_FILES = "project"
+# The folder beside a thread holding the files its messages carry: no item's slug.
+ATTACHMENTS = "attachments"
 MAP = "map.md"
 GENERAL = "general"
 # A thread's note that the item was split out of one holding several files.
@@ -232,9 +238,10 @@ def moment(record: dict[str, Any] | None) -> str:
 
 
 def message(
-    author: Author, text: str, writer: dict[str, str | None], **extra: Any
+    author: Author, text: str, writer: dict[str, str | None], files: bool = False, **extra: Any
 ) -> dict[str, Any]:
-    if not text.strip():
+    """A thread's message; one carrying `files` may say nothing else."""
+    if not text.strip() and not files:
         raise UsageError("the message is empty")
     return {
         "author": str(author),
@@ -357,7 +364,105 @@ class Topics:
                 path = base / item["topic"] / item["slug"] / str(version["version"]) / stored(entry)
                 files.append({**entry, "name": entry_name(entry), "where": str(path)})
             versions.append({**version, "decision": self.decision(item, version), "files": files})
-        return {**item, "versions": versions}
+        thread = self.thread_shown(item["thread"], item["topic"], item["slug"])
+        return {**item, "versions": versions, "thread": thread}
+
+    # --- attachments ------------------------------------------------------------
+
+    def beside(self, base: Path, topic: str, slug: str | None) -> Path:
+        """A thread's own folder under `base`: its topic's, or its item's."""
+        return base / topic / slug if slug else base / topic
+
+    def where(self, entry: dict[str, Any], topic: str, slug: str | None = None) -> Path:
+        """Where an attachment is kept: beside its thread, or on this machine when large."""
+        base = self.large if entry.get("local") else self.directory
+        return self.beside(base, topic, slug) / entry["path"]
+
+    def attached(self, said: dict[str, Any], topic: str, slug: str | None = None) -> list[str]:
+        return [str(self.where(entry, topic, slug)) for entry in said.get("attachments", [])]
+
+    def thread_shown(
+        self, thread: list[dict[str, Any]], topic: str, slug: str | None = None
+    ) -> list[dict[str, Any]]:
+        """A thread with each attachment's `where`, its path to read."""
+        return [
+            {
+                **entry,
+                "attachments": [
+                    {**file, "where": str(self.where(file, topic, slug))}
+                    for file in entry["attachments"]
+                ],
+            }
+            if entry.get("attachments")
+            else entry
+            for entry in thread
+        ]
+
+    def attachment(self, topic: str, slug: str | None, path: str) -> Path:
+        """Where one of a thread's attachments is: only a file a message names."""
+        thread = self.item(f"{topic}/{slug}")["thread"] if slug else self.topic(topic)["thread"]
+        for entry in thread:
+            for file in entry.get("attachments", []):
+                if file["path"] == path:
+                    return self.where(file, topic, slug)
+        where = f"{topic}/{slug}" if slug else topic
+        raise NotFoundError(f"{where} has no attachment {path}")
+
+    def attach(
+        self, topic: str, slug: str | None, files: list[Path], stamp: str
+    ) -> list[dict[str, Any]]:
+        """Keep these files (moved, each under its own name) beside a thread,
+        in a folder of their message's own: what the message records of them."""
+        if not files:
+            return []
+        label = stamp.replace("-", "").replace(":", "")
+        folder, number = label, 2
+        while any(
+            (self.beside(base, topic, slug) / ATTACHMENTS / folder).exists()
+            for base in (self.directory, self.large)
+        ):
+            folder, number = f"{label}-{number}", number + 1
+        entries, names = [], set()
+        for source in files:
+            if not source.is_file():
+                raise NotFoundError(f"{source}: no such file to attach")
+            name = attachment_name(source.name)
+            base, suffix, number = Path(name).stem, Path(name).suffix, 2
+            while name in names:
+                name, number = f"{base}-{number}{suffix}", number + 1
+            names.add(name)
+            size = source.stat().st_size
+            with source.open("rb") as handle:
+                kind = kind_of(name, handle.read(65536))
+            entry = {
+                "name": name,
+                "type": kind,
+                "bytes": size,
+                "path": f"{ATTACHMENTS}/{folder}/{name}",
+                "local": size > LARGE,
+            }
+            target = self.where(entry, topic, slug)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.move(source, target)
+            entries.append(entry)
+        return entries
+
+    def unattach(
+        self,
+        said: dict[str, Any],
+        topic: str,
+        slug: str | None,
+        keep: Callable[[Path, dict[str, Any]], None] | None,
+    ) -> None:
+        """A withdrawn message's files, handed to `keep` (which may move them
+        away) and removed with their folder."""
+        for entry in said.get("attachments", []):
+            path = self.where(entry, topic, slug)
+            if keep is not None and path.is_file():
+                keep(path, entry)
+            path.unlink(missing_ok=True)
+            with contextlib.suppress(OSError):
+                path.parent.rmdir()
 
     def current_description(self, topic: dict[str, Any]) -> str:
         """The latest revival note, once the topic came back; its description before."""
@@ -392,17 +497,27 @@ class Topics:
         """What waits on an agent: the threads where the owner wrote last, and
         the items they rejected, not yet reworked."""
         threads, rejected = [], []
+        attached: dict[str, list[str]] = {}
         for name in self.names():
             topic = self.topic(name)
             said = talk(topic["thread"])
             if said and said[-1]["author"] == Author.OWNER:
                 threads.append(name)
+                if said[-1].get("attachments"):
+                    attached[name] = self.attached(said[-1], name)
             for item in self.items(name):
                 if item["thread"] and item["thread"][-1]["author"] == Author.OWNER:
                     threads.append(item["ref"])
+                    if item["thread"][-1].get("attachments"):
+                        attached[item["ref"]] = self.attached(
+                            item["thread"][-1], name, item["slug"]
+                        )
                 if item["verdict"] == Verdict.REJECTED:
                     rejected.append(item["ref"])
-        return {"owner_wrote_last": threads, "rejected": rejected}
+        found: dict[str, Any] = {"owner_wrote_last": threads, "rejected": rejected}
+        if attached:
+            found["attachments"] = attached
+        return found
 
     def summary(self) -> dict[str, Any]:
         """The open items by topic, and what waits on an agent."""
@@ -435,6 +550,7 @@ class Topics:
     def item_text(self, item: dict[str, Any]) -> tuple[str, str]:
         """An item's title, and the rest of what it says, for search."""
         parts = [entry["text"] for entry in item["thread"]]
+        parts += [file["name"] for entry in item["thread"] for file in entry.get("attachments", [])]
         latest = item["versions"][-1]
         decision = self.decision(item, latest)
         if decision:
@@ -549,6 +665,7 @@ class Topics:
         reply: str | None = None,
         revive: str | None = None,
         author: Author = Author.AGENT,
+        attachments: list[Path] | None = None,
     ) -> tuple[dict[str, Any], str | None]:
         if not change and reply is None and revive is None:
             raise UsageError(
@@ -578,7 +695,14 @@ class Topics:
                 self.set_standing(topic, standing, revive)
                 said.append("revived" if revive is not None else str(state_of(topic)))
             if reply is not None:
-                topic["thread"].append(said_in(topic["thread"], author, reply, self.writer()))
+                said_now = said_in(
+                    topic["thread"], author, reply, self.writer(), files=bool(attachments)
+                )
+                if attachments:
+                    said_now["attachments"] = self.attach(
+                        name, None, attachments, said_now["moment"]
+                    )
+                topic["thread"].append(said_now)
                 said.append("replied")
                 if author == Author.AGENT:
                     self.worked(topic["name"], topic["thread"][-1])
@@ -659,6 +783,7 @@ class Topics:
             if self.items(name):
                 raise ConflictError(f"topic {name} holds items: only an empty topic is deleted")
             shutil.rmtree(self.directory / name)
+            shutil.rmtree(self.large / name, ignore_errors=True)
             return self.commit([self.directory / name], f"Topic {name}, deleted")
 
     # --- items ------------------------------------------------------------------
@@ -679,8 +804,12 @@ class Topics:
             taken = {item["slug"] for item in items}
             if "slug" in draft and slug in taken:
                 raise ConflictError(f"{topic}/{slug} exists: update it, or give another slug")
+            if "slug" in draft and slug == ATTACHMENTS:
+                raise UsageError(
+                    f"{ATTACHMENTS} is the folder of a topic's attachments: give another slug"
+                )
             base, number = slug, 2
-            while slug in taken or slug.isdigit():
+            while slug in taken or slug.isdigit() or slug == ATTACHMENTS:
                 slug, number = f"{base}-{number}", number + 1
             stamp = self.recorded()
             item: dict[str, Any] = {
@@ -717,6 +846,7 @@ class Topics:
         version: ItemChange | None = None,
         reply: str | None = None,
         author: Author = Author.AGENT,
+        attachments: list[Path] | None = None,
     ) -> tuple[dict[str, Any], str | None]:
         if not change and version is None and reply is None:
             raise UsageError("nothing to do: give a change, `--version`, or `--reply`")
@@ -755,8 +885,17 @@ class Topics:
                 self.worked(topic, item["versions"][-1])
             if reply is not None:
                 said_now = said_in(
-                    item["thread"], author, reply, self.writer(), item.get("decided")
+                    item["thread"],
+                    author,
+                    reply,
+                    self.writer(),
+                    item.get("decided"),
+                    files=bool(attachments),
                 )
+                if attachments:
+                    said_now["attachments"] = self.attach(
+                        topic, item["slug"], attachments, said_now["moment"]
+                    )
                 item["thread"].append(said_now)
                 said.append("answered" if "answers" in said_now else "replied")
                 if author == Author.AGENT:
@@ -778,7 +917,7 @@ class Topics:
         self.topic(target)
         taken = {other["slug"] for other in self.items(target)}
         moved, number = slug, 2
-        while moved in taken:
+        while moved in taken or moved == ATTACHMENTS:
             moved, number = f"{slug}-{number}", number + 1
         (self.directory / target).mkdir(parents=True, exist_ok=True)
         (self.directory / source / slug).rename(self.directory / target / moved)
@@ -1024,9 +1163,15 @@ class Topics:
                 paths, f"Topic {name}, {word['verdict']}: {len(judged)} item(s)"
             )
 
-    def withdraw(self, ref: str | None = None, topic: str | None = None) -> str:
+    def withdraw(
+        self,
+        ref: str | None = None,
+        topic: str | None = None,
+        keep: Callable[[Path, dict[str, Any]], None] | None = None,
+    ) -> str:
         """Take back the owner's message still waiting for its answer, in an
-        item's thread (`ref`) or a topic's: its text, to write again."""
+        item's thread (`ref`) or a topic's: its text, to write again; each
+        file it carried is handed to `keep` first, then removed."""
         with self.project.lock("topics"):
             if ref is not None:
                 record = self.item(ref)
@@ -1042,19 +1187,27 @@ class Topics:
             record["thread"].remove(waiting)
             text = waiting["text"]
             if ref is not None:
+                self.unattach(waiting, record["topic"], record["slug"], keep)
                 path = self.save_item(record["topic"], record)
             else:
+                self.unattach(waiting, record["name"], None, keep)
                 path = self.save_topic(record)
             self.commit(
-                [path], f"{'Item' if ref is not None else 'Topic'} {where}, a message withdrawn"
+                [path.parent],
+                f"{'Item' if ref is not None else 'Topic'} {where}, a message withdrawn",
             )
             return text
 
-    def reply(self, ref: str, text: str, author: Author) -> str | None:
-        """A message in a topic's thread (a ref without `/`) or an item's."""
+    def reply(
+        self, ref: str, text: str, author: Author, attachments: list[Path] | None = None
+    ) -> str | None:
+        """A message in a topic's thread (a ref without `/`) or an item's,
+        with the files it carries."""
         if "/" in ref.strip("/") or ref.strip().removeprefix("D").isdigit():
-            return self.update_item(ref, None, reply=text, author=author)[1]
-        return self.update_topic(ref, {}, reply=text, author=author)[1]
+            return self.update_item(ref, None, reply=text, author=author, attachments=attachments)[
+                1
+            ]
+        return self.update_topic(ref, {}, reply=text, author=author, attachments=attachments)[1]
 
     # --- telling the agents -----------------------------------------------------
 
@@ -1178,6 +1331,7 @@ def said_in(
     text: str,
     writer: dict[str, str | None],
     decided: dict[str, Any] | None = None,
+    files: bool = False,
 ) -> dict[str, Any]:
     """A message for this thread: the owner's only once their last has its
     answer (or they withdraw it); the agent's answers the owner's waiting one,
@@ -1187,8 +1341,8 @@ def said_in(
             "your last message waits for the agent's answer: withdraw it to change it"
         )
     if author is Author.AGENT and pending(thread, decided):
-        return message(author, text, writer, answers=talk(thread)[-1]["moment"])
-    return message(author, text, writer)
+        return message(author, text, writer, files, answers=talk(thread)[-1]["moment"])
+    return message(author, text, writer, files)
 
 
 def chat_state(
@@ -1241,6 +1395,14 @@ def committed(project: Project, paths: list[str], message: str) -> str | None:
     git("add", "--all", "--", *paths)
     git("commit", "--quiet", "--no-verify", "--only", "-m", message, "--", *paths)
     return None
+
+
+def attachment_name(name: str) -> str:
+    """A file's own name, as it is kept: no folders, nothing hidden."""
+    name = Path(name.replace("\\", "/")).name.strip().lstrip(".")
+    if not name:
+        raise UsageError("an attachment needs a name")
+    return name
 
 
 def entry_name(entry: dict[str, Any]) -> str:

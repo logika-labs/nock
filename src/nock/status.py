@@ -83,7 +83,12 @@ class Standing:
             lines.append(
                 f"nock: waiting on you in Topics — {', '.join(parts)}: `.nock/nock topics list`."
             )
-            lines += [f"- answer in {ref}" for ref in threads[:SHOWN]]
+            attached = awaiting.get("attachments", {})
+            lines += [
+                f"- answer in {ref}"
+                + (f" (attached: {', '.join(attached[ref])})" if ref in attached else "")
+                for ref in threads[:SHOWN]
+            ]
             lines += [f"- rework {ref} (`--version`)" for ref in rejected[:SHOWN]]
             if len(threads) > SHOWN or len(rejected) > SHOWN:
                 lines.append("- and more — `.nock/nock topics list` has them all")
