@@ -438,7 +438,7 @@ document.getElementById("transcription")?.addEventListener("submit", async event
   const answer = await response.json();
   if (!response.ok) { studio.toast(answer.error); return; }
   document.getElementById("transcription-state").textContent = answer.transcribe_url ? "On" : "Off";
-  studio.toast(answer.transcribe_url ? "Transcription saved: reload a chat to record" : "Transcription is off");
+  studio.toast(answer.transcribe_url ? "Transcription saved: the recorder in every chat uses it" : "Transcription is off");
 });
 document.getElementById("share-switch").addEventListener("click", event => {
   settings.answer(event.currentTarget.getAttribute("aria-checked") !== "true");

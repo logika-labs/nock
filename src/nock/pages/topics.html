@@ -17,6 +17,7 @@
   </div>
   <main id="topics-main"></main>
   <div id="topics-modal"></div>
+  <div id="topics-lightbox"></div>
   <div id="topics-global" data-everywhere></div>
 </div>
 <script>
@@ -27,7 +28,9 @@
 // too), its pictures and its texts (an item's options together on one card); a picture or a text
 // opens in a viewer over the list, a picture zooming in place there. A search marks what it finds,
 // and opens and rings the items holding it. Every word goes through a chat: the owner's message
-// waits for the agent's answer, withdrawn until it comes. The address says what is open: `#topics/TOPIC` a topic, `#topics/TOPIC/SLUG` an item
+// waits for the agent's answer, withdrawn until it comes. Files dropped on a chat, pasted or picked
+// are uploaded at once (`topics/upload`) and go with the message, kept beside its thread; the
+// recorder sends what is said to `topics/transcribe` and writes the text where the cursor was. The address says what is open: `#topics/TOPIC` a topic, `#topics/TOPIC/SLUG` an item
 // (`#170`: the item an earlier decision 170 became). Verdicts go to `POST topics/judge`, messages
 // to `topics/reply` (`topics/withdraw` takes one back, `topics/seen` records a look), a question
 // to `topics/ask` (`topics/ask/cancel` stops it).
@@ -41,6 +44,10 @@
     modal: null, compare: false, single: null, left: null, right: null, reveal: null,
     menu: null, zoom: null, dismissed: null, looking: new Set(), focus: null, reveal_to: null, folded: new Set(),
     hits: [], hitAt: 0, found: null, reveal_hit: false, opened: { open: new Set(), expanded: new Set(), folded: new Set() }, drag: null, dragged: false,
+    // A composer's files (`attached`, by chat), the recording under way, the one being made text, the
+    // ones that failed (kept to try again), where each field's cursor was, a picture enlarged.
+    attached: new Map(), recording: null, transcribing: null, failed: new Map(), carets: new Map(), caretAt: null,
+    picture: null, dropping: null, transcription: null,
   };
   // How decisions look, for the owner to compare (`?decisions=rail` or `lift`); `foil` by default.
   const LOOKS = ["foil", "rail", "lift"];
@@ -55,6 +62,10 @@
     caret: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="m6 4 4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>',
     accepted: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="m3.5 8.5 3 3 6-7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
     rejected: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4.5 4.5 7 7m0-7-7 7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>',
+    clip: '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="m15.5 9.5-5.6 5.6a3.5 3.5 0 0 1-5-5l6-6a2.3 2.3 0 0 1 3.3 3.3l-6 6a1.1 1.1 0 0 1-1.6-1.6l5.5-5.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+    mic: '<svg viewBox="0 0 20 20" aria-hidden="true"><rect x="7.25" y="2.75" width="5.5" height="9.5" rx="2.75" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M4.5 9.5a5.5 5.5 0 0 0 11 0M10 15v2.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>',
+    stop: '<svg viewBox="0 0 20 20" aria-hidden="true"><rect x="6" y="6" width="8" height="8" rx="1.5" fill="currentColor"/></svg>',
+    file: '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M11.5 2.75H6A1.75 1.75 0 0 0 4.25 4.5v11A1.75 1.75 0 0 0 6 17.25h8a1.75 1.75 0 0 0 1.75-1.75V7zM11.5 2.75V7h4.25" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>',
     dropped: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="m5 5 6 6m0-6-6 6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>',
     star: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="m8 2.2 1.8 3.65 4 .58-2.9 2.83.69 4L8 11.37l-3.59 1.89.69-4-2.9-2.83 4-.58z" fill="currentColor" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg>',
   };
@@ -372,27 +383,81 @@
   // where it is, on the chat's corner, whether it is open or not.
   const chatCorner = (key, entries, standing) => `<span class="chat-anchor${state.chats.has(key) ? " open" : ""}">${chatButton(key, standing)}${state.chats.has(key) ? chat(key, entries, standing) : ""}</span>`;
 
+  const sizeOf = bytes => bytes < 1024 ? `${bytes} B` : bytes < 1048576 ? `${Math.round(bytes / 1024)} KB` : `${(bytes / 1048576).toFixed(1)} MB`;
+  const elapsed = started => { const seconds = Math.max(0, Math.floor((Date.now() - started) / 1000)); return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`; };
+  // Where a thread's attachment is served: beside its topic's thread, or its item's.
+  const attachmentUrl = (key, file) => key === GLOBAL ? `chat/file/${encodeURIComponent(talk.id)}/${file.path.split("/").map(encodeURIComponent).join("/")}` : `topics/attachment/${(key.startsWith("topic:") ? key.slice(6) : key).split("/").map(encodeURIComponent).join("/")}/${file.path.split("/").map(encodeURIComponent).join("/")}`;
+  const topicOf = key => key.startsWith("topic:") ? key.slice(6) : key.split("/")[0];
+
+  // What a message carries: pictures as thumbnails that open enlarged, other files as named chips.
+  function carried(key, entry) {
+    const files = entry.attachments || [];
+    if (!files.length) return "";
+    const pictures = files.filter(file => file.type === "image").map(file => {
+      const address = attachmentUrl(key, file);
+      return `<button type="button" class="picture" data-picture="${escape(address)}" data-name="${escape(file.name)}" data-topic="${escape(topicOf(key))}" title="${escape(file.name)}" aria-label="Enlarge ${escape(file.name)}"><img src="${escape(address)}" alt="${escape(file.name)}" loading="lazy"></button>`;
+    }).join("");
+    const others = files.filter(file => file.type !== "image").map(file => {
+      const address = attachmentUrl(key, file);
+      const saved = file.type === "binary" ? ` download="${escape(file.name)}"` : ` target="_blank" rel="noopener"`;
+      return `<a class="file-chip" href="${escape(address)}"${saved} title="${escape(file.name)}">${ICONS.file}<span class="name">${escape(file.name)}</span><span class="size">${sizeOf(file.bytes)}</span></a>`;
+    }).join("");
+    return `<div class="attachments">${pictures ? `<div class="pictures${files.filter(file => file.type === "image").length === 1 ? " one" : ""}">${pictures}</div>` : ""}${others ? `<div class="chips">${others}</div>` : ""}</div>`;
+  }
+
+  // The files waiting in a composer, each removable; one still uploading spins.
+  function chips(key) {
+    const files = state.attached.get(key) || [];
+    if (!files.length) return "";
+    return `<div class="attached" aria-label="Attached files">${files.map(file => {
+      const face = file.uploading ? '<span class="spinner" aria-hidden="true"></span>'
+        : file.type === "image" ? `<img src="${escape(file.preview || `topics/upload/${file.token}`)}" alt="">` : ICONS.file;
+      return `<span class="file-chip${file.uploading ? " uploading" : ""}" data-key="chip:${escape(file.id)}">${face}<span class="name" title="${escape(file.name)}">${escape(file.name)}</span><span class="size">${sizeOf(file.bytes)}</span>
+        <button type="button" class="remove" data-unattach="${escape(key)}" data-id="${escape(file.id)}" aria-label="Remove ${escape(file.name)}" title="Remove">${ICONS.cancel}</button></span>`;
+    }).join("")}</div>`;
+  }
+
+  // The recorder: a microphone; while recording, a pulsing foil dot and the time, a click stopping
+  // it; a spinner while the words are made text. Without a Whisper server it says how to set one.
+  function recorder(key, waiting) {
+    const off = !state.transcription?.enabled;
+    if (state.recording?.key === key) {
+      return `<button type="button" class="tool recorder recording" data-record="${escape(key)}" aria-label="Stop recording" title="Stop: write what was said"><span class="dot" aria-hidden="true"></span><span class="elapsed" data-elapsed>${elapsed(state.recording.started)}</span>${ICONS.stop}</button>`;
+    }
+    if (state.transcribing === key) {
+      return `<button type="button" class="tool recorder transcribing" disabled aria-label="Writing what was said" title="Writing what was said"><span class="spinner" aria-hidden="true"></span></button>`;
+    }
+    const title = off ? (state.transcription?.hint || "Transcription is off").replaceAll("`", "") : waiting ? "Waiting for the agent's answer" : "Record: what you say is written here, to edit";
+    return `<button type="button" class="tool recorder${off ? " off" : ""}" data-record="${escape(key)}" ${off ? 'aria-disabled="true"' : ""} ${waiting ? "disabled" : ""} aria-label="${escape(off ? "Record (off)" : "Record")}" title="${escape(title)}">${ICONS.mic}</button>`;
+  }
+
   function chat(key, entries, standing) {
     const waiting = standing?.pending;
     const messages = entries.map((entry, index) => {
       const notes = [{ revival: "revived it", split: "split", status: entry.revived ? "revived it" : entry.state }[entry.kind] || "", entry.verdict || ""].filter(Boolean).map(note => `<span class="note">${escape(note)}</span>`).join("");
       const held = waiting && index === entries.length - 1;
-      return `<div class="message ${entry.author}${held ? " waiting" : ""}" data-key="message:${escape(entry.moment)}:${index}">${notes}<div class="context">${markdown(entry.text)}</div>
+      const words = entry.text ? `<div class="context">${markdown(entry.text)}</div>` : "";
+      return `<div class="message ${entry.author}${held ? " waiting" : ""}${entry.attachments?.length ? " carrying" : ""}" data-key="message:${escape(entry.moment)}:${index}">${notes}${words}${carried(key, entry)}
         <span class="when">${held ? "waiting for the answer · " : ""}${time(entry.moment)}</span></div>`;
     }).join("");
-    return `<aside class="chat" data-key="chat:${escape(key)}" aria-label="Chat"><div class="chat-head"><span class="label">Chat</span></div>
+    return `<aside class="chat${state.dropping === key ? " dropping" : ""}" data-key="chat:${escape(key)}" data-drop="${escape(key)}" aria-label="Chat"><div class="chat-head"><span class="label">Chat</span></div>
       <div class="messages" data-log="${escape(key)}">${messages || '<p class="nothing">Nothing said yet.</p>'}</div>
-      ${composer(key, waiting)}</aside>`;
+      ${composer(key, waiting)}
+      <div class="drop-veil" aria-hidden="true"><span>Drop to attach</span></div></aside>`;
   }
 
-  // The field every chat writes in, the global chat's too: closed while WAITING for the agent, its
-  // button then FROZEN's (withdraw the message, by default; the global chat's stops the answer).
+  // The field every chat writes in, the global chat's too: its files, the recorder, closed while
+  // WAITING for the agent, its button then FROZEN's (withdraw the message, by default; the global
+  // chat's stops the answer).
   function composer(key, waiting, frozen = { data: "withdraw", label: "Withdraw it, to edit" }) {
     const button = waiting
       ? `<button type="button" class="send" data-${frozen.data}="${escape(key)}" aria-label="${escape(frozen.label)}" title="${escape(frozen.label)}">${ICONS.cancel}</button>`
       : `<button type="button" class="send" data-send="${escape(key)}" aria-label="Send" title="Send">${ICONS.send}</button>`;
-    return `<div class="composer${waiting ? " frozen" : ""}"><textarea data-draft="reply:${escape(key)}" rows="1" ${waiting ? "disabled" : ""}
-        placeholder="${waiting ? "Waiting for the agent's answer" : "Write to the agent"}" aria-label="Message"></textarea>${button}</div>`;
+    const failed = state.failed.get(key);
+    const problem = failed ? `<div class="recorded-problem" role="alert"><span>${escape(failed.error)}</span><span class="choices"><button type="button" data-retry="${escape(key)}">Try again</button><button type="button" class="quiet" data-forget="${escape(key)}">Discard</button></span></div>` : "";
+    const clip = `<button type="button" class="tool" data-attach="${escape(key)}" ${waiting ? "disabled" : ""} aria-label="Attach files" title="${waiting ? "Waiting for the agent's answer" : "Attach files (or drop them here)"}">${ICONS.clip}</button>`;
+    return `<div class="composer${waiting ? " frozen" : ""}">${chips(key)}${problem}<div class="line">${clip}<textarea data-draft="reply:${escape(key)}" rows="1" ${waiting ? "disabled" : ""}
+        placeholder="${waiting ? "Waiting for the agent's answer" : "Write to the agent"}" aria-label="Message"></textarea>${recorder(key, waiting)}${button}</div></div>`;
   }
 
   function verdictButtons(key, verdict, count = 1) {
@@ -622,6 +687,20 @@
       </article></div>`;
   }
 
+  // A picture a message carries, enlarged over everything, zooming in place like the viewer's.
+  function drawLightbox() {
+    const picture = state.picture;
+    const markup = picture ? `<div class="overlay lightbox" data-key="lightbox:${escape(picture.address)}" data-lightbox-backdrop>
+      <article class="sheet open viewer image" data-hue="${hue(picture.topic)}" role="dialog" aria-modal="true" aria-label="${escape(picture.name)}">
+        <div class="ribbon"><h2>${escape(picture.name)}</h2><span class="side"><a class="path" href="${escape(picture.address)}" download="${escape(picture.name)}">Download</a></span><button type="button" class="close" data-lightbox-close aria-label="Close (Esc)" title="Close (Esc)">×</button></div>
+        <div class="main"><div class="content"><div class="panes" data-key="panes"><div class="column">${(() => {
+          const [box, shown] = zoomStyles("p");
+          return `<div class="pane"><button type="button" class="shot${box ? " zoomed" : ""}" data-shot="p" style="${box}" aria-label="${box ? "Zoom out" : "Zoom in"}"><img data-key="${escape(picture.address)}" src="${escape(picture.address)}" style="${shown}" alt="${escape(picture.name)}"></button></div>`;
+        })()}</div></div></div></div>
+      </article></div>` : "";
+    studio.morph($("topics-lightbox"), markup);
+  }
+
   function drawModal() {
     const item = state.modal ? itemAt(state.modal) : null;
     document.documentElement.classList.toggle("topics-viewing", !!item && state.shown);
@@ -644,6 +723,8 @@
   // Each picture shown zooms with the others, to the same point, so two versions compare in detail.
   // A picture shown about as large as it is zooms to twice its size instead.
   const clamp = value => Math.min(1, Math.max(0, value));
+  // Where the pictures that zoom together are: an enlarged attachment's, else the viewer's.
+  const zoomed = () => state.picture ? "#topics-lightbox" : "#topics-modal";
   const shift = box => `translate(${(-(box.wide - box.width) * state.zoom.x).toFixed(1)}px, ${(-(box.tall - box.height) * state.zoom.y).toFixed(1)}px)`;
   function zoomStyles(index) {
     const box = state.zoom?.boxes[index];
@@ -652,7 +733,7 @@
   }
   function zoomIn(shot, event) {
     const boxes = {};
-    for (const each of document.querySelectorAll("#topics-modal .shot")) {
+    for (const each of document.querySelectorAll(`${zoomed()} .shot`)) {
       const picture = each.querySelector("img");
       const { width, height } = picture.getBoundingClientRect();
       if (!picture.naturalWidth || !width) continue;
@@ -665,7 +746,7 @@
     state.zoom = { boxes, x: keyed ? .5 : clamp((event.clientX - rect.left) / rect.width), y: keyed ? .5 : clamp((event.clientY - rect.top) / rect.height) };
   }
   function placeZoom() {
-    for (const shot of document.querySelectorAll("#topics-modal .shot.zoomed")) {
+    for (const shot of document.querySelectorAll(`${zoomed()} .shot.zoomed`)) {
       const box = state.zoom.boxes[shot.dataset.shot];
       if (box) shot.querySelector("img").style.transform = shift(box);
     }
@@ -810,7 +891,10 @@
     }
     if (state.focus) {
       const field = document.querySelector(`#topics [data-draft="${CSS.escape(state.focus)}"]`);
-      if (field && !field.disabled) { field.focus(); field.setSelectionRange(field.value.length, field.value.length); state.focus = null; }
+      if (field && !field.disabled) {
+        const at = state.caretAt ?? field.value.length;
+        field.focus(); field.setSelectionRange(at, at); state.focus = state.caretAt = null;
+      }
     }
   }
   function grow(field) {
@@ -890,9 +974,11 @@
     drawAnswer();
     drawList();
     drawModal();
+    drawLightbox();
     fill($("topics"));
     markWords($("topics-main"));
     markWords($("topics-modal"));
+    drawGlobal();
     restoreDrafts();
     keepChats();
     if (state.reveal_to !== null) {
@@ -922,6 +1008,7 @@
       const data = JSON.parse(raw);
       state.topics = data.topics;
       state.ask = data.ask;
+      state.transcription = data.transcription || null;
       if (said().length) find(false);
       draw();
     } catch {
@@ -996,8 +1083,12 @@
   async function send(key) {
     if (key === GLOBAL) { sendGlobal(); return; }
     const written = (state.drafts.get(`reply:${key}`) || "").trim();
-    if (!written) return;
-    try { await post("topics/reply", { ...where(key), text: written }); } catch (error) { studio.toast(error.message); return; }
+    const files = state.attached.get(key) || [];
+    if (!written && !files.length) return;
+    if (files.some(file => file.uploading)) { studio.toast("Still uploading: send once the files are up."); return; }
+    try { await post("topics/reply", { ...where(key), text: written, ...(files.length ? { attachments: files.map(file => file.token) } : {}) }); } catch (error) { studio.toast(error.message); return; }
+    for (const file of files) if (file.preview?.startsWith("blob:")) URL.revokeObjectURL(file.preview);
+    state.attached.delete(key);
     state.drafts.delete(`reply:${key}`);
     document.activeElement?.blur();
     state.seen = "";
@@ -1008,6 +1099,7 @@
     let taken;
     try { taken = await post("topics/withdraw", where(key)); } catch (error) { studio.toast(error.message); return; }
     state.drafts.set(`reply:${key}`, taken.text);
+    if (taken.attachments?.length) state.attached.set(key, [...(state.attached.get(key) || []), ...taken.attachments.map(file => ({ ...file, id: file.token }))]);
     state.focus = `reply:${key}`;
     state.seen = "";
     await load();
@@ -1031,6 +1123,119 @@
     state.seen = "";
     draw();
   }
+
+  // --- what a composer carries: files, and what is said into it ---------------------------------
+
+  // Each file is uploaded at once, shown meanwhile from the browser's own copy.
+  let uploads = 0;
+  function attach(key, files) {
+    const standing = key.startsWith("topic:") ? topicNamed(key.slice(6))?.chat : itemAt(key)?.chat;
+    if (standing?.pending) { studio.toast("Your last message waits for the agent's answer: withdraw it to add to it."); return; }
+    const list = state.attached.get(key) || [];
+    state.attached.set(key, list);
+    for (const file of files) {
+      const chip = { id: `upload-${++uploads}`, name: file.name || "pasted", bytes: file.size, type: file.type.startsWith("image/") ? "image" : "file", uploading: true,
+        preview: file.type.startsWith("image/") ? URL.createObjectURL(file) : "" };
+      list.push(chip);
+      fetch(`topics/upload?name=${encodeURIComponent(chip.name)}`, { method: "POST", headers: { "Content-Type": "application/octet-stream" }, body: file })
+        .then(async response => { const answer = await response.json(); if (!response.ok) throw new Error(answer.error); return answer; })
+        .then(kept => Object.assign(chip, kept, { uploading: false, id: chip.id }))
+        .catch(error => { studio.toast(`${chip.name}: ${error.message}`); unattach(key, chip.id); })
+        .finally(draw);
+    }
+    draw();
+  }
+  function unattach(key, id) {
+    const list = state.attached.get(key) || [];
+    const chip = list.find(file => file.id === id);
+    if (!chip) return;
+    state.attached.set(key, list.filter(file => file !== chip));
+    if (chip.preview?.startsWith("blob:")) URL.revokeObjectURL(chip.preview);
+    if (chip.token) post("topics/upload/discard", { token: chip.token }).catch(() => {});
+    draw();
+  }
+  function pickFiles(key) {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.multiple = true;
+    input.hidden = true;
+    input.addEventListener("change", () => { if (input.files?.length) attach(key, [...input.files]); input.remove(); });
+    input.addEventListener("cancel", () => input.remove());
+    document.body.append(input);
+    input.click();
+  }
+
+  // One recording at a time: the microphone asked for on the first, the text written where the
+  // cursor was in that chat's field, for the owner to edit and send.
+  async function record(key) {
+    if (!state.transcription?.enabled) { studio.toast(state.transcription?.hint || "Transcription is off."); return; }
+    if (state.recording) {
+      if (state.recording.key === key) state.recording.recorder.stop();
+      else studio.toast("A recording is under way in another chat: stop it first.");
+      return;
+    }
+    if (state.transcribing) { studio.toast("Still writing the last recording."); return; }
+    let stream;
+    try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); } catch (error) {
+      studio.toast(`No microphone: ${error.message}`);
+      return;
+    }
+    const taken = new MediaRecorder(stream);
+    const chunks = [];
+    taken.addEventListener("dataavailable", event => { if (event.data.size) chunks.push(event.data); });
+    taken.addEventListener("stop", () => {
+      for (const track of stream.getTracks()) track.stop();
+      clearInterval(state.recording?.ticker);
+      state.recording = null;
+      transcribe(key, new Blob(chunks, { type: taken.mimeType || "audio/webm" }));
+    });
+    taken.start();
+    const ticker = setInterval(() => { for (const place of document.querySelectorAll("#topics [data-elapsed]")) place.textContent = elapsed(state.recording?.started ?? Date.now()); }, 250);
+    state.recording = { key, recorder: taken, started: Date.now(), ticker };
+    state.failed.delete(key);
+    draw();
+  }
+  async function transcribe(key, audio) {
+    state.transcribing = key;
+    state.failed.delete(key);
+    draw();
+    try {
+      const response = await fetch("topics/transcribe", { method: "POST", headers: { "Content-Type": audio.type || "audio/webm" }, body: audio });
+      const answer = await response.json();
+      if (!response.ok) throw new Error(answer.error);
+      insert(key, answer.text || "");
+    } catch (error) {
+      state.failed.set(key, { audio, error: `Not transcribed: ${error.message}` });
+    } finally {
+      state.transcribing = null;
+      draw();
+    }
+  }
+  // The words go where the cursor was (the end, if it never was), set apart by a space.
+  function insert(key, words) {
+    words = words.trim();
+    if (!words) { studio.toast("Nothing was heard."); return; }
+    const draft = state.drafts.get(`reply:${key}`) || "";
+    const [start, end] = state.carets.get(key) || [draft.length, draft.length];
+    const before = draft.slice(0, start), after = draft.slice(end);
+    const spaced = `${before && !/\s$/.test(before) ? " " : ""}${words}${after && !/^\s/.test(after) ? " " : ""}`;
+    state.drafts.set(`reply:${key}`, before + spaced + after);
+    state.carets.set(key, [start + spaced.length, start + spaced.length]);
+    state.focus = `reply:${key}`;
+    state.caretAt = start + spaced.length;
+  }
+  const keyOfDraft = field => field?.dataset?.draft?.startsWith("reply:") ? field.dataset.draft.slice(6) : null;
+  function caret(field) {
+    const key = keyOfDraft(field);
+    if (key) state.carets.set(key, [field.selectionStart, field.selectionEnd]);
+  }
+
+  function enlarge(button) {
+    state.picture = { address: button.dataset.picture, name: button.dataset.name, topic: button.dataset.topic };
+    state.zoom = null;
+    draw();
+  }
+  function closePicture() { state.picture = state.zoom = null; draw(); }
 
   // A chat opens what it belongs to: its topic, or its decision.
   function toggleChat(key) {
@@ -1075,6 +1280,19 @@
     if (sending) { send(sending.dataset.send); return; }
     const withdrawing = target.closest("[data-withdraw]");
     if (withdrawing) { withdraw(withdrawing.dataset.withdraw); return; }
+    const attaching = target.closest("[data-attach]");
+    if (attaching) { pickFiles(attaching.dataset.attach); return; }
+    const removing = target.closest("[data-unattach]");
+    if (removing) { unattach(removing.dataset.unattach, removing.dataset.id); return; }
+    const recording = target.closest("[data-record]");
+    if (recording) { record(recording.dataset.record); return; }
+    const retrying = target.closest("[data-retry]");
+    if (retrying) { const failed = state.failed.get(retrying.dataset.retry); if (failed) transcribe(retrying.dataset.retry, failed.audio); return; }
+    const forgetting = target.closest("[data-forget]");
+    if (forgetting) { state.failed.delete(forgetting.dataset.forget); draw(); return; }
+    const enlarging = target.closest("[data-picture]");
+    if (enlarging) { enlarge(enlarging); return; }
+    if (target.closest("[data-lightbox-close]") || target.matches("[data-lightbox-backdrop]")) { closePicture(); return; }
     const judging = target.closest("[data-judge]");
     if (judging) { judge(judging.dataset.judge, judging.dataset.verdictChoice); return; }
     const shot = target.closest("[data-shot]");
@@ -1114,7 +1332,35 @@
   root.addEventListener("input", event => {
     const field = event.target;
     if (field.id === "topics-input") { if (state.mode === "search") { state.search = field.value; find(true); } draw(); return; }
-    if (field.dataset.draft) { state.drafts.set(field.dataset.draft, field.value); grow(field); }
+    if (field.dataset.draft) { state.drafts.set(field.dataset.draft, field.value); grow(field); caret(field); }
+  });
+  // Where the cursor is in each chat's field, for the recorder's words.
+  for (const kind of ["keyup", "mouseup", "select", "focusout"]) root.addEventListener(kind, event => caret(event.target), true);
+  root.addEventListener("paste", event => {
+    const key = keyOfDraft(event.target);
+    const files = [...(event.clipboardData?.files || [])];
+    if (key && files.length) { event.preventDefault(); attach(key, files); }
+  });
+  // Files dragged over a chat light it up; dropped there they are attached. Dropped anywhere else,
+  // nothing happens: the browser does not leave the studio to show them.
+  const dragsFiles = event => [...(event.dataTransfer?.types || [])].includes("Files");
+  document.addEventListener("dragover", event => {
+    if (!(state.shown || talk.open) || !dragsFiles(event)) return;
+    event.preventDefault();
+    const over = event.target.closest?.("#topics [data-drop]");
+    const key = over && !over.querySelector(".composer.frozen") ? over.dataset.drop : null;
+    event.dataTransfer.dropEffect = key ? "copy" : "none";
+    if (state.dropping !== key) { state.dropping = key; draw(); }
+  });
+  document.addEventListener("dragleave", event => {
+    if (state.dropping && !event.relatedTarget) { state.dropping = null; draw(); }
+  });
+  document.addEventListener("drop", event => {
+    if (!(state.shown || talk.open) || !dragsFiles(event)) return;
+    event.preventDefault();
+    const over = event.target.closest?.("#topics [data-drop]");
+    state.dropping = null;
+    if (over) attach(over.dataset.drop, [...event.dataTransfer.files]); else draw();
   });
   // A zoomed picture follows the mouse; on a touch screen it is dragged, and a tap leaves the zoom.
   root.addEventListener("scroll", event => { if (event.target.matches?.("textarea[data-draft]")) edges(event.target); }, true);
@@ -1163,7 +1409,8 @@
     }
     if (["TEXTAREA", "INPUT"].includes(target.tagName)) return;
     if (event.key === "Escape") {
-      if (state.menu) { state.menu = null; draw(); }
+      if (state.picture && state.zoom === null) closePicture();
+      else if (state.menu) { state.menu = null; draw(); }
       else if (state.reveal !== null) { state.reveal = null; draw(); }
       else if (state.zoom !== null) { state.zoom = null; draw(); }
       else if (state.modal) closeViewer();
@@ -1171,7 +1418,7 @@
       event.preventDefault();
       return;
     }
-    if (state.modal && (event.key === "ArrowLeft" || event.key === "ArrowRight")) {
+    if (state.modal && !state.picture && (event.key === "ArrowLeft" || event.key === "ArrowRight")) {
       event.preventDefault();
       step(event.key === "ArrowLeft" ? -1 : 1);
       return;
@@ -1271,7 +1518,7 @@
 
   function globalMessages(chat) {
     const said = chat.messages.map((entry, index) => `<div class="message ${entry.author}" data-key="said:${index}">
-        ${entry.text ? `<div class="context">${markdown(entry.text)}</div>` : ""}${entry.author === "agent" ? ranOf(entry.activity) : ""}
+        ${entry.text ? `<div class="context">${markdown(entry.text)}</div>` : ""}${carried(GLOBAL, entry)}${entry.author === "agent" ? ranOf(entry.activity) : ""}
         ${entry.problem ? `<p class="problem">${escape(entry.problem === "stopped" ? "Stopped." : entry.problem)}</p>` : ""}
         <span class="when">${time(entry.moment)}</span></div>`).join("");
     const live = chat.live;
@@ -1315,7 +1562,9 @@
     else body = `<div class="messages" data-log="global">${chat ? globalMessages(chat) : '<p class="nothing" data-key="hello">Ask the agent anything about the project: it reads the topics, the code and its history, and answers here.</p>'}</div>`;
     const foot = talk.listing ? "" : chat?.kind === "tidy" ? tidyFoot(chat)
       : composer(GLOBAL, !!chat?.running, { data: "global-stop", label: "Stop the answer" });
-    return `<aside class="chat global${talk.pinned ? " pinned" : ""}" data-key="chat:global" aria-label="Chat with the agent">${head}${body}${foot}</aside>`;
+    const drops = !talk.listing && chat?.kind !== "tidy" && !chat?.running;
+    return `<aside class="chat global${talk.pinned ? " pinned" : ""}${state.dropping === GLOBAL ? " dropping" : ""}" data-key="chat:global"${drops ? ` data-drop="${GLOBAL}"` : ""} aria-label="Chat with the agent">${head}${body}${foot}
+      <div class="drop-veil" aria-hidden="true"><span>Drop to attach</span></div></aside>`;
   }
   function drawGlobal() {
     const place = $("topics-global");
@@ -1364,9 +1613,14 @@
   }
   async function sendGlobal() {
     const written = (state.drafts.get(`reply:${GLOBAL}`) || "").trim();
-    if (!written || talk.chat?.running) return;
+    const files = state.attached.get(GLOBAL) || [];
+    if ((!written && !files.length) || talk.chat?.running) return;
+    if (files.some(file => file.uploading)) { studio.toast("Still uploading: send once the files are up."); return; }
     let shown;
-    try { shown = await post("chat/send", { ...(talk.id ? { id: talk.id } : {}), text: written }); } catch (error) { studio.toast(error.message); return; }
+    const body = { ...(talk.id ? { id: talk.id } : {}), text: written, ...(files.length ? { attachments: files.map(file => file.token) } : {}) };
+    try { shown = await post("chat/send", body); } catch (error) { studio.toast(error.message); return; }
+    for (const file of files) if (file.preview?.startsWith("blob:")) URL.revokeObjectURL(file.preview);
+    state.attached.delete(GLOBAL);
     state.drafts.delete(`reply:${GLOBAL}`);
     talk.id = shown.id; talk.chat = shown; talk.follow = true;
     store("nock.chat.current", talk.id);

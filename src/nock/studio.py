@@ -15,10 +15,13 @@ change the answer later; `POST /usage` records either."""
 from __future__ import annotations
 
 import html
+import io
 import json
 import mimetypes
 import os
 import re
+import secrets
+import shutil
 import subprocess
 import sys
 import threading
@@ -40,8 +43,19 @@ from nock.evaluation import Evaluations, Run
 from nock.explorer import Explorer, View
 from nock.project import Project
 from nock.schema import validate
-from nock.topics import Author, Topics, Verdict, chat_state, in_order, state_of
+from nock.topics import (
+    ATTACHMENTS,
+    Author,
+    Topics,
+    Verdict,
+    attachment_name,
+    chat_state,
+    in_order,
+    kind_of,
+    state_of,
+)
 from nock.topics import Word as Verdicted
+from nock.transcription import HINT, Transcription
 from nock.usage import QUESTION, Answer, Usage, sharing
 from nock.utils import now, read_json, write_json
 
@@ -57,6 +71,8 @@ class Tab:
 
     name = ""
     title = ""
+    # The routes whose POST body is a file as it is (an `Upload`), not JSON.
+    raw: tuple[str, ...] = ()
 
     def __init__(self, project: Project) -> None:
         self.project = project
@@ -158,8 +174,13 @@ SEARCHED_BYTES = 256 * 1024
 
 
 def talk_of(thread: list[dict[str, Any]]) -> list[str]:
-    """A thread's messages as the owner reads them, without nock's own notes."""
-    return [entry["text"] for entry in thread if not entry.get("kind")]
+    """A thread's messages as the owner reads them, without nock's own notes:
+    each one's text and the names of the files it carries."""
+    return [
+        " ".join([entry["text"], *(file["name"] for file in entry.get("attachments", []))])
+        for entry in thread
+        if not entry.get("kind")
+    ]
 
 
 @dataclass(frozen=True)
@@ -178,11 +199,87 @@ class Judged(TypedDict):
 
 
 class Replied(TypedDict):
-    """The owner's message in an item's thread (`ref`) or a topic's."""
+    """The owner's message in an item's thread (`ref`) or a topic's, with the
+    files uploaded for it (their tokens)."""
 
     ref: NotRequired[str]
     topic: NotRequired[str]
     text: str
+    attachments: NotRequired[list[str]]
+
+
+class Token(TypedDict):
+    token: str
+
+
+@dataclass(frozen=True)
+class Upload:
+    """A request's body as it is, not JSON: a file the owner dropped into a
+    chat, or a recording; its name from `?name=`."""
+
+    name: str
+    kind: str
+    length: int
+    stream: io.BufferedIOBase
+
+
+class Uploads:
+    """The files dropped into a chat's composer, kept on this machine
+    (`.nock/local/studio/uploads/TOKEN/NAME`) until the message they go with
+    is sent, which moves them beside its thread; a withdrawn message's come
+    back here, to send again. What was never sent is forgotten when the
+    studio starts again."""
+
+    def __init__(self, project: Project) -> None:
+        self.directory = project.local / "studio" / "uploads"
+        shutil.rmtree(self.directory, ignore_errors=True)
+
+    def record(self, path: Path) -> dict[str, Any]:
+        with path.open("rb") as handle:
+            head = handle.read(65536)
+        return {
+            "token": path.parent.name,
+            "name": path.name,
+            "type": kind_of(path.name, head),
+            "bytes": path.stat().st_size,
+        }
+
+    def stage(self, upload: Upload) -> dict[str, Any]:
+        path = self.directory / secrets.token_hex(8) / attachment_name(upload.name)
+        path.parent.mkdir(parents=True)
+        left = upload.length
+        with path.open("wb") as file:
+            while left > 0:
+                chunk = upload.stream.read(min(left, 1 << 20))
+                if not chunk:
+                    break
+                file.write(chunk)
+                left -= len(chunk)
+        return self.record(path)
+
+    def adopt(self, path: Path) -> dict[str, Any]:
+        """A file kept elsewhere, moved here to be sent again."""
+        target = self.directory / secrets.token_hex(8) / path.name
+        target.parent.mkdir(parents=True)
+        shutil.move(path, target)
+        return self.record(target)
+
+    def path(self, token: str) -> Path:
+        folder = self.directory / token
+        if not re.fullmatch(r"[0-9a-f]{16}", token) or not folder.is_dir():
+            raise NotFoundError(f"no upload {token}: drop the file again")
+        files = [entry for entry in folder.iterdir() if entry.is_file()]
+        if not files:
+            raise NotFoundError(f"no upload {token}: drop the file again")
+        return files[0]
+
+    def discard(self, token: str) -> None:
+        shutil.rmtree(self.path(token).parent)
+
+    def sent(self, tokens: list[str]) -> None:
+        """Remove what is left of these uploads, once their files are kept beside the thread."""
+        for token in tokens:
+            shutil.rmtree(self.directory / token, ignore_errors=True)
 
 
 class Where(TypedDict):
@@ -281,22 +378,29 @@ class Asking:
 
 class TopicsTab(Tab):
     """`GET /topics` every topic with its items (each version's decision and
-    files), where each chat stands (`chat`: pending, unseen) and the question
-    being asked; `GET /topics/file/TOPIC/SLUG/N/NAME` one of a version's
-    files, as it is; `POST /topics/judge` the owner's verdict on an item or a
-    whole topic, `/prefer` their preferred option of an item, `/reply` their
-    message in a chat, `/withdraw` takes it back while it waits for its
-    answer, `/seen` records that they looked at a chat, `/ask` a question
-    about the topics (one at a time), `/ask/cancel` stops it."""
+    files), where each chat stands (`chat`: pending, unseen), the question
+    being asked and whether the recorder can transcribe; `GET
+    /topics/file/TOPIC/SLUG/N/NAME` one of a version's files, as it is,
+    `/attachment/TOPIC[/SLUG]/PATH` one a message carries, `/upload/TOKEN`
+    one dropped into a composer; `POST /topics/judge` the owner's verdict on
+    an item or a whole topic, `/prefer` their preferred option of an item,
+    `/upload?name=NAME` a file for the message being written (its body as it
+    is), `/upload/discard` takes it out, `/reply` their message in a chat
+    with its files, `/withdraw` takes it back while it waits for its answer
+    (its files uploaded again), `/seen` records that they looked at a chat,
+    `/transcribe` a recording made text (`nock.transcription`), `/ask` a
+    question about the topics (one at a time), `/ask/cancel` stops it."""
 
     name = "topics"
     title = "Work"
+    raw = ("upload", "transcribe")
 
     def __init__(self, project: Project) -> None:
         super().__init__(project)
         self.topics = Topics(project)
         self.asking = Asking(project)
         self.seen = Seen(project)
+        self.uploads = Uploads(project)
         self.texts: dict[Path, tuple[int, str]] = {}
 
     def fragment(self) -> str:
@@ -305,11 +409,21 @@ class TopicsTab(Tab):
 
     def get(self, route: str) -> Any:
         if not route:
+            transcription = Transcription(self.project)
             return {
                 "topics": self.everything(),
                 "ask": self.asking.state(),
+                "transcription": {
+                    "enabled": transcription.enabled,
+                    **({} if transcription.enabled else {"hint": HINT}),
+                },
             }
         parts = urllib.parse.unquote(route).split("/")
+        if parts[0] == "upload" and len(parts) == 2:
+            return Raw(self.uploads.path(parts[1]))
+        if parts[0] == "attachment" and ATTACHMENTS in parts[2:4]:
+            slug = None if parts[2] == ATTACHMENTS else parts[2]
+            return Raw(self.topics.attachment(parts[1], slug, "/".join(parts[3 if slug else 2 :])))
         if parts[0] == "search":
             return self.search("/".join(parts[1:]))
         if parts[0] != "file" or len(parts) < 5 or not parts[3].isdigit():
@@ -320,7 +434,7 @@ class TopicsTab(Tab):
         """What the Search field finds, in what the owner sees: a topic by its
         name, description, status and thread; an item by its title, its
         decision, its files' names, the text of its text files, and its
-        thread — never a recipe, a `from`, a ref or nock's own notes (a split,
+        thread (a thread's messages with the names of the files they carry) — never a recipe, a `from`, a ref or nock's own notes (a split,
         a revival, a task kept as a note). Every word must be found in the
         topic and the item together, and one at least in the item itself."""
         wanted = query.lower().split()
@@ -405,6 +519,15 @@ class TopicsTab(Tab):
         return in_order(found)
 
     def post(self, route: str, body: Any) -> Any:
+        if route == "upload":
+            return self.uploads.stage(body)
+        if route == "transcribe":
+            audio = body.stream.read(body.length)
+            return {"text": Transcription(self.project).transcribe(audio, body.kind)}
+        if route == "upload/discard":
+            validate(body, schema_of(Token))
+            self.uploads.discard(body["token"])
+            return {"discarded": body["token"]}
         if route == "judge":
             validate(body, schema_of(Judged))
             word = Verdicted(verdict=body["verdict"])
@@ -418,14 +541,27 @@ class TopicsTab(Tab):
             where = body.get("ref") or body.get("topic")
             if not where:
                 raise UsageError("give `ref` or `topic`")
+            tokens = body.get("attachments", [])
+            files = [self.uploads.path(token) for token in tokens]
             if "ref" in body:
-                self.topics.update_item(body["ref"], None, reply=body["text"], author=Author.OWNER)
+                self.topics.update_item(
+                    body["ref"], None, reply=body["text"], author=Author.OWNER, attachments=files
+                )
             else:
-                self.topics.update_topic(body["topic"], {}, reply=body["text"], author=Author.OWNER)
+                self.topics.update_topic(
+                    body["topic"], {}, reply=body["text"], author=Author.OWNER, attachments=files
+                )
+            self.uploads.sent(tokens)
             return {"replied": where}
         if route == "withdraw":
             validate(body, schema_of(Where))
-            return {"text": self.topics.withdraw(body.get("ref"), body.get("topic"))}
+            back: list[dict[str, Any]] = []
+            text = self.topics.withdraw(
+                body.get("ref"),
+                body.get("topic"),
+                keep=lambda path, _: back.append(self.uploads.adopt(path)),
+            )
+            return {"text": text, **({"attachments": back} if back else {})}
         if route == "seen":
             validate(body, schema_of(Where))
             if "ref" in body:
@@ -452,10 +588,12 @@ TABS: tuple[type[Tab], ...] = (TopicsTab, EvalsTab)
 
 
 class Said(TypedDict):
-    """The owner's message in the studio's chat: in chat `id`, or a new one."""
+    """The owner's message in the studio's chat: in chat `id`, or a new one,
+    with the files uploaded for it (their tokens)."""
 
     id: NotRequired[str]
     text: str
+    attachments: NotRequired[list[str]]
 
 
 class Which(TypedDict):
@@ -470,24 +608,35 @@ class ChatRoutes(Tab):
     chat in a line, the latest first; `GET /chat/ID` one, with the answer
     being written; `POST /chat/send` the owner's message (a new chat without
     `id`), `/stop` stops the answer, `/leave` names the chat the owner
-    leaves for a new one, `/tidy` starts Tidy up, `/undo` reverts its commit."""
+    leaves for a new one, `/tidy` starts Tidy up, `/undo` reverts its commit;
+    `GET /chat/file/ID/PATH` a file a message carries. Files go up as in
+    every chat (`topics/upload`), and are kept beside the chat."""
 
     name = "chat"
     title = "Chat"
 
-    def __init__(self, project: Project) -> None:
+    def __init__(self, project: Project, uploads: Uploads) -> None:
         super().__init__(project)
         self.chats = Chats(project)
+        self.uploads = uploads
 
     def get(self, route: str) -> Any:
         if not route:
             return {"chats": self.chats.listing()}
-        return self.chats.shown(route)
+        identifier, _, rest = urllib.parse.unquote(route).partition("/")
+        if identifier == "file":
+            chat, _, path = rest.partition("/")
+            return Raw(self.chats.attachment(chat, path))
+        return self.chats.shown(identifier)
 
     def post(self, route: str, body: Any) -> Any:
         if route == "send":
             validate(body, schema_of(Said))
-            return self.chats.send(body.get("id"), body["text"])
+            tokens = body.get("attachments") or []
+            files = [self.uploads.path(token) for token in tokens]
+            shown = self.chats.send(body.get("id"), body["text"], files)
+            self.uploads.sent(tokens)
+            return shown
         if route == "tidy":
             return self.chats.tidy()
         actions = {"stop": self.chats.stop, "leave": self.chats.leave, "undo": self.chats.undo}
@@ -503,7 +652,7 @@ class Choice(TypedDict):
     share: bool
 
 
-class Transcription(TypedDict):
+class RecorderSettings(TypedDict):
     """Where the recorder sends what the owner says, set in the settings."""
 
     transcribe_url: str
@@ -524,7 +673,10 @@ class Studio(ThreadingHTTPServer):
         self.project = project
         self.tabs = {tab.name: tab(project) for tab in TABS}
         # What the page asks the server: each tab's routes, and the chat's.
-        self.routes: dict[str, Tab] = {**self.tabs, ChatRoutes.name: ChatRoutes(project)}
+        topics = self.tabs[TopicsTab.name]
+        assert isinstance(topics, TopicsTab)
+        chat = ChatRoutes(project, topics.uploads)
+        self.routes: dict[str, Tab] = {**self.tabs, chat.name: chat}
 
     def question(self) -> str:
         """Under the title while nobody has answered: a slim line asking, with
@@ -598,7 +750,7 @@ class Studio(ThreadingHTTPServer):
     def configure(self, body: Any) -> dict[str, Any]:
         """The recorder's settings from the page, written to this machine's
         `.nock/local/config.toml` under `[studio]`."""
-        validate(body, schema_of(Transcription))
+        validate(body, schema_of(RecorderSettings))
         values = {key: str(body[key]).strip() for key in TRANSCRIPTION}
         variable = values["transcribe_key_variable"]
         if variable and not VARIABLE.fullmatch(variable):
@@ -673,11 +825,21 @@ class Handler(BaseHTTPRequestHandler):
         self.answer(lambda tab, route: tab.get(route))
 
     def do_POST(self) -> None:
-        try:
-            body = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))))
-        except json.JSONDecodeError as error:
-            self.send_json(HTTPStatus.BAD_REQUEST, {"error": str(error)})
-            return
+        length = int(self.headers.get("Content-Length", 0))
+        address = urllib.parse.urlsplit(self.path)
+        name, _, route = address.path.removeprefix("/").partition("/")
+        tab = self.studio.tabs.get(name)
+        body: Any
+        if tab is not None and route in tab.raw:
+            query = urllib.parse.parse_qs(address.query)
+            kind = self.headers.get("Content-Type", "")
+            body = Upload(query.get("name", ["file"])[0], kind, length, self.rfile)
+        else:
+            try:
+                body = json.loads(self.rfile.read(length))
+            except json.JSONDecodeError as error:
+                self.send_json(HTTPStatus.BAD_REQUEST, {"error": str(error)})
+                return
         if self.path in ("/usage", "/settings"):
             take = self.studio.answer if self.path == "/usage" else self.studio.configure
             try:

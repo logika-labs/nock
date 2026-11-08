@@ -357,3 +357,28 @@ def test_the_recorder_s_server_is_set_in_the_settings_on_this_machine_only(
         shown = response.read().decode()
     assert 'value="http://127.0.0.1:8000/v1"' in shown and 'value="WHISPER_KEY"' in shown
     assert git(project.root, "status", "--porcelain") == ""
+
+
+def test_a_chat_message_carries_files_the_agent_is_told_where_to_read(
+    project: Project, page: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    log = tmp_path / "asked.jsonl"
+    monkeypatch.setenv("FAKE_LOG", str(log))
+    request = urllib.request.Request(
+        f"{page}topics/upload?name=notes.md", data=b"# Notes\n", method="POST"
+    )
+    with urllib.request.urlopen(request) as response:
+        token = json.loads(response.read())["token"]
+    status, started = post(page, "send", {"text": "Read this.", "attachments": [token]})
+    assert status == 200
+    [file] = started["messages"][0]["attachments"]
+    assert file["name"] == "notes.md" and file["type"] == "text" and file["bytes"] == 8
+    answered(page, started["id"])
+    where = project.root / ".nock" / "local" / "chats" / started["id"] / file["path"]
+    assert f"- {where} (text)" in asked(log)[0]["prompt"]
+    with urllib.request.urlopen(f"{page}chat/file/{started['id']}/{file['path']}") as response:
+        assert response.read() == b"# Notes\n"
+    with pytest.raises(urllib.error.HTTPError):
+        urllib.request.urlopen(f"{page}chat/file/{started['id']}/../{started['id']}.json")
+    # Sent, the upload is gone: it lives beside the chat now.
+    assert post(page, "send", {"text": "Again.", "attachments": [token]})[0] == 404

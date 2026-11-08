@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
 import threading
 import uuid
 from dataclasses import dataclass, field
@@ -31,7 +32,7 @@ from nock.errors import ConflictError, Error, NotFoundError, UsageError
 from nock.git import GitError
 from nock.sessions import find_transcript
 from nock.templates import Library
-from nock.topics import TIDIER, Topics, committed
+from nock.topics import TIDIER, Topics, attachment_name, committed, kind_of
 from nock.utils import now, read_json, write_json
 
 if TYPE_CHECKING:
@@ -226,10 +227,14 @@ class Chats:
 
     # --- talking ----------------------------------------------------------------
 
-    def send(self, identifier: str | None, text: str) -> dict[str, Any]:
-        """The owner's message: in a new chat without `identifier`; the agent's
-        answer starts at once, in the background."""
-        if not text.strip():
+    def send(
+        self, identifier: str | None, text: str, files: list[Path] | None = None
+    ) -> dict[str, Any]:
+        """The owner's message, with the files it carries (moved beside the
+        chat): in a new chat without `identifier`; the agent's answer starts
+        at once, in the background."""
+        files = files or []
+        if not text.strip() and not files:
             raise UsageError("the message is empty")
         with self.lock:
             if identifier is None:
@@ -240,10 +245,47 @@ class Chats:
                     raise UsageError("a Tidy up chat takes no messages: start a new chat")
                 if identifier in self.turns:
                     raise ConflictError("the agent is still answering: wait for it, or stop it")
-            chat["messages"].append({"author": "owner", "text": text.strip(), "moment": now()})
+            said: dict[str, Any] = {"author": "owner", "text": text.strip(), "moment": now()}
+            if files:
+                said["attachments"] = self.attach(chat["id"], files, said["moment"])
+            chat["messages"].append(said)
             self.save(chat)
             self.start(chat)
         return self.shown(chat["id"])
+
+    def attach(self, identifier: str, files: list[Path], stamp: str) -> list[dict[str, Any]]:
+        """Files moved beside the chat, in a folder of their message's own."""
+        label = stamp.replace("-", "").replace(":", "")
+        folder, number = self.directory / identifier / label, 2
+        while folder.exists():
+            folder, number = self.directory / identifier / f"{label}-{number}", number + 1
+        folder.mkdir(parents=True)
+        kept = []
+        for source in files:
+            name = attachment_name(source.name)
+            target = folder / name
+            while target.exists():
+                target = folder / f"{target.stem}-2{target.suffix}"
+            shutil.move(source, target)
+            with target.open("rb") as handle:
+                kind = kind_of(target.name, handle.read(65536))
+            kept.append(
+                {
+                    "name": target.name,
+                    "type": kind,
+                    "bytes": target.stat().st_size,
+                    "path": str(target.relative_to(self.directory / identifier)),
+                }
+            )
+        return kept
+
+    def attachment(self, identifier: str, path: str) -> Path:
+        """One of the files a chat's messages carry; only those."""
+        for said in self.load(identifier)["messages"]:
+            for file in said.get("attachments") or []:
+                if file["path"] == path:
+                    return self.directory / identifier / path
+        raise NotFoundError(f"chat {identifier} has no file {path}")
 
     def tidy(self) -> dict[str, Any]:
         """Tidy up: a new chat whose agent reorganizes the topics."""
@@ -327,7 +369,7 @@ class Chats:
         """Continue the chat's session when Claude Code still has it; else, or
         when resuming fails before a word, a new one briefed with what was said."""
         role = TIDIER if chat["kind"] == Kind.TIDY else CHATTER
-        said = chat["messages"][-1]["text"]
+        said = self.heard(chat, chat["messages"][-1])
         earlier = chat["messages"][:-1]
         previous = chat.get("session")
         if previous and find_transcript(self.project.root, previous) is not None:
@@ -336,6 +378,17 @@ class Chats:
                 return session
             turn.reset()
         return self.launch(role, self.brief(chat, said, earlier), turn)
+
+    def heard(self, chat: dict[str, Any], said: dict[str, Any]) -> str:
+        """The owner's message as the agent reads it: the files it carries named
+        by where they are, to read."""
+        files = said.get("attachments") or []
+        if not files:
+            return said["text"]
+        listed = "\n".join(
+            f"- {self.directory / chat['id'] / file['path']} ({file['type']})" for file in files
+        )
+        return f"{said['text']}\n\nThe owner attached these files (read them):\n{listed}".strip()
 
     def launch(self, role: str, prompt: str, turn: Turn, resume: str | None = None) -> Session:
         return Dispatcher(self.project).launch(

@@ -67,6 +67,8 @@ src/nock/
                      streamed, resumed or re-briefed with its transcript, named on leaving),
                      and Tidy up (its writes as one commit, Undo a revert); `.nock/local/chats/`
   studio.py          the owner's page (`nock studio`): a local server, a Tab per tab, the chat's routes
+  transcription.py   Transcription: the studio's recorder, a recording forwarded to the
+                     Whisper server `studio.transcribe_url` names and made text
   pages/             studio.html, the shell (band with the title and the menu, routing by
                      `#NAME/ROUTE`); studio.css, its look, put in the shell;
                      NAME.html, each tab's fragment (markup, style, a script registering it);
@@ -464,8 +466,16 @@ commands, which are `confirm=True`; studio messages are the owner's, CLI ones
 an agent's. A thread is a chat: `said_in` refuses the owner a second
 message while their last is `pending` (no answer yet, no verdict since) and
 marks an agent's reply to it `answers`; `withdraw` pops a pending message.
+A message may carry files (`attachments`: name, type, bytes, path, local):
+`attach` moves them beside its thread, into the topic's or the item's
+`attachments/MOMENT/` (`ATTACHMENTS`, a name no slug takes; a large one under
+`.nock/local/topics/` the same way), committed with the thread; `path` is
+relative to the thread's folder, so a moved item or renamed topic keeps them,
+and `thread_shown` adds `where`, the absolute path an agent reads;
+`withdraw` hands a pending message's files to its `keep` and removes them.
 `summary` is the open items by topic and `awaiting` (threads where
-the owner wrote last, rejected items), for the lists and `status.Standing`;
+the owner wrote last, with `attachments`, the paths their last message
+carries, when it carries any; rejected items), for the lists and `status.Standing`;
 `search_items` and `search_topics` rank plain full text. `news_for` and
 `governing` are the prompt and edit hooks'. `citation_problems` is the
 `nock-map` check, on `[topic/slug]` and `[D7]` citations. `nock init` writes
@@ -525,7 +535,14 @@ and its style under its own class. Two tabs: `TopicsTab`, which serves every
 topic with its items and where each chat stands (`topics.chat_state`:
 pending, unseen since `studio.Seen`'s last look, kept in
 `.nock/local/studio/seen.json`), a version's files as they are, the owner's
-verdicts, preferred options and messages (`withdraw` takes back one still waiting), and the Ask (`studio.Asking`: one `nock topics ask` process at a
+verdicts, preferred options and messages (`withdraw` takes back one still waiting), the
+files dropped into a composer (`studio.Uploads`: a POST whose body is not JSON
+is an `Upload`, staged in `.nock/local/studio/uploads/TOKEN/` until the
+message they go with is sent; a withdrawn message's come back there), a
+recording made text (`transcription.Transcription`: multipart, as OpenAI's
+`/v1/audio/transcriptions` takes it, to the configured URL, the key from the
+environment variable the configuration names; refused while no URL is set,
+which the page shows as a faded recorder saying how to set one), and the Ask (`studio.Asking`: one `nock topics ask` process at a
 time, cancelled by stopping it; `asking.Asker` dispatches the asker seat,
 which answers through `nock topics answer`, held to naming items that
 exist), and `EvalsTab`
@@ -545,7 +562,9 @@ run, which `GET /chat/ID` serves while it runs (the page polls every 350 ms
 then); a `stop` event kills it. The next turn resumes the session
 (`--resume`) when `sessions.find_transcript` finds it and Claude Code takes
 it; otherwise, or when the resume fails before a word, a new session is
-briefed with the chat's transcript. Leaving a chat for a new one dispatches
+briefed with the chat's transcript. Files a message carries go up as in
+every chat (the topics tab's `Uploads`) and are moved to
+`.nock/local/chats/ID/STAMP/`, the agent told where to read them. Leaving a chat for a new one dispatches
 the `namer` (no tools) for a title and summary. Tidy up is a chat whose
 agent is the `tidier`: `Topics.commit` commits nothing for that role, and
 when it ends `Chats.gather` commits `.nock/topics` once; Undo is `git
