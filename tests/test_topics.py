@@ -886,6 +886,23 @@ def test_a_project_migrated_before_marks_what_the_owner_said_as_told_once(
     assert HookRunner(project, {"session_id": "s1"}).handle("UserPromptSubmit") is None
 
 
+def test_a_topic_not_yet_given_a_state_reads_as_the_migration_will_set_it(
+    project: Project,
+) -> None:
+    decided, waiting = submit(project.root), submit(project.root, topic="pricing")
+    judge(project.root, decided, "accepted")
+    directory = Topics(project).directory
+    for name in ("orders", "pricing"):
+        record = json.loads((directory / name / "topic.json").read_text())
+        del record["state"], record["status"]
+        (directory / name / "topic.json").write_text(json.dumps(record))
+    states = {
+        row["name"]: row["state"] for row in run(project.root, "topics", "list", "--full")["rows"]
+    }
+    assert states == {"orders": "done", "pricing": "active"}
+    assert waiting.startswith("pricing/")
+
+
 def test_topics_get_their_state_once_and_task_items_become_notes(project: Project) -> None:
     decided, waiting = submit(project.root), submit(project.root, topic="pricing")
     judge(project.root, decided, "accepted")

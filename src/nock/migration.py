@@ -30,7 +30,6 @@ from nock.topics import (
     SPLIT,
     TOPIC_FILE,
     Author,
-    State,
     Topics,
     Verdict,
     checked_decision,
@@ -38,6 +37,7 @@ from nock.topics import (
     entry_name,
     kind_of,
     slugged,
+    state_of,
     stored,
 )
 from nock.utils import now, read_json, write_json
@@ -611,8 +611,7 @@ class Stating:
                     items.remove(item)
                     tasks += 1
                 if not topic.get("state"):
-                    decided = bool(items) and all(item["verdict"] != Verdict.OPEN for item in items)
-                    topic["state"] = str(State.DONE if decided else State.ACTIVE)
+                    topic["state"] = str(state_of(topic, items))
                     topic.setdefault("status", "")
                     states[topic["state"]] = states.get(topic["state"], 0) + 1
                 write_json(self.topics.directory / name / TOPIC_FILE, topic)

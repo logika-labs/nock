@@ -206,7 +206,7 @@
   border: 2px solid #111116;
   box-shadow: 5px 5px 0 0 var(--one), -5px -5px 0 0 var(--two), 0 12px 32px rgb(60 20 120 / .18);
 }
-:root .sheet.open .body { border-top: 1px dashed rgb(17 17 22 / .2); }
+:root .sheet.open .body { border-top: 1px solid rgb(17 17 22 / .14); }
 :root .sheet.open .section > .label { color: var(--foreground); }
 :root .sheet.open .section li::marker { color: #111116; }
 :root .sheet.open textarea:focus-visible { border-bottom: 2px solid #111116; }

@@ -512,7 +512,9 @@ A topic's progress is its own: a **state** — planned, active (a new topic's),
 done or abandoned — and a **status**, a free line on where the work is, which
 the agent sets as it works. Each change is a status entry in the topic's
 thread, with its moment and who wrote it, so the history stays; the current
-state and status sit in `topic.json`. Work an orchestrating agent dispatches
+state and status sit in `topic.json`. A topic from before states (not yet migrated) reads as
+the migration will set it: done once every item in it is decided, otherwise
+active. Work an orchestrating agent dispatches
 is tracked so too, on the topic it serves.
 
 ```sh
@@ -620,25 +622,29 @@ topic opens in place, its items in sections, each with its count and a caret
 that folds it: decisions as bubbles that open in place on the answer (its
 whole width; Markdown's single line breaks flow together, a blank line parts
 paragraphs), the alternatives, the files it concerns and Drop, Reject and Accept;
-a decision is done unless a small TODO pill under its time says otherwise; a
-green tick, a red cross or a muted cross before its time once accepted, rejected or dropped; an open
+a decision is done unless a yellow-to-orange TODO chip under its time says otherwise; a
+white tick or cross on a green or red circle, or a muted cross, before its time once accepted, rejected or dropped; an open
 decision is framed in the foil's cyan and pink (`?decisions=rail` or `lift`
 on the page's address shows two other looks); pictures as one line of
 thumbnails, each with a ribbon of its title, time and verdict along its foot,
-and texts as one line of white previews, their verdict at the bottom right,
-both scrolling sideways; an item's options as one card, its title and time
-over a small list of them (the preferred one starred); other files as rows;
-an open decision also names the session that wrote it, and its parent's.
-Accept all and Reject all close it. A picture or
+and texts as one line of white previews of one height, their verdict at the
+bottom right, both scrolling sideways; an item's options as one card, a small
+list of them, each with a star (grey; the preferred one's filled in the foil,
+a click prefers it or takes it back) and the title and time along its foot
+(a text's on top); other files as rows. Hovered, a topic, a decision, a text
+or a file row takes a soft wash of silver, yellow, orange and purple, which an
+open topic's head and an open decision's keep. Accept all and Reject all close it. A picture or
 a text opens in a viewer over the list, its title and time on a white
 ribbon — a text in a column about 40% of the screen, a picture's viewer
 shrunk to the picture, each picture framed in a grey hairline: a version
-picked (a glass pill on a foil edge, "Version 3", its list giving each
-version's time), or Compare for two side by side, the
-newest and the one before by default, each side's select over it (a text's as
-a line diff with the changed words marked); an item's options side
-by side instead, each with a star to prefer it, Compare off; a Markdown file
-rendered, its frontmatter as a ribbon of keys and values, code and data
+picked (a white pill on a foil edge, "v3", its list giving each
+version's time), or Compare (off at first) for two side by side, the
+newest and the one before, each side's select over it (a text's as
+a line diff in nock's colours, the changed words marked, a long unchanged run
+folded into one row a click unfolds); an item's options side
+by side instead, each with its star, Compare off; a Markdown file
+rendered (nested lists, ruled tables, code blocks black and highlighted),
+its frontmatter the tinted top band of its page as keys and values, code and data
 highlighted, plain text as it is; a click on the file's path says where it
 comes from, in a bubble; a click on a picture zooms it in place to its
 natural size (twice its size when it is shown about that large already), the

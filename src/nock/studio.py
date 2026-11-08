@@ -384,7 +384,7 @@ class TopicsTab(Tab):
                 {
                     **record,
                     "current": self.topics.current_description(record),
-                    "state": str(state_of(record)),
+                    "state": str(state_of(record, items)),
                     "active": self.topics.activity(record, items),
                     "counts": self.topics.counts(items),
                     "chat": chat_state(record["thread"], seen.get(name)),

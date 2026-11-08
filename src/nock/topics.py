@@ -262,8 +262,15 @@ def message(
     }
 
 
-def state_of(topic: dict[str, Any]) -> State:
-    return State(topic.get("state") or State.ACTIVE)
+def state_of(topic: dict[str, Any], items: list[dict[str, Any]] | None = None) -> State:
+    """Where a topic's work stands. One from before topics had a state (not
+    yet migrated) reads as the migration will set it: done once every item
+    in it is decided, otherwise active."""
+    if topic.get("state"):
+        return State(topic["state"])
+    if items and all(item["verdict"] != Verdict.OPEN for item in items):
+        return State.DONE
+    return State.ACTIVE
 
 
 def talk(thread: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -398,7 +405,7 @@ class Topics:
         items = self.items(name)
         return {
             "name": name,
-            "state": str(state_of(topic)),
+            "state": str(state_of(topic, items)),
             **({"status": topic["status"]} if topic.get("status") else {}),
             "description": self.current_description(topic),
             **self.counts(items),
@@ -508,6 +515,9 @@ class Topics:
 
     # --- topics -----------------------------------------------------------------
 
+    def standing(self, topic: dict[str, Any]) -> State:
+        return state_of(topic, None if topic.get("state") else self.items(topic["name"]))
+
     def recorded(self) -> dict[str, Any]:
         return {"moment": now(), **self.project.writer()}
 
@@ -539,9 +549,9 @@ class Topics:
         with self.project.lock("topics"):
             if (self.directory / name / TOPIC_FILE).is_file():
                 again = (
-                    f" — it is {state_of(self.topic(name))}; revive it:"
+                    f" — it is {self.standing(self.topic(name))}; revive it:"
                     f' `.nock/nock topics update {name} --revive "why it is back"`'
-                    if state_of(self.topic(name)) in CLOSED
+                    if self.standing(self.topic(name)) in CLOSED
                     else ": submit into it"
                 )
                 raise ConflictError(f"topic {name} exists{again}")
@@ -584,16 +594,16 @@ class Topics:
                 key: value for key, value in change.items() if key in ("state", "status")
             }
             if revive is not None:
-                if state_of(topic) not in CLOSED:
+                if self.standing(topic) not in CLOSED:
                     raise ConflictError(
-                        f"topic {name} is {state_of(topic)}, not done or abandoned: submit into"
+                        f"topic {name} is {self.standing(topic)}, not done or abandoned: submit into"
                         " it, no need to revive it"
                     )
                 if State(standing.get("state") or State.ACTIVE) in CLOSED:
                     raise UsageError("a revived topic is planned or active")
             if standing or revive is not None:
                 self.set_standing(topic, standing, revive)
-                said.append("revived" if revive is not None else str(state_of(topic)))
+                said.append("revived" if revive is not None else str(self.standing(topic)))
             if reply is not None:
                 topic["thread"].append(said_in(topic["thread"], author, reply, self.writer()))
                 said.append("replied")
@@ -628,10 +638,10 @@ class Topics:
         """A new state or status, kept in the topic and recorded as a status
         entry in its thread; a revival sets it active with its note. A change
         of state without a status clears the status."""
-        state = State(change.get("state") or (State.ACTIVE if revived else state_of(topic)))
+        state = State(change.get("state") or (State.ACTIVE if revived else self.standing(topic)))
         if "status" in change:
             status = " ".join(str(change["status"] or "").split())
-        elif state is not state_of(topic):
+        elif state is not self.standing(topic):
             status = ""
         else:
             status = topic.get("status") or ""
@@ -663,7 +673,7 @@ class Topics:
             if name not in worked:
                 continue
             topic = self.topic(name)
-            if state_of(topic) in CLOSED:
+            if self.standing(topic) in CLOSED:
                 continue
             if any(entry.get("kind") == STATUS and by(entry, mine) for entry in topic["thread"]):
                 continue
@@ -687,9 +697,9 @@ class Topics:
         with self.project.lock("topics"):
             record = self.topic(topic)
             items = self.items(topic)
-            if state_of(record) in CLOSED:
+            if self.standing(record) in CLOSED:
                 raise ConflictError(
-                    f"topic {topic} is {state_of(record)}: if this brings it back, revive it first —"
+                    f"topic {topic} is {self.standing(record)}: if this brings it back, revive it first —"
                     f' `.nock/nock topics update {topic} --revive "why it is back"` — or open another topic'
                 )
             slug = check_name(draft["slug"], "slug") if "slug" in draft else slugged(title)
