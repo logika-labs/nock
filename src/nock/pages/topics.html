@@ -350,6 +350,8 @@
 
   // --- drawing: the small parts -------------------------------------------------------------------
 
+  // A title as it is written, its `code` set as code.
+  const titled = text => escape(text).replace(/`([^`]+)`/g, "<code>$1</code>");
   // The owner's verdict as a mark: a green tick, a red cross, a muted cross for dropped (closed,
   // nothing to rework); nothing while it is open.
   const VERDICTS = { accepted: "Accepted", rejected: "Rejected", dropped: "Dropped" };
@@ -468,7 +470,7 @@
     const open = state.expanded.has(item.ref);
     const todo = last(item).decision.status === "todo" ? todoPill : "";
     const corner = `<span class="corner">${verdictMark(item)}${time(item.updated)}${chatCorner(item.ref, item.thread, item.chat)}${todo}</span>`;
-    const title = `<button type="button" class="title" aria-expanded="${open}">${escape(item.title)}</button>`;
+    const title = `<button type="button" class="title" aria-expanded="${open}">${titled(item.title)}</button>`;
     const latest = last(item);
     const decision = latest.decision;
     const head = `${title}${corner}`;
@@ -493,7 +495,7 @@
   function thumbnail(item) {
     const { version, file } = cover(item, "image");
     return `<button type="button" class="thumb${hitClass(item)}" data-key="${escape(item.ref)}" id="item-${escape(item.ref)}" data-view="${escape(item.ref)}" title="${escape(item.title)}" aria-label="${escape(item.title)}"><img src="${fileUrl(item, version, file.name)}" alt="" loading="lazy">
-      <span class="ribbon"><span class="title">${escape(item.title)}</span>${time(item.updated)}${verdictMark(item)}</span></button>`;
+      <span class="ribbon"><span class="title">${titled(item.title)}</span>${time(item.updated)}${verdictMark(item)}</span></button>`;
   }
   // An item's options belong together: one card, its title and time over a small list of them (the
   // preferred one starred), its verdict at its foot; it opens on all of them side by side.
@@ -507,18 +509,18 @@
       return `<span class="option${preferred ? " preferred" : ""}" data-key="option:${escape(file.name)}">${shown}<span class="name">${escape(file.name)}</span>${star}</span>`;
     }).join("");
     return `<button type="button" class="options-card ${type}${hitClass(item)}" data-key="${escape(item.ref)}" id="item-${escape(item.ref)}" data-view="${escape(item.ref)}">
-      <span class="head"><span class="title">${escape(item.title)}</span><span class="side">${time(item.updated)}</span></span>
+      <span class="head"><span class="title">${titled(item.title)}</span><span class="side">${time(item.updated)}</span></span>
       <span class="stack">${options}</span>${verdictMark(item)}</button>`;
   }
   const grouped = item => item.options && last(item).files.length > 1;
   function preview(item) {
     const { version, file } = cover(item, "text");
     return `<button type="button" class="preview${hitClass(item)}" data-key="${escape(item.ref)}" id="item-${escape(item.ref)}" data-view="${escape(item.ref)}">
-      <span class="head"><span class="title">${escape(item.title)}</span><span class="side">${time(item.updated)}</span></span>
+      <span class="head"><span class="title">${titled(item.title)}</span><span class="side">${time(item.updated)}</span></span>
       <pre data-text="${fileUrl(item, version, file.name)}" data-lines="8" data-own>…</pre>${verdictMark(item)}</button>`;
   }
   const fileRow = item => `<button type="button" class="file-row${hitClass(item)}" data-key="${escape(item.ref)}" id="item-${escape(item.ref)}" data-view="${escape(item.ref)}">
-      <span class="title">${escape(item.title)}</span><span class="side">${verdictMark(item)}${time(item.updated)}</span></button>`;
+      <span class="title">${titled(item.title)}</span><span class="side">${verdictMark(item)}${time(item.updated)}</span></button>`;
 
   function sections(topic, items) {
     return SECTIONS.map(([kind, label]) => {
@@ -540,7 +542,6 @@
     }));
   }
   const verdictCounts = counts => joined(["open", "accepted", "rejected", "dropped"].map(verdict => counts[verdict] ? `${counts[verdict]} ${verdict}` : ""));
-  const hue = name => [...name].reduce((sum, character) => sum + character.charCodeAt(0), 0) % 4;
 
   function sheet(topic, items) {
     const open = state.open.has(topic.name), key = `topic:${topic.name}`;
@@ -552,7 +553,7 @@
         <p class="about">${inline(topic.current)}</p></div>`;
     const body = open ? `<div class="topic-body">${sections(topic, items) || '<p class="nothing">No items yet.</p>'}
         ${waiting ? `<div class="actions all" data-key="judge"><span class="hint" data-problem="${escape(key)}"></span><div class="buttons">${verdictButtons(key, null, waiting)}</div></div>` : ""}</div>` : "";
-    return `<article class="sheet topic${open ? " open" : ""}" data-key="topic:${escape(topic.name)}" data-hue="${hue(topic.name)}" id="topic-${escape(topic.name)}">
+    return `<article class="sheet topic${open ? " open" : ""}" data-key="topic:${escape(topic.name)}" id="topic-${escape(topic.name)}">
       <div class="main">${head}${body}</div></article>`;
   }
 
@@ -667,8 +668,8 @@
     const actions = awaitsOwner(item) || item.verdict !== "open" ? `<div class="actions"><span class="hint" data-problem="${escape(item.ref)}"></span><div class="buttons">${verdictButtons(item.ref, item.verdict)}</div></div>` : "";
     const fits = kind === "image" ? "image" : kind === "text" && !comparing && !several ? "text" : "wide";
     return `<div class="overlay" data-key="overlay:${escape(item.ref)}" data-backdrop>
-      <article class="sheet open viewer ${fits}${comparing ? " comparing" : ""}" data-hue="${hue(item.topic)}" role="dialog" aria-modal="true" aria-label="${escape(item.title)}">
-        <div class="ribbon"><h2>${escape(item.title)}</h2><span class="side">${verdictMark(item)}${time(item.updated)}</span><button type="button" class="close" data-close aria-label="Close (Esc)" title="Close (Esc)">×</button></div>
+      <article class="sheet open viewer ${fits}${comparing ? " comparing" : ""}" role="dialog" aria-modal="true" aria-label="${escape(item.title)}">
+        <div class="ribbon"><h2>${titled(item.title)}</h2><span class="side">${verdictMark(item)}${time(item.updated)}</span><button type="button" class="close" data-close aria-label="Close (Esc)" title="Close (Esc)">×</button></div>
         <div class="main">
           <div class="line versions">${pickers ? `<span class="pickers">${pickers}</span>` : ""}${path}<span class="end">${compare}${chatCorner(item.ref, item.thread, item.chat)}</span></div>
           ${heads}<div class="content">${content}</div>${actions}</div>
@@ -924,7 +925,7 @@
       return;
     }
     const cards = (ask.items || []).map(ref => itemAt(ref)).filter(Boolean).map(item =>
-      `<button type="button" class="mini" data-key="mini:${escape(item.ref)}" data-go="${escape(item.ref)}"><span class="title">${escape(item.title)}</span><span class="ref">${escape(item.ref)} · ${item.verdict}</span></button>`).join("");
+      `<button type="button" class="mini" data-key="mini:${escape(item.ref)}" data-go="${escape(item.ref)}"><span class="title">${titled(item.title)}</span><span class="ref">${escape(item.ref)} · ${item.verdict}</span></button>`).join("");
     studio.morph(place, `<div class="head"><span class="question">${escape(ask.question)}</span>${close}</div>
       ${ask.problem ? `<pre class="problem">${escape(ask.problem)}</pre>` : `<div class="context">${markdown(ask.answer)}</div>`}
       ${cards ? `<div class="cards">${cards}</div>` : ""}`);

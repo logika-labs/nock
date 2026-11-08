@@ -389,7 +389,7 @@ class TopicsTab(Tab):
     question about the topics (one at a time), `/ask/cancel` stops it."""
 
     name = "topics"
-    title = "Topics"
+    title = "Work"
     raw = ("upload", "transcribe")
 
     def __init__(self, project: Project) -> None:

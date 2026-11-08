@@ -440,7 +440,7 @@ def test_the_owner_judges_on_the_page_and_the_submitting_session_hears_once(
     other = submit(project.root, {**DECISION, "title": "Orders are kept a year"})
     with urllib.request.urlopen(page) as response:
         shown = response.read().decode()
-    assert '<a href="#topics" data-tab-link="topics">Topics</a>' in shown
+    assert '<a href="#topics" data-tab-link="topics">Work</a>' in shown
     assert "<!-- nock:" not in shown
     with urllib.request.urlopen(f"{page}topics") as response:
         listed = json.loads(response.read())

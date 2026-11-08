@@ -616,7 +616,7 @@ day (sooner when something new calls) a session the human starts says
 "N new in Topics (emails: 2, pricing: 1)" and what waits on it; `nock status`
 says it all in full.
 
-The studio's **Topics** tab (`nock studio`, or with `{"open": true}`) lists
+The studio's **Work** tab (`nock studio`, or with `{"open": true}`; `#topics` or `#work`) lists
 the topics, newest activity first, each a row: its name, what it holds ("4
 decisions · 6 images · 3 texts") and its verdicts ("3 open · 12 accepted · 2 dropped"),
 its time ("21m", "3h", "2d", on a small grey pill) with its state's foil mark
