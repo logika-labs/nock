@@ -6,11 +6,13 @@ Standard library only, like nock.
 
 ```
 layout.html        every page's frame: the band and its menu, the main column, the footer
-home.html          the home page's main column
+landing/           the landing page, About and Getting started: copy.html, the words every layout
+                   shares, a block each; a/, b/, c/, each layout's templates (home, about, start)
 legal/             privacy.md and terms.md, each with its plain-words summary (NAME-plain.md)
-site/              style.css and fonts/; the pages are built into it (gitignored)
-build.py           the pages: home, ../README.md → getting-started/ and docs/ (a page per
-                   section, in a tab: Concepts, Evaluation, Reference), legal/ → privacy/, terms/
+site/              style.css, demo.js and demo.css (the demo), fonts/; the pages are built into
+                   it (gitignored), and studio/topics.css, the studio's sheet, copied in
+build.py           the pages: landing/ in each layout; the docs from ../src/nock/terms/ (a page per
+                   guide, in four groups, with the terms an agent reads on it); legal/
 publish.py         build, and push to GitHub Pages
 ```
 
@@ -23,19 +25,28 @@ python3 web/build.py
 python3 -m http.server -d web/site   # then open http://localhost:8000
 ```
 
-The docs are the README, so edit the README, never `site/`. `DOCS` in `build.py`
-places each of its `## ` sections: a page in a tab, with its line on the docs
-index. `START` is Getting started, a page of its own, and `LEFT_OUT` stays on
-PyPI only (Thanks). A section placed nowhere fails the build. A link between
-sections lands on the right page, and an old one-page address, `/docs/#ANCHOR`,
-is sent on to the page that has the heading now.
+The docs are nock's own: the guides in `src/nock/terms/guides/` (a page each, `nock docs
+guide.NAME`) and the short terms beside them (what agents read), so edit those, never `site/`.
+`PAGES` in `build.py` places each guide in a group (Start, Every day, Extending, Reference) with
+the terms folded under it as "What your agent reads"; the terms page lists every term. A guide
+placed nowhere, or a term that does not exist, fails the build. A link between guides lands on the
+right page, and an old address, `/docs/#ANCHOR`, is sent on to the page that has the heading now.
+
+**The layouts.** `LAYOUTS` in `build.py` names the layouts under review, each a set of the
+landing page, About and Getting started: the first at the plain addresses, the others at
+`index-NAME.html` beside them, with a switch at the foot's left. Keeping one is deleting the others
+from `LAYOUTS` and `landing/`. **The demo** (`site/demo.js`) is coded, not recorded: three scenes,
+each a script of steps with a caption, every element saying from which step it shows (`data-at`,
+`data-until`) and which classes it takes (`data-on`). A layout places it: a stage per scene that
+plays in view (`data-autoplay`), one stage with tabs (`data-tabs-for`), or one the copy's beats
+drive as they scroll (`data-driven`); with reduced motion nothing plays by itself.
 
 `TELEGRAM` in `build.py` is the community's link on every page: a placeholder
 until the channel exists.
 
-The legal pages show their summary above the full text while the tl;dr switch
-is on (the default); the visitor's choice stays in their browser's
-`localStorage`, as the privacy policy says. The full text is always shown.
+The legal pages show only their summary while the TL;DR switch is on (the default) and only the
+full text while it is off; without script, both. Turning it off is kept in the visitor's
+browser's `localStorage`, as the privacy policy says.
 
 ## Publish
 

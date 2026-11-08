@@ -1,5 +1,5 @@
-"""nock.dev, in `web/`: the pages built from this README and `web/`, and publishing to a
-Pages repository — here a local bare one."""
+"""nock.dev, in `web/`: the pages built from nock's guides and terms and `web/`, and publishing
+to a Pages repository — here a local bare one."""
 
 from __future__ import annotations
 
@@ -11,6 +11,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+from nock.docs import Docs
 from tests.conftest import git
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -18,45 +19,46 @@ WEB = ROOT / "web"
 
 
 def built(site: Path) -> dict[str, str]:
-    """Build into `site`; every page by the path it is served at."""
+    """Build into `site`; every page by the address it is served at."""
     subprocess.run([sys.executable, WEB / "build.py", "--site", site], check=True)
-    return {
-        "/".join(["", *path.parent.relative_to(site).parts, ""]).replace(
-            "//", "/"
-        ): path.read_text()
-        for path in site.rglob("index.html")
-    }
+    pages = {}
+    for path in site.rglob("*.html"):
+        folder = "/".join(["", *path.parent.relative_to(site).parts, ""]).replace("//", "/")
+        pages[folder if path.name == "index.html" else folder + path.name] = path.read_text()
+    return pages
 
 
 def ids(text: str) -> set[str]:
     return set(re.findall(r'id="([^"]+)"', text))
 
 
-def test_every_readme_section_is_a_page_with_its_own_contents_and_thanks_stays_off(
+def test_every_guide_is_a_docs_page_with_what_an_agent_reads_and_every_term_is_listed(
     tmp_path: Path,
 ) -> None:
     pages = built(tmp_path)
-    readme = (ROOT / "README.md").read_text()
-    sections = re.findall(r"^## (.+)$", re.sub(r"```.*?```", "", readme, flags=re.S), re.M)
-    assert "Thanks" in sections and "Getting started" in sections
-    for title in sections:
-        homes = [
-            url
-            for url, text in pages.items()
-            if re.search(
-                rf"<h1 id=\"[^\"]+\">{re.escape(title)}</h1>",
-                text.replace("&#x27;", "'").replace("’", "'"),
-            )
-        ]
-        assert len(homes) == (0 if title == "Thanks" else 1), (title, homes)
-    assert "/getting-started/" in pages and "/docs/why/" in pages
-    for text in pages.values():
-        assert "Eyk" not in text and 'id="thanks"' not in text
+    docs = Docs()
+    guides = [term for term in docs.terms if term.term.startswith("guide.")]
+    for guide in guides:
+        title = guide.article.splitlines()[0].removeprefix("# ")
+        page = pages[f"/docs/{guide.term.removeprefix('guide.')}/"]
+        shown = html.unescape(page).replace("’", "'")
+        assert re.search(rf'<h1 id="[^"]+">{re.escape(title)}</h1>', shown), guide.term
+        article = page.split('<article class="card article">')[1]
+        assert "**" not in re.sub(r"<pre>.*?</pre>|<code>.*?</code>", "", article, flags=re.S)
+    homes = [url for url in pages if url.startswith("/docs/") and url != "/docs/"]
+    assert len(homes) == len(guides) + 1
     topics = pages["/docs/topics/"]
+    assert "What your agent reads" in topics and "nock docs topics.items" in topics
     contents = topics.split('<nav class="contents"')[1].split("</nav>")[0]
-    assert re.findall(r'href="#([^"]+)"', contents) == ["the-map", "consulting"]
-    article = topics.split('<article class="card article">')[1]
-    assert "**" not in re.sub(r"<pre>.*?</pre>|<code>.*?</code>", "", article, flags=re.S)
+    assert re.findall(r'href="#([^"]+)"', contents)[:2] == ["topics", "items"]
+    listed = pages["/docs/terms/"]
+    for term in docs.terms:
+        if term.term == "guide" or term.term.startswith("guide.") or len(term.article) > 500:
+            continue
+        assert f"<code>nock docs {term.term}</code>" in listed, term.term
+    assert 'class="t-keyword">def</span>' in pages["/docs/tool/"]
+    for group in ("start", "every-day", "extending", "reference"):
+        assert f'id="{group}"' in pages["/docs/"]
 
 
 def test_every_link_between_pages_lands_and_old_anchors_are_sent_on(tmp_path: Path) -> None:
@@ -65,21 +67,41 @@ def test_every_link_between_pages_lands_and_old_anchors_are_sent_on(tmp_path: Pa
         for href in re.findall(r'href="([^"]+)"', text):
             if href.startswith("#"):
                 assert href[1:] in ids(text), (url, href)
-            elif href.startswith("/") and not href.endswith((".css", ".woff2")):
+            elif href.startswith("/") and not href.endswith((".css", ".woff2", ".js")):
                 path, _, anchor = href.partition("#")
                 assert path in pages, (url, href)
                 assert not anchor or anchor in ids(pages[path]), (url, href)
     moved = json.loads(re.search(r"const moved = (\{.*?\});", pages["/docs/"]).group(1))
-    headings = {
-        anchor
-        for url, text in pages.items()
-        if url.startswith(("/docs/", "/getting-started/"))
-        for anchor in re.findall(r'<h\d id="([^"]+)"', text)
-    }
-    assert headings - {"concepts", "evaluation", "reference", "docs"} <= set(moved)
-    assert moved["a-tool"] == "/docs/a-tool/"
-    assert moved["the-map"] == "/docs/topics/#the-map"
-    assert moved["getting-started"] == "/getting-started/"
+    assert moved["a-tool"] == "/docs/tool/"
+    assert moved["the-map"] == "/docs/consult/#the-map"
+    assert moved["getting-started"] == "/docs/install/"
+    assert moved["what-agents-see"] == "/docs/session/"
+    assert moved["the-projects-environment"] == "/docs/tool/#the-projects-environment"
+
+
+def test_each_layout_is_its_own_set_of_story_pages_with_the_demo(tmp_path: Path) -> None:
+    pages = built(tmp_path)
+    demo = (WEB / "site" / "demo.js").read_text()
+    scenes = set(re.findall(r"^    (\w+): \{\n      label:", demo, re.M))
+    assert scenes == {"reflection", "review", "logika"}
+    for layout, prefix in (("a", ""), ("b", "index-b.html"), ("c", "index-c.html")):
+        home, about, start = (
+            pages[f"{path}{prefix}"] for path in ("/", "/about/", "/getting-started/")
+        )
+        for text in (home, about, start):
+            assert f'data-layout="{layout}"' in text and "{{" not in text
+            menu = text.split('<nav class="menu"')[1].split("</nav>")[0]
+            assert f'href="/about/{prefix}"' in menu and f'href="/getting-started/{prefix}"' in menu
+        named = {
+            name for value in re.findall(r'data-demo="([^"]+)"', home) for name in value.split()
+        }
+        assert named == scenes, layout
+        assert "uvx nock init" in home and 'href="https://logika.host"' in home
+        assert start.count('class="step"') == 7
+    assert (tmp_path / "studio" / "topics.css").read_text() == (
+        ROOT / "src" / "nock" / "pages" / "topics.css"
+    ).read_text()
+    assert 'data-demo-still="review:3"' in pages["/getting-started/"]
 
 
 def test_the_telegram_link_is_one_constant_on_every_page(tmp_path: Path) -> None:
@@ -90,10 +112,12 @@ def test_the_telegram_link_is_one_constant_on_every_page(tmp_path: Path) -> None
     assert all(f'href="{telegram[0]}"' in text for text in pages.values())
 
 
-def test_the_legal_pages_show_their_summary_above_the_unchanged_full_text(
+def test_the_legal_pages_show_their_summary_or_their_unchanged_full_text(
     tmp_path: Path,
 ) -> None:
     pages = built(tmp_path)
+    style = (WEB / "site" / "style.css").read_text()
+    assert '[data-tldr="on"] .full, [data-tldr="off"] .plain { display: none; }' in style
     for name in ("privacy", "terms"):
         text = pages[f"/{name}/"]
         title = (WEB / "legal" / f"{name}.md").read_text().splitlines()[0].removeprefix("# ")
@@ -134,11 +158,13 @@ def test_publishing_replaces_the_pages_tree_and_pushes_only_on_the_word(tmp_path
     def unbuilt(directory: str, names: list[str]) -> set[str]:
         """What the build makes and the checkout gitignores."""
         if Path(directory) == WEB / "site":
-            return {name for name in names if name not in ("style.css", "fonts")}
+            return {
+                name for name in names if name not in ("style.css", "demo.js", "demo.css", "fonts")
+            }
         return {name for name in names if name in ("pages", "__pycache__")}
 
     shutil.copytree(WEB, source / "web", ignore=unbuilt)
-    shutil.copy(ROOT / "README.md", source / "README.md")
+    shutil.copytree(ROOT / "src", source / "src", ignore=shutil.ignore_patterns("__pycache__"))
     git(source, "init", "-q", "-b", "main")
     git(source, "add", "-A")
     git(source, "commit", "-q", "-m", "init")
@@ -152,7 +178,13 @@ def test_publishing_replaces_the_pages_tree_and_pushes_only_on_the_word(tmp_path
         "CNAME",
         ".nojekyll",
         "index.html",
+        "index-b.html",
+        "index-c.html",
         "style.css",
+        "demo.js",
+        "demo.css",
+        "studio",
+        "about",
         "getting-started",
         "docs",
         "privacy",

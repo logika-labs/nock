@@ -2,7 +2,7 @@
 
 This document covers how nock is built: the repository, the layers, what
 happens on each path through the code, and where a project plugs in. The
-README covers what nock is for and how to use it.
+guides (`src/nock/terms/guides/`, nock.dev's docs) cover what nock is for and how to use it.
 
 ## Constraints that shape everything
 
@@ -86,6 +86,8 @@ src/nock/
                      reflection.lead and its parts reflection.toolbox, .map, .nock;
                      reflection.logika.lead and its parts .rules, .analytics;
                      topics.triage
+    guides/          the documentation for people, a page each (guide.install, guide.topics, …),
+                     nock.dev's docs built from them; at most 16,000 characters, printed whole
   briefs/
     nock-reflect/    the `/nock-reflect` skill (SKILL.md) and its three parts' subagent
                      types (agents/): each its front matter and one line pointing at
@@ -133,8 +135,8 @@ tests/               real git repositories and processes; no mocks
 scripts/release.py   cut a release: checks, asks, then tags vVERSION and pushes it (standard library)
 evals/               does reflection pay? real sessions, with and without a toolbox
 web/                 nock.dev, never vendored or packaged: layout.html, home.html, legal/, site/
-                     (style, fonts, the built pages), build.py (Getting started and the docs pages
-                     from this README), publish.py (to GitHub Pages)
+                     (style, fonts, the built pages), build.py (the docs pages from the
+                     terms and guides), publish.py (to GitHub Pages)
 server/              api.nock.dev, where `nock share`, the usage reports and `nock report` post: a
                      distribution of
                      its own (`nock-api`, Python 3.14, FastAPI, Postgres), never vendored or
@@ -324,8 +326,13 @@ merge. What is shared is the reflection record (see below).
 `nock docs` serves `terms/`, one Markdown file per term, named by it
 (`tools.caching.md`). Its front matter holds `term`, `aliases` and a
 one-line `description` (at most 100 characters); the article is at most 500,
-but for the briefs in `terms/briefs/`, which may run to 16,000 and are
-printed whole (`docs.Article`, which the output cap passes through).
+but for the briefs in `terms/briefs/` and the guides in `terms/guides/`,
+which may run to 16,000 and are printed whole (`docs.Article`, which the
+output cap passes through). A guide (`guide.topics`, a child of `guide`) is a
+page of the documentation for people: it opens with its `# ` title, and
+nock.dev's docs are built from the guides and the terms (`web/build.py`), so
+the site, `nock docs` and the README's overview share one source. A short
+term is what an agent needs at a glance; its guide, everything.
 A dotted term is the child of the term before its last dot, and its parent's
 article ends by listing it. `docs.Docs` reads them all on each call, sorted
 parents first; `problems` finds a name taken twice or a child without its

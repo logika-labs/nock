@@ -1,0 +1,21 @@
+<!-- Layout B: About as one article, the call to action in a card that stays beside it. -->
+<div class="frame story story-b about">
+<section class="card intro wide-intro" aria-labelledby="about-title">
+  <span class="label">About</span>
+  <h1 id="about-title">{{ copy:about-title }}</h1>
+  {{ copy:about-lead }}
+</section>
+<div class="with-aside">
+  <article class="card prose">
+    {{ copy:about-problem }}
+    {{ copy:about-principles }}
+    {{ copy:about-you }}
+    {{ copy:about-makers }}
+  </article>
+  <aside class="card begin sticky" aria-label="Get started">
+    <span class="label">Start in your repository</span>
+    {{ copy:install }}
+    {{ copy:about-actions }}
+  </aside>
+</div>
+</div>

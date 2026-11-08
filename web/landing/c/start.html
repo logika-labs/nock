@@ -1,0 +1,17 @@
+<!-- Layout C: Getting started as a split scroll: the steps' words scroll on one side, and the
+     picture of the step in view stays on the other. -->
+<div class="frame story story-c start">
+<section class="card hero hero-c" aria-labelledby="start-title">
+  <span class="label">Getting started</span>
+  <h1 id="start-title">{{ copy:start-title }}</h1>
+  {{ copy:start-lead }}
+</section>
+<div class="split">
+  <ol class="steps beats-column" id="steps" data-figures>
+{{ copy:start-steps }}
+  </ol>
+  <div class="stage-column"><div class="figures" data-figures-for="steps"></div></div>
+</div>
+<section class="card prose next">{{ copy:start-next }}</section>
+</div>
+{{ copy:dock }}

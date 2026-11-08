@@ -1,0 +1,54 @@
+<!-- Layout B, the tabbed stage: a short hero, then one large stage with a tab for each part; the
+     words beside the stage change with the tab. The call to action sits in the hero and the band. -->
+<div class="frame story story-b">
+
+<section class="hero-b" aria-labelledby="hero-title">
+  <div class="card intro">
+    <h1 id="hero-title">{{ copy:hero-title }}</h1>
+    {{ copy:hero-lead }}
+  </div>
+  <div class="card begin">
+    <span class="label">Start in your repository</span>
+    {{ copy:install }}
+    {{ copy:hero-actions }}
+    {{ copy:hero-note }}
+  </div>
+</section>
+
+<section class="card theatre" aria-label="What nock does">
+  <div class="tablist" role="tablist" aria-label="The parts" data-tabs-for="demo-stage">
+    <button type="button" role="tab" data-tab="reflection" aria-selected="true">{{ copy:reflection-label }}</button>
+    <button type="button" role="tab" data-tab="review" aria-selected="false">{{ copy:review-label }}</button>
+    <button type="button" role="tab" data-tab="logika" aria-selected="false">{{ copy:logika-label }}</button>
+  </div>
+  <div class="theatre-body">
+    <div class="panels">
+      <div class="panel" data-panel="reflection" data-panel-for="demo-stage" id="reflection">
+        <h2>{{ copy:reflection-title }}</h2>
+        {{ copy:reflection-copy }}
+      </div>
+      <div class="panel" data-panel="review" data-panel-for="demo-stage" id="review">
+        <h2>{{ copy:review-title }}</h2>
+        {{ copy:review-copy }}
+      </div>
+      <div class="panel" data-panel="logika" data-panel-for="demo-stage" id="logika">
+        <h2>{{ copy:logika-title }}</h2>
+        {{ copy:logika-copy }}
+      </div>
+    </div>
+    <div class="demo" id="demo-stage" data-demo="reflection review logika"></div>
+  </div>
+</section>
+
+<section class="card community wide" id="community" aria-labelledby="community-title">
+  <div>
+    <span class="label">Community</span>
+    <h2 id="community-title">{{ copy:community-title }}</h2>
+  </div>
+  <div>
+    {{ copy:community-copy }}
+    {{ copy:community-actions }}
+  </div>
+</section>
+
+</div>

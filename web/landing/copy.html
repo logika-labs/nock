@@ -1,0 +1,245 @@
+<!-- The words every layout shares, a block each: a layout's templates (a/, b/, c/) place them with
+     {{ copy:NAME }}, and {{ url:/PATH/ }} is that page in the layout. build.py fills them in. -->
+
+<!-- block hero-title -->
+Your coding agents, better at your project every week.
+<!-- end -->
+
+<!-- block hero-lead -->
+<p class="lead">nock is a toolbox your agents build for themselves, in your repository. It records every session on your machine, puts the work they did before you to review when it suits you, and runs reflection rounds that turn what keeps going wrong into tools.</p>
+<!-- end -->
+
+<!-- block install -->
+<div class="install">
+  <code id="command">uvx nock init</code>
+  <button type="button" class="copy" data-copy="command">copy</button>
+</div>
+<!-- end -->
+
+<!-- block hero-actions -->
+<div class="actions">
+  <a class="button primary" href="{{ url:/getting-started/ }}">Get started</a>
+  <a class="button" href="/docs/">Read the docs</a>
+</div>
+<!-- end -->
+
+<!-- block hero-note -->
+<p class="note">Standard-library Python 3.12, no dependencies, vendored into your repository. Made for Claude Code. Nothing leaves your machine without your yes.</p>
+<!-- end -->
+
+<!-- block reflection-label -->
+Reflection
+<!-- end -->
+
+<!-- block reflection-title -->
+Agents that write the tools they need.
+<!-- end -->
+
+<!-- block reflection-copy -->
+<p>nock instruments your agents: every call and session is recorded on your machine, never committed. Every week or so a reflection round reads that record and the work since. It writes the tools that would have saved turns, repairs the ones that misbehave and retires the ones nobody uses, and the next round holds each change to what it expected.</p>
+<a class="more" href="/docs/reflection/">Reflection rounds</a>
+<!-- end -->
+
+<!-- block review-label -->
+Review
+<!-- end -->
+
+<!-- block review-title -->
+You judge what they made, when it suits you.
+<!-- end -->
+
+<!-- block review-copy -->
+<p>Agents never wait on you. They open a topic for each piece of work and put in it the decisions they made, with the alternatives they weighed, and what they made to show it: screenshots, texts, pages. In the studio's Work tab you accept, reject, or chat about each; what you reject comes back as a new version.</p>
+<a class="more" href="/docs/work/">Reviewing in Work</a>
+<!-- end -->
+
+<!-- block logika-label -->
+Logika
+<!-- end -->
+
+<!-- block logika-title -->
+Production breaks; your agent hears, and fixes it.
+<!-- end -->
+
+<!-- block logika-copy -->
+<p><a href="{{ logika }}">Logika</a> is OpenTelemetry that wakes your agent when production breaks. Within five minutes it raises an issue with its evidence; your own agent, on your own machine, takes it, fixes it and delivers the fix the way your repository delivers anything. nock's logika round reads Logika's evidence map and writes, with you, the rules it checks, so what would have been a bug report is an issue with its evidence before anyone notices.</p>
+<a class="more" href="{{ logika }}">logika.host</a>
+<!-- end -->
+
+<!-- block community-title -->
+Built with the people who use it.
+<!-- end -->
+
+<!-- block community-copy -->
+<p>Engineers using nock add what they learn to it: new insights, features and reflection rounds. A way to share yours and take part is coming soon. Meanwhile, talk to us and to each other on Telegram, or tell us from inside nock: <code>.nock/nock report "…"</code> shows you what it would send, and sends it on your word.</p>
+<!-- end -->
+
+<!-- block community-actions -->
+<div class="actions">
+  <a class="button primary" href="{{ telegram }}">Join on Telegram</a>
+  <a class="button" href="{{ github }}">nock on GitHub</a>
+</div>
+<!-- end -->
+
+<!-- block about-title -->
+About nock
+<!-- end -->
+
+<!-- block about-lead -->
+<p class="lead">A community learning to work with AI, as software engineers, and the open-source toolbox they learn with.</p>
+<!-- end -->
+
+<!-- block about-problem -->
+<h2>Why it exists</h2>
+<p>A coding agent starts every session knowing nothing of the last one: not what was decided yesterday, or why; not what you said about it; not which script someone wrote to do what it is about to do by hand. Over weeks, the project drifts: the same question answered three ways, a simplification nobody approved, the same mistake made again.</p>
+<p>The usual fix is prose: skills, notes, rules in CLAUDE.md. Prose goes stale without anyone noticing, and is read differently every time. A command that no longer fits the project breaks instead: it exits non-zero, a check fails, and the failure is recorded. So the toolbox can be kept honest by measuring it.</p>
+<blockquote><p><strong>A check beats a hook beats prose.</strong> A rule that a check enforces cannot be ignored. A behavior that a hook triggers cannot be forgotten. Prose is the last resort.</p></blockquote>
+<!-- end -->
+
+<!-- block about-principles -->
+<h2>Three principles</h2>
+<ol class="principles">
+  <li><strong>An agent-friendly CLI.</strong> Every byte a command prints is read by a model and paid for: a command prints what the next decision needs, success is often silence, the exit code says what to do next, and a mistake gets an answer, not just a refusal.</li>
+  <li><strong>Every run recorded.</strong> Every call to nock and every Claude Code session is recorded on your machine: what was asked, each tool call, what failed, what it cost. You cannot improve what you have not measured, and agents do not remember.</li>
+  <li><strong>Reflection.</strong> Every so often an agent reads that record and improves the toolbox: it builds tools for the work that keeps costing turns, repairs the ones that misbehave and retires the ones nobody uses, and writes down what it expects each change to do.</li>
+</ol>
+<!-- end -->
+
+<!-- block about-you -->
+<h2>Where you come in</h2>
+<p>You are there for the one thing no agent can infer: what the system is for. nock keeps your word where the next session finds it: every decision you accept or reject, every message in a thread, the map of what they mean for the work. Agents never wait on you, and nothing waits for you to be there.</p>
+<!-- end -->
+
+<!-- block about-makers -->
+<h2>Who makes it</h2>
+<p>nock is made by Parallel Labs, a company in Barcelona that also makes <a href="{{ logika }}">Logika</a>. It is open source under the MIT License, standard-library Python with no dependencies, and vendored into the repositories that use it, so it is your project's own code: your agents can read it, and fix it if they must.</p>
+<p>It is built in the open with the engineers who use it. What they learn — an insight, a feature, a new kind of reflection round — goes back into nock for everyone.</p>
+<!-- end -->
+
+<!-- block about-actions -->
+<div class="actions">
+  <a class="button primary" href="{{ url:/getting-started/ }}">Get started</a>
+  <a class="button" href="{{ telegram }}">Join on Telegram</a>
+  <a class="button" href="{{ github }}">GitHub</a>
+</div>
+<!-- end -->
+
+<!-- block start-title -->
+Getting started
+<!-- end -->
+
+<!-- block start-lead -->
+<p class="lead">From <code>uvx nock init</code> to your first verdict on what an agent made: seven steps, about ten minutes, in a repository of your own.</p>
+<!-- end -->
+
+<!-- block start-steps -->
+<li class="step" id="step-install" data-step="0">
+  <div class="text">
+    <span class="label">Step 1</span>
+    <h2>Install it in your repository</h2>
+    <p>Inside the repository, run <code>uvx nock init</code> (or <code>pipx run nock init</code>). It vendors nock into <code>.nock/core/</code>, writes <code>.nock/config.toml</code>, a primer CLAUDE.md imports, Claude Code's hooks and permissions, and the skills.</p>
+  </div>
+  <figure class="shot">
+    <div class="terminal"><span class="prompt">uvx nock init</span><span class="out">wrote: .nock/core/, .nock/nock, .nock/.gitignore,
+.nock/config.toml, .nock/context.md, .nock/tools/.gitkeep,
+CLAUDE.md, .claude/settings.json,
+.claude/skills/nock-reflect/SKILL.md,
+.claude/skills/nock-triage/SKILL.md,
+.claude/agents/nock-reflect-toolbox.md, …,
+.nock/topics/map.md</span></div>
+    <figcaption>What <code>nock init</code> writes, in a fresh repository.</figcaption>
+  </figure>
+</li>
+<li class="step" id="step-commit" data-step="1">
+  <div class="text">
+    <span class="label">Step 2</span>
+    <h2>Commit it</h2>
+    <p>nock is your project's own code now, so it goes in git. Telemetry stays out: <code>.nock/local/</code> is ignored, and never leaves your machine.</p>
+  </div>
+  <figure class="shot">
+    <div class="terminal"><span class="prompt">git add .nock .claude CLAUDE.md</span><span class="prompt">git commit -m "Add nock"</span><span class="out">[main 3f2a1c9] Add nock</span></div>
+    <figcaption>The toolbox is committed; the record of sessions is not.</figcaption>
+  </figure>
+</li>
+<li class="step" id="step-checks" data-step="2">
+  <div class="text">
+    <span class="label">Step 3</span>
+    <h2>Make your tests the gate</h2>
+    <p>Add your test suite and linters as checks. Tools and reflection rounds must pass them, and <code>.nock/nock check</code> prints nothing when they do.</p>
+  </div>
+  <figure class="shot">
+    <pre class="code"><code><span class="t-comment"># .nock/config.toml</span>
+<span class="t-meta">[checks.test]</span>
+<span class="t-key">command</span> = <span class="t-string">"pytest -q"</span>
+
+<span class="t-meta">[checks.lint]</span>
+<span class="t-key">command</span> = <span class="t-string">"ruff check"</span></code></pre>
+    <div class="terminal"><span class="prompt">.nock/nock check</span><span class="out quiet">(nothing: every check passed)</span></div>
+    <figcaption>Checks run side by side; a shared <code>chain</code> runs them in turn.</figcaption>
+  </figure>
+</li>
+<li class="step" id="step-session" data-step="3">
+  <div class="text">
+    <span class="label">Step 4</span>
+    <h2>Work as you always do</h2>
+    <p>Start Claude Code and ask for something. Every session reads nock's primer through CLAUDE.md, starts with the project's tools listed once it has some, and is recorded: what you asked, each tool call, what failed, what it cost.</p>
+  </div>
+  <figure class="shot">
+    <div class="terminal"><span class="who">CLAUDE.md</span><span class="out">@.nock/context.md</span><span class="who">.nock/context.md, the primer</span><span class="out">## nock
+
+This project uses nock to stay coherent across sessions,
+which matters as much as getting each task done: you start
+knowing nothing of earlier sessions, and nock keeps what
+they decided, what the owner said about it, and the tools
+agents built.
+
+- Consult before you change code, …</span><span class="who">you</span><span class="out ask">The nightly sweep requeues charges that are still retrying. Fix it.</span></div>
+    <figcaption>What every session reads first.</figcaption>
+  </figure>
+</li>
+<li class="step" id="step-submit" data-step="4">
+  <div class="text">
+    <span class="label">Step 5</span>
+    <h2>Your agent puts its work before you</h2>
+    <p>It opens a topic for the work, carries on, and submits what a later reader would ask "why" about: the choice it made, with what it weighed instead. It never waits on you.</p>
+  </div>
+  <figure class="shot">
+    <div class="terminal"><span class="prompt">.nock/nock topics create '{"name": "charge-sweep", …}'</span><span class="out">name: charge-sweep</span><span class="prompt">.nock/nock items create charge-sweep '{"title": "The sweep requeues dead charges only",
+  "decision": {"answer": "…", "alternatives": […]}}'</span><span class="out">ref: charge-sweep/the-sweep-requeues-dead-charges-only</span></div>
+    <figcaption>A decision item: the answer, and the alternatives really weighed.</figcaption>
+  </figure>
+</li>
+<li class="step" id="step-studio" data-step="5">
+  <div class="text">
+    <span class="label">Step 6</span>
+    <h2>Open the studio</h2>
+    <p>Run <code>.nock/nock studio</code>. Its Work tab lists the topics, newest activity first: what each holds, its verdicts, where the work stands.</p>
+  </div>
+  <figure class="shot" data-demo-still="review:0"></figure>
+</li>
+<li class="step" id="step-verdict" data-step="6">
+  <div class="text">
+    <span class="label">Step 7</span>
+    <h2>Give your first verdict</h2>
+    <p>Open the decision, read the answer and what was considered instead, and accept it — or reject it, and the agent reworks it as its thread says. The first time, nock asks once whether to share a weekly usage report of counts; nothing is sent unless you say yes.</p>
+  </div>
+  <figure class="shot" data-demo-still="review:3"></figure>
+</li>
+<!-- end -->
+
+<!-- block start-next -->
+<h2>What happens next</h2>
+<p>After 15 sessions or 7 days, a session start says a reflection round is due; run <code>/nock-reflect</code> in a session, and read its report. Your agents' tools grow from there.</p>
+<div class="actions">
+  <a class="button primary" href="/docs/install/">Read the docs</a>
+  <a class="button" href="/docs/reflection/">Reflection rounds</a>
+  <a class="button" href="{{ telegram }}">Ask on Telegram</a>
+</div>
+<!-- end -->
+
+<!-- block dock -->
+<div class="dock" role="region" aria-label="Get started">
+  <code>uvx nock init</code>
+  <a class="button primary" href="{{ url:/getting-started/ }}">Get started</a>
+</div>
+<!-- end -->

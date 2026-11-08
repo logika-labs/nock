@@ -1,0 +1,46 @@
+<!-- Layout A, the stacked story: the hero, then each part full width, its words over its demo, then the community. -->
+<div class="frame story story-a">
+
+<section class="card hero" aria-labelledby="hero-title">
+  <h1 id="hero-title">{{ copy:hero-title }}</h1>
+  {{ copy:hero-lead }}
+  {{ copy:install }}
+  {{ copy:hero-actions }}
+  {{ copy:hero-note }}
+</section>
+
+<section class="card part" id="reflection" aria-labelledby="reflection-title">
+  <div class="words">
+    <span class="label">{{ copy:reflection-label }}</span>
+    <h2 id="reflection-title">{{ copy:reflection-title }}</h2>
+    {{ copy:reflection-copy }}
+  </div>
+  <div class="demo" id="demo-reflection" data-demo="reflection" data-autoplay></div>
+</section>
+
+<section class="card part" id="review" aria-labelledby="review-title">
+  <div class="words">
+    <span class="label">{{ copy:review-label }}</span>
+    <h2 id="review-title">{{ copy:review-title }}</h2>
+    {{ copy:review-copy }}
+  </div>
+  <div class="demo" id="demo-review" data-demo="review" data-autoplay></div>
+</section>
+
+<section class="card part" id="logika" aria-labelledby="logika-title">
+  <div class="words">
+    <span class="label">{{ copy:logika-label }}</span>
+    <h2 id="logika-title">{{ copy:logika-title }}</h2>
+    {{ copy:logika-copy }}
+  </div>
+  <div class="demo" id="demo-logika" data-demo="logika" data-autoplay></div>
+</section>
+
+<section class="card community" id="community" aria-labelledby="community-title">
+  <span class="label">Community</span>
+  <h2 id="community-title">{{ copy:community-title }}</h2>
+  {{ copy:community-copy }}
+  {{ copy:community-actions }}
+</section>
+
+</div>

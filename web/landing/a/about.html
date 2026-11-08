@@ -1,0 +1,17 @@
+<!-- Layout A: About as a stack of cards, read top to bottom, the call to action at the end. -->
+<div class="frame story story-a about">
+<section class="card hero" aria-labelledby="about-title">
+  <span class="label">About</span>
+  <h1 id="about-title">{{ copy:about-title }}</h1>
+  {{ copy:about-lead }}
+</section>
+<section class="card prose">{{ copy:about-problem }}</section>
+<section class="card prose">{{ copy:about-principles }}</section>
+<section class="card prose">{{ copy:about-you }}</section>
+<section class="card prose">{{ copy:about-makers }}</section>
+<section class="card cta">
+  <h2>Try it on your repository</h2>
+  {{ copy:install }}
+  {{ copy:about-actions }}
+</section>
+</div>

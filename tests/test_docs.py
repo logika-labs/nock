@@ -1,5 +1,5 @@
-"""`nock docs`: the agents' documentation as short terms, each held to its
-rules, and the briefs pointing only at terms that exist."""
+"""`nock docs`: the documentation as short terms for agents and guides for people, each
+held to its rules, and the briefs pointing only at terms that exist."""
 
 from __future__ import annotations
 
@@ -9,7 +9,18 @@ from pathlib import Path
 
 import pytest
 
-from nock.docs import BRIEF_LIMIT, BRIEFS, DESCRIPTION_LIMIT, LIMIT, NAME, TERMS, Docs, TermError
+from nock.docs import (
+    BRIEF_LIMIT,
+    BRIEFS,
+    DESCRIPTION_LIMIT,
+    GUIDE_LIMIT,
+    GUIDES,
+    LIMIT,
+    NAME,
+    TERMS,
+    Docs,
+    TermError,
+)
 from nock.project import Project
 
 from .conftest import nock
@@ -44,9 +55,12 @@ def test_every_term_holds_to_the_rules() -> None:
     docs = Docs()
     assert docs.problems() == []
     briefs = {path.stem for path in (TERMS / BRIEFS).glob("*.md")}
-    assert len(docs.terms) == len(list(TERMS.glob("*.md"))) + len(briefs)
+    guides = {path.stem for path in (TERMS / GUIDES).glob("*.md")}
+    assert len(docs.terms) == len(list(TERMS.glob("*.md"))) + len(briefs) + len(guides)
     for term in docs.terms:
-        limit = BRIEF_LIMIT if term.term in briefs else LIMIT
+        limit = (
+            BRIEF_LIMIT if term.term in briefs else GUIDE_LIMIT if term.term in guides else LIMIT
+        )
         assert len(term.article) <= limit and len(term.description) <= DESCRIPTION_LIMIT
         assert all(NAME.match(name) for name in term.names)
     assert [term.term for term in docs.terms][:2] == ["checks", "checks.chains"]
@@ -115,6 +129,7 @@ def test_the_briefs_point_only_at_terms_and_the_toolbox_brief_at_the_framework()
     sources = [
         *PACKAGE.joinpath("briefs").rglob("*.md"),
         *(TERMS / BRIEFS).glob("*.md"),
+        *(TERMS / GUIDES).glob("*.md"),
         *PACKAGE.parent.parent.glob("*.md"),
     ]
     for path in sources:
@@ -157,3 +172,19 @@ def test_a_brief_is_printed_whole_however_long(project: Project) -> None:
     assert printed.returncode == 0, printed.stderr
     article = Docs().find("reflection.logika.rules").article  # pyright: ignore[reportOptionalMemberAccess]
     assert len(article) > 8000 and printed.stdout.strip() == article
+
+
+def test_every_guide_is_a_page_under_guide_with_its_title(project: Project) -> None:
+    """The guides are the documentation for people: each a child of `guide`, opening with
+    its title, printed whole however long, and listed by `nock docs guide`."""
+    docs = Docs()
+    guides = [term for term in docs.terms if term.term.startswith("guide.")]
+    assert len(guides) == len(list((TERMS / GUIDES).glob("*.md"))) >= 10
+    for guide in guides:
+        assert guide.article.startswith("# ") and "\n" in guide.article, guide.term
+    longest = max(guides, key=lambda guide: len(guide.article))
+    assert len(longest.article) > 8000
+    printed = nock(project.root, "docs", longest.term)
+    assert printed.returncode == 0 and printed.stdout.strip() == longest.article
+    listed = nock(project.root, "docs", "guide").stdout
+    assert all(f"`.nock/nock docs {guide.term}`" in listed for guide in guides)

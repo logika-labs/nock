@@ -4,7 +4,10 @@ with front matter — `term`, `aliases`, `description` — between `---` lines.
 A dotted term is a child of the term before its last dot, which must exist;
 an article lists its children. A term in `terms/briefs/` is a brief a skill or
 a subagent nock installs follows (`Run .nock/nock docs TERM and do what it
-says.`), so it may run long, and is printed whole."""
+says.`), so it may run long, and is printed whole. A term in `terms/guides/`
+(`guide.topics`) is a page of the documentation for people, nock.dev's docs
+built from it, and may run long too: a short term is what an agent needs at a
+glance, a guide everything there is to know."""
 
 from __future__ import annotations
 
@@ -18,9 +21,11 @@ from nock.errors import NotFoundError, PreconditionError
 
 TERMS = Path(__file__).resolve().with_name("terms")
 BRIEFS = "briefs"
-# The longest article and description, in characters; a brief's article may be longer.
+GUIDES = "guides"
+# The longest article and description, in characters; a brief's or a guide's article may be longer.
 LIMIT = 500
 BRIEF_LIMIT = 16000
+GUIDE_LIMIT = 16000
 DESCRIPTION_LIMIT = 100
 FIELDS = ("term", "aliases", "description")
 NAME = re.compile(r"^[a-z0-9-]+(\.[a-z0-9-]+)*$")
@@ -101,8 +106,10 @@ class Docs:
     """Every term in `directory`, parents before their children."""
 
     def __init__(self, directory: Path = TERMS) -> None:
-        terms = [parse(path) for path in directory.glob("*.md")] + [
-            parse(path, BRIEF_LIMIT) for path in (directory / BRIEFS).glob("*.md")
+        terms = [
+            *(parse(path) for path in directory.glob("*.md")),
+            *(parse(path, BRIEF_LIMIT) for path in (directory / BRIEFS).glob("*.md")),
+            *(parse(path, GUIDE_LIMIT) for path in (directory / GUIDES).glob("*.md")),
         ]
         self.terms = sorted(terms, key=lambda term: term.term.split("."))
 

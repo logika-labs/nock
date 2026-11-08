@@ -33,11 +33,13 @@ Schema subset in `schema.py`.
   `cd server && uv run pytest` (Docker, for Postgres), `uv run ruff check`,
   `uv run ruff format --check`, `uv run basedpyright` — green too before a
   commit that touches it. Its README has the deploy and the provisioning.
-- The README is the product's documentation; keep it true when behavior
-  changes; nock.dev's docs page is built from it (`web/`, the site, outside
-  the vendored core: `web/README.md`). `terms/` is the agents' documentation
-  (`nock docs`, a short article per term, which the briefs point at; `terms/briefs/` the long texts every installed skill and subagent points at): keep it
-  true too.
+- `terms/` is nock's documentation, one source for agents and people: the
+  terms are short articles agents read (`nock docs`, which the briefs point
+  at; `terms/briefs/` the long texts every installed skill and subagent
+  points at), and `terms/guides/` the guides, a page each, that nock.dev's
+  docs are built from (`web/`, the site, outside the vendored core:
+  `web/README.md`). Keep them true when behavior changes. The README is an
+  overview that links to the docs.
 
 ## How the code is shaped
 

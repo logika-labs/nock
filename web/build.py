@@ -1,8 +1,8 @@
-"""Build nock.dev into `site/`: the home page from `home.html`; Getting started
-and the docs from the repository's README, the product's documentation kept
-true beside the code, one page per section, each with its own table of
-contents; the legal pages from `legal/`, each with its plain-words summary.
-Every page is set in `layout.html`. Standard library only.
+"""Build nock.dev into `site/`: the landing page, About and Getting started from `landing/`, in
+each of the layouts under review; the docs from nock's guides and terms (`src/nock/terms/`, what
+`nock docs` reads too), a page per guide in four groups, each with what an agent reads on it; the
+legal pages from `legal/`, each with its plain-words summary. Every page is set in `layout.html`.
+Standard library only, and nock's own `docs` module, to read the terms as `nock docs` does.
 
     python3 web/build.py [--site DIRECTORY]
 """
@@ -13,80 +13,175 @@ import argparse
 import html
 import json
 import re
+import shutil
+import sys
 from pathlib import Path
 from typing import NamedTuple
 
 HERE = Path(__file__).resolve().parent
-README = HERE.parent / "README.md"
+sys.path.insert(0, str(HERE.parent / "src"))
+
+from nock.docs import Docs, Term  # noqa: E402  (nock's source, beside the site)
+
 SITE = HERE / "site"
 LAYOUT = HERE / "layout.html"
-HOME = HERE / "home.html"
+LANDING = HERE / "landing"
+STUDIO = HERE.parent / "src" / "nock" / "pages"
 GITHUB = "https://github.com/logika-labs/nock"
 REPOSITORY = GITHUB + "/blob/main/"
+LOGIKA = "https://logika.host"
 # PLACEHOLDER: the community's Telegram channel, which the owner is creating. Replace this one line.
 TELEGRAM = "https://t.me/PLACEHOLDER"
 
-# The README's sections by their anchors: Getting started is a page of its own, Thanks stays on
-# PyPI, and every other section is a docs page, served at /docs/ANCHOR/, in its tab, in reading
-# order, with its line on the docs index. A section the README gains and this does not place fails
-# the build.
-START = "getting-started"
-LEFT_OUT = {"thanks"}
-TABS = {"concepts": "Concepts", "evaluation": "Evaluation", "reference": "Reference"}
-DOCS = {
-    "why": (
-        "concepts",
-        "Agents repeat themselves and prose goes stale: why nock's fix is code, and its three principles.",
+# The layouts of the landing page, About and Getting started under review, each a set of those pages:
+# the first at the plain addresses, the others at index-NAME.html beside them. The docs and the legal
+# pages are one design for all. Keeping one layout is deleting the others here and in landing/.
+LAYOUTS = {
+    "a": "Stacked story: the hero, then each part with its demo, full width, in turn",
+    "b": "Tabbed stage: one large demo stage under the hero, the copy changing with its tab",
+    "c": "Split scroll: the demo sticky beside the copy, each beat of the copy advancing it",
+}
+# The pages each layout has, by where they are served, with their title, description and template.
+STORY = {
+    "/": (
+        "nock",
+        "A toolbox your coding agents build for themselves, in your repository: every session recorded, their work put before you to review, and reflection rounds that write the tools they need.",
+        "home",
     ),
-    "a-tool": (
-        "concepts",
-        "A tool is a function; nock owns its arguments, output, exit codes and help. The project's environment, long-running commands, checks, hooks and generators.",
+    "/about/": (
+        "About · nock",
+        "What nock is, the principles it keeps, and who makes it.",
+        "about",
     ),
-    "what-agents-see": (
-        "concepts",
-        "The tools listed at every session's start, the primer, and the few things nock says unasked.",
+    "/getting-started/": (
+        "Getting started · nock",
+        "From uvx nock init to your first verdict on what an agent made, step by step.",
+        "start",
     ),
-    "telemetry": (
-        "concepts",
-        "Every call and session in a local SQLite file, never committed, and how to read it.",
-    ),
+}
+
+# The docs: four groups, each a list of pages. A page is a guide (`nock docs guide.NAME`), served at
+# /docs/NAME/, with the terms an agent reads on the same subject folded in under it; the terms page
+# lists every term. A guide placed nowhere fails the build.
+GROUPS = {
+    "start": "Start",
+    "every-day": "Every day",
+    "extending": "Extending",
+    "reference": "Reference",
+}
+PAGES: dict[str, tuple[str, tuple[str, ...]]] = {
+    "why": ("start", ()),
+    "install": ("start", ("setup", "checks", "checks.chains")),
+    "session": ("start", ("reminders", "run", "status")),
+    "work": ("every-day", ("studio", "topics.verdicts", "topics.search")),
+    "chat": ("every-day", ("topics.threads",)),
     "topics": (
-        "concepts",
-        "Agents put their work before you in topics: decisions, project files, what they made to show it. You accept or reject each and talk in its thread. The map, and consulting before a change.",
+        "every-day",
+        (
+            "topics",
+            "topics.items",
+            "topics.decisions",
+            "topics.derived",
+            "topics.options",
+            "topics.state",
+            "topics.versions",
+            "topics.revive",
+        ),
     ),
+    "consult": ("every-day", ("topics.map", "consult")),
     "reflection": (
-        "concepts",
-        "Rounds that read the record and improve the toolbox, keep the map and judge how nock is doing; the logika round.",
+        "every-day",
+        ("reflection", "reflection.kinds", "reflection.record", "reflection.share"),
     ),
-    "what-nocks-agents-may-do": (
-        "concepts",
-        "The permissions nock writes, and what its own agents may and may not do.",
+    "logika": ("every-day", ("reflection.logika", "logika")),
+    "tool": (
+        "extending",
+        (
+            "tools",
+            "tools.signature",
+            "fixtures",
+            "sh",
+            "sh.stream",
+            "output",
+            "output.cap",
+            "errors",
+            "tools.confirm",
+            "tools.caching",
+            "tools.examples",
+            "tools.loading",
+            "tools.records",
+            "tools.retiring",
+            "environment",
+        ),
     ),
-    "what-nock-shares": (
-        "concepts",
-        "Nothing without your yes: the weekly usage report, a round's summary, and telling nock's makers what you need.",
+    "check": (
+        "extending",
+        (
+            "checks",
+            "checks.commands",
+            "checks.chains",
+            "checks.changed",
+            "hooks",
+            "generators",
+            "generators.catalogs",
+            "generators.templates",
+        ),
     ),
-    "evaluations": (
-        "evaluation",
-        "Whether a change makes the agents better, answered with real runs: Snakemake scenarios, a provenance cache, SQL and comparisons.",
+    "evaluation": (
+        "extending",
+        (
+            "eval",
+            "eval.flow",
+            "eval.steps",
+            "eval.scenario",
+            "eval.parameters",
+            "eval.runs",
+            "eval.query",
+            "eval.compare",
+        ),
     ),
-    "reference": ("reference", "Every command, the exit codes and the settings."),
-    "developing-nock": (
+    "commands": ("reference", ("exit-codes",)),
+    "settings": ("reference", ("configuration",)),
+    "terms": ("reference", ()),
+    "telemetry": (
         "reference",
-        "Working on nock itself: the tests, the gate and how a release goes.",
+        ("telemetry", "telemetry.sessions", "telemetry.tables", "telemetry.unrecorded"),
     ),
+    "permissions": ("reference", ("permissions",)),
+    "sharing": ("reference", ("sharing", "report")),
+    "developing": ("reference", ()),
+}
+TERMS_PAGE = (
+    "The terms",
+    "Every `nock docs` term: the short articles your agents read, each in full.",
+)
+# Headings of the one-page docs and of the README's sections before the guides, by the heading that
+# has their text now: an old address, /docs/#ANCHOR, is sent on to it.
+RENAMED = {
+    "getting-started": "install",
+    "what-agents-see": "the-first-session",
+    "reflection": "reflection-rounds",
+    "topics": "topics-and-items",
+    "reference": "commands-and-exit-codes",
+    "concepts": "what-changes-for-you",
+    "evaluation": "evaluations",
 }
 # Each legal page: its source in legal/ (and its plain-words summary, NAME-plain.md), its description.
 LEGAL = {
     "privacy": "What reaches nock's makers from nock.dev and from nock: the usage report, shared summaries, reports you write, and your rights.",
     "terms": "The terms of nock.dev and api.nock.dev; the software itself is MIT licensed.",
 }
-# The visitor's choice of the legal pages' summary, kept in their browser only.
+# The visitor's choice of the legal pages' summary, kept in their browser only once they turn it off.
 TLDR_KEY = "nock.legal.tldr"
+
+ICONS = {
+    "github": '<svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M8 0a8 8 0 0 0-2.53 15.59c.4.07.55-.17.55-.38v-1.33c-2.23.48-2.7-1.07-2.7-1.07-.36-.92-.89-1.17-.89-1.17-.73-.5.06-.49.06-.49.8.06 1.23.83 1.23.83.71 1.23 1.87.87 2.33.67.07-.52.28-.87.5-1.07-1.78-.2-3.65-.89-3.65-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.6 7.6 0 0 1 4 0c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.28.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48v2.2c0 .21.15.46.55.38A8 8 0 0 0 8 0z"/></svg>',
+    "telegram": '<svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M14.6 1.7.9 7c-.9.4-.9.9 0 1.2l3.5 1.1 1.3 4.1c.2.5.3.6.7.6.3 0 .5-.1.6-.3l1.7-1.6 3.5 2.6c.6.4 1.1.2 1.3-.6l2.3-11c.2-1-.4-1.4-1.2-1zM5.1 9.2l7.1-4.5c.4-.2.6 0 .4.2L6.6 10.3l-.3 2.7z"/></svg>',
+}
 
 
 def slug(text: str) -> str:
-    """GitHub's anchor for a heading, so the README's own links land."""
+    """GitHub's anchor for a heading, so the guides' own links land."""
     text = re.sub(r"<[^>]+>|`|['’]", "", text).lower()
     return re.sub(r"[^a-z0-9]+", "-", text).strip("-")
 
@@ -114,15 +209,146 @@ def inline(text: str) -> str:
     return re.sub(r"\0(\d+)\0", lambda match: spans[int(match.group(1))], text)
 
 
+# --- code blocks: black, highlighted in nock's colours, as the studio's ---------------------------
+
+STRINGS = r""""(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*'"""
+NUMBER = r"(?<![\w.:/-])(?:0x[0-9a-fA-F_]+|\d[\d_]*(?:\.\d+)?(?:[eE][+-]?\d+)?)(?![\w.:/-])"
+WORDS = {
+    "python": set(
+        [
+            "and",
+            "as",
+            "assert",
+            "async",
+            "await",
+            "break",
+            "class",
+            "continue",
+            "def",
+            "del",
+            "elif",
+            "else",
+            "except",
+            "False",
+            "finally",
+            "for",
+            "from",
+            "global",
+            "if",
+            "import",
+            "in",
+            "is",
+            "lambda",
+            "None",
+            "nonlocal",
+            "not",
+            "or",
+            "pass",
+            "raise",
+            "return",
+            "True",
+            "try",
+            "while",
+            "with",
+            "yield",
+            "match",
+            "case",
+            "self",
+        ]
+    ),
+    "sh": set(
+        [
+            "if",
+            "then",
+            "else",
+            "elif",
+            "fi",
+            "for",
+            "while",
+            "until",
+            "do",
+            "done",
+            "case",
+            "esac",
+            "in",
+            "function",
+            "return",
+            "export",
+            "local",
+            "echo",
+            "exit",
+            "set",
+            "true",
+            "false",
+        ]
+    ),
+    "toml": {"true", "false"},
+    "json": {"true", "false", "null"},
+}
+RULES = {
+    "python": [
+        ("comment", r"#.*"),
+        ("string", rf'"""[\s\S]*?"""|[rbfu]?(?:{STRINGS})'),
+        ("meta", r"@[\w.]+"),
+        ("number", NUMBER),
+    ],
+    "sh": [
+        ("comment", r"(?:^|(?<=\s))#.*"),
+        ("string", STRINGS),
+        ("meta", r"\$\{[^}]*\}|\$\w+"),
+        ("number", NUMBER),
+    ],
+    "toml": [
+        ("comment", r"#.*"),
+        ("meta", r"^[ \t]*\[\[?[^\]\n]+\]\]?"),
+        ("key", r"^[ \t]*[\w.\-\"']+(?=[ \t]*=)"),
+        ("string", STRINGS),
+        ("number", NUMBER),
+    ],
+    "json": [("key", r'"(?:\\.|[^"\\\n])*"(?=\s*:)'), ("string", STRINGS), ("number", NUMBER)],
+}
+
+
+def highlight(source: str, language: str) -> str:
+    """`source` escaped, its tokens in the studio's `t-` classes; as it is for a language unknown."""
+    rules = RULES.get(language)
+    if not rules:
+        return html.escape(source)
+    rules = [*rules, ("word", r"[A-Za-z_$][\w$]*")]
+    pattern = re.compile("|".join(f"({rule})" for _, rule in rules), re.M)
+    out: list[str] = []
+    at = 0
+    for found in pattern.finditer(source):
+        if not found.group(0):
+            continue
+        out.append(html.escape(source[at : found.start()]))
+        index = next(index for index, group in enumerate(found.groups()) if group is not None)
+        kind = rules[index][0]
+        if kind == "word":
+            word = found.group(0)
+            following = source[found.end() : found.end() + 1]
+            kind = (
+                "keyword"
+                if word in WORDS[language]
+                else "call"
+                if following == "("
+                else "type"
+                if re.match(r"[A-Z][a-z]", word)
+                else ""
+            )
+        escaped = html.escape(found.group(0))
+        out.append(f'<span class="t-{kind}">{escaped}</span>' if kind else escaped)
+        at = found.end()
+    return "".join(out) + html.escape(source[at:])
+
+
 class Converter:
-    """The Markdown nock's README uses: headings, paragraphs, nested lists,
+    """The Markdown nock's guides use: headings, paragraphs, nested lists,
     fenced code, tables, block quotes."""
 
-    def __init__(self, text: str, offset: int = 0) -> None:
+    def __init__(self, text: str) -> None:
         self.lines = text.replace("\r", "").split("\n")
         self.index = 0
-        # A README section is a page of its own, so its "## " is the page's <h1>.
-        self.offset = offset
         self.headings: list[tuple[int, str, str]] = []
 
     def convert(self) -> str:
@@ -157,6 +383,7 @@ class Converter:
                 continue
             if line.startswith("```"):
                 flush()
+                language = line[3:].strip()
                 self.index += 1
                 code = []
                 while self.index < len(self.lines) and not self.lines[
@@ -165,12 +392,13 @@ class Converter:
                     code.append(self.lines[self.index][indent:])
                     self.index += 1
                 self.index += 1
-                out.append(f"<pre><code>{html.escape(chr(10).join(code))}</code></pre>")
+                shown = highlight("\n".join(code), language)
+                out.append(f"<pre><code>{shown}</code></pre>")
                 continue
             heading = re.match(r"(#{1,4})\s+(.*)", line)
             if heading and not indent:
                 flush()
-                level = max(1, len(heading.group(1)) - self.offset)
+                level = len(heading.group(1))
                 text = inline(heading.group(2))
                 anchor = slug(heading.group(2))
                 self.headings.append((level, anchor, text))
@@ -219,10 +447,12 @@ class Converter:
     def table(self, indent: int) -> str:
         rows = []
         while self.index < len(self.lines) and self.lines[self.index][indent:].startswith("|"):
-            cells = [cell.strip() for cell in self.lines[self.index].strip().strip("|").split("|")]
+            line = self.lines[self.index].strip().strip("|")
+            # `\|` is a pipe inside a cell, as GitHub reads it.
+            cells = [cell.strip().replace("\\|", "|") for cell in re.split(r"(?<!\\)\|", line)]
             rows.append(cells)
             self.index += 1
-        head, body = rows[0], [row for row in rows[2:]]
+        head, body = rows[0], rows[2:]
         out = ['<div class="table"><table><thead><tr>']
         out += [f"<th>{inline(cell)}</th>" for cell in head]
         out.append("</tr></thead><tbody>")
@@ -232,77 +462,126 @@ class Converter:
         return "".join(out)
 
 
-class Section(NamedTuple):
-    """A "## " section of the README: its anchor, its title and its Markdown."""
-
-    anchor: str
-    title: str
-    text: str
+# --- the docs -------------------------------------------------------------------------------------
 
 
 class Page(NamedTuple):
-    """A page made from a section: where it is served, its body and its table of contents."""
+    """A docs page: its name (served at /docs/NAME/), its group, title, description, body, its own
+    table of contents, and the terms an agent reads on it."""
 
-    section: Section
-    url: str
+    name: str
+    group: str
+    title: str
+    description: str
     body: str
     contents: str
+    reads: tuple[Term, ...]
+
+    @property
+    def url(self) -> str:
+        return f"/docs/{self.name}/"
 
 
-def sections(text: str) -> list[Section]:
-    """The README cut at its "## " headings, outside code; the title and tagline before the first
-    are the site's own."""
-    found: list[Section] = []
-    fenced = False
-    current: list[str] | None = None
-    for line in text.splitlines():
-        if line.lstrip().startswith("```"):
-            fenced = not fenced
-        if not fenced and line.startswith("## "):
-            current = [line]
-            title = line.removeprefix("## ").strip()
-            found.append(Section(slug(title), title, ""))
-        elif current is not None:
-            current.append(line)
-        if current is not None:
-            found[-1] = found[-1]._replace(text="\n".join(current))
+def contents_of(headings: list[tuple[int, str, str]]) -> str:
+    links = "\n".join(
+        f'<a class="level-{level}" href="#{anchor}">{text}</a>'
+        for level, anchor, text in headings
+        if level in (2, 3)
+    )
+    if not links:
+        return ""
+    return f'<nav class="contents" aria-label="On this page"><span class="label">On this page</span>\n{links}\n</nav>'
+
+
+def term_article(term: Term, level: int = 3) -> str:
+    """A term as an agent reads it: its `nock docs` line, its description and its article."""
+    article = Converter(term.article).convert()
+    return (
+        f'<section class="term"><h{level} id="term-{slug(term.term)}"><code>nock docs {term.term}</code></h{level}>'
+        f'<p class="description">{inline(term.description)}</p>\n{article}</section>'
+    )
+
+
+def guides(docs: Docs) -> dict[str, Term]:
+    """The guides by name (`guide.install` is `install`), every one placed on a page."""
+    found = {
+        term.term.removeprefix("guide."): term
+        for term in docs.terms
+        if term.term.startswith("guide.")
+    }
+    unplaced = set(found) - set(PAGES)
+    missing = set(PAGES) - set(found) - {"terms"}
+    if unplaced or missing:
+        raise SystemExit(
+            "web/build.py places the guides by name: "
+            + "; ".join(
+                [f"guide.{name} is on no page (PAGES)" for name in sorted(unplaced)]
+                + [f"guide.{name} is not a guide" for name in sorted(missing)]
+            )
+        )
     return found
 
 
-def placed(found: list[Section]) -> dict[str, Section]:
-    """The sections by anchor, every one placed: a page, Getting started, or left out."""
-    by_anchor = {section.anchor: section for section in found}
-    unplaced = set(by_anchor) - set(DOCS) - LEFT_OUT - {START}
-    missing = (set(DOCS) | {START}) - set(by_anchor)
-    if unplaced or missing:
-        raise SystemExit(
-            "web/build.py places the README's sections by anchor: "
-            + "; ".join(
-                [f"{anchor} is not placed (DOCS, START or LEFT_OUT)" for anchor in sorted(unplaced)]
-                + [f"{anchor} is not in the README" for anchor in sorted(missing)]
-            )
-        )
-    return by_anchor
+def short_terms(docs: Docs) -> list[Term]:
+    """The terms an agent reads at a glance: neither a guide nor a brief."""
+    return [
+        term
+        for term in docs.terms
+        if term.term != "guide"
+        and not term.term.startswith("guide.")
+        and docs.find(term.term) is term
+        and len(term.article) <= 500
+    ]
 
 
-def render(section: Section, url: str) -> Page:
-    converter = Converter(section.text, offset=1)
-    body = converter.convert()
-    links = "\n".join(
-        f'<a class="level-{level}" href="#{anchor}">{text}</a>'
-        for level, anchor, text in converter.headings
-        if level in (2, 3)
-    )
-    contents = (
-        f'<nav class="contents" aria-label="On this page"><span class="label">On this page</span>\n{links}\n</nav>'
-        if links
-        else ""
-    )
-    return Page(section, url, body, contents)
+def terms_body(docs: Docs) -> tuple[str, list[tuple[int, str, str]]]:
+    """Every short term, by its root: what `nock docs` prints for each, whole."""
+    roots: dict[str, list[Term]] = {}
+    for term in short_terms(docs):
+        roots.setdefault(term.term.split(".")[0], []).append(term)
+    headings: list[tuple[int, str, str]] = [(1, "the-terms", "The terms")]
+    out = [
+        '<h1 id="the-terms">The terms</h1>',
+        "<p>What your agents read: <code>.nock/nock docs</code> lists these terms, "
+        "<code>.nock/nock docs TERM</code> prints one, and a term it doesn't know answers with the "
+        "three closest. Each is at most 500 characters, so an agent reads only what its next step "
+        "needs; the guides (<code>.nock/nock docs guide</code>) are the long form, and the briefs "
+        "the installed skills and subagents follow are left out here.</p>",
+    ]
+    for root, terms in roots.items():
+        anchor = f"terms-{root}"
+        headings.append((2, anchor, f"<code>{html.escape(root)}</code>"))
+        out.append(f'<h2 id="{anchor}"><code>{html.escape(root)}</code></h2>')
+        out += [term_article(term) for term in terms]
+    return "\n".join(out), headings
+
+
+def docs_pages(docs: Docs) -> list[Page]:
+    found = guides(docs)
+    pages = []
+    for name, (group, reads) in PAGES.items():
+        terms = []
+        for word in reads:
+            term = docs.find(word)
+            if term is None:
+                raise SystemExit(f"web/build.py: the docs page {name} reads `{word}`, not a term")
+            terms.append(term)
+        if name == "terms":
+            body, headings = terms_body(docs)
+            title, description = TERMS_PAGE
+        else:
+            converter = Converter(found[name].article)
+            body = converter.convert()
+            headings = converter.headings
+            title = re.sub(r"<[^>]+>", "", headings[0][2])
+            description = found[name].description
+        page = Page(name, group, title, description, body, contents_of(headings), tuple(terms))
+        pages.append(page)
+    return pages
 
 
 def relink(text: str, here: str, located: dict[str, str]) -> str:
-    """Point a README link to a section on another page at that page."""
+    """Point a guide's link to a heading on another page at that page."""
 
     def target(match: re.Match[str]) -> str:
         anchor = match.group(1)
@@ -318,39 +597,32 @@ def marked(current: bool) -> str:
     return ' aria-current="page"' if current else ""
 
 
-def menu(current: str) -> str:
-    items = [("Start", "/getting-started/"), ("Docs", "/docs/"), ("GitHub", GITHUB)]
-    return "\n".join(
-        f'<a href="{href}"{marked(href == current)}>{name}</a>' for name, href in items
-    )
-
-
-def layout(title: str, description: str, current: str, main: str, head: str = "") -> str:
-    """A page in the site's frame: the band with the menu, the main column, the footer."""
-    return (
-        LAYOUT.read_text()
-        .replace("{{ title }}", html.escape(title))
-        .replace("{{ description }}", html.escape(description))
-        .replace("{{ head }}", head)
-        .replace("{{ menu }}", menu(current))
-        .replace("{{ main }}", main)
-        .replace("{{ telegram }}", TELEGRAM)
-    )
-
-
-def plain(text: str) -> str:
-    return re.sub(r"<[^>]+>", "", text)
+def agent_reads(page: Page) -> str:
+    """The terms an agent reads on the page's subject, folded under it."""
+    if not page.reads:
+        return ""
+    names = " ".join(f"<code>{term.term}</code>" for term in page.reads)
+    articles = "\n".join(term_article(term, 4) for term in page.reads)
+    return f"""<details class="reads">
+<summary><span class="label">What your agent reads</span><span class="names">{names}</span></summary>
+<div class="body">
+<p class="note">The same subject as <code>.nock/nock docs</code> gives it to your agents: a short article each.</p>
+{articles}
+</div>
+</details>"""
 
 
 def pager(previous: Page | None, following: Page | None) -> str:
     links = []
     if previous:
+        title = html.escape(previous.title)
         links.append(
-            f'<a class="previous" href="{previous.url}"><span class="label">Previous</span>{previous.section.title}</a>'
+            f'<a class="previous" href="{previous.url}"><span class="label">Previous</span>{title}</a>'
         )
     if following:
+        title = html.escape(following.title)
         links.append(
-            f'<a class="next" href="{following.url}"><span class="label">Next</span>{following.section.title}</a>'
+            f'<a class="next" href="{following.url}"><span class="label">Next</span>{title}</a>'
         )
     return f'<nav class="pager" aria-label="Pages">{"".join(links)}</nav>' if links else ""
 
@@ -363,39 +635,36 @@ def article(page: Page, located: dict[str, str], after: str) -> str:
     )
 
 
-def tabs(current: str | None) -> str:
+def groups_nav(current: str | None) -> str:
     return "\n".join(
-        f'<a href="/docs/#{tab}" data-tab="{tab}"{marked(tab == current)}>{title}</a>'
-        for tab, title in TABS.items()
+        f'<a href="/docs/#{group}"{marked(group == current)}>{title}</a>'
+        for group, title in GROUPS.items()
     )
 
 
 def docs_index(pages: list[Page], located: dict[str, str]) -> str:
-    """Every tab in the markup, the one the address names shown (style.css), the first when it
-    names none; an address naming a heading of the old one-page docs goes to its page."""
-    anchors = "".join(f'<span id="{tab}" data-anchor="{tab}" hidden></span>' for tab in TABS)
-    panels = []
-    for number, tab in enumerate(TABS):
+    """Every group, its pages with a line each; an address naming a heading of the old one-page docs
+    goes to its page."""
+    cards = []
+    for group, title in GROUPS.items():
         entries = "\n".join(
-            f'<li><span class="number">{index:02}</span><div><a href="{page.url}">{page.section.title}</a>'
-            f"<p>{html.escape(DOCS[page.section.anchor][1])}</p></div></li>"
-            for index, page in enumerate(
-                (page for page in pages if DOCS[page.section.anchor][0] == tab), start=1
-            )
+            f'<li><a href="{page.url}">{html.escape(page.title)}</a><p>{inline(page.description)}</p></li>'
+            for page in pages
+            if page.group == group
         )
-        default = " data-default" if number == 0 else ""
-        panels.append(
-            f'<section class="panel" data-panel="{tab}"{default} aria-label="{TABS[tab]}"><ol class="entries">\n{entries}\n</ol></section>'
+        cards.append(
+            f'<section class="card group" id="{group}" aria-labelledby="{group}-title">'
+            f'<h2 id="{group}-title">{title}</h2><ol class="entries">\n{entries}\n</ol></section>'
         )
-    moved = {anchor: where for anchor, where in located.items() if anchor not in TABS}
-    return f"""<div class="frame docs" data-docs-index>
-{anchors}
-<div class="controls"><nav class="tabs" aria-label="Docs">
-{tabs(None).replace('href="/docs/#', 'href="#')}
-</nav></div>
-<div class="card">
+    moved = {anchor: where for anchor, where in located.items() if anchor not in GROUPS}
+    moved |= {old: located[new] for old, new in RENAMED.items() if new in located}
+    return f"""<div class="frame docs">
+<div class="card docs-head">
 <h1>Docs</h1>
-{"".join(panels)}
+<p>By what you are doing. The same text is in nock itself, <code>.nock/nock docs guide</code>, and each page folds in what your agent reads on its subject.</p>
+</div>
+<div class="groups">
+{"".join(cards)}
 </div>
 </div>
 <script>
@@ -407,31 +676,129 @@ if (Object.hasOwn(moved, anchor)) location.replace(moved[anchor]);
 
 
 def docs_page(page: Page, pages: list[Page], located: dict[str, str]) -> str:
-    tab = DOCS[page.section.anchor][0]
     index = pages.index(page)
     previous = pages[index - 1] if index else None
     following = pages[index + 1] if index + 1 < len(pages) else None
     siblings = "\n".join(
-        f'<a href="{other.url}"{marked(other is page)}>{other.section.title}</a>'
+        f'<a href="{other.url}"{marked(other is page)}>{html.escape(other.title)}</a>'
         for other in pages
-        if DOCS[other.section.anchor][0] == tab
+        if other.group == page.group
     )
+    after = agent_reads(page) + pager(previous, following)
     return f"""<div class="frame docs">
 <div class="controls">
 <nav class="tabs" aria-label="Docs">
-{tabs(tab)}
+{groups_nav(page.group)}
 </nav>
-<nav class="pages" aria-label="{TABS[tab]}">
+<nav class="pages" aria-label="{GROUPS[page.group]}">
 {siblings}
 </nav>
 </div>
-{article(page, located, pager(previous, following))}
+{article(page, located, after)}
 </div>"""
 
 
+# --- the frame and the story pages ----------------------------------------------------------------
+
+
+def address(path: str, layout: str) -> str:
+    """Where `path` is served in `layout`: the first layout's at the plain address."""
+    return path if layout == next(iter(LAYOUTS)) else f"{path}index-{layout}.html"
+
+
+def menu(current: str, layout: str) -> str:
+    items = [("Home", "/"), ("About", "/about/"), ("Get started", "/getting-started/")]
+    links = [
+        f'<a href="{address(path, layout)}"{marked(path == current)}>{name}</a>'
+        for name, path in items
+    ]
+    links.append(f'<a href="/docs/"{marked(current == "/docs/")}>Docs</a>')
+    icons = (
+        f'<a class="icon" href="{GITHUB}" aria-label="nock on GitHub" title="GitHub">{ICONS["github"]}</a>'
+        f'<a class="icon" href="{TELEGRAM}" aria-label="nock on Telegram" title="Telegram">{ICONS["telegram"]}</a>'
+    )
+    return "\n".join(links) + f'\n<span class="icons">{icons}</span>'
+
+
+def switcher(path: str, layout: str) -> str:
+    """While more than one layout is under review: a way to the same page in the others."""
+    if len(LAYOUTS) < 2:
+        return ""
+    links = "".join(
+        f'<a href="{address(path, name)}"{marked(name == layout)} title="{html.escape(description)}">{name.upper()}</a>'
+        for name, description in LAYOUTS.items()
+    )
+    return f'<nav class="layouts" aria-label="Layouts under review"><span class="label">Layout</span>{links}</nav>'
+
+
+def layout(
+    title: str,
+    description: str,
+    current: str,
+    main: str,
+    head: str = "",
+    variant: str = "a",
+    extra: str = "",
+) -> str:
+    """A page in the site's frame: the band with the menu, the main column, the footer."""
+    return (
+        LAYOUT.read_text()
+        .replace("{{ title }}", html.escape(title))
+        .replace("{{ description }}", html.escape(description))
+        .replace("{{ head }}", head)
+        .replace("{{ layout }}", variant)
+        .replace("{{ menu }}", menu(current, variant))
+        .replace("{{ main }}", main)
+        .replace("{{ extra }}", extra)
+        .replace("{{ telegram }}", TELEGRAM)
+        .replace("{{ github }}", GITHUB)
+    )
+
+
+def blocks() -> dict[str, str]:
+    """landing/copy.html's blocks by name: the words every layout shares."""
+    text = (LANDING / "copy.html").read_text()
+    return dict(re.findall(r"<!-- block (\S+) -->\n(.*?)\n<!-- end -->", text, re.S))
+
+
+PLACEHOLDER = re.compile(r"\{\{ (copy|url):(\S+) \}\}")
+
+
+def story_page(path: str, layout_name: str, copy: dict[str, str]) -> str:
+    """A layout's page: its template, the shared words and the layout's own addresses filled in."""
+    name = STORY[path][2]
+    filled = (LANDING / layout_name / f"{name}.html").read_text()
+
+    def fill(match: re.Match[str]) -> str:
+        kind, key = match.group(1), match.group(2)
+        if kind == "url":
+            return address(key, layout_name)
+        if key not in copy:
+            raise SystemExit(
+                f"web/landing/{layout_name}/{name}.html names `{key}`, no block of copy.html"
+            )
+        return copy[key]
+
+    # A block may name addresses and other blocks, so fill until nothing is left.
+    while PLACEHOLDER.search(filled):
+        filled = PLACEHOLDER.sub(fill, filled)
+    return (
+        filled.replace("{{ telegram }}", TELEGRAM)
+        .replace("{{ github }}", GITHUB)
+        .replace("{{ logika }}", LOGIKA)
+    )
+
+
+STORY_HEAD = (
+    '<link rel="stylesheet" href="/studio/topics.css">\n'
+    '<link rel="stylesheet" href="/demo.css">\n'
+    '<script src="/demo.js" defer></script>'
+)
+
+
 def legal_page(name: str) -> tuple[str, str]:
-    """The page's title, and its main: the switch, the title, the summary (shown while the switch is
-    on) and the full text, which is always shown and never changes with it."""
+    """The page's title, and its main: the switch, the title, the summary alone while the switch is
+    on (the default), the full text alone while it is off; without script, both."""
     text = (HERE / "legal" / f"{name}.md").read_text()
     title = re.match(r"# (.+)\n", text)
     assert title, f"legal/{name}.md starts with its title"
@@ -440,11 +807,11 @@ def legal_page(name: str) -> tuple[str, str]:
     summary = Converter((HERE / "legal" / f"{name}-plain.md").read_text()).convert()
     main = f"""<div class="frame legal">
 <article class="card article">
-<div class="tldr-control" hidden><button type="button" class="switch" role="switch" id="tldr" aria-checked="true"><span></span></button><label for="tldr">tl;dr</label></div>
+<div class="tldr-control" hidden><button type="button" class="switch" role="switch" id="tldr" aria-checked="true"><span></span></button><label for="tldr">TL;DR</label></div>
 {heading}
-<section class="plain" aria-label="tl;dr">
-<p class="note">A summary in plain words. The full text below is the one that applies; where the two differ, the full text applies.</p>
+<section class="plain" aria-label="TL;DR">
 {summary}
+<p class="note">In short. The full text is the one that applies: turn TL;DR off to read it.</p>
 </section>
 <section class="full" aria-label="{html.escape(title.group(1))}">
 {rest}
@@ -452,59 +819,53 @@ def legal_page(name: str) -> tuple[str, str]:
 </article>
 </div>
 <script>
-// The summary is on unless the visitor turned it off; the choice stays in their browser.
+// The summary is on unless the visitor turned it off; only turning it off is kept, in their browser.
 const control = document.querySelector(".tldr-control");
 const toggle = document.getElementById("tldr");
-const shown = () => document.documentElement.dataset.tldr !== "off";
+const root = document.documentElement;
+root.dataset.tldr = root.dataset.tldr === "off" ? "off" : "on";
 control.hidden = false;
-toggle.setAttribute("aria-checked", String(shown()));
+toggle.setAttribute("aria-checked", String(root.dataset.tldr === "on"));
 toggle.addEventListener("click", () => {{
-  const on = !shown();
-  document.documentElement.dataset.tldr = on ? "on" : "off";
+  const on = root.dataset.tldr !== "on";
+  root.dataset.tldr = on ? "on" : "off";
   toggle.setAttribute("aria-checked", String(on));
-  try {{ localStorage.setItem({json.dumps(TLDR_KEY)}, on ? "on" : "off"); }} catch {{}}
+  try {{
+    if (on) localStorage.removeItem({json.dumps(TLDR_KEY)});
+    else localStorage.setItem({json.dumps(TLDR_KEY)}, "off");
+  }} catch {{}}
 }});
 </script>"""
     return title.group(1), main
 
 
-def build(site: Path, readme: Path = README) -> list[Path]:
+def build(site: Path, terms: Path | None = None) -> list[Path]:
     """Write every page under `site`; the pages written."""
-    by_anchor = placed(sections(readme.read_text()))
-    start = render(by_anchor[START], "/getting-started/")
-    pages = [render(by_anchor[anchor], f"/docs/{anchor}/") for anchor in DOCS]
+    docs = Docs(terms) if terms else Docs()
+    pages = docs_pages(docs)
     located: dict[str, str] = {}
-    for page in [start, *pages]:
-        for anchor in re.findall(r'<h\d id="([^"]+)"', page.body):
-            located.setdefault(
-                anchor, page.url if anchor == page.section.anchor else f"{page.url}#{anchor}"
-            )
-    written: dict[str, str] = {
-        "index.html": layout(
-            "nock",
-            "nock is a community learning to work with AI as software engineers, and the open-source toolbox they learn with: reflection, review, evaluation, and Logika.",
-            "/",
-            HOME.read_text(),
-        ),
-        "getting-started/index.html": layout(
-            "Getting started · nock",
-            "Install nock in a repository, commit it, and make your tests and linters its checks.",
-            "/getting-started/",
-            f'<div class="frame docs">\n{article(start, located, pager(None, pages[0]))}\n</div>',
-        ),
-        "docs/index.html": layout(
-            "Docs · nock",
-            "nock's documentation, built from its README: concepts, evaluation and reference.",
-            "/docs/",
-            docs_index(pages, located),
-        ),
-    }
     for page in pages:
-        written[f"docs/{page.section.anchor}/index.html"] = layout(
-            f"{plain(page.section.title)} · nock",
-            DOCS[page.section.anchor][1],
-            "/docs/",
-            docs_page(page, pages, located),
+        for anchor in re.findall(r'<h\d id="([^"]+)"', page.body):
+            whole = anchor == slug(page.title)
+            located.setdefault(anchor, page.url if whole else f"{page.url}#{anchor}")
+    copy = blocks()
+    written: dict[str, str] = {}
+    for name in LAYOUTS:
+        for path, (title, description, _) in STORY.items():
+            served = address(path, name)
+            relative = served.lstrip("/") + ("index.html" if served.endswith("/") else "")
+            main = story_page(path, name, copy)
+            extra = switcher(path, name)
+            written[relative] = layout(title, description, path, main, STORY_HEAD, name, extra)
+    written["docs/index.html"] = layout(
+        "Docs · nock",
+        "nock's documentation, by what you are doing: start, every day, extending, and the reference.",
+        "/docs/",
+        docs_index(pages, located),
+    )
+    for page in pages:
+        written[f"docs/{page.name}/index.html"] = layout(
+            f"{page.title} · nock", page.description, "/docs/", docs_page(page, pages, located)
         )
     for name, description in LEGAL.items():
         title, main = legal_page(name)
@@ -519,6 +880,9 @@ def build(site: Path, readme: Path = README) -> list[Path]:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(text)
         paths.append(path)
+    # The demo's Work scene is drawn in the studio's own classes, so it wears the studio's own sheet.
+    (site / "studio").mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(STUDIO / "topics.css", site / "studio" / "topics.css")
     return paths
 
 

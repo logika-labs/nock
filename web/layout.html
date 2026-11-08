@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-layout="{{ layout }}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -7,12 +7,12 @@
 <meta name="description" content="{{ description }}">
 <link rel="preload" href="/fonts/geist-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="/fonts/unbounded-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='-1.5 -3 16 16'%3E%3Cg fill='%23111116'%3E%3Crect x='3' y='0' width='7' height='1'/%3E%3Crect x='2' y='1' width='9' height='6'/%3E%3Crect x='0' y='3' width='2' height='2'/%3E%3Crect x='11' y='2' width='2' height='2'/%3E%3Crect x='3' y='7' width='1' height='2'/%3E%3Crect x='5' y='7' width='1' height='1'/%3E%3Crect x='7' y='7' width='1' height='1'/%3E%3Crect x='9' y='7' width='1' height='2'/%3E%3C/g%3E%3Cg fill='%238fe9ff'%3E%3Crect x='4' y='2' width='1' height='2'/%3E%3Crect x='8' y='2' width='1' height='2'/%3E%3C/g%3E%3C/svg%3E">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='f' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%23ff9ad5'/%3E%3Cstop offset='.5' stop-color='%23c3b2ff'/%3E%3Cstop offset='1' stop-color='%238fe9ff'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='32' height='32' rx='8' fill='%23111116'/%3E%3Cpath d='M9.5 24V12.5M9.5 16.5c0-2.6 2-4.5 4.8-4.5h.4c2.8 0 4.8 1.9 4.8 4.5V24' fill='none' stroke='url(%23f)' stroke-width='3.6' stroke-linecap='round' stroke-linejoin='round' transform='translate(1.5 0)'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="/style.css">
 {{ head }}
 </head>
 <body>
-<!-- Built by web/build.py; edit layout.html, home.html, legal/ or the README, never site/. -->
+<!-- Built by web/build.py; edit layout.html, landing/, legal/ or nock's terms (src/nock/terms/), never site/. -->
 <svg class="sprites" aria-hidden="true" focusable="false">
   <defs>
     <linearGradient id="holo" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="13" y2="9">
@@ -58,11 +58,12 @@
 <footer>
   <div class="frame">
     <div class="foot">
-      <span>nock: MIT licensed. Made for Claude Code.</span>
-      <span><a href="/privacy/">Privacy</a> · <a href="/terms/">Terms</a> · <a href="{{ telegram }}">Telegram</a> · <a href="https://github.com/logika-labs/nock">GitHub</a></span>
+      <span>nock: open source, MIT licensed. Made for Claude Code by Parallel Labs.</span>
+      <span class="links"><a href="/privacy/">Privacy</a><a href="/terms/">Terms</a><a href="{{ github }}">GitHub</a><a href="{{ telegram }}">Telegram</a></span>
     </div>
   </div>
 </footer>
+{{ extra }}
 </div>
 <script>
 // Copy buttons: the install command's, and one on each code block; without script the code reads the same.

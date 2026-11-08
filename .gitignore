@@ -6,5 +6,6 @@ __pycache__/
 dist/
 .DS_Store
 web/site/**/*.html
+web/site/studio/
 web/pages/
 server/build/

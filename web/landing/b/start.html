@@ -1,0 +1,20 @@
+<!-- Layout B: Getting started as a stepper: the steps as tabs, one shown at a time with its picture. -->
+<div class="frame story story-b start">
+<section class="card intro wide-intro" aria-labelledby="start-title">
+  <span class="label">Getting started</span>
+  <h1 id="start-title">{{ copy:start-title }}</h1>
+  {{ copy:start-lead }}
+</section>
+<section class="card stepper-card" aria-label="The steps">
+  <div class="rail" role="tablist" aria-label="Steps" data-stepper-rail="steps"></div>
+  <ol class="steps" id="steps" data-stepper>
+{{ copy:start-steps }}
+  </ol>
+  <div class="stepper-pager" data-stepper-pager data-at="0">
+    <button type="button" class="button" data-step-back>Back</button>
+    <span class="where label"></span>
+    <button type="button" class="button primary" data-step-next>Next step</button>
+  </div>
+</section>
+<section class="card prose next">{{ copy:start-next }}</section>
+</div>
