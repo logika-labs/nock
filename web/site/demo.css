@@ -199,3 +199,4 @@
   .story-c .stage-column .demo-foot { display: none; }
 }
 @media (max-width: 860px) { .scene-logika .agent .calls { justify-content: flex-end; } }
+.scene-review .button.primary { background: #111116; color: #fff; border: 1px solid #111116; box-shadow: 2px 2px 0 0 var(--cyan), -2px -2px 0 0 var(--pink); }
