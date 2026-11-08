@@ -166,6 +166,20 @@ class EvalsTab(Tab):
         raise NotFoundError("no such page")
 
 
+# How much of a text file Search reads: enough for any document, not a log.
+SEARCHED_BYTES = 256 * 1024
+
+
+def talk_of(thread: list[dict[str, Any]]) -> list[str]:
+    """A thread's messages as the owner reads them, without nock's own notes:
+    each one's text and the names of the files it carries."""
+    return [
+        " ".join([entry["text"], *(file["name"] for file in entry.get("attachments", []))])
+        for entry in thread
+        if not entry.get("kind")
+    ]
+
+
 @dataclass(frozen=True)
 class Raw:
     """A file a tab answers with as it is, not as JSON."""
@@ -384,6 +398,7 @@ class TopicsTab(Tab):
         self.asking = Asking(project)
         self.seen = Seen(project)
         self.uploads = Uploads(project)
+        self.texts: dict[Path, tuple[int, str]] = {}
 
     def fragment(self) -> str:
         return f"<style>\n{(PAGES / 'topics.css').read_text()}</style>\n" + super().fragment()
@@ -405,9 +420,72 @@ class TopicsTab(Tab):
         if parts[0] == "attachment" and ATTACHMENTS in parts[2:4]:
             slug = None if parts[2] == ATTACHMENTS else parts[2]
             return Raw(self.topics.attachment(parts[1], slug, "/".join(parts[3 if slug else 2 :])))
+        if parts[0] == "search":
+            return self.search("/".join(parts[1:]))
         if parts[0] != "file" or len(parts) < 5 or not parts[3].isdigit():
             raise NotFoundError("no such page")
         return Raw(self.topics.file(parts[1], parts[2], int(parts[3]), "/".join(parts[4:])))
+
+    def search(self, query: str) -> dict[str, Any]:
+        """What the Search field finds, in what the owner sees: a topic by its
+        name, description, status and thread; an item by its title, its
+        decision, its files' names, the text of its text files, and its
+        thread (a thread's messages with the names of the files they carry) — never a recipe, a `from`, a ref or nock's own notes (a split,
+        a revival, a task kept as a note). Every word must be found in the
+        topic and the item together, and one at least in the item itself."""
+        wanted = query.lower().split()
+        if not wanted:
+            return {"topics": [], "items": []}
+        topics, items = [], []
+        for name in self.topics.names():
+            record = self.topics.topic(name)
+            around = " ".join(
+                [
+                    name,
+                    record.get("description") or "",
+                    self.topics.current_description(record),
+                    record.get("status") or "",
+                    *talk_of(record["thread"]),
+                ]
+            ).lower()
+            if all(word in around for word in wanted):
+                topics.append(name)
+            for item in self.topics.items(name):
+                own = self.seen_in(item)
+                if all(word in f"{around} {own}" for word in wanted) and any(
+                    word in own for word in wanted
+                ):
+                    items.append(f"{name}/{item['slug']}")
+        return {"topics": topics, "items": items}
+
+    def seen_in(self, item: dict[str, Any]) -> str:
+        """An item's words as the owner sees them, lowercased; the text files
+        of its latest version read once per change."""
+        shown = self.topics.shown(item)
+        latest = shown["versions"][-1]
+        decision = latest.get("decision") or {}
+        parts = [item["title"], *talk_of(item["thread"])]
+        if decision:
+            parts.append(decision.get("answer") or "")
+            for entry in decision.get("alternatives") or []:
+                parts += [entry.get("option") or "", entry.get("why_not") or ""]
+        for file in latest["files"]:
+            parts.append(file["name"])
+            if file.get("type") == "text":
+                parts.append(self.text_of(Path(file["where"])))
+        return " ".join(parts).lower()
+
+    def text_of(self, path: Path) -> str:
+        try:
+            stamp = path.stat().st_mtime_ns
+        except OSError:
+            return ""
+        kept = self.texts.get(path)
+        if kept is None or kept[0] != stamp:
+            data = path.read_bytes()[:SEARCHED_BYTES]
+            kept = (stamp, data.decode("utf-8", errors="replace"))
+            self.texts[path] = kept
+        return kept[1]
 
     def everything(self) -> list[dict[str, Any]]:
         found = []

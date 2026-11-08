@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import threading
 import urllib.error
+import urllib.parse
 import urllib.request
 from collections.abc import Iterator
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -47,6 +48,11 @@ def fetch(address: str, route: str) -> tuple[int, bytes]:
             return response.status, response.read()
     except urllib.error.HTTPError as error:
         return error.code, error.read()
+
+
+def search(address: str, query: str) -> Any:
+    with urllib.request.urlopen(f"{address}topics/search/{urllib.parse.quote(query)}") as response:
+        return json.loads(response.read())
 
 
 def test_the_owner_s_files_go_with_their_message_beside_its_thread_for_agents_to_read(
@@ -126,6 +132,9 @@ def test_the_owner_s_files_go_with_their_message_beside_its_thread_for_agents_to
     assert entry["attachments"][0]["path"].startswith("attachments/")
     status, served = fetch(page, f"attachment/orders/{entry['attachments'][0]['path']}")
     assert status == 200 and served == b"The plan.\n"
+    # Search finds a message's files by name, in an item's thread and a topic's.
+    assert search(page, "notes.txt") == {"topics": [], "items": [ref]}
+    assert search(page, "plan.txt") == {"topics": ["orders"], "items": []}
     status, empty = post(page, "reply", {"ref": submit(project.root), "text": " "})
     assert status == 400 and "empty" in empty["error"]
 
