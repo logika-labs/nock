@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING
 
 from nock.errors import PolicyError
 from nock.processes import Supervisor
-from nock.project import ROLE_VARIABLE, SESSION_VARIABLE
+from nock.project import PARENT_VARIABLE, ROLE_VARIABLE, SESSION_VARIABLE
 from nock.sessions import Sessions, find_transcript
 from nock.telemetry import UNRECORDED_VARIABLE
 
@@ -209,10 +209,13 @@ class Dispatcher:
         environment = {
             key: value
             for key, value in os.environ.items()
-            if key not in (*PARENT_SESSION_VARIABLES, UNRECORDED_VARIABLE)
+            if key not in (*PARENT_SESSION_VARIABLES, UNRECORDED_VARIABLE, PARENT_VARIABLE)
         }
         environment[ROLE_VARIABLE] = role
         environment[SESSION_VARIABLE] = session
+        dispatcher = self.project.writer()["session"]
+        if dispatcher:
+            environment[PARENT_VARIABLE] = dispatcher
         return environment
 
     def carried(self, session: str, brief: str) -> tuple[str, tuple[str, ...]]:

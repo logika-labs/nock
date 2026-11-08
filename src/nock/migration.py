@@ -4,9 +4,12 @@ its versions and recipe, each old tag a topic (an item with several goes to
 its first; one with none to `general`), notes and the owner's feedback thread
 messages, verdicts kept. Then the move to one asset per item: an item
 holding several files becomes one item per file, each with the versions
-that hold it, the thread copied and the verdict kept. Each done once per
-project, by `nock init` (so `nock upgrade` does it too) or `nock topics
-migrate`; each committed in one commit."""
+that hold it, the thread copied and the verdict kept. Then the move of
+progress to the topic: each topic given its state (done when every item is
+decided, active otherwise), and any task item, dispatched work kept as an
+item, turned into a note in its topic's thread. Each done once per project,
+by `nock init` (so `nock upgrade` does it too) or `nock topics migrate`; each
+committed in one commit."""
 
 from __future__ import annotations
 
@@ -27,6 +30,7 @@ from nock.topics import (
     SPLIT,
     TOPIC_FILE,
     Author,
+    State,
     Topics,
     Verdict,
     checked_decision,
@@ -78,12 +82,15 @@ class Migration:
         told already. A project that migrated before that, `mark_seen`, has
         every word the owner has said so far marked told instead."""
         split = Splitting(self.project)
+        stating = Stating(self.project)
         if not self.pending():
             done: dict[str, Any] = {"migrated": False}
             if mark_seen:
                 done["marked_told"] = self.topics.mark_told()
             if split.pending():
                 done["split"] = split.run()
+            if stating.pending():
+                done["stated"] = stating.run()
             return done
         with self.project.lock("topics"):
             self.made: dict[str, dict[str, Any]] = {}
@@ -111,6 +118,7 @@ class Migration:
             )
         counts = {name: len(topic["items"]) for name, topic in sorted(self.made.items())}
         divided = split.run() if split.pending() else None
+        stated = stating.run() if stating.pending() else None
         return {
             "migrated": True,
             "decisions": len(refs),
@@ -120,6 +128,7 @@ class Migration:
             **({"map": moved_map} if moved_map else {}),
             **({"not_committed": problem} if problem else {}),
             **({"split": divided} if divided else {}),
+            **({"stated": stated} if stated else {}),
         }
 
     def tracked(self, path: str) -> bool:
@@ -560,11 +569,95 @@ class Splitting:
         return refs[1:]
 
 
+class Stating:
+    """Progress is the topic's: each topic without a state gets one — done
+    when it has items and every one is decided, active otherwise — and each
+    task item (dispatched work, kept as an item before topics had a state)
+    becomes a note in its topic's thread: its brief, branch, worktree, state
+    and thread, the item removed."""
+
+    def __init__(self, project: Project) -> None:
+        self.project = project
+        self.topics = Topics(project)
+
+    def pending(self) -> bool:
+        return any(
+            not self.topics.topic(name).get("state")
+            or any(item.get("task") for item in self.topics.items(name))
+            for name in self.topics.names()
+        )
+
+    def run(self) -> dict[str, Any]:
+        with self.project.lock("topics"):
+            states: dict[str, int] = {}
+            tasks = 0
+            for name in self.topics.names():
+                topic = self.topics.topic(name)
+                items = self.topics.items(name)
+                for item in [item for item in items if item.get("task")]:
+                    note = self.note(item)
+                    # In its place in time, so it changes nothing about who spoke last.
+                    at = next(
+                        (
+                            index
+                            for index, entry in enumerate(topic["thread"])
+                            if entry["moment"] > note["moment"]
+                        ),
+                        len(topic["thread"]),
+                    )
+                    topic["thread"].insert(at, note)
+                    shutil.rmtree(self.topics.directory / name / item["slug"])
+                    shutil.rmtree(self.topics.large / name / item["slug"], ignore_errors=True)
+                    items.remove(item)
+                    tasks += 1
+                if not topic.get("state"):
+                    decided = bool(items) and all(item["verdict"] != Verdict.OPEN for item in items)
+                    topic["state"] = str(State.DONE if decided else State.ACTIVE)
+                    topic.setdefault("status", "")
+                    states[topic["state"]] = states.get(topic["state"], 0) + 1
+                write_json(self.topics.directory / name / TOPIC_FILE, topic)
+            problem = committed(
+                self.project,
+                [".nock/topics"],
+                "Progress is the topic's: "
+                + ", ".join(f"{count} topic(s) {state}" for state, count in sorted(states.items()))
+                + (f"; {tasks} task item(s) now notes in their topics' threads" if tasks else ""),
+            )
+        return {
+            "topics": dict(sorted(states.items())),
+            **({"tasks": tasks} if tasks else {}),
+            **({"not_committed": problem} if problem else {}),
+        }
+
+    def note(self, item: dict[str, Any]) -> dict[str, Any]:
+        task = item["task"]
+        where = ", ".join(f"{key} `{task[key]}`" for key in ("branch", "worktree") if task.get(key))
+        lines = [
+            f"Task [{item['ref']}] {item['title']}, {task.get('state') or 'queued'}"
+            + (f" ({where})" if where else "")
+            + ", kept as an item before topics had a state:",
+            "",
+            task.get("brief") or "",
+            *(
+                f"\n> {entry['author']}, {entry['moment']}: {entry['text']}"
+                for entry in item["thread"]
+            ),
+        ]
+        created = item.get("created") or {}
+        return {
+            "author": str(Author.AGENT),
+            "moment": moment_of(created) or item["updated"],
+            "text": "\n".join(lines).strip(),
+            **{key: created[key] for key in ("session", "parent", "role") if created.get(key)},
+            "kind": "task",
+        }
+
+
 def migrate_in(root: Path) -> dict[str, Any] | None:
     """Migrate the project at `root`, when it holds decisions or review
-    items, or items holding several files."""
+    items, items holding several files, or topics without a state."""
     project = Project.discover(root)
     migration = Migration(project)
-    if migration.pending() or Splitting(project).pending():
+    if migration.pending() or Splitting(project).pending() or Stating(project).pending():
         return migration.run()
     return None

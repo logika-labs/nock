@@ -14,7 +14,7 @@ from typing import Any
 from nock.configuration import Confirm
 from nock.errors import ConflictError, NotFoundError, PreconditionError
 from nock.git import Git, GitError
-from nock.hooks import BUILT_IN_EVENTS, EDIT_TOOLS
+from nock.hooks import BUILT_IN_EVENTS, EDIT_TOOLS, NOCK_COMMANDS
 from nock.kinds import KINDS
 from nock.migration import migrate_in
 from nock.primer import PRIMER, refresh
@@ -347,10 +347,18 @@ class Installer:
         listened = {*BUILT_IN_EVENTS, *project_events}
         for event in sorted(NATIVE_EVENTS[event] for event in listened):
             command = HOOK_COMMAND.format(event=event)
-            entry: dict[str, Any] = {"hooks": [{"type": "command", "command": command}]}
-            # nock's own after-tool handler wants only edits; a project hook may want every tool.
+            hook: dict[str, Any] = {"type": "command", "command": command}
+            entry: dict[str, Any] = {"hooks": [hook]}
+            # nock's own after-tool handler wants only edits, its before-tool one only its own
+            # commands; a project hook may want every tool.
             if event == NATIVE_EVENTS[Event.AFTER_TOOL] and Event.AFTER_TOOL not in project_events:
                 entry["matcher"] = EDIT_TOOLS
+            if (
+                event == NATIVE_EVENTS[Event.BEFORE_TOOL]
+                and Event.BEFORE_TOOL not in project_events
+            ):
+                entry["matcher"] = "Bash"
+                hook["if"] = NOCK_COMMANDS
             entries = hooks.setdefault(event, [])
             entries[:] = [
                 existing

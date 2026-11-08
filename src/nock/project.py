@@ -5,11 +5,13 @@ from __future__ import annotations
 
 import fcntl
 import os
+import sys
 from collections.abc import Iterator
 from contextlib import contextmanager
 from functools import cached_property
 from pathlib import Path
 
+from nock.callers import Callers
 from nock.configuration import Configuration
 from nock.errors import PreconditionError
 from nock.git import Git, GitError
@@ -21,6 +23,8 @@ NOCK_DIRECTORY = ".nock"
 # Set by nock on the sessions it dispatches; Claude Code sets the session's id.
 ROLE_VARIABLE = "NOCK_ROLE"
 SESSION_VARIABLE = "CLAUDE_CODE_SESSION_ID"
+# Set by nock on the sessions it dispatches: the session that dispatched it.
+PARENT_VARIABLE = "NOCK_PARENT_SESSION"
 # Claude Code's: `cli` for a session someone works in, `sdk-…` for `claude -p`.
 ENTRYPOINT_VARIABLE = "CLAUDE_CODE_ENTRYPOINT"
 
@@ -33,6 +37,8 @@ class Project:
     def __init__(self, root: Path, here: Path | None = None) -> None:
         self.root = root
         self.here = here or root
+        # The session's note of this command, once claimed: one claim per process.
+        self.caller: tuple[str, dict[str, str | None] | None] | None = None
 
     @classmethod
     def discover(cls, directory: Path | None = None) -> Project:
@@ -101,6 +107,22 @@ class Project:
         if os.environ.get(ROLE_VARIABLE):
             return os.environ[ROLE_VARIABLE]
         return HEADLESS if headless(os.environ.get(ENTRYPOINT_VARIABLE)) else None
+
+    def writer(self) -> dict[str, str | None]:
+        """Who writes, as every record in Topics keeps it: `session`, `role`,
+        and `parent`, the session that dispatched it, for a subagent (its
+        session the subagent's id, its role the subagent's type) or a
+        session nock dispatched."""
+        session = self.current_session()
+        role = self.current_role() or "interactive"
+        parent = os.environ.get(PARENT_VARIABLE) or None
+        if session and not parent:
+            if self.caller is None or self.caller[0] != session:
+                self.caller = (session, Callers(self.store).claim(session, sys.argv[1:]))
+            noted = self.caller[1]
+            if noted and noted["agent"]:
+                session, parent, role = noted["agent"], session, noted["type"] or "subagent"
+        return {"session": session, **({"parent": parent} if parent else {}), "role": role}
 
     @contextmanager
     def lock(self, name: str) -> Iterator[None]:

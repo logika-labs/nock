@@ -266,19 +266,121 @@ def test_list_summarises_what_is_open_and_what_awaits_an_agent_unless_full(
     )
 
 
-def test_a_finished_topic_comes_back_revived_its_note_its_description(project: Project) -> None:
+def test_a_topic_keeps_its_state_and_status_each_change_in_its_thread(project: Project) -> None:
+    open_topic(project.root, {**TOPIC, "status": "reading the order code"})
+    shown = run(project.root, "topics", "show", "orders")
+    assert shown["state"] == "active" and shown["status"] == "reading the order code"
+    run(project.root, "topics", "update", "orders", '{"status": "waiting for the gate on main"}')
+    planned = run(project.root, "topics", "update", "orders", '{"state": "planned"}')
+    assert planned == {"name": "orders", "state": "planned"}
+    record = Topics(project).topic("orders")
+    assert record["status"] == ""
+    entries = [entry for entry in record["thread"] if entry.get("kind") == "status"]
+    assert [(entry["state"], entry["status"]) for entry in entries] == [
+        ("active", "reading the order code"),
+        ("active", "waiting for the gate on main"),
+        ("planned", ""),
+    ]
+    assert all(entry["role"] == "interactive" for entry in entries)
+    wrong = nock(project.root, "topics", "update", "orders", '{"state": "finished"}')
+    assert wrong.returncode == 40
+    open_topic(project.root, {"name": "pricing", "description": "Seats.", "state": "planned"})
+    listed = run(project.root, "topics", "list", "--state", "planned", "--full")["rows"]
+    assert sorted(row["name"] for row in listed) == ["orders", "pricing"]
+    assert run(project.root, "topics", "list", "--state", "done", "--full")["rows"] == []
+
+
+def test_a_status_entry_answers_nothing_the_owner_said(project: Project) -> None:
+    open_topic(project.root)
+    topics = Topics(project)
+    topics.update_topic("orders", {}, reply="Where are we?", author=Author.OWNER)
+    run(project.root, "topics", "update", "orders", '{"status": "half done"}')
+    assert topics.awaiting()["owner_wrote_last"] == ["orders"]
+    assert topics.withdraw(topic="orders") == "Where are we?"
+    thread = topics.topic("orders")["thread"]
+    assert [entry.get("kind") for entry in thread] == ["status"]
+
+
+def test_a_done_topic_takes_no_new_items_until_it_is_revived(project: Project) -> None:
     ref = submit(project.root)
-    judge(project.root, ref, "accepted")
+    early = nock(project.root, "topics", "update", "orders", "--revive", "Back.")
+    assert early.returncode == 49 and "no need to revive it" in early.stderr
+    run(project.root, "topics", "update", "orders", '{"state": "done", "status": "shipped"}')
     again = nock(project.root, "items", "create", "orders", json.dumps(DECISION))
-    assert again.returncode == 49 and "--revive" in again.stderr
+    assert again.returncode == 49 and "--revive" in again.stderr and "is done" in again.stderr
     made = nock(project.root, "topics", "create", json.dumps(TOPIC))
     assert made.returncode == 49 and "revive it" in made.stderr
-    run(project.root, "topics", "update", "orders", "--revive", "Orders move to a second region.")
+    judge(project.root, ref, "accepted")
+    run(project.root, "items", "update", ref, "--reply", "Thanks.")
+    run(project.root, "topics", "update", "orders", '{"state": "abandoned"}')
+    revived = run(
+        project.root, "topics", "update", "orders", "--revive", "Orders move to a second region."
+    )
+    assert revived["state"] == "active"
     later = submit(project.root, {**DECISION, "title": "Orders replicate to the second region"})
     shown = run(project.root, "topics", "show", "orders")
     assert shown["description"] == "Orders move to a second region."
     assert [item["ref"] for item in shown["items"]] == [later, ref]
-    assert shown["thread"][0]["kind"] == "revival"
+    assert shown["thread"][-1]["revived"] is True and shown["thread"][-1]["state"] == "active"
+
+
+def test_what_a_subagent_writes_names_the_session_that_dispatched_it(
+    project: Project, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def about_to_run(command: str, **agent: str) -> None:
+        payload = {"session_id": "lead", "tool_input": {"command": command}, **agent}
+        assert HookRunner(project, payload).handle("PreToolUse") is None
+
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "lead")
+    about_to_run(f".nock/nock topics create '{json.dumps(TOPIC)}' --json")
+    open_topic(project.root)
+    about_to_run(
+        f"cd {project.root} && .nock/nock items create orders '{json.dumps(DECISION)}' --json",
+        agent_id="a1b2",
+        agent_type="general-purpose",
+    )
+    about_to_run("git status")
+    ref = submit(project.root)
+    topic = Topics(project).topic("orders")
+    assert topic["created"]["session"] == "lead" and "parent" not in topic["created"]
+    shown = run(project.root, "items", "show", ref)
+    assert shown["created"]["session"] == "a1b2" and shown["created"]["parent"] == "lead"
+    assert shown["versions"][0]["role"] == "general-purpose"
+    noted = project.store.rows("SELECT command, claimed FROM callers")
+    assert [row["claimed"] for row in noted] == [1, 1]
+    judge(project.root, ref, "rejected", "Not SQLite.")
+    news = HookRunner(project, {"session_id": "lead"}).handle("UserPromptSubmit")
+    assert news is not None and ref in news["hookSpecificOutput"]["additionalContext"]
+    monkeypatch.setenv("NOCK_PARENT_SESSION", "lead")
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "dispatched")
+    monkeypatch.setenv("NOCK_ROLE", "consultant")
+    run(project.root, "topics", "update", "orders", '{"status": "consulted"}')
+    entry = Topics(project).topic("orders")["thread"][-1]
+    assert (entry["session"], entry["parent"], entry["role"]) == (
+        "dispatched",
+        "lead",
+        "consultant",
+    )
+
+
+def test_a_session_that_never_said_where_its_topic_stands_is_asked_once(
+    project: Project, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "s1")
+    submit(project.root)
+    stop = {"session_id": "s1", "stop_hook_active": False}
+    assert HookRunner(project, {"session_id": "s2"}).handle("Stop") is None
+    asked = HookRunner(project, stop).handle("Stop")
+    assert asked is not None and asked["decision"] == "block"
+    assert "orders" in asked["reason"] and "status" in asked["reason"]
+    assert HookRunner(project, stop).handle("Stop") is None
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "s3")
+    submit(project.root, {**DECISION, "title": "Orders are kept a year"})
+    run(project.root, "topics", "update", "orders", '{"status": "two decisions in"}')
+    assert HookRunner(project, {"session_id": "s3"}).handle("Stop") is None
+    assert Topics(project).unstated("s1") == ["orders"]
+    run(project.root, "topics", "update", "orders", '{"state": "done"}')
+    assert Topics(project).unstated("s1") == []
 
 
 def test_the_owner_judges_on_the_page_and_the_submitting_session_hears_once(
@@ -586,44 +688,43 @@ def test_a_project_migrated_before_marks_what_the_owner_said_as_told_once(
     assert HookRunner(project, {"session_id": "s1"}).handle("UserPromptSubmit") is None
 
 
-def test_a_task_keeps_its_state_and_is_accepted_when_done(
-    project: Project, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "orchestrator")
+def test_topics_get_their_state_once_and_task_items_become_notes(project: Project) -> None:
+    decided, waiting = submit(project.root), submit(project.root, topic="pricing")
+    judge(project.root, decided, "accepted")
+    open_topic(project.root, {"name": "empty", "description": "Nothing yet."})
+    directory = Topics(project).directory
+    for name in ("orders", "pricing", "empty"):
+        record = json.loads((directory / name / "topic.json").read_text())
+        del record["state"], record["status"]
+        (directory / name / "topic.json").write_text(json.dumps(record))
     task = {
-        "title": "Build the topics",
-        "task": {"brief": "Topics replace decisions.", "branch": "topics"},
+        "slug": "build-it",
+        "title": "Build it",
+        "aliases": [],
+        "verdict": "open",
+        "decided": None,
+        "created": {"moment": "2020-01-01T00:00:00Z", "session": "lead", "role": "interactive"},
+        "updated": "2020-01-02T00:00:00Z",
+        "thread": [{"author": "agent", "moment": "2020-01-02T00:00:00Z", "text": "Half done."}],
+        "versions": [{"version": 1, "moment": "2020-01-01T00:00:00Z", "files": []}],
+        "task": {"brief": "Build the pricing page.", "branch": "pricing", "state": "running"},
     }
-    ref = submit(project.root, task)
-    mixed = nock(
-        project.root, "items", "create", "orders", json.dumps({**task, "files": ["README.md"]})
-    )
-    assert mixed.returncode == 40 and "a task holds nothing else" in mixed.stderr
-    shown = run(project.root, "items", "show", ref)
-    assert shown["task"]["state"] == "queued" and shown["task"]["started"] is None
-    vague = nock(project.root, "items", "update", ref, '{"state": "waiting"}')
-    assert vague.returncode == 40 and "waiting_on" in vague.stderr
-    run(project.root, "items", "update", ref, '{"state": "waiting", "waiting_on": "owner"}')
-    run(project.root, "items", "update", ref, '{"state": "running"}')
-    before = run(project.root, "items", "show", ref)["task"]
-    assert before["started"] and before["waiting_on"] is None
-    run(project.root, "items", "update", ref, "--reply", "Half the tests pass.")
-    assert run(project.root, "items", "show", ref)["task"]["heard"] >= before["heard"]
-    listed = run(project.root, "items", "list")
-    assert listed["summary"]["open"] == {}
-    assert listed["rows"][0]["state"] == "running" and listed["rows"][0]["kinds"] == ["task"]
-    other = submit(project.root, {"title": "Ship it", "task": {"brief": "Release."}})
-    no_version = nock(project.root, "items", "update", ref, "--version", "{}")
-    assert no_version.returncode == 40
-    done = run(
-        project.root, "items", "update", ref, '{"state": "done"}', "--reply", "Merged as abc123."
-    )
-    assert done["verdict"] == "accepted"
-    assert HookRunner(project, {"session_id": "orchestrator"}).handle("UserPromptSubmit") is None
-    run(project.root, "items", "update", other, '{"state": "failed"}')
-    failing = run(project.root, "items", "list")
-    assert failing["summary"]["open"] == {"orders": 1}
-    assert run(project.root, "items", "show", other)["verdict"] == "open"
+    (directory / "pricing" / "build-it").mkdir()
+    (directory / "pricing" / "build-it" / "item.json").write_text(json.dumps(task))
+    git(project.root, "add", "-A")
+    git(project.root, "commit", "-q", "-m", "Topics from before states")
+    result = run(project.root, "topics", "migrate")
+    assert result["stated"] == {"topics": {"active": 2, "done": 1}, "tasks": 1}
+    states = {
+        row["name"]: row["state"] for row in run(project.root, "topics", "list", "--full")["rows"]
+    }
+    assert states == {"orders": "done", "pricing": "active", "empty": "active"}
+    assert [item["ref"] for item in Topics(project).items("pricing")] == [waiting]
+    note = Topics(project).topic("pricing")["thread"][0]
+    assert note["kind"] == "task" and "Build the pricing page." in note["text"]
+    assert "Half done." in note["text"] and note["session"] == "lead"
+    assert run(project.root, "topics", "migrate") == {"migrated": False}
+    assert git(project.root, "status", "--porcelain") == ""
 
 
 def test_an_item_holds_one_asset_or_options_of_one_the_owner_may_prefer(

@@ -50,7 +50,16 @@ from nock.studio import Studio
 from nock.telemetry import UNRECORDED_VARIABLE
 from nock.templates import SYNTAX
 from nock.tools import NATIVE_EVENTS, Tool, check, command
-from nock.topics import SHORT, ItemChange, ItemDraft, TopicChange, TopicDraft, Topics, Word
+from nock.topics import (
+    SHORT,
+    ItemChange,
+    ItemDraft,
+    State,
+    TopicChange,
+    TopicDraft,
+    Topics,
+    Word,
+)
 from nock.usage import QUESTION, Moment, Usage
 
 
@@ -297,17 +306,24 @@ def topics_list(
     project: Project,
     *,
     query: Annotated[str | None, Option(help="Plain words, ranked by how well they match.")] = None,
+    state: Annotated[
+        State | None,
+        Option(help="Only the topics in this state: planned, active, done, abandoned."),
+    ] = None,
     full: Annotated[bool, Option(help="The whole list, without the summary.")] = False,
 ) -> dict[str, Any]:
-    """The topics, newest activity first, each with its open, accepted and
-    rejected counts — or those matching QUERY, the best first (topic names
-    and descriptions, item titles, decisions, threads, file paths, conditions).
+    """The topics, newest activity first, each with its state and status and
+    its open, accepted and rejected counts — or those matching QUERY, the
+    best first (topic names and descriptions, statuses, item titles,
+    decisions, threads, file paths, conditions); `--state` keeps one state.
     Without `--full`, first a summary: the open items by topic, and what waits
     on you — threads where the owner wrote last, items they rejected. Look at
     it when you start and before you finish."""
     topics = Topics(project)
     names = topics.search_topics(query) if query else topics.names()
     rows = [topics.row(name) for name in names]
+    if state is not None:
+        rows = [row for row in rows if row["state"] == state]
     if not query:
         rows.sort(key=lambda row: row["active"], reverse=True)
     return listed(rows, full, topics.summary())
@@ -316,9 +332,10 @@ def topics_list(
 @command(name="create", group="topics")
 def topics_create(project: Project, topic: TopicDraft) -> dict[str, Any]:
     """Open a topic for a piece of work: a name and why it exists, as part of
-    what work. Look for an existing one first (`topics list --query …`): what
-    you are doing may already have its topic, and a finished one that comes
-    back is revived, not made again."""
+    what work; its `state` active (the default) or planned, and its `status`,
+    where the work is in a line. Look for an existing one first (`topics list
+    --query …`): what you are doing may already have its topic, and a done
+    one that comes back is revived, not made again."""
     record, problem = Topics(project).create_topic(topic)
     return not_committed({"name": record["name"]}, problem)
 
@@ -337,14 +354,27 @@ def topics_update(
         ),
     ] = None,
     revive: Annotated[
-        str | None, Option(help="Bring a finished topic back, saying why (markdown).")
+        str | None,
+        Option(help="Bring a done or abandoned topic back, active, saying why (markdown)."),
     ] = None,
 ) -> dict[str, Any]:
-    """Change a topic in place (its name, its description), answer in its
-    thread, or revive it when it was finished and the work comes back: the
-    note says why it is back and reads as its description from then on."""
+    """Keep a topic's progress current — its `state` (planned, active, done,
+    abandoned) and its `status`, where the work is in a line:
+    `{"status": "waiting for the gate on main"}`, `{"state": "done"}` — each
+    change kept in its thread; change its name or description; answer in its
+    thread; or revive it when it was done or abandoned and the work comes
+    back: active again, the note saying why it is back and reading as its
+    description from then on."""
     record, problem = Topics(project).update_topic(topic, change, reply, revive)
-    return not_committed({"name": record["name"], **answered(record, reply)}, problem)
+    return not_committed(
+        {
+            "name": record["name"],
+            "state": record["state"],
+            **({"status": record["status"]} if record.get("status") else {}),
+            **answered(record, reply),
+        },
+        problem,
+    )
 
 
 @command(name="delete", group="topics")
@@ -356,7 +386,9 @@ def topics_delete(project: Project, topic: str) -> dict[str, Any]:
 
 @command(name="show", group="topics")
 def topics_show(project: Project, topic: str) -> dict[str, Any]:
-    """A topic: its description, its items (the newest first), its thread."""
+    """A topic: its state and status, its description, its items (the newest
+    first), its thread — each entry with the session that wrote it, and its
+    parent session for a subagent's."""
     topics = Topics(project)
     record = topics.topic(topic)
     return {
@@ -437,9 +469,7 @@ def items_create(project: Project, topic: str, item: ItemDraft) -> dict[str, Any
     project `files` (paths in the repository, copied as they are now), or
     `derived` files (made to show part of the project: a screenshot of an
     email, with what it comes `from`, `when` it applies, and a `recipe` to
-    make it again). Or a `task`: work dispatched to an agent (its brief,
-    branch, worktree), created when it is dispatched and closed when it
-    merges. Bare: no notes; say more in the thread only when asked.
+    make it again). Bare: no notes; say more in the thread only when asked.
     Record a decision only when a later reader would ask "why" — a choice
     between real alternatives, a deliberate simplification, a reading of
     something ambiguous, a todo you leave; never the owner's own instruction
@@ -480,9 +510,8 @@ def items_update(
     only by a new version; any item moves to another existing topic
     (`{"topic": "OTHER"}`), its old ref kept as an alias. Rework a rejected item as a new version; when the
     owner is away, say briefly in the thread what changed, unless the new
-    version says it. A task's state changes in place (`{"state": "running"}`;
-    waiting with `waiting_on`; done accepts it, failed leaves it open for the
-    owner); progress goes in its thread, and every update is its last word."""
+    version says it. Progress is the topic's: `topics update TOPIC
+    '{"status": …}'`."""
     record, problem = Topics(project).update_item(
         item, change or None, parsed_version(version), reply
     )
@@ -508,7 +537,9 @@ def items_delete(project: Project, item: str) -> dict[str, Any]:
 @command(name="show", group="items")
 def items_show(project: Project, item: str) -> dict[str, Any]:
     """An item: its verdict, every version (its decision, each file and where
-    it is kept), its thread. ITEM is `topic/slug`, or an earlier decision's number."""
+    it is kept), its thread — each with the session that wrote it, and its
+    parent session for a subagent's. ITEM is `topic/slug`, or an earlier
+    decision's number."""
     topics = Topics(project)
     return topics.shown(topics.item(item))
 

@@ -6,10 +6,14 @@ something new calls — where things stand, in a few lines (a reflection round
 due, what is new in Topics and what waits on an agent there, another kind of round worth
 offering); a
 prompt brings the owner's verdicts and messages on the items the session
-submitted; an edit to a file shows the items about it; and when the session ends
+submitted; a `.nock/nock` command about to run is noted with the subagent
+running it, if any (`callers.py`), so what it writes names its parent session;
+an edit to a file shows the items about it; and when the session ends
 its transcript is read into telemetry and, when due, the usage statistics
 are shared. A turn that would end with a round this session started still
-open is refused once, saying what the round still needs. What calls for the owner is also said to the human. With
+open is refused once, saying what the round still needs, and so, once a
+session, is one that wrote to a topic without ever setting where it stands
+(its state or status). What calls for the owner is also said to the human. With
 `reminders = false` nock says nothing unasked, and still records. The
 project's `@nock.hook`s run after. Every handler fails open — a nock that
 cannot load must never block the tool call that would fix it."""
@@ -24,6 +28,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from nock.callers import Callers
 from nock.fixtures import Call, Scope
 from nock.kinds import kinds
 from nock.primer import refresh
@@ -40,12 +45,15 @@ EVENTS = {native: event for event, native in NATIVE_EVENTS.items()}
 BUILT_IN_EVENTS = (
     Event.SESSION_START,
     Event.PROMPT,
+    Event.BEFORE_TOOL,
     Event.AFTER_TOOL,
     Event.STOP,
     Event.SESSION_END,
 )
 # The tools whose use is an edit, as a Claude Code matcher: the after-tool handler's.
 EDIT_TOOLS = "Edit|MultiEdit|Write|NotebookEdit"
+# The before-tool handler's: only Bash commands running nock, as Claude Code's hook `if` rule.
+NOCK_COMMANDS = "Bash(*.nock/nock *)"
 # The longest a session start waits on an upgrade, in seconds: two wheels downloaded, a merge.
 UPGRADE_DEADLINE = 120
 # What the standing a session starts with is, and what to do with it.
@@ -84,6 +92,8 @@ class HookRunner:
                 messages.append(self.session_start())
         elif event is Event.PROMPT and self.reminding:
             messages.append(self.reviews())
+        elif event is Event.BEFORE_TOOL:
+            Callers(self.project.store).note(self.payload)
         elif event is Event.AFTER_TOOL and self.reminding:
             messages.append(self.items_about())
         elif event is Event.SESSION_END:
@@ -91,6 +101,8 @@ class HookRunner:
         blocks: list[str] = []
         if event is Event.STOP:
             blocks += self.rounds_left_open()
+            if self.reminding:
+                blocks += self.topics_unstated()
         for entry in self.project.registry.hooks_for(event):
             values = {
                 "project": self.project,
@@ -260,6 +272,26 @@ class HookRunner:
         if not isinstance(session, str) or self.payload.get("stop_hook_active") is True:
             return []
         return [said for kind in kinds(self.project) if (said := kind.left_open(session))]
+
+    def topics_unstated(self) -> list[str]:
+        """Once a session: the topics it wrote to (itself or through its
+        subagents) and never said where they stand."""
+        session = self.payload.get("session_id")
+        if not isinstance(session, str) or self.payload.get("stop_hook_active") is True:
+            return []
+        store = self.project.store
+        if store.rows("SELECT session FROM stated WHERE session = ?", (session,)):
+            return []
+        names = Topics(self.project).unstated(session)
+        if not names:
+            return []
+        store.insert("stated", {"session": session})
+        listed = ", ".join(names)
+        return [
+            f"nock: you worked in topic(s) {listed} and never set where they stand. Before you"
+            f' stop: `.nock/nock topics update {names[0]} \'{{"status": "…"}}\'` — or'
+            ' `{"state": "done"}` (or "abandoned") when the work is finished.'
+        ]
 
     def session_end(self) -> None:
         transcript = self.payload.get("transcript_path")
