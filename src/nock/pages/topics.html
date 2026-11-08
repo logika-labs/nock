@@ -38,7 +38,7 @@
     drafts: new Map(), open: new Set(), expanded: new Set(), chats: new Set(),
     modal: null, compare: false, single: null, left: null, right: null, reveal: null,
     menu: null, zoom: null, dismissed: null, looking: new Set(), focus: null, reveal_to: null, folded: new Set(),
-    hits: [], hitAt: 0, reveal_hit: false, opened: { open: new Set(), expanded: new Set(), folded: new Set() }, drag: null, dragged: false,
+    hits: [], hitAt: 0, found: null, reveal_hit: false, opened: { open: new Set(), expanded: new Set(), folded: new Set() }, drag: null, dragged: false,
   };
   // How decisions look, for the owner to compare (`?decisions=rail` or `lift`); `foil` by default.
   const LOOKS = ["foil", "rail", "lift"];
@@ -318,16 +318,7 @@
     if (!texts.has(address)) texts.set(address, fetch(address).then(response => response.ok ? response.text() : Promise.reject(new Error("gone"))));
     return texts.get(address);
   }
-  const decisionText = decision => [decision.answer, ...decision.alternatives.map(entry => `${entry.option} ${entry.why_not}`)].join(" ");
-
-  function itemWords(item) {
-    const latest = last(item);
-    return [item.ref, item.title, ...(item.aliases || []), ...item.thread.map(entry => entry.text),
-      latest.decision ? decisionText(latest.decision) : "", ...latest.files.flatMap(file => [file.name, ...(file.from || []), file.when || ""])].join(" ").toLowerCase();
-  }
-  const topicWords = topic => [topic.name, topic.description, topic.current, topic.state, topic.status || "", ...topic.thread.map(entry => entry.text)].join(" ").toLowerCase();
   const said = () => state.search.toLowerCase().split(/\s+/).filter(Boolean);
-  const fits = (haystack, wanted) => wanted.every(word => haystack.includes(word));
 
   // What an item is, for the section of its topic it shows in.
   function kindOf(item) {
@@ -498,11 +489,12 @@
   }
 
   function drawList() {
-    const wanted = said();
+    // Searching, what the last answer found; until the first comes, everything.
+    const found = said().length ? state.found : null;
     const shown = [];
     for (const topic of state.topics) {
-      if (!wanted.length || fits(topicWords(topic), wanted)) { shown.push([topic, topic.items]); continue; }
-      const items = topic.items.filter(item => fits(`${topicWords(topic)} ${itemWords(item)}`, wanted));
+      if (!found || found.topics.has(topic.name)) { shown.push([topic, topic.items]); continue; }
+      const items = topic.items.filter(item => found.items.has(item.ref));
       if (items.length) shown.push([topic, items]);
     }
     const empty = !state.topics.length
@@ -530,7 +522,7 @@
     const open = state.menu === side;
     const options = [...item.versions].reverse().map(entry => `<button type="button" role="option" data-pick="${side}" data-number="${entry.version}" aria-selected="${entry.version === number}" title="${escape(new Date(entry.moment).toLocaleString())}">${versionWords(entry)}</button>`).join("");
     return `<div class="select" data-key="select:${side}"><button type="button" class="select-button" data-menu="${side}" aria-haspopup="listbox" aria-expanded="${open}" ${item.versions.length < 2 ? "disabled" : ""}>
-        Version ${version.version}${item.versions.length > 1 ? ICONS.chevron : ""}</button>
+        Version <span class="number">${version.version}</span>${item.versions.length > 1 ? ICONS.chevron : ""}</button>
         ${open ? `<div class="options" role="listbox" aria-label="${side === "left" ? "Before" : side === "right" ? "After" : "Version"}">${options}</div>` : ""}</div>`;
   }
 
@@ -666,18 +658,33 @@
 
   // --- search: the words found marked, the items they are in opened and ringed, one hit at a time ----
 
+  // Nock finds what is searched for (`GET topics/search/QUERY`) in what the owner sees: titles,
+  // decisions, file names, texts' contents, threads; the answer to the latest query wins.
+  async function find(opening) {
+    const query = state.mode === "search" ? state.search.trim() : "";
+    if (!query) { state.found = null; if (opening) searched(); draw(); return; }
+    let answer;
+    try { answer = await (await fetch(`topics/search/${encodeURIComponent(query)}`)).json(); } catch { return; }
+    if ((state.mode === "search" ? state.search.trim() : "") !== query) return;
+    state.found = { topics: new Set(answer.topics), items: new Set(answer.items) };
+    if (opening) searched();
+    else {
+      state.hits = findHits().map(item => item.ref);
+      state.hitAt = Math.min(state.hitAt, Math.max(0, state.hits.length - 1));
+    }
+    draw();
+  }
   // Opening starts at three letters, so the first keystrokes do not open everything.
-  const searching = () => state.mode === "search" && state.search.trim().length >= 3 ? said() : [];
-  const hitClass = item => state.hits.includes(item.ref) ? ` hit${state.hits[state.hitAt] === item.ref ? " current" : ""}` : "";
+  const searching = () => state.mode === "search" && state.search.trim().length >= 3 && state.found ? said() : [];
+  // Only a picture, a text or a file is ringed: a decision opened for what it says shows the words
+  // found, not a ring.
+  const hitClass = item => kindOf(item) !== "decision" && state.hits.includes(item.ref) ? ` hit${state.hits[state.hitAt] === item.ref ? " current" : ""}` : "";
   // The items holding what is searched for, in the order the list shows them.
-  function findHits(wanted) {
+  function findHits() {
+    if (!searching().length) return [];
     const found = [];
     for (const topic of state.topics) {
-      const around = topicWords(topic);
-      const holding = topic.items.filter(item => {
-        const own = itemWords(item);
-        return fits(`${around} ${own}`, wanted) && wanted.some(word => own.includes(word));
-      });
+      const holding = topic.items.filter(item => state.found.items.has(item.ref));
       for (const [kind] of SECTIONS) found.push(...holding.filter(item => kindOf(item) === kind));
     }
     return found;
@@ -685,7 +692,7 @@
   // What the search opened (topics, decisions, folded sections) it closes again when it no longer
   // finds anything there; what the owner opened stays as they left it.
   function searched() {
-    const hits = findHits(searching());
+    const hits = findHits();
     const wanted = {
       open: new Set(hits.map(item => item.topic)),
       expanded: new Set(hits.filter(item => kindOf(item) === "decision").map(item => item.ref)),
@@ -880,9 +887,11 @@
     }
     if (state.reveal_hit && !state.modal) {
       state.reveal_hit = false;
-      const hit = document.getElementById(`item-${state.hits[state.hitAt]}`);
+      const card = document.getElementById(`item-${state.hits[state.hitAt]}`);
+      const hit = card?.classList.contains("decision") ? card.querySelector("mark.found") || card : card;
       // A hit taller than most of the screen shows from its top; a smaller one in the middle.
       hit?.scrollIntoView({ block: hit.offsetHeight > innerHeight * .6 ? "start" : "center", inline: "nearest", behavior: "smooth" });
+      hit?.classList.add("current");
     }
   }
 
@@ -897,10 +906,7 @@
       const data = JSON.parse(raw);
       state.topics = data.topics;
       state.ask = data.ask;
-      if (searching().length) {
-        state.hits = findHits(searching()).map(item => item.ref);
-        state.hitAt = Math.min(state.hitAt, Math.max(0, state.hits.length - 1));
-      }
+      if (said().length) find(false);
       draw();
     } catch {
       studio.summary("topics", "Lost touch with nock — is `nock studio` still running?");
@@ -1032,12 +1038,11 @@
     if (mode) {
       state.mode = mode.dataset.barMode;
       state.search = state.mode === "search" ? $("topics-input").value : "";
-      searched();
-      draw();
+      find(true);
       $("topics-input").focus();
       return;
     }
-    if (target.closest("#topics-clear")) { $("topics-input").value = ""; state.search = ""; searched(); draw(); $("topics-input").focus(); return; }
+    if (target.closest("#topics-clear")) { $("topics-input").value = ""; state.search = ""; find(true); $("topics-input").focus(); return; }
     const hopping = target.closest("[data-hit]");
     if (hopping) { jump(Number(hopping.dataset.hit)); return; }
     if (target.closest("#topics-send")) { ask(); return; }
@@ -1087,7 +1092,7 @@
   });
   root.addEventListener("input", event => {
     const field = event.target;
-    if (field.id === "topics-input") { if (state.mode === "search") { state.search = field.value; searched(); } draw(); return; }
+    if (field.id === "topics-input") { if (state.mode === "search") { state.search = field.value; find(true); } draw(); return; }
     if (field.dataset.draft) { state.drafts.set(field.dataset.draft, field.value); grow(field); }
   });
   // A zoomed picture follows the mouse; on a touch screen it is dragged, and a tap leaves the zoom.
@@ -1127,7 +1132,7 @@
     if (target.id === "topics-input") {
       if (event.key === "Enter" && state.mode === "ask") { event.preventDefault(); ask(); }
       else if (event.key === "Enter" && !event.isComposing) { event.preventDefault(); jump(event.shiftKey ? -1 : 1); }
-      else if (event.key === "Escape") { target.value = ""; state.search = ""; searched(); target.blur(); draw(); }
+      else if (event.key === "Escape") { target.value = ""; state.search = ""; find(true); target.blur(); }
       return;
     }
     if (target.dataset?.draft?.startsWith("reply:")) {

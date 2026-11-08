@@ -55,18 +55,13 @@
 .topics .mini .ref { font: 500 11px/16px var(--mono); color: var(--muted); overflow-wrap: anywhere; }
 
 /* A time: no pill, the text itself engraved in brushed steel: a steel gradient clipped to the glyphs,
-   a dark edge above and a light one below, as if cut into the glass. The version select keeps a pill. */
+   a dark edge above and a light one below, as if cut into the glass. */
 .topics time, .topics .when {
   display: inline-flex; align-items: center; height: 20px; white-space: nowrap;
   font: 600 11px/1 var(--mono); font-variant-numeric: tabular-nums; letter-spacing: .04em;
   color: transparent; -webkit-background-clip: text; background-clip: text;
   background-image: linear-gradient(180deg, #8d8f99 0%, #5b5d67 38%, #2f3038 52%, #6e707b 70%, #a6a8b2 100%);
   filter: drop-shadow(0 1px 0 rgb(255 255 255 / .95)) drop-shadow(0 -.5px 0 rgb(17 17 22 / .28));
-}
-.topics .select-button {
-  display: inline-flex; align-items: center; border-radius: 999px; white-space: nowrap; font: 500 11px/1 var(--mono);
-  background: linear-gradient(180deg, rgb(255 255 255 / .6), rgb(255 255 255 / 0) 60%), rgb(17 17 22 / .055);
-  box-shadow: inset 0 1px 0 rgb(255 255 255 / .9), inset 0 -1px 0 rgb(17 17 22 / .07), 0 0 0 1px rgb(17 17 22 / .06);
 }
 .topics .corner { display: flex; align-items: center; gap: 8px; justify-self: end; align-self: start; }
 
@@ -340,6 +335,7 @@
   color: inherit; border-radius: 3px; padding: 0 1px; margin: 0 -1px; -webkit-box-decoration-break: clone; box-decoration-break: clone;
   background: linear-gradient(100deg, rgb(255 154 213 / .62), rgb(195 178 255 / .55) 50%, rgb(143 233 255 / .7));
 }
+.topics mark.found.current { box-shadow: 0 0 0 2px rgb(143 233 255 / .7), 0 0 10px 2px rgb(255 120 200 / .45); }
 .topics .message.owner mark.found { background: linear-gradient(100deg, rgb(255 120 200 / .55), rgb(90 220 255 / .5)); }
 .topics .hit::after {
   content: ""; position: absolute; inset: -6px; z-index: 3; border-radius: 20px; padding: 2px; pointer-events: none;
@@ -397,8 +393,8 @@
 .topics .viewer .pickers { display: flex; align-items: center; gap: 8px; }
 .topics .viewer .end { display: flex; align-items: center; gap: 14px; margin-left: auto; }
 .topics .viewer .content { min-height: 0; overflow: auto; border: 1px solid var(--border); border-radius: 14px; background: #fff; }
-/* A picture lies on a dim grey bed, alone or beside others. */
-.topics .viewer.image .content { border: 0; border-radius: 12px; background: rgb(17 17 22 / .06); padding: 10px; }
+/* A picture, alone or beside others, framed in the hairline under the viewer's title. */
+.topics .viewer.image .content { border: 0; border-radius: 0; background: none; padding: 7px; }
 /* Compared, each version's select stands over its side. */
 .topics .viewer .heads { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0; }
 .topics .viewer .heads .select { justify-self: start; }
@@ -424,14 +420,24 @@
 .topics .source .how { color: var(--muted); }
 .topics .source code { font: 12px var(--mono); background: #f1eefa; padding: 1px 5px; border-radius: 4px; overflow-wrap: anywhere; }
 
-/* The version select: the time's pill, a little larger, and its list of the same pills. */
+/* The version select: a glass pill on a hairline foil edge, the version's number in foil; hovered
+   or open, it glows in the foil's colours. Its list gives each version with its time. */
 .topics .select { position: relative; }
 .topics .select-button {
-  gap: 6px; height: 28px; padding: 0 8px 0 12px; border: 0; color: var(--foreground); font-size: 12px;
+  display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 8px 0 12px; border: 1px solid transparent; border-radius: 999px;
+  white-space: nowrap; color: var(--foreground); font: 500 12px/1 var(--mono); letter-spacing: .02em;
+  background: linear-gradient(180deg, rgb(255 255 255 / .96), rgb(250 248 255 / .88)) padding-box,
+    linear-gradient(115deg, var(--cyan), var(--lavender) 50%, var(--pink)) border-box;
+  box-shadow: inset 0 1px 0 #fff, -3px 4px 10px -6px rgb(90 220 255 / .7), 3px 4px 10px -6px rgb(255 120 200 / .7);
+  transition: box-shadow .18s;
 }
-.topics .select-button:disabled { cursor: default; padding-right: 6px; }
+.topics .select-button .number {
+  font-weight: 700; color: transparent; -webkit-background-clip: text; background-clip: text;
+  background-image: linear-gradient(115deg, #1fb8e6, #7b5cff 50%, #f0479f);
+}
+.topics .select-button:disabled { cursor: default; padding-right: 12px; }
 .topics .select-button:not(:disabled):hover, .topics .select-button[aria-expanded="true"] {
-  background: linear-gradient(180deg, rgb(255 255 255 / .7), rgb(255 255 255 / 0) 60%), rgb(185 166 255 / .22);
+  box-shadow: inset 0 1px 0 #fff, -5px 6px 16px -6px rgb(90 220 255 / .9), 5px 6px 16px -6px rgb(255 120 200 / .9);
 }
 .topics .select-button svg { width: 14px; height: 14px; }
 .topics .select-button:focus-visible { outline: 2px solid #111116; outline-offset: 2px; }
@@ -474,17 +480,20 @@
 .topics .prefer[aria-pressed="true"] { background: #111116; border-color: #111116; color: #fff; box-shadow: 2px 2px 0 0 var(--cyan), -2px -2px 0 0 var(--pink); }
 .topics .prefer[aria-pressed="true"] svg { color: var(--yellow); }
 .topics .prefer:focus-visible { outline: 2px solid #111116; outline-offset: 3px; }
-.topics .column:has(.option-bar.preferred) .pane img { outline: 3px solid #111116; outline-offset: 3px; }
+.topics .column:has(.option-bar.preferred) .pane .shot { outline: 3px solid #111116; outline-offset: 3px; }
 
 .topics .pane { min-width: 0; display: grid; place-items: start center; }
 /* A picture zooms in place: clicked, it shows at its natural size inside its own frame, the part
    under the cursor following it; dragged on a touch screen. */
-.topics .shot { position: relative; display: block; padding: 0; border: 0; background: none; cursor: zoom-in; max-width: 100%; border-radius: 6px; }
-.topics .shot.zoomed { overflow: hidden; cursor: zoom-out; touch-action: none; box-shadow: 0 0 0 1px var(--border); }
+.topics .shot {
+  position: relative; display: block; box-sizing: content-box; padding: 0; border: 1px solid var(--border); border-radius: 8px; overflow: hidden;
+  background: none; cursor: zoom-in; max-width: 100%;
+}
+.topics .shot.zoomed { cursor: zoom-out; touch-action: none; }
 .topics .shot.zoomed img, .topics .viewer.image .shot.zoomed img { max-width: none; max-height: none; border-radius: 0; box-shadow: none; transform-origin: 0 0; will-change: transform; }
 .topics .pane img { max-width: 100%; display: block; background: repeating-conic-gradient(#ece8f6 0 25%, #fff 0 50%) 0 0 / 16px 16px; }
-.topics .viewer.image .pane img { max-height: calc(100vh - 270px); width: auto; border-radius: 6px; box-shadow: 0 0 0 1px var(--border); }
-.topics .viewer.image.comparing .pane img { max-height: calc(100vh - 306px); }
+.topics .viewer.image .pane img { max-height: calc(100vh - 250px); width: auto; }
+.topics .viewer.image.comparing .pane img { max-height: calc(100vh - 286px); }
 .topics .pane video { width: 100%; background: #000; }
 .topics .pane iframe { width: 100%; height: 70vh; border: 0; background: #fff; }
 .topics .pane a { padding: 16px; color: var(--link); }

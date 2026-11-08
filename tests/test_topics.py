@@ -11,6 +11,7 @@ import json
 import threading
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from collections.abc import Iterator
 from pathlib import Path
@@ -577,6 +578,48 @@ def test_a_version_s_files_are_served_as_they_are(
     slug = ref.split("/")[1]
     with urllib.request.urlopen(f"{page}topics/file/orders/{slug}/1/docs/guide.md") as response:
         assert response.read() == b"# Guide\n"
+
+
+def test_search_finds_what_the_owner_sees_and_not_what_nock_keeps_aside(
+    project: Project, page: str, tmp_path: Path
+) -> None:
+    (tmp_path / "notes.md").write_text("The zephyr pass reads settled files.\n")
+    shown = {
+        "title": "The pass's notes",
+        "derived": [
+            {
+                "path": str(tmp_path / "notes.md"),
+                "name": "notes.md",
+                "from": ["src/ledger.py"],
+                "recipe": {"instruction": "Read the ledger and write the notes."},
+            }
+        ],
+    }
+    ref = submit(project.root, shown)
+    decided = submit(project.root)
+    topics = Topics(project)
+    item = topics.item(decided)
+    item["thread"].append(
+        {
+            "author": "agent",
+            "moment": "2020-01-01T00:00:00Z",
+            "text": "Split from a ledger item.",
+            "kind": "split",
+        }
+    )
+    topics.save_item("orders", item)
+    topics.reply(decided, "Is postgres ever worth it?", Author.OWNER)
+
+    def search(query: str) -> Any:
+        with urllib.request.urlopen(f"{page}topics/search/{urllib.parse.quote(query)}") as response:
+            return json.loads(response.read())
+
+    assert search("zephyr settled") == {"topics": [], "items": [ref]}
+    assert search("ledger") == {"topics": [], "items": []}
+    assert search("postgres")["items"] == [decided]
+    assert search("notes.md")["items"] == [ref]
+    assert search("checkout sqlite") == {"topics": [], "items": [decided]}
+    assert search("checkout orders") == {"topics": ["orders"], "items": [decided]}
 
 
 def test_the_owner_asks_and_the_answer_names_items_that_exist(

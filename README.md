@@ -624,8 +624,9 @@ an open decision also names the session that wrote it, and its parent's.
 Accept all and Reject all close it. A picture or
 a text opens in a viewer over the list, its title and time on a white
 ribbon — a text in a column about 40% of the screen, a picture's viewer
-shrunk to the picture, on a dim grey bed: a version picked (a pill, "Version
-3", its list giving each version's time), or Compare for two side by side, the
+shrunk to the picture, each picture framed in a grey hairline: a version
+picked (a glass pill on a foil edge, "Version 3", its list giving each
+version's time), or Compare for two side by side, the
 newest and the one before by default, each side's select over it (a text's as
 a line diff with the changed words marked); an item's options side
 by side instead, each with a star to prefer it, Compare off; a Markdown file
@@ -653,9 +654,14 @@ foil dot; while the owner's message waits for its answer, the icon's outline
 swirls slowly in the foil's colours (still, for reduced motion). A long
 message grows the field to a limit, then scrolls inside it. Verdicts take no
 comment on the page. One bar toggles **Search**, which filters as you type —
-from three letters it opens the topics and decisions (and unfolds the
-sections) holding what it finds, rings each such item in foil, scrolls to
-the first and washes the words found pink to cyan; Enter, Shift+Enter or the
+it looks where the owner does: a topic's name, description, status and
+thread; an item's title, decision, file names, the text of its text files and
+its thread (not a recipe, a `from`, a ref, or nock's own notes such as a
+split's); every word must be in the topic and the item together, one at least
+in the item. From three letters it opens the topics and decisions (and
+unfolds the sections) holding what it finds, rings each picture, text or file
+found in foil (a decision only shows the words), scrolls to the first and
+washes the words found pink to cyan; Enter, Shift+Enter or the
 arrows in the field go from hit to hit, and clearing the search closes what
 it opened, not what the owner did — and **Ask**: a question goes to a headless agent (the asker seat) that reads
 the topics and answers in markdown, with the items it relied on as cards
