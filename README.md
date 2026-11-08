@@ -594,26 +594,33 @@ its time ("21m", "3h", "2d", on a small grey pill) and its description. A
 topic opens in place, its items in sections, each with its count and a caret
 that folds it: decisions as bubbles that open in place on the answer (its
 whole width; Markdown's single line breaks flow together, a blank line parts
-paragraphs), the alternatives, the files it concerns and Accept and Reject,
-a dot before the title for done and a dashed ring for todo, a green tick or a
-red cross after it once accepted or rejected; an open decision is framed in
-the foil's cyan and pink (`?decisions=rail` or `lift` on the page's address
-shows two other looks); pictures as one line of thumbnails and texts as
-one line of previews, both scrolling sideways; other files as rows; tasks
+paragraphs), the alternatives, the files it concerns and Accept and Reject;
+a decision is done unless a small TODO pill under its time says otherwise; a
+green tick or a red cross before its time once accepted or rejected; an open
+decision is framed in the foil's cyan and pink (`?decisions=rail` or `lift`
+on the page's address shows two other looks); pictures as one line of
+thumbnails, each with a ribbon of its title, time and verdict along its foot,
+and texts as one line of white previews, their verdict at the bottom right,
+both scrolling sideways; an item's options as one card, its title and time
+over a small list of them (the preferred one starred); other files as rows; tasks
 as bubbles with a slider — the time since it started, coloured by how
 recently it said anything (amber after `topics.silence` minutes without a
 word, 30 by default: only silence, which may be long work as well as stuck
 work; red once it failed). Accept all and Reject all close it. A picture or
 a text opens in a viewer over the list, its title and time on a white
 ribbon — a text in a column about 40% of the screen, a picture's viewer
-shrunk to the picture: a version picked (a pill, "Version 3 · 2d"), or
-Compare for two side by side, the newest and the one before by default (a
-text's as a line diff with the changed words marked); an item's options side
+shrunk to the picture, on a dim grey bed: a version picked (a pill, "Version
+3", its list giving each version's time), or Compare for two side by side, the
+newest and the one before by default, each side's select over it (a text's as
+a line diff with the changed words marked); an item's options side
 by side instead, each with a star to prefer it, Compare off; a Markdown file
 rendered, its frontmatter as a ribbon of keys and values, code and data
 highlighted, plain text as it is; a click on the file's path says where it
-comes from, in a bubble; a picture opens larger, and with two or more side
-by side the arrows switch between them. ← and → step through the
+comes from, in a bubble; a click on a picture zooms it in place to its
+natural size (twice its size when it is shown about that large already), the
+part shown following the cursor — every picture side by side zooms with it, to
+the same point, so two versions compare in detail; a click or Esc leaves the
+zoom; on a touch screen a tap zooms, a drag pans. ← and → step through the
 topic's pictures and texts, Esc closes. A video, a PDF, a page (an HTML page
 runs no script there) open there too.
 
@@ -626,9 +633,16 @@ on the other. The owner's message waits for the agent's answer, the item
 owner can withdraw the message to edit it; a verdict given since overrides
 it. An agent's `--reply` while one waits is its answer (the command says
 `answered`); it may say more afterwards. The icon marks what the agent said
-since the owner last opened the chat (kept on the machine). Verdicts take no
-comment on the page. One bar toggles **Search**, which filters as you type,
-and **Ask**: a question goes to a headless agent (the asker seat) that reads
+since the owner last opened the chat (kept on the machine) with a glowing
+foil dot; while the owner's message waits for its answer, the icon's outline
+swirls slowly in the foil's colours (still, for reduced motion). A long
+message grows the field to a limit, then scrolls inside it. Verdicts take no
+comment on the page. One bar toggles **Search**, which filters as you type —
+from three letters it opens the topics and decisions (and unfolds the
+sections) holding what it finds, rings each such item in foil, scrolls to
+the first and washes the words found pink to cyan; Enter, Shift+Enter or the
+arrows in the field go from hit to hit, and clearing the search closes what
+it opened, not what the owner did — and **Ask**: a question goes to a headless agent (the asker seat) that reads
 the topics and answers in markdown, with the items it relied on as cards
 that open them, one question at a time, cancellable. The tab keeps up with
 what agents submit without drawing again what did not change.

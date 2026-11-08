@@ -3,6 +3,7 @@
     <div class="bar">
       <div class="field">
         <input type="text" id="topics-input" placeholder="search topics and items" autocomplete="off" spellcheck="false" aria-label="Search topics and items">
+        <span class="hit-nav" id="topics-hits" hidden><span class="hit-count" aria-live="polite"></span><button type="button" data-hit="-1" aria-label="The previous hit (Shift+Enter)" title="The previous hit (Shift+Enter)"></button><button type="button" data-hit="1" aria-label="The next hit (Enter)" title="The next hit (Enter)"></button></span>
         <button type="button" class="inside" id="topics-clear" aria-label="Clear the search" hidden>×</button>
         <button type="button" class="inside" id="topics-send" aria-label="Ask" hidden>→</button>
       </div>
@@ -21,9 +22,10 @@
 // version's decision and files, where each chat stands, and the question being asked, polled
 // while shown and drawn in place (`studio.morph`), so nothing flashes and what is typed stays.
 // The list is the one view: a topic opens in place on its decisions (bubbles that open in place
-// too), its pictures and its texts; a picture or a text opens in a viewer over the list. Every
-// word goes through a chat: the owner's message waits for the agent's answer, withdrawn until it
-// comes. The address says what is open: `#topics/TOPIC` a topic, `#topics/TOPIC/SLUG` an item
+// too), its pictures and its texts (an item's options together on one card); a picture or a text
+// opens in a viewer over the list, a picture zooming in place there. A search marks what it finds,
+// and opens and rings the items holding it. Every word goes through a chat: the owner's message
+// waits for the agent's answer, withdrawn until it comes. The address says what is open: `#topics/TOPIC` a topic, `#topics/TOPIC/SLUG` an item
 // (`#170`: the item an earlier decision 170 became). Verdicts go to `POST topics/judge`, messages
 // to `topics/reply` (`topics/withdraw` takes one back, `topics/seen` records a look), a question
 // to `topics/ask` (`topics/ask/cancel` stops it).
@@ -36,6 +38,7 @@
     drafts: new Map(), open: new Set(), expanded: new Set(), chats: new Set(), silence: 30,
     modal: null, compare: false, single: null, left: null, right: null, reveal: null,
     menu: null, zoom: null, dismissed: null, looking: new Set(), focus: null, reveal_to: null, folded: new Set(),
+    hits: [], hitAt: 0, reveal_hit: false, opened: { open: new Set(), expanded: new Set(), folded: new Set() }, drag: null, dragged: false,
   };
   // How decisions look, for the owner to compare (`?decisions=rail` or `lift`); `foil` by default.
   const LOOKS = ["foil", "rail", "lift"];
@@ -50,8 +53,6 @@
     caret: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="m6 4 4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>',
     accepted: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="m3.5 8.5 3 3 6-7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
     rejected: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4.5 4.5 7 7m0-7-7 7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>',
-    done: '<svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="4.5" fill="currentColor"/></svg>',
-    todo: '<svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-dasharray="2.6 2.2"/></svg>',
     star: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="m8 2.2 1.8 3.65 4 .58-2.9 2.83.69 4L8 11.37l-3.59 1.89.69-4-2.9-2.83 4-.58z" fill="currentColor" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg>',
   };
 
@@ -360,14 +361,14 @@
     const word = item.verdict === "accepted" ? "Accepted" : "Rejected";
     return `<span class="verdict-mark ${item.verdict}" title="${word}" aria-label="${word}" role="img">${ICONS[item.verdict]}</span>`;
   }
-  // A decision's status before its title: done, a full dot; todo, a dashed ring.
-  const statusMark = status => `<span class="status-mark ${status}" title="${status === "todo" ? "To do" : "Done"}" aria-label="${status === "todo" ? "To do" : "Done"}" role="img">${ICONS[status]}</span>`;
+  // A decision is done unless it says otherwise: only a todo one shows its status, a pill under its corner.
+  const todoPill = '<span class="todo-pill" title="To do">Todo</span>';
 
   function chatButton(key, standing) {
     const open = state.chats.has(key);
     const mark = standing?.unseen ? (standing.answered ? "a reply" : `${standing.unseen} new`) : "";
     const title = open ? "Close the chat" : mark ? `Chat: ${mark}` : standing?.pending ? "Chat: waiting for the agent's answer" : "Chat";
-    return `<button type="button" class="chat-toggle${standing?.unseen ? " unseen" : ""}${standing?.pending ? " pending" : ""}" data-chat="${escape(key)}" aria-pressed="${open}" aria-label="${escape(title)}" title="${escape(title)}">${ICONS.chat}<span class="mark" aria-hidden="true"></span></button>`;
+    return `<button type="button" class="chat-toggle${standing?.unseen ? " unseen" : ""}${standing?.pending ? " pending" : ""}" data-chat="${escape(key)}" aria-pressed="${open}" aria-label="${escape(title)}" title="${escape(title)}">${ICONS.chat}<span class="swirl" aria-hidden="true"><span></span></span><span class="mark" aria-hidden="true"></span></button>`;
   }
   // The chat's icon, and the chat itself floating from it over what is under it: the icon stays
   // where it is, on the chat's corner, whether it is open or not.
@@ -426,7 +427,8 @@
   // A decision or a task: a bubble opening in place, its chat floating over it.
   function bubble(item) {
     const open = state.expanded.has(item.ref);
-    const corner = `<span class="corner">${verdictMark(item)}${time(item.updated)}${chatCorner(item.ref, item.thread, item.chat)}</span>`;
+    const todo = !item.task && last(item).decision.status === "todo" ? todoPill : "";
+    const corner = `<span class="corner">${verdictMark(item)}${time(item.updated)}${chatCorner(item.ref, item.thread, item.chat)}${todo}</span>`;
     const title = `<button type="button" class="title" aria-expanded="${open}">${escape(item.title)}</button>`;
     let head, body = "";
     if (item.task) {
@@ -440,7 +442,7 @@
     } else {
       const latest = last(item);
       const decision = latest.decision;
-      head = `${statusMark(decision.status === "todo" ? "todo" : "done")}${title}${corner}`;
+      head = `${title}${corner}`;
       if (open) {
         const alternatives = decision.alternatives.length ? `<div class="considered"><span class="label">Considered instead</span><ul class="alternatives">${decision.alternatives.map(entry =>
           `<li><span class="option">${inline(entry.option)}</span> — <span class="why">${inline(entry.why_not)}</span></li>`).join("")}</ul></div>` : "";
@@ -449,7 +451,7 @@
           <div class="actions"><span class="hint" data-problem="${escape(item.ref)}"></span><div class="buttons">${verdictButtons(item.ref, item.verdict)}</div></div></div>`;
       }
     }
-    return `<div class="item-bubble ${item.task ? "task" : "decision"}${open ? " open" : ""}" data-key="${escape(item.ref)}" id="item-${escape(item.ref)}">
+    return `<div class="item-bubble ${item.task ? "task" : "decision"}${open ? " open" : ""}${hitClass(item)}" data-key="${escape(item.ref)}" id="item-${escape(item.ref)}">
       <div class="head" data-expand="${escape(item.ref)}">${head}</div>${body}</div>`;
   }
 
@@ -461,16 +463,32 @@
   }
   function thumbnail(item) {
     const { version, file } = cover(item, "image");
-    const count = item.options ? version.files.length : 0;
-    return `<button type="button" class="thumb" data-key="${escape(item.ref)}" data-view="${escape(item.ref)}" title="${escape(item.title)}" aria-label="${escape(item.title)}"><img src="${fileUrl(item, version, file.name)}" alt="" loading="lazy">${count > 1 ? `<span class="count-badge">${count} options</span>` : ""}</button>`;
+    return `<button type="button" class="thumb${hitClass(item)}" data-key="${escape(item.ref)}" id="item-${escape(item.ref)}" data-view="${escape(item.ref)}" title="${escape(item.title)}" aria-label="${escape(item.title)}"><img src="${fileUrl(item, version, file.name)}" alt="" loading="lazy">
+      <span class="ribbon"><span class="title">${escape(item.title)}</span>${time(item.updated)}${verdictMark(item)}</span></button>`;
   }
+  // An item's options belong together: one card, its title and time over a small list of them (the
+  // preferred one starred), its verdict at its foot; it opens on all of them side by side.
+  function optionsCard(item, type) {
+    const version = last(item);
+    const options = version.files.map(file => {
+      const preferred = item.preferred?.version === version.version && item.preferred?.name === file.name;
+      const star = preferred ? `<span class="star" title="Preferred">${ICONS.star}</span>` : "";
+      const shown = type === "image" ? `<img src="${fileUrl(item, version, file.name)}" alt="" loading="lazy">`
+        : `<pre data-text="${fileUrl(item, version, file.name)}" data-lines="4" data-own>…</pre>`;
+      return `<span class="option${preferred ? " preferred" : ""}" data-key="option:${escape(file.name)}">${shown}<span class="name">${escape(file.name)}</span>${star}</span>`;
+    }).join("");
+    return `<button type="button" class="options-card ${type}${hitClass(item)}" data-key="${escape(item.ref)}" id="item-${escape(item.ref)}" data-view="${escape(item.ref)}">
+      <span class="head"><span class="title">${escape(item.title)}</span><span class="side">${time(item.updated)}</span></span>
+      <span class="stack">${options}</span>${verdictMark(item)}</button>`;
+  }
+  const grouped = item => item.options && last(item).files.length > 1;
   function preview(item) {
     const { version, file } = cover(item, "text");
-    return `<button type="button" class="preview" data-key="${escape(item.ref)}" data-view="${escape(item.ref)}">
-      <span class="head"><span class="title">${escape(item.title)}</span><span class="side">${verdictMark(item)}${time(item.updated)}</span></span>
-      <pre data-text="${fileUrl(item, version, file.name)}" data-lines="8" data-own>…</pre></button>`;
+    return `<button type="button" class="preview${hitClass(item)}" data-key="${escape(item.ref)}" id="item-${escape(item.ref)}" data-view="${escape(item.ref)}">
+      <span class="head"><span class="title">${escape(item.title)}</span><span class="side">${time(item.updated)}</span></span>
+      <pre data-text="${fileUrl(item, version, file.name)}" data-lines="8" data-own>…</pre>${verdictMark(item)}</button>`;
   }
-  const fileRow = item => `<button type="button" class="file-row" data-key="${escape(item.ref)}" data-view="${escape(item.ref)}">
+  const fileRow = item => `<button type="button" class="file-row${hitClass(item)}" data-key="${escape(item.ref)}" id="item-${escape(item.ref)}" data-view="${escape(item.ref)}">
       <span class="title">${escape(item.title)}</span><span class="side">${verdictMark(item)}${time(item.updated)}</span></button>`;
 
   function sections(topic, items) {
@@ -479,8 +497,8 @@
       if (!found.length) return "";
       const key = `${topic.name}/${kind}`, folded = state.folded.has(key);
       const body = folded ? "" : kind === "decision" || kind === "task" ? `<div class="item-bubbles">${found.map(bubble).join("")}</div>`
-        : kind === "image" ? `<div class="strip images">${found.map(thumbnail).join("")}</div>`
-        : kind === "text" ? `<div class="strip texts">${found.map(preview).join("")}</div>`
+        : kind === "image" ? `<div class="strip images">${found.map(item => grouped(item) ? optionsCard(item, "image") : thumbnail(item)).join("")}</div>`
+        : kind === "text" ? `<div class="strip texts">${found.map(item => grouped(item) ? optionsCard(item, "text") : preview(item)).join("")}</div>`
         : `<div class="rows">${found.map(fileRow).join("")}</div>`;
       return `<section class="section ${kind}${folded ? " folded" : ""}" data-key="section:${kind}"><h3 class="label"><button type="button" class="fold" data-fold="${escape(key)}" aria-expanded="${!folded}">${ICONS.caret}${label} <span class="count">· ${found.length}</span></button></h3>${body}</section>`;
     }).join("");
@@ -535,14 +553,14 @@
     return [left, right];
   }
 
-  // The version select: a pill like the times, its list the same.
+  // The version select: a pill showing the version alone; its list gives each version's time.
   const versionWords = version => `Version ${version.version} <span class="when">${escape(short(version.moment))}</span>`;
   function picker(item, side, number) {
     const version = versionOf(item, number);
     const open = state.menu === side;
     const options = [...item.versions].reverse().map(entry => `<button type="button" role="option" data-pick="${side}" data-number="${entry.version}" aria-selected="${entry.version === number}" title="${escape(new Date(entry.moment).toLocaleString())}">${versionWords(entry)}</button>`).join("");
     return `<div class="select" data-key="select:${side}"><button type="button" class="select-button" data-menu="${side}" aria-haspopup="listbox" aria-expanded="${open}" ${item.versions.length < 2 ? "disabled" : ""}>
-        ${versionWords(version)}${item.versions.length > 1 ? ICONS.chevron : ""}</button>
+        Version ${version.version}${item.versions.length > 1 ? ICONS.chevron : ""}</button>
         ${open ? `<div class="options" role="listbox" aria-label="${side === "left" ? "Before" : side === "right" ? "After" : "Version"}">${options}</div>` : ""}</div>`;
   }
 
@@ -566,7 +584,10 @@
   function pane(item, version, file, index) {
     if (!file) return `<div class="pane"><p class="missing">Nothing in version ${version.version}.</p></div>`;
     const address = fileUrl(item, version, file.name);
-    if (file.type === "image") return `<div class="pane"><button type="button" class="shot" data-zoom="${index}" aria-label="Enlarge"><img data-key="${address}" src="${address}" alt="${escape(file.name)}, version ${version.version}"></button></div>`;
+    if (file.type === "image") {
+      const [box, picture] = zoomStyles(index);
+      return `<div class="pane"><button type="button" class="shot${box ? " zoomed" : ""}" data-shot="${index}" style="${box}" aria-label="${box ? "Zoom out" : "Zoom in"}"><img data-key="${address}" src="${address}" style="${picture}" alt="${escape(file.name)}, version ${version.version}"></button></div>`;
+    }
     if (file.type === "video") return `<div class="pane"><video data-key="${address}" src="${address}" controls preload="metadata" playsinline></video></div>`;
     if (file.type === "pdf") return `<div class="pane"><iframe data-key="${address}" src="${address}" title="${escape(file.name)}"></iframe></div>`;
     if (file.type === "html") return `<div class="pane"><iframe data-key="${address}" src="${address}" sandbox="" title="${escape(file.name)}"></iframe></div>`;
@@ -599,34 +620,29 @@
     const kind = kindOf(item);
     const compare = `<button type="button" class="toggle" data-compare aria-pressed="${comparing}" ${comparable(item) ? "" : "disabled"} title="${item.options ? "Compare is for versions: options show side by side" : item.versions.length < 2 ? "One version: nothing to compare" : "Compare two versions"}"><span class="switch" aria-hidden="true"><span></span></span>Compare</button>`;
     const first = panes[panes.length - 1].file;
-    const pickers = comparing ? `${picker(item, "left", numbers[0])}<span class="arrow" aria-hidden="true">→</span>${picker(item, "right", numbers[1])}` : picker(item, "single", numbers[0]);
+    // Compared, each version's select stands over the side it chooses.
+    const sides = ["left", "right"];
+    const pickers = comparing ? "" : picker(item, "single", numbers[0]);
     const path = !several && first && !comparing ? pathButton(first, 0) : "";
-    let content;
+    let content, heads = "";
     if (comparing && panes.every(entry => entry.file?.type === "text")) {
       const pair = panes.map(entry => fileUrl(item, entry.version, entry.file.name)).join(" ");
+      heads = `<div class="heads" data-key="heads">${sides.map((side, index) => picker(item, side, numbers[index])).join("")}</div>`;
       content = `<div class="panes" data-key="pair:${escape(pair)}" data-own data-pair="${escape(pair)}"><p class="missing">…</p></div>`;
     } else {
       // Keyed apart from a diff, so a diff filled once is not taken for this.
       content = `<div class="panes${panes.length > 1 ? " several" : ""}" data-key="panes" style="--panes:${panes.length}">${panes.map((entry, index) =>
-        `<div class="column">${pane(item, entry.version, entry.file, index)}${several && entry.file ? optionBar(item, entry.version, entry.file, index) : ""}</div>`).join("")}</div>`;
-    }
-    let zoom = "";
-    const zoomed = state.zoom !== null && panes[state.zoom];
-    if (zoomed && zoomed.file?.type === "image") {
-      const address = fileUrl(item, zoomed.version, zoomed.file.name);
-      const which = comparing ? ` · ${state.zoom ? "after" : "before"}` : several ? ` · ${escape(zoomed.file.name)}` : "";
-      zoom = `<div class="zoom" data-key="zoom" data-unzoom><img data-key="zoom:${address}" src="${address}" alt="${escape(zoomed.file.name)}, version ${zoomed.version.version}">
-          <span class="which">Version ${zoomed.version.version}${which}${panes.length > 1 ? " · ← → to switch" : ""} · Esc to go back</span></div>`;
+        `<div class="column">${comparing ? picker(item, sides[index], numbers[index]) : ""}${pane(item, entry.version, entry.file, index)}${several && entry.file ? optionBar(item, entry.version, entry.file, index) : ""}</div>`).join("")}</div>`;
     }
     const actions = awaitsOwner(item) || item.verdict !== "open" ? `<div class="actions"><span class="hint" data-problem="${escape(item.ref)}"></span><div class="buttons">${verdictButtons(item.ref, item.verdict)}</div></div>` : "";
     const fits = kind === "image" ? "image" : kind === "text" && !comparing && !several ? "text" : "wide";
     return `<div class="overlay" data-key="overlay:${escape(item.ref)}" data-backdrop>
-      <article class="sheet open viewer ${fits}" data-hue="${hue(item.topic)}" role="dialog" aria-modal="true" aria-label="${escape(item.title)}">
+      <article class="sheet open viewer ${fits}${comparing ? " comparing" : ""}" data-hue="${hue(item.topic)}" role="dialog" aria-modal="true" aria-label="${escape(item.title)}">
         <div class="ribbon"><h2>${escape(item.title)}</h2><span class="side">${verdictMark(item)}${time(item.updated)}</span><button type="button" class="close" data-close aria-label="Close (Esc)" title="Close (Esc)">×</button></div>
         <div class="main">
-          <div class="line versions"><span class="pickers">${pickers}</span>${path}<span class="end">${compare}${chatCorner(item.ref, item.thread, item.chat)}</span></div>
-          <div class="content">${content}</div>${actions}</div>
-      </article>${zoom}</div>`;
+          <div class="line versions">${pickers ? `<span class="pickers">${pickers}</span>` : ""}${path}<span class="end">${compare}${chatCorner(item.ref, item.thread, item.chat)}</span></div>
+          ${heads}<div class="content">${content}</div>${actions}</div>
+      </article></div>`;
   }
 
   function drawModal() {
@@ -646,6 +662,128 @@
     bubble.style.left = `${Math.max(8, Math.min(anchor.left - 10, innerWidth - bubble.offsetWidth - 8))}px`;
   }
 
+  // --- zoom: a picture magnified in place, to its natural size, the part shown following the cursor --
+
+  // Each picture shown zooms with the others, to the same point, so two versions compare in detail.
+  // A picture shown about as large as it is zooms to twice its size instead.
+  const clamp = value => Math.min(1, Math.max(0, value));
+  const shift = box => `translate(${(-(box.wide - box.width) * state.zoom.x).toFixed(1)}px, ${(-(box.tall - box.height) * state.zoom.y).toFixed(1)}px)`;
+  function zoomStyles(index) {
+    const box = state.zoom?.boxes[index];
+    if (!box) return ["", ""];
+    return [`width:${box.width}px;height:${box.height}px`, `width:${box.wide}px;height:${box.tall}px;transform:${shift(box)}`];
+  }
+  function zoomIn(shot, event) {
+    const boxes = {};
+    for (const each of document.querySelectorAll("#topics-modal .shot")) {
+      const picture = each.querySelector("img");
+      const { width, height } = picture.getBoundingClientRect();
+      if (!picture.naturalWidth || !width) continue;
+      const ratio = picture.naturalWidth / width;
+      const scale = ratio < 1.25 ? 2 : ratio;
+      boxes[each.dataset.shot] = { width, height, wide: width * scale, tall: height * scale };
+    }
+    const rect = shot.getBoundingClientRect();
+    const keyed = event.detail === 0;
+    state.zoom = { boxes, x: keyed ? .5 : clamp((event.clientX - rect.left) / rect.width), y: keyed ? .5 : clamp((event.clientY - rect.top) / rect.height) };
+  }
+  function placeZoom() {
+    for (const shot of document.querySelectorAll("#topics-modal .shot.zoomed")) {
+      const box = state.zoom.boxes[shot.dataset.shot];
+      if (box) shot.querySelector("img").style.transform = shift(box);
+    }
+  }
+
+  // --- search: the words found marked, the items they are in opened and ringed, one hit at a time ----
+
+  // Opening starts at three letters, so the first keystrokes do not open everything.
+  const searching = () => state.mode === "search" && state.search.trim().length >= 3 ? said() : [];
+  const hitClass = item => state.hits.includes(item.ref) ? ` hit${state.hits[state.hitAt] === item.ref ? " current" : ""}` : "";
+  // The items holding what is searched for, in the order the list shows them.
+  function findHits(wanted) {
+    const found = [];
+    for (const topic of state.topics) {
+      const around = topicWords(topic);
+      const holding = topic.items.filter(item => {
+        const own = itemWords(item);
+        return fits(`${around} ${own}`, wanted) && wanted.some(word => own.includes(word));
+      });
+      for (const [kind] of SECTIONS) found.push(...holding.filter(item => kindOf(item) === kind));
+    }
+    return found;
+  }
+  // What the search opened (topics, decisions, folded sections) it closes again when it no longer
+  // finds anything there; what the owner opened stays as they left it.
+  function searched() {
+    const hits = findHits(searching());
+    const wanted = {
+      open: new Set(hits.map(item => item.topic)),
+      expanded: new Set(hits.filter(item => ["decision", "task"].includes(kindOf(item))).map(item => item.ref)),
+      folded: new Set(hits.map(item => `${item.topic}/${kindOf(item)}`)),
+    };
+    for (const [place, keys] of Object.entries(state.opened)) {
+      for (const key of keys) {
+        if (wanted[place].has(key)) continue;
+        if (place === "folded") state.folded.add(key); else state[place].delete(key);
+        if (place === "open") state.chats.delete(`topic:${key}`);
+        keys.delete(key);
+      }
+    }
+    for (const [place, keys] of Object.entries(wanted)) {
+      for (const key of keys) {
+        const shut = place === "folded" ? state.folded.has(key) : !state[place].has(key);
+        if (!shut) continue;
+        if (place === "folded") state.folded.delete(key); else state[place].add(key);
+        state.opened[place].add(key);
+      }
+    }
+    state.hits = hits.map(item => item.ref);
+    state.hitAt = 0;
+    state.reveal_hit = state.hits.length > 0;
+  }
+  // The owner opening or closing something takes it from the search: it stays as they set it.
+  const owned = (place, key) => state.opened[place].delete(key);
+  function jump(by) {
+    if (!state.hits.length) return;
+    state.hitAt = (state.hitAt + by + state.hits.length) % state.hits.length;
+    const item = itemAt(state.hits[state.hitAt]);
+    if (item && !state.open.has(item.topic)) { state.open.add(item.topic); state.opened.open.add(item.topic); }
+    state.reveal_hit = true;
+    draw();
+  }
+  // The words searched for, marked where they show: wrapped in place, after every drawing and
+  // every text fetched; unwrapped first, so a changed search leaves no old marks.
+  function markWords(scope) {
+    for (const old of scope.querySelectorAll("mark.found")) {
+      const parent = old.parentNode;
+      old.replaceWith(...old.childNodes);
+      parent.normalize();
+    }
+    const wanted = state.mode === "search" ? said().filter(word => word.length > 1) : [];
+    if (!wanted.length) return;
+    const source = wanted.map(word => word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|");
+    const pattern = new RegExp(source, "gi"), holds = new RegExp(source, "i");
+    const walker = document.createTreeWalker(scope, NodeFilter.SHOW_TEXT, {
+      acceptNode: node => node.parentElement.closest("time, .when, textarea, script, style, button.select-button") ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT,
+    });
+    const nodes = [];
+    while (walker.nextNode()) if (holds.test(walker.currentNode.nodeValue)) nodes.push(walker.currentNode);
+    for (const node of nodes) {
+      const text = node.nodeValue, parts = [];
+      let at = 0;
+      for (const found of text.matchAll(pattern)) {
+        if (found.index > at) parts.push(document.createTextNode(text.slice(at, found.index)));
+        const mark = document.createElement("mark");
+        mark.className = "found";
+        mark.textContent = found[0];
+        parts.push(mark);
+        at = found.index + found[0].length;
+      }
+      if (at < text.length) parts.push(document.createTextNode(text.slice(at)));
+      node.replaceWith(...parts);
+    }
+  }
+
   // --- filling what is fetched, keeping what is typed ---------------------------------------------
 
   function fill(scope) {
@@ -660,13 +798,14 @@
         else if (place.dataset.render === "markdown") place.innerHTML = markdown(content, true);
         else if (place.dataset.render === "code") place.innerHTML = `<pre><code>${highlight(content, place.dataset.language)}</code></pre>`;
         else place.innerHTML = `<pre>${escape(content)}</pre>`;
+        markWords(place);
       }).catch(() => { if (place.filled === address) place.textContent = "This file could not be read."; });
     }
     for (const place of scope.querySelectorAll("[data-pair]")) {
       const pair = place.dataset.pair;
       if (place.filled === pair) continue;
       place.filled = pair;
-      Promise.all(pair.split(" ").map(text)).then(([left, right]) => { if (place.filled === pair) place.innerHTML = diff(left, right); })
+      Promise.all(pair.split(" ").map(text)).then(([left, right]) => { if (place.filled === pair) { place.innerHTML = diff(left, right); markWords(place); } })
         .catch(() => { if (place.filled === pair) place.innerHTML = '<p class="missing">These files could not be read.</p>'; });
     }
   }
@@ -683,9 +822,16 @@
     }
   }
   function grow(field) {
-    if (CSS.supports("field-sizing", "content")) return;
-    field.style.height = "auto";
-    field.style.height = `${field.scrollHeight + 1}px`;
+    if (!CSS.supports("field-sizing", "content")) {
+      field.style.height = "auto";
+      field.style.height = `${field.scrollHeight + 1}px`;
+    }
+    edges(field);
+  }
+  // Grown to its limit, a message scrolls inside its field: its edges fade where more is hidden.
+  function edges(field) {
+    field.classList.toggle("more-before", field.scrollTop > 1);
+    field.classList.toggle("more-after", field.scrollTop + field.clientHeight < field.scrollHeight - 6);
   }
 
   // An open chat keeps its newest message in sight, and what it shows the owner counts as seen.
@@ -726,6 +872,13 @@
     input.placeholder = state.mode === "search" ? "search topics and items" : "ask about the topics, the items, what was decided";
     input.setAttribute("aria-label", state.mode === "search" ? "Search topics and items" : "Ask about the topics");
     $("topics-clear").hidden = state.mode !== "search" || !input.value;
+    const navigating = state.mode === "search" && searching().length > 0;
+    $("topics-hits").hidden = !navigating;
+    input.classList.toggle("navigating", navigating);
+    if (navigating) {
+      $("topics-hits").querySelector(".hit-count").textContent = state.hits.length ? `${state.hitAt + 1}/${state.hits.length}` : "none";
+      for (const button of $("topics-hits").querySelectorAll("button")) { button.innerHTML = ICONS.chevron; button.disabled = state.hits.length < 2; }
+    }
     $("topics-send").hidden = state.mode !== "ask" || !input.value.trim();
     $("topics-send").disabled = !!state.ask?.running;
   }
@@ -745,6 +898,8 @@
     drawList();
     drawModal();
     fill($("topics"));
+    markWords($("topics-main"));
+    markWords($("topics-modal"));
     restoreDrafts();
     keepChats();
     if (state.reveal_to !== null) {
@@ -752,6 +907,12 @@
       if (element) element.scrollIntoView({ block: "start", behavior: "instant" });
       else scrollTo({ top: 0, behavior: "instant" });
       state.reveal_to = null;
+    }
+    if (state.reveal_hit && !state.modal) {
+      state.reveal_hit = false;
+      const hit = document.getElementById(`item-${state.hits[state.hitAt]}`);
+      // A hit taller than most of the screen shows from its top; a smaller one in the middle.
+      hit?.scrollIntoView({ block: hit.offsetHeight > innerHeight * .6 ? "start" : "center", inline: "nearest", behavior: "smooth" });
     }
   }
 
@@ -767,6 +928,10 @@
       state.topics = data.topics;
       state.ask = data.ask;
       state.silence = data.silence ?? 30;
+      if (searching().length) {
+        state.hits = findHits(searching()).map(item => item.ref);
+        state.hitAt = Math.min(state.hitAt, Math.max(0, state.hits.length - 1));
+      }
       draw();
     } catch {
       studio.summary("topics", "Lost touch with nock — is `nock studio` still running?");
@@ -898,11 +1063,14 @@
     if (mode) {
       state.mode = mode.dataset.barMode;
       state.search = state.mode === "search" ? $("topics-input").value : "";
+      searched();
       draw();
       $("topics-input").focus();
       return;
     }
-    if (target.closest("#topics-clear")) { $("topics-input").value = ""; state.search = ""; draw(); $("topics-input").focus(); return; }
+    if (target.closest("#topics-clear")) { $("topics-input").value = ""; state.search = ""; searched(); draw(); $("topics-input").focus(); return; }
+    const hopping = target.closest("[data-hit]");
+    if (hopping) { jump(Number(hopping.dataset.hit)); return; }
     if (target.closest("#topics-send")) { ask(); return; }
     if (target.closest("[data-ask-cancel]")) { post("topics/ask/cancel", {}).then(found => { state.ask = found; draw(); }); return; }
     if (target.closest("[data-ask-dismiss]")) { state.dismissed = state.ask?.started; draw(); return; }
@@ -914,20 +1082,24 @@
     if (withdrawing) { withdraw(withdrawing.dataset.withdraw); return; }
     const judging = target.closest("[data-judge]");
     if (judging) { judge(judging.dataset.judge, judging.dataset.verdictChoice); return; }
-    if (target.closest("[data-unzoom]")) { state.zoom = null; draw(); return; }
-    const zooming = target.closest("[data-zoom]");
-    if (zooming) { state.zoom = Number(zooming.dataset.zoom); draw(); return; }
+    const shot = target.closest("[data-shot]");
+    if (shot) {
+      if (state.dragged) { state.dragged = false; return; }
+      if (state.zoom) state.zoom = null; else zoomIn(shot, event);
+      draw();
+      return;
+    }
     const preferring = target.closest("[data-prefer]");
     if (preferring) { prefer(preferring); return; }
     const pathing = target.closest("[data-path]");
     if (pathing) { const index = Number(pathing.dataset.path); state.reveal = state.reveal === index ? null : index; draw(); return; }
     const folding = target.closest("[data-fold]");
-    if (folding) { const key = folding.dataset.fold; state.folded.has(key) ? state.folded.delete(key) : state.folded.add(key); draw(); return; }
+    if (folding) { const key = folding.dataset.fold; owned("folded", key); state.folded.has(key) ? state.folded.delete(key) : state.folded.add(key); draw(); return; }
     if (target.closest("[data-close]") || target.matches("[data-backdrop]")) { closeViewer(); return; }
     const menu = target.closest("[data-menu]");
     if (menu) { state.menu = state.menu === menu.dataset.menu ? null : menu.dataset.menu; draw(); return; }
     const pick = target.closest("[data-pick]");
-    if (pick) { state[pick.dataset.pick] = Number(pick.dataset.number); state.menu = null; draw(); return; }
+    if (pick) { state[pick.dataset.pick] = Number(pick.dataset.number); state.menu = state.zoom = null; draw(); return; }
     if (target.closest("[data-compare]")) { state.compare = !state.compare; state.left = state.right = state.zoom = state.reveal = null; draw(); return; }
     const viewing = target.closest("[data-view]");
     if (viewing) { const item = itemAt(viewing.dataset.view); if (item) { view(item); draw(); } return; }
@@ -935,25 +1107,58 @@
     if (going) { state.arrived = null; state.route = itemAt(going.dataset.go)?.ref ?? going.dataset.go; address(state.route); state.arrived = null; draw(); return; }
     if (target.closest(".chat, a, textarea")) return;
     const expand = target.closest("[data-expand]");
-    if (expand) { const ref = expand.dataset.expand; state.expanded.has(ref) ? state.expanded.delete(ref) : state.expanded.add(ref); draw(); return; }
+    if (expand) { const ref = expand.dataset.expand; owned("expanded", ref); state.expanded.has(ref) ? state.expanded.delete(ref) : state.expanded.add(ref); draw(); return; }
     const toggle = target.closest("[data-toggle]");
     if (toggle) {
       const name = toggle.dataset.toggle;
+      owned("open", name);
       if (state.open.has(name)) { state.open.delete(name); state.chats.delete(`topic:${name}`); } else state.open.add(name);
       draw();
     }
   });
   root.addEventListener("input", event => {
     const field = event.target;
-    if (field.id === "topics-input") { if (state.mode === "search") state.search = field.value; draw(); return; }
+    if (field.id === "topics-input") { if (state.mode === "search") { state.search = field.value; searched(); } draw(); return; }
     if (field.dataset.draft) { state.drafts.set(field.dataset.draft, field.value); grow(field); }
   });
+  // A zoomed picture follows the mouse; on a touch screen it is dragged, and a tap leaves the zoom.
+  root.addEventListener("scroll", event => { if (event.target.matches?.("textarea[data-draft]")) edges(event.target); }, true);
+  root.addEventListener("pointerdown", event => {
+    const shot = event.target.closest(".shot.zoomed");
+    state.dragged = false;
+    if (!shot || event.pointerType === "mouse") return;
+    state.drag = { x: event.clientX, y: event.clientY, moved: 0, box: state.zoom.boxes[shot.dataset.shot] };
+    try { shot.setPointerCapture(event.pointerId); } catch { /* a pointer already gone */ }
+  });
+  root.addEventListener("pointermove", event => {
+    if (!state.zoom) return;
+    if (state.drag) {
+      const { box } = state.drag, dx = event.clientX - state.drag.x, dy = event.clientY - state.drag.y;
+      state.drag.moved += Math.abs(dx) + Math.abs(dy);
+      state.drag.x = event.clientX; state.drag.y = event.clientY;
+      if (box.wide > box.width) state.zoom.x = clamp(state.zoom.x - dx / (box.wide - box.width));
+      if (box.tall > box.height) state.zoom.y = clamp(state.zoom.y - dy / (box.tall - box.height));
+      placeZoom();
+      return;
+    }
+    const shot = event.pointerType === "mouse" && event.target.closest(".shot.zoomed");
+    if (!shot) return;
+    const rect = shot.getBoundingClientRect();
+    state.zoom.x = clamp((event.clientX - rect.left) / rect.width);
+    state.zoom.y = clamp((event.clientY - rect.top) / rect.height);
+    placeZoom();
+  });
+  const dropDrag = () => { if (state.drag) { state.dragged = state.drag.moved > 6; state.drag = null; } };
+  root.addEventListener("pointerup", dropDrag);
+  root.addEventListener("pointercancel", dropDrag);
+  addEventListener("resize", () => { if (state.zoom) { state.zoom = null; draw(); } });
   document.addEventListener("keydown", event => {
     if (!state.shown) return;
     const target = event.target;
     if (target.id === "topics-input") {
       if (event.key === "Enter" && state.mode === "ask") { event.preventDefault(); ask(); }
-      else if (event.key === "Escape") { target.value = ""; state.search = ""; target.blur(); draw(); }
+      else if (event.key === "Enter" && !event.isComposing) { event.preventDefault(); jump(event.shiftKey ? -1 : 1); }
+      else if (event.key === "Escape") { target.value = ""; state.search = ""; searched(); target.blur(); draw(); }
       return;
     }
     if (target.dataset?.draft?.startsWith("reply:")) {
@@ -973,9 +1178,7 @@
     }
     if (state.modal && (event.key === "ArrowLeft" || event.key === "ArrowRight")) {
       event.preventDefault();
-      const count = state.zoom !== null ? shownPanes(itemAt(state.modal)).length : 0;
-      if (count > 1) { state.zoom = (state.zoom + (event.key === "ArrowLeft" ? count - 1 : 1)) % count; draw(); }
-      else if (state.zoom === null) step(event.key === "ArrowLeft" ? -1 : 1);
+      step(event.key === "ArrowLeft" ? -1 : 1);
       return;
     }
     if (event.key === "/" && !state.modal) { event.preventDefault(); $("topics-input").focus(); }
