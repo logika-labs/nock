@@ -7,7 +7,7 @@ description: The permissions nock writes, and what its own agents may and may no
 # What nock's agents may do
 
 nock never bypasses Claude Code's permission checks: no code path passes
-`--dangerously-skip-permissions` or `--permission-mode bypassPermissions`,
+Claude Code a flag that skips them or puts it in the mode that bypasses them,
 and nock refuses an `agent.command` that does (or that sets the permission
 flags nock sets itself). A test holds the package, the evals and the
 scripts to it.

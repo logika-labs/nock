@@ -154,8 +154,7 @@ def test_an_agent_command_that_sets_permissions_itself_is_refused(
 
 
 def test_nothing_nock_ships_or_runs_passes_a_bypass_flag() -> None:
-    """Only the refusal in dispatch.py names them, and the guide's sentence saying no code path
-    passes them, which the README held before the guides."""
+    """Only the refusal in dispatch.py names them."""
     pattern = re.compile("|".join(re.escape(flag) for flag in BYPASS))
     definition = (ROOT / "src" / "nock" / "dispatch.py").read_text()
     start = definition.index("BYPASS = (")
@@ -168,9 +167,6 @@ def test_nothing_nock_ships_or_runs_passes_a_bypass_flag() -> None:
             text = path.read_text()
             if path.name == "dispatch.py" and path.parent.name == "nock":
                 text = text[:start] + text[end:]
-            if path.name == "guide.permissions.md":
-                said = text.index("nock never bypasses Claude Code's permission checks")
-                text = text[:said] + text[text.index("\n\n", said) :]
             found += [f"{path.relative_to(ROOT)}: {match}" for match in pattern.findall(text)]
     assert found == []
 
