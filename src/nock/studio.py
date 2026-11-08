@@ -288,7 +288,7 @@ class TopicsTab(Tab):
     about the topics (one at a time), `/ask/cancel` stops it."""
 
     name = "topics"
-    title = "Topics"
+    title = "Work"
 
     def __init__(self, project: Project) -> None:
         super().__init__(project)

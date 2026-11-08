@@ -245,7 +245,7 @@ const studio = {
     row.classList.toggle("more-after", row.scrollLeft + row.clientWidth < row.scrollWidth - 2);
   },
   // Other names an address may use for a tab.
-  aliases: { evaluations: "evals", decisions: "topics", review: "topics" },
+  aliases: { evaluations: "evals", decisions: "topics", review: "topics", work: "topics" },
   route() {
     const hash = decodeURIComponent(location.hash.slice(1));
     const [said, ...rest] = hash.split("/");
