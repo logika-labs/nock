@@ -246,7 +246,8 @@ class HookRunner:
 
     def reviews(self) -> str:
         """The owner's verdicts and messages on the items this session
-        submitted, the first time it sees them."""
+        submitted, the first time it sees them: never what it recorded
+        itself, nor anything on a dropped item."""
         session = self.payload.get("session_id")
         if not isinstance(session, str):
             return ""

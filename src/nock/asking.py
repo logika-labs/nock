@@ -44,7 +44,7 @@ class Asker:
         topics = Topics(self.project)
         listing = "\n".join(
             f"- `{row['name']}` ({row['state']}; {row['open']} open, {row['accepted']} accepted,"
-            f" {row['rejected']} rejected): {row['description']}"
+            f" {row['rejected']} rejected, {row['dropped']} dropped): {row['description']}"
             for row in (topics.row(name) for name in topics.names())
         )
         brief = Library(self.project.code_path("briefs"), BRIEFS).render(

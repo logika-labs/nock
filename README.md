@@ -549,11 +549,11 @@ the record says so (`"local": true`). The files a message carries are kept
 beside its thread, in the topic's `attachments/MOMENT/` or the item's
 `SLUG/attachments/MOMENT/`, the same way.
 
-| | open | accepted | rejected |
-|---|---|---|---|
-| **a decision, done** | done; please check | it stands | rework it |
-| **a decision, todo** | worth doing later? | on the backlog | do not do it |
-| **files** | please look | it stands | make it again |
+| | open | accepted | rejected | dropped |
+|---|---|---|---|---|
+| **a decision, done** | done; please check | it stands | rework it | closed: nothing to rework |
+| **a decision, todo** | worth doing later? | on the backlog | do not do it | do not do it |
+| **files** | please look | it stands | make it again | closed: nothing to remake |
 
 - **Verdicts are the owner's.** In the studio, or in a session with
   `/nock-triage`, which goes through the open items with the owner one at a
@@ -561,6 +561,11 @@ beside its thread, in the topic's `attachments/MOMENT/` or the item's
   …}'`, or `nock topics judge TOPIC …` for every open item of a topic; Claude
   Code asks the owner before each). A comment goes into the item's thread;
   on the page the owner's words go through the chat instead.
+- **A rejection asks for rework, unless it is dropped.** `"rework": false`
+  with rejected (the page's Drop) drops the item: superseded, say, nothing to
+  rework. It is closed — decided in its topic's counts, in no list of what
+  waits on an agent, news to no session — and the page marks it with a muted
+  cross. A new version reopens it like any other.
 - **The threads are where the two sides talk.** `--reply "markdown"` on
   `topics update` or `items update` adds a message; while the owner's last
   message waits, it is that message's one answer. When the owner is in the
@@ -589,7 +594,10 @@ beside its thread, in the topic's `attachments/MOMENT/` or the item's
   chat, its items newest first, the earlier rounds after them: the same
   topic, its history kept.
 - **The session that submitted it hears.** When the owner next types there,
-  the prompt hook tells it their verdict or message, once.
+  the prompt hook tells it their verdict or message, once — never what that
+  session recorded itself (a `judge` it ran on the owner's word), and nothing
+  on a dropped item. The submitter is whoever made a version of the item; a
+  migration keeps the sessions the earlier records name, never its own.
 - **An edit shows the items about a file.** The first time a session edits a
   file an item holds, or a derived file shows (`from`), the edit hook names
   the item.
@@ -610,7 +618,7 @@ says it all in full.
 
 The studio's **Topics** tab (`nock studio`, or with `{"open": true}`) lists
 the topics, newest activity first, each a row: its name, what it holds ("4
-decisions · 6 images · 3 texts") and its verdicts ("3 open · 12 accepted"),
+decisions · 6 images · 3 texts") and its verdicts ("3 open · 12 accepted · 2 dropped"),
 its time ("21m", "3h", "2d", on a small grey pill) with its state's foil mark
 beside it (active a slowly turning spinner, planned a ring, done a full circle
 with a tick, abandoned one with a cross), its status line in grey right after
@@ -618,9 +626,9 @@ its name, and its description. A
 topic opens in place, its items in sections, each with its count and a caret
 that folds it: decisions as bubbles that open in place on the answer (its
 whole width; Markdown's single line breaks flow together, a blank line parts
-paragraphs), the alternatives, the files it concerns and Accept and Reject;
+paragraphs), the alternatives, the files it concerns and Drop, Reject and Accept;
 a decision is done unless a small TODO pill under its time says otherwise; a
-green tick or a red cross before its time once accepted or rejected; an open
+green tick, a red cross or a muted cross before its time once accepted, rejected or dropped; an open
 decision is framed in the foil's cyan and pink (`?decisions=rail` or `lift`
 on the page's address shows two other looks); pictures as one line of
 thumbnails, each with a ribbon of its title, time and verdict along its foot,

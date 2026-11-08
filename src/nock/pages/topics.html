@@ -64,6 +64,7 @@
     mic: '<svg viewBox="0 0 20 20" aria-hidden="true"><rect x="7.25" y="2.75" width="5.5" height="9.5" rx="2.75" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M4.5 9.5a5.5 5.5 0 0 0 11 0M10 15v2.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>',
     stop: '<svg viewBox="0 0 20 20" aria-hidden="true"><rect x="6" y="6" width="8" height="8" rx="1.5" fill="currentColor"/></svg>',
     file: '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M11.5 2.75H6A1.75 1.75 0 0 0 4.25 4.5v11A1.75 1.75 0 0 0 6 17.25h8a1.75 1.75 0 0 0 1.75-1.75V7zM11.5 2.75V7h4.25" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>',
+    dropped: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="m5 5 6 6m0-6-6 6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>',
     star: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="m8 2.2 1.8 3.65 4 .58-2.9 2.83.69 4L8 11.37l-3.59 1.89.69-4-2.9-2.83 4-.58z" fill="currentColor" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg>',
   };
 
@@ -349,10 +350,12 @@
 
   // --- drawing: the small parts -------------------------------------------------------------------
 
-  // The owner's verdict as a mark: a green tick, a red cross; nothing while it is open.
+  // The owner's verdict as a mark: a green tick, a red cross, a muted cross for dropped (closed,
+  // nothing to rework); nothing while it is open.
+  const VERDICTS = { accepted: "Accepted", rejected: "Rejected", dropped: "Dropped" };
   function verdictMark(item) {
-    if (item.verdict !== "accepted" && item.verdict !== "rejected") return "";
-    const word = item.verdict === "accepted" ? "Accepted" : "Rejected";
+    const word = VERDICTS[item.verdict];
+    if (!word) return "";
     return `<span class="verdict-mark ${item.verdict}" title="${word}" aria-label="${word}" role="img">${ICONS[item.verdict]}</span>`;
   }
   // A decision is done unless it says otherwise: only a todo one shows its status, a pill under its corner.
@@ -448,9 +451,10 @@
 
   function verdictButtons(key, verdict, count = 1) {
     const all = key.startsWith("topic:");
-    return ["rejected", "accepted"].filter(choice => all || choice !== verdict).map(choice =>
+    const labels = { dropped: "Drop", rejected: "Reject", accepted: "Accept" };
+    return ["dropped", "rejected", "accepted"].filter(choice => all || choice !== verdict).map(choice =>
       `<button type="button" class="button ${choice === "accepted" ? "primary" : "secondary"}" data-judge="${escape(key)}" data-verdict-choice="${choice}"
-        ${all ? `title="${count} open ${count === 1 ? "item" : "items"}"` : ""}>${choice === "accepted" ? "Accept" : "Reject"}${all ? " all" : ""}</button>`).join("");
+        title="${joined([choice === "dropped" ? "Rejected, nothing to rework: closed" : "", all ? `${count} open ${count === 1 ? "item" : "items"}` : ""])}">${labels[choice]}${all ? " all" : ""}</button>`).join("");
   }
 
   // --- drawing: a topic's sections ----------------------------------------------------------------
@@ -535,7 +539,7 @@
       return count ? `${count} ${count === 1 ? one : many}` : "";
     }));
   }
-  const verdictCounts = counts => joined(["open", "accepted", "rejected"].map(verdict => counts[verdict] ? `${counts[verdict]} ${verdict}` : ""));
+  const verdictCounts = counts => joined(["open", "accepted", "rejected", "dropped"].map(verdict => counts[verdict] ? `${counts[verdict]} ${verdict}` : ""));
   const hue = name => [...name].reduce((sum, character) => sum + character.charCodeAt(0), 0) % 4;
 
   function sheet(topic, items) {
