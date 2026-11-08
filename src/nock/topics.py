@@ -145,11 +145,15 @@ Derived = TypedDict(
         "from": NotRequired[list[str]],
         "when": NotRequired[str],
         "recipe": NotRequired[Recipe],
+        "captions": NotRequired[str],
+        "poster": NotRequired[str],
     },
 )
 """A derived file: `path` (a file to copy) or `text` with a `name`; `from`,
 the project files it shows; `when`, the condition it shows ("the payment
-lapsed"); `recipe`, how to make it again."""
+lapsed"); `recipe`, how to make it again. A video may carry `captions`, a
+WebVTT file (by default `NAME.vtt` beside its `path`, when there is one), and
+a `poster`, a picture shown before it plays."""
 
 
 class Content(TypedDict):
@@ -275,8 +279,15 @@ def message(
     }
 
 
-def state_of(topic: dict[str, Any]) -> State:
-    return State(topic.get("state") or State.ACTIVE)
+def state_of(topic: dict[str, Any], items: list[dict[str, Any]] | None = None) -> State:
+    """Where a topic's work stands. One from before topics had a state (not
+    yet migrated) reads as the migration will set it: done once every item
+    in it is decided, otherwise active."""
+    if topic.get("state"):
+        return State(topic["state"])
+    if items and all(item["verdict"] != Verdict.OPEN for item in items):
+        return State.DONE
+    return State.ACTIVE
 
 
 def talk(thread: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -364,12 +375,17 @@ class Topics:
         )
 
     def file(self, topic: str, slug: str, version: int, name: str) -> Path:
-        """Where one of a version's files is: only a file its record names."""
+        """Where one of a version's files is: only a file its record names,
+        or a video's captions or poster."""
         item = self.item(f"{topic}/{slug}")
         record = next((entry for entry in item["versions"] if entry["version"] == version), None)
         listed = record and next(
             (entry for entry in record["files"] if entry_name(entry) == name), None
         )
+        if not listed and record:
+            beside = any(name in companions(entry).values() for entry in record["files"])
+            if beside:
+                return self.directory / topic / slug / str(version) / name
         if not listed:
             raise NotFoundError(f"item {topic}/{slug} has no file {name} in version {version}")
         base = self.large if listed.get("local") else self.directory
@@ -385,7 +401,11 @@ class Topics:
                     continue
                 base = self.large if entry.get("local") else self.directory
                 path = base / item["topic"] / item["slug"] / str(version["version"]) / stored(entry)
-                files.append({**entry, "name": entry_name(entry), "where": str(path)})
+                folder = self.directory / item["topic"] / item["slug"] / str(version["version"])
+                beside = {
+                    f"{role}_where": str(folder / name) for role, name in companions(entry).items()
+                }
+                files.append({**entry, "name": entry_name(entry), "where": str(path), **beside})
             versions.append({**version, "decision": self.decision(item, version), "files": files})
         thread = self.thread_shown(item["thread"], item["topic"], item["slug"])
         return {**item, "versions": versions, "thread": thread}
@@ -509,7 +529,7 @@ class Topics:
         items = self.items(name)
         return {
             "name": name,
-            "state": str(state_of(topic)),
+            "state": str(state_of(topic, items)),
             **({"status": topic["status"]} if topic.get("status") else {}),
             **({"priority": topic["priority"]} if topic.get("priority") else {}),
             "description": self.current_description(topic),
@@ -631,6 +651,9 @@ class Topics:
 
     # --- topics -----------------------------------------------------------------
 
+    def standing(self, topic: dict[str, Any]) -> State:
+        return state_of(topic, None if topic.get("state") else self.items(topic["name"]))
+
     def recorded(self) -> dict[str, Any]:
         return {"moment": now(), **self.project.writer()}
 
@@ -662,9 +685,9 @@ class Topics:
         with self.project.lock("topics"):
             if (self.directory / name / TOPIC_FILE).is_file():
                 again = (
-                    f" — it is {state_of(self.topic(name))}; revive it:"
+                    f" — it is {self.standing(self.topic(name))}; revive it:"
                     f' `.nock/nock topics update {name} --revive "why it is back"`'
-                    if state_of(self.topic(name)) in CLOSED
+                    if self.standing(self.topic(name)) in CLOSED
                     else ": submit into it"
                 )
                 raise ConflictError(f"topic {name} exists{again}")
@@ -717,16 +740,16 @@ class Topics:
                 key: value for key, value in change.items() if key in ("state", "status")
             }
             if revive is not None:
-                if state_of(topic) not in CLOSED:
+                if self.standing(topic) not in CLOSED:
                     raise ConflictError(
-                        f"topic {name} is {state_of(topic)}, not done or abandoned: submit into"
+                        f"topic {name} is {self.standing(topic)}, not done or abandoned: submit into"
                         " it, no need to revive it"
                     )
                 if State(standing.get("state") or State.ACTIVE) in CLOSED:
                     raise UsageError("a revived topic is planned or active")
             if standing or revive is not None:
                 self.set_standing(topic, standing, revive)
-                said.append("revived" if revive is not None else str(state_of(topic)))
+                said.append("revived" if revive is not None else str(self.standing(topic)))
             if reply is not None:
                 said_now = said_in(
                     topic["thread"], author, reply, self.writer(), files=bool(attachments)
@@ -768,10 +791,10 @@ class Topics:
         """A new state or status, kept in the topic and recorded as a status
         entry in its thread; a revival sets it active with its note. A change
         of state without a status clears the status."""
-        state = State(change.get("state") or (State.ACTIVE if revived else state_of(topic)))
+        state = State(change.get("state") or (State.ACTIVE if revived else self.standing(topic)))
         if "status" in change:
             status = " ".join(str(change["status"] or "").split())
-        elif state is not state_of(topic):
+        elif state is not self.standing(topic):
             status = ""
         else:
             status = topic.get("status") or ""
@@ -803,7 +826,7 @@ class Topics:
             if name not in worked:
                 continue
             topic = self.topic(name)
-            if state_of(topic) in CLOSED:
+            if self.standing(topic) in CLOSED:
                 continue
             if any(entry.get("kind") == STATUS and by(entry, mine) for entry in topic["thread"]):
                 continue
@@ -828,9 +851,9 @@ class Topics:
         with self.project.lock("topics"):
             record = self.topic(topic)
             items = self.items(topic)
-            if state_of(record) in CLOSED:
+            if self.standing(record) in CLOSED:
                 raise ConflictError(
-                    f"topic {topic} is {state_of(record)}: if this brings it back, revive it first —"
+                    f"topic {topic} is {self.standing(record)}: if this brings it back, revive it first —"
                     f' `.nock/nock topics update {topic} --revive "why it is back"` — or open another topic'
                 )
             slug = check_name(draft["slug"], "slug") if "slug" in draft else slugged(title)
@@ -993,27 +1016,35 @@ class Topics:
         if files is None and previous is not None:
             files = [entry["path"] for entry in previous["files"] if entry["kind"] == "project"]
         derived = content.get("derived")
-        carried: list[tuple[dict[str, Any], bytes]] = []
+        carried: list[tuple[dict[str, Any], bytes, dict[str, bytes]]] = []
         if derived is None and previous is not None:
             for entry in previous["files"]:
                 if entry["kind"] == "derived":
                     base = self.large if entry.get("local") else self.directory
                     source = base / topic / item["slug"] / str(previous["version"]) / entry["name"]
-                    carried.append((entry, source.read_bytes()))
+                    beside = self.directory / topic / item["slug"] / str(previous["version"])
+                    kept = {
+                        name: (beside / name).read_bytes() for name in companions(entry).values()
+                    }
+                    carried.append((entry, source.read_bytes(), kept))
         if not decision and not files and not derived and not carried:
             raise UsageError(
                 "an item holds something: give `decision`, `files`, `derived`, or several"
             )
-        made: list[tuple[dict[str, Any], bytes]] = []
+        made: list[tuple[dict[str, Any], bytes, dict[str, bytes]]] = []
         if decision:
-            made.append(({"kind": "decision", "name": DECISION_FILE}, checked_decision(decision)))
+            made.append(
+                ({"kind": "decision", "name": DECISION_FILE}, checked_decision(decision), {})
+            )
         for path in files or []:
             made.append(self.project_file(path))
         for given in derived or []:
             made.append(self.derived_file(dict(given)))
         made += carried
-        self.check_assets(item, [entry for entry, _ in made])
-        names = [stored(entry) for entry, _ in made]
+        self.check_assets(item, [entry for entry, _, _ in made])
+        names = [stored(entry) for entry, _, _ in made] + [
+            name for _, _, beside in made for name in beside
+        ]
         doubled = sorted({name for name in names if names.count(name) > 1})
         if doubled:
             raise UsageError(f"two files named {', '.join(doubled)}: rename one")
@@ -1022,7 +1053,10 @@ class Topics:
             shutil.rmtree(old_folder, ignore_errors=True)
             shutil.rmtree(self.large / topic / item["slug"] / str(number), ignore_errors=True)
         entries = []
-        for entry, data in made:
+        for entry, data, beside in made:
+            for name, kept in beside.items():
+                (folder / name).parent.mkdir(parents=True, exist_ok=True)
+                (folder / name).write_bytes(kept)
             local = len(data) > LARGE
             target = (self.large if local else self.directory) / topic / item["slug"] / str(number)
             target = target / stored(entry)
@@ -1064,7 +1098,7 @@ class Topics:
                 " unrelated files are items of their own"
             )
 
-    def project_file(self, given: str) -> tuple[dict[str, Any], bytes]:
+    def project_file(self, given: str) -> tuple[dict[str, Any], bytes, dict[str, bytes]]:
         here = self.project.here.resolve()
         path = Path(given).expanduser()
         path = (path if path.is_absolute() else here / path).resolve()
@@ -1075,9 +1109,16 @@ class Topics:
             )
         relative = str(path.relative_to(here))
         data = path.read_bytes()
-        return {"kind": "project", "path": relative, "type": kind_of(relative, data)}, data
+        entry: dict[str, Any] = {
+            "kind": "project",
+            "path": relative,
+            "type": kind_of(relative, data),
+        }
+        beside = video_companions(entry, path.name, path, None, None)
+        return entry, data, beside
 
-    def derived_file(self, given: dict[str, Any]) -> tuple[dict[str, Any], bytes]:
+    def derived_file(self, given: dict[str, Any]) -> tuple[dict[str, Any], bytes, dict[str, bytes]]:
+        source = None
         if "text" in given:
             name = str(given.get("name") or "").strip()
             if not name:
@@ -1090,6 +1131,7 @@ class Topics:
                 raise UsageError(f"{given['path']}: no such file")
             name = str(given.get("name") or path.name)
             data = path.read_bytes()
+            source = path
         else:
             raise UsageError("a derived file gives `path` (a file to copy) or `text` with `name`")
         if "/" in name or name in (DECISION_FILE, ITEM_FILE, PROJECT_FILES):
@@ -1107,7 +1149,8 @@ class Topics:
             "when": str(given.get("when") or "").strip() or None,
             "recipe": recipe or None,
         }
-        return entry, data
+        beside = video_companions(entry, name, source, given.get("captions"), given.get("poster"))
+        return entry, data, beside
 
     def delete_item(self, ref: str) -> str | None:
         with self.project.lock("topics"):
@@ -1468,6 +1511,49 @@ def attachment_name(name: str) -> str:
 
 def entry_name(entry: dict[str, Any]) -> str:
     return entry.get("path") or entry["name"]
+
+
+def companions(entry: dict[str, Any]) -> dict[str, str]:
+    """A video's files kept beside it, by role: its `captions` and `poster`."""
+    return {role: entry[role] for role in ("captions", "poster") if entry.get(role)}
+
+
+def video_companions(
+    entry: dict[str, Any],
+    name: str,
+    source: Path | None,
+    captions: str | None,
+    poster: str | None,
+) -> dict[str, bytes]:
+    """A video's captions (WebVTT: the path given, else `NAME.vtt` beside its
+    source) and poster, recorded in its entry and returned to be kept beside
+    it in its version's folder."""
+    stem = Path(name).stem
+    found: dict[str, bytes] = {}
+    if (captions is not None or poster is not None) and entry["type"] != "video":
+        raise UsageError(f"{name}: only a video has `captions` or a `poster`")
+    if entry["type"] != "video":
+        return found
+    vtt = Path(captions).expanduser() if captions else None
+    if vtt is None and source is not None and source.with_suffix(".vtt").is_file():
+        vtt = source.with_suffix(".vtt")
+    if vtt is not None:
+        vtt = vtt if vtt.is_absolute() else Path.cwd() / vtt
+        if not vtt.is_file():
+            raise UsageError(f"{captions}: no such captions file")
+        text = vtt.read_bytes()
+        if not text.lstrip(b"\xef\xbb\xbf").startswith(b"WEBVTT"):
+            raise UsageError(f"{vtt.name}: captions are a WebVTT file, starting `WEBVTT`")
+        entry["captions"] = f"{stem}.vtt"
+        found[entry["captions"]] = text
+    if poster:
+        picture = Path(poster).expanduser()
+        picture = picture if picture.is_absolute() else Path.cwd() / picture
+        if not picture.is_file() or kind_of(picture.name, b"") != "image":
+            raise UsageError(f"{poster}: a poster is a picture file")
+        entry["poster"] = f"{stem}.poster{picture.suffix.lower()}"
+        found[entry["poster"]] = picture.read_bytes()
+    return found
 
 
 def stored(entry: dict[str, Any]) -> str:
