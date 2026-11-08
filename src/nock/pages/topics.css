@@ -155,6 +155,7 @@
 .topics .verdict-mark svg { width: 13px; height: 13px; }
 .topics .verdict-mark.accepted { color: var(--ok); background: var(--ok-tint); box-shadow: inset 0 0 0 1px rgb(19 107 58 / .18); }
 .topics .verdict-mark.rejected { color: var(--error); background: #fbe4e6; box-shadow: inset 0 0 0 1px rgb(171 19 32 / .16); }
+.topics .verdict-mark.dropped { color: var(--muted); background: var(--selection-tint); box-shadow: inset 0 0 0 1px var(--border); opacity: .8; }
 .topics .considered { display: grid; gap: 6px; }
 .topics .considered .label { color: var(--muted); }
 .topics .alternatives { margin: 0; padding-left: 1.25em; display: grid; gap: 4px; }

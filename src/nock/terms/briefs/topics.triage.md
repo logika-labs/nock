@@ -14,6 +14,7 @@ time and one item at a time. Their word is what you record.
     .nock/nock items show TOPIC/SLUG             # every version, its decision and files, its thread
     .nock/nock items judge TOPIC/SLUG '{"verdict": "accepted"}'
     .nock/nock items judge TOPIC/SLUG '{"verdict": "rejected", "comment": "what they said"}'
+    .nock/nock items judge TOPIC/SLUG '{"verdict": "rejected", "rework": false, "comment": "superseded by …"}'   # drop: nothing to rework
     .nock/nock topics judge TOPIC '{"verdict": "accepted", "comment": "…"}'   # every open item of it
     .nock/nock items update TOPIC/SLUG --reply "what they said"                # a word, no verdict
 
@@ -26,8 +27,9 @@ files and what was made to show them, the oldest first. Put each in a few
 lines: what was decided or made, what it means for the system, the
 alternatives that lost; for a file, where to look (`items show` gives its
 path; the owner may prefer `.nock/nock studio` for pictures). Ask: accept,
-reject, or say something? A rejection says what should change, as its
-comment. For more, look into it yourself and answer; don't argue for it; if
+reject, drop, or say something? A rejection says what should change, as its
+comment; a drop (superseded, no longer wanted: nothing to rework) says why,
+and closes the item. For more, look into it yourself and answer; don't argue for it; if
 you think it is wrong, say so once. When the owner settles a whole topic at
 once, judge the topic.
 
@@ -37,6 +39,6 @@ once, in its words: whether nock may share its weekly usage report with its
 makers, asked once. Record exactly their answer with `.nock/nock usage share
 yes` or `.nock/nock usage share no`; if they don't answer, record nothing.
 
-At the end, say what was accepted and rejected, and offer to rework the
-rejected items: each as a new version (`items update REF --version`), with
+At the end, say what was accepted, rejected and dropped, and offer to rework the
+rejected items (never the dropped ones): each as a new version (`items update REF --version`), with
 a line in its thread only if the version doesn't say it.
