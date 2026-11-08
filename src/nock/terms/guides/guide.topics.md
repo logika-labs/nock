@@ -110,7 +110,9 @@ An item's ref is `topic/slug`, the slug made from its title (or given as
 and its versions' files in `SLUG/N/` — written and committed there whichever
 worktree wrote it, so the owner sees it at once; a file over 20 MB (most
 videos) stays on the machine, under `.nock/local/topics/`, uncommitted, and
-the record says so (`"local": true`).
+the record says so (`"local": true`). The files a message carries are kept
+beside its thread, in the topic's `attachments/MOMENT/` or the item's
+`SLUG/attachments/MOMENT/`, the same way.
 
 ## Verdicts
 
@@ -163,7 +165,8 @@ How the two sides talk in the threads is in [Chatting](#chatting).
 
 `nock topics list` and `nock items list [TOPIC]` start with a summary — the
 open items by topic, and what waits on the agent: threads where the owner
-wrote last, items they rejected — then the list, cut short; `--full` prints
+wrote last (with the paths of the files their message carries), items they
+rejected — then the list, cut short; `--full` prints
 the whole list and no summary. `--query "words"` ranks by plain full text
 across topic names and descriptions, item titles, decisions, threads, file
 paths and `when` conditions; `topics list --state active` keeps one state,

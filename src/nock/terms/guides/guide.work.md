@@ -52,7 +52,7 @@ runs no script there) open there too.
 One bar toggles **Search**, which filters as you type —
 it looks where the owner does: a topic's name, description, status and
 thread; an item's title, decision, file names, the text of its text files and
-its thread (not a recipe, a `from`, a ref, or nock's own notes such as a
+its thread, the names of the files its messages carry too, in either (not a recipe, a `from`, a ref, or nock's own notes such as a
 split's); every word must be in the topic and the item together, one at least
 in the item. From three letters it opens the topics and decisions (and
 unfolds the sections) holding what it finds, rings each picture, text or file
