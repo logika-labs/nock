@@ -48,6 +48,7 @@ src/nock/
   store.py           the SQLite schema and a thin Store over it
   telemetry.py       Calls (start, finish, the repeated-failure note) and Cache
   sessions.py        Claude Code transcripts → sessions, prompts and events, read on as they grow
+  callers.py         Callers: which of a session's agents runs a nock command (the before-tool hook's notes)
   prices.py          Prices: LiteLLM's public table, cached daily, and `[pricing]`, for API-equivalent cost
 
   # the loop
@@ -363,6 +364,24 @@ else and hands it to `hooks.run`, which:
      `systemMessage`;
    - **UserPromptSubmit** tells the session the owner's verdicts and
      messages on the items it submitted, once per change (the `told` table);
+   - **PreToolUse**, wired with a Bash matcher and the hook `if` rule
+     `Bash(*.nock/nock *)` unless a project hook wants every tool, notes the
+     `.nock/nock` command about to run with the subagent running it
+     (`callers.Callers.note`: the hook input's `agent_id` and `agent_type`,
+     NULL for the session's own thread) in the `callers` table. The command,
+     running, claims the newest unclaimed note of its session (within an
+     hour) carrying each of its plain arguments (`Callers.claim`, once per
+     process, from `Project.writer`), which then stamps its records with
+     the subagent as `session`, the session as `parent`, its type as
+     `role`. A subagent's own environment has only its parent's
+     `CLAUDE_CODE_SESSION_ID`, so this is the one way to tell them apart;
+     a session nock dispatches gets `NOCK_PARENT_SESSION` instead;
+   - **Stop**, besides refusing a turn with a round left open, refuses once
+     a session (the `stated` table) the end of a turn when the session, or
+     a subagent of it, did its own work in a planned or active topic (opened
+     it, or submitted, versioned or answered an item there: the `wrote`
+     table, so a migration's rewrites and the owner's verdicts never count)
+     and never set its state or status (`Topics.unstated`);
    - **PostToolUse**, wired with an edit-tools matcher unless a project hook
      wants every tool, shows the items not rejected whose latest version holds
      the edited file or was derived `from` it, once per session (the
@@ -402,7 +421,7 @@ there.
 ### Topics
 
 `topics.Topics` keeps, in the main checkout's `.nock/topics/`, a directory
-per topic (`topic.json`: name, description, created, thread) holding a
+per topic (`topic.json`: name, description, state, status, created, thread) holding a
 directory per item (`SLUG/item.json`: title, aliases, verdict, decided,
 created, the thread, and the versions' records) and its versions' files
 (`SLUG/N/`: `decision.json`, project files under `project/PATH`, derived
@@ -413,13 +432,17 @@ main branch at once; it skips the commit, and says so, when the main
 checkout is mid-merge or mid-rebase. A ref is `topic/slug`; `resolve` also
 takes an alias (a migrated decision's number, `170`, `D170`, `topic/170`).
 
-A task item has no files: its `task` (brief, branch, worktree, state,
-`waiting_on`, `started`, `heard`) changes in place through `set_task`, any
-agent's update refreshing `heard`; done accepts it (`decided.by = "done"`,
-which `owner_moment` leaves out), and `awaits_owner` counts it only once
-failed. `create_item` refuses a topic that is `finished` (every item decided, no
-revival since the last verdict): `update_topic --revive` posts a revival note
-first, and `current_description` reads the latest one as the description.
+A topic's `state` (`State`: planned, active, done, abandoned) and `status`
+change through `update_topic` → `set_standing`, which keeps them in
+`topic.json` and appends a status entry (`kind: "status"`, the state and
+status, the writer) to its thread; `talk` leaves status entries out wherever
+the thread is a conversation (`pending`, `said_in`, `chat_state`,
+`awaiting`, `withdraw`). `create_item` refuses a done or abandoned topic
+(`CLOSED`): `update_topic --revive` sets it active with a status entry
+marked `revived`, and `current_description` reads the latest one (or an
+older `kind: "revival"` note) as the description. Every record's stamp is
+`Project.writer()`: `session`, `role`, and `parent` for a subagent or a
+dispatched session.
 `add_version` writes a version from `Content` (decision, files, derived),
 carrying over what it leaves out from the previous one, project files copied
 again from the working tree, and `check_assets` holds it to one asset: a

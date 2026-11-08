@@ -1036,7 +1036,7 @@ class Knowledge:
         lines += ["", "# Every topic and its items", ""]
         for name in topics.names():
             row = topics.row(name)
-            lines.append(f"## {name} ({row['open']} open): {row['description']}")
+            lines.append(f"## {name} ({row['state']}, {row['open']} open): {row['description']}")
             lines += [
                 f"- [{item['ref']}] {item['verdict']}: {item['title']}"
                 for item in topics.items(name)

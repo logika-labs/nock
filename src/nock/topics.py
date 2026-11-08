@@ -15,9 +15,13 @@ checkout's `.nock/topics/TOPIC/` (a file over `LARGE` bytes under
 `.nock/local/topics/` instead, uncommitted), committed as it is written,
 whichever worktree writes it, so the owner sees it at once.
 
-A finished topic (every item decided) that comes back is revived: a note in
-its thread says why, and reads as its description from then on; its items
-from before stay, as earlier rounds."""
+A topic's progress is its own: a `state` (planned, active, done, abandoned)
+and a `status`, a line its agent keeps current as it works; each change is a
+status entry in its thread, so the history stays. A done or abandoned topic
+takes no new items; when its work comes back it is revived, set active again
+with a note that says why, which reads as its description from then on. Every
+record keeps who wrote it: the session, its role and, for a subagent or a
+session nock dispatched, its parent session."""
 
 from __future__ import annotations
 
@@ -77,16 +81,20 @@ class Status(StrEnum):
 
 
 class State(StrEnum):
-    """Where a task is."""
+    """Where a topic's work is."""
 
-    QUEUED = "queued"
-    RUNNING = "running"
-    WAITING = "waiting"
-    """On the owner or another task: `waiting_on` says which."""
+    PLANNED = "planned"
+    ACTIVE = "active"
     DONE = "done"
-    """Merged or finished: accepted by itself, its thread keeping the final report."""
-    FAILED = "failed"
-    """Open for the owner."""
+    """Finished: it takes no new items until it is revived."""
+    ABANDONED = "abandoned"
+    """Given up: like done, it takes no new items until it is revived."""
+
+
+# The states in which a topic takes no new items.
+CLOSED = (State.DONE, State.ABANDONED)
+# A thread's entry recording a change of the topic's state or status.
+STATUS = "status"
 
 
 class Author(StrEnum):
@@ -148,26 +156,11 @@ class Content(TypedDict):
     never unrelated files, which are items of their own."""
 
 
-class Task(TypedDict):
-    """Work dispatched to an agent: what was asked, where it runs, where it is."""
-
-    brief: str
-    """What was asked, in a few lines."""
-    branch: NotRequired[str]
-    worktree: NotRequired[str]
-    state: NotRequired[State]
-    """queued (the default), running, waiting, done or failed."""
-    waiting_on: NotRequired[str]
-    """With `waiting`: `owner`, or the ref of the task it waits on."""
-
-
 class ItemDraft(Content):
     title: str
     """What it is, in a line; for a decision, what was decided, as a statement."""
     slug: NotRequired[str]
     """Its name in the topic (`topic/slug`); made from the title when left out."""
-    task: NotRequired[Task]
-    """A task instead of files: work dispatched, kept current by its state."""
 
 
 class ItemChange(Content):
@@ -175,16 +168,6 @@ class ItemChange(Content):
     topic: NotRequired[str]
     """Move it to this existing topic: re-filing, whatever its verdict; its slug
     kept (suffixed if taken there), its old ref kept as an alias."""
-    brief: NotRequired[str]
-    branch: NotRequired[str]
-    worktree: NotRequired[str]
-    state: NotRequired[State]
-    """A task's state: done accepts it, failed leaves it open for the owner."""
-    waiting_on: NotRequired[str]
-
-
-# What of a change is a task's.
-TASK_FIELDS = ("brief", "branch", "worktree", "state", "waiting_on")
 
 
 class TopicDraft(TypedDict):
@@ -192,11 +175,21 @@ class TopicDraft(TypedDict):
     """Lowercase words joined by `-`: `checkout-emails`."""
     description: str
     """Why it exists, as part of what work, in a sentence or two."""
+    state: NotRequired[State]
+    """planned, or active (the default): work under way."""
+    status: NotRequired[str]
+    """Where the work is, in a line: "eval running, about 2 h"."""
 
 
 class TopicChange(TypedDict):
     name: NotRequired[str]
     description: NotRequired[str]
+    state: NotRequired[State]
+    """planned, active, done (finished) or abandoned; a change of state
+    without a `status` clears the status."""
+    status: NotRequired[str]
+    """Where the work is, in a line, kept current at each milestone:
+    "waiting for the gate on main"."""
 
 
 class Word(TypedDict):
@@ -238,16 +231,28 @@ def moment(record: dict[str, Any] | None) -> str:
     return (record or {}).get("moment") or ""
 
 
-def message(author: Author, text: str, session: str | None, **extra: Any) -> dict[str, Any]:
+def message(
+    author: Author, text: str, writer: dict[str, str | None], **extra: Any
+) -> dict[str, Any]:
     if not text.strip():
         raise UsageError("the message is empty")
     return {
         "author": str(author),
         "moment": now(),
         "text": text.strip(),
-        **({"session": session} if session else {}),
+        **{key: value for key, value in writer.items() if value},
         **extra,
     }
+
+
+def state_of(topic: dict[str, Any]) -> State:
+    return State(topic.get("state") or State.ACTIVE)
+
+
+def talk(thread: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """A thread's messages, without its status entries: what the owner and
+    the agents said to each other."""
+    return [entry for entry in thread if entry.get("kind") != STATUS]
 
 
 class Topics:
@@ -356,20 +361,16 @@ class Topics:
 
     def current_description(self, topic: dict[str, Any]) -> str:
         """The latest revival note, once the topic came back; its description before."""
-        revivals = [entry for entry in topic["thread"] if entry.get("kind") == "revival"]
+        revivals = [
+            entry
+            for entry in topic["thread"]
+            if entry.get("kind") == "revival" or entry.get("revived")
+        ]
         return revivals[-1]["text"] if revivals else topic["description"]
 
     def activity(self, topic: dict[str, Any], items: list[dict[str, Any]]) -> str:
         moments = [topic["updated"], *(item["updated"] for item in items)]
         return max(moments)
-
-    def finished(self, topic: dict[str, Any], items: list[dict[str, Any]]) -> bool:
-        """Every item decided, and no revival since the last verdict."""
-        if not items or any(item["verdict"] == Verdict.OPEN for item in items):
-            return False
-        decided = max(moment(item.get("decided")) for item in items)
-        revived = [entry["moment"] for entry in topic["thread"] if entry.get("kind") == "revival"]
-        return not revived or max(revived) < decided
 
     def counts(self, items: list[dict[str, Any]]) -> dict[str, int]:
         counted = Counter(item["verdict"] for item in items)
@@ -380,9 +381,10 @@ class Topics:
         items = self.items(name)
         return {
             "name": name,
+            "state": str(state_of(topic)),
+            **({"status": topic["status"]} if topic.get("status") else {}),
             "description": self.current_description(topic),
             **self.counts(items),
-            "finished": self.finished(topic, items),
             "active": self.activity(topic, items),
         }
 
@@ -392,7 +394,8 @@ class Topics:
         threads, rejected = [], []
         for name in self.names():
             topic = self.topic(name)
-            if topic["thread"] and topic["thread"][-1]["author"] == Author.OWNER:
+            said = talk(topic["thread"])
+            if said and said[-1]["author"] == Author.OWNER:
                 threads.append(name)
             for item in self.items(name):
                 if item["thread"] and item["thread"][-1]["author"] == Author.OWNER:
@@ -416,13 +419,10 @@ class Topics:
     def item_row(self, item: dict[str, Any]) -> dict[str, Any]:
         latest = item["versions"][-1]
         kinds = sorted({entry["kind"] for entry in latest["files"]})
-        if item.get("task"):
-            kinds = ["task"]
         return {
             "ref": item["ref"],
             "title": item["title"],
             "verdict": item["verdict"],
-            **({"state": item["task"]["state"]} if item.get("task") else {}),
             "kinds": kinds,
             **({"options": True} if item.get("options") else {}),
             **({"preferred": item["preferred"]} if item.get("preferred") else {}),
@@ -435,8 +435,6 @@ class Topics:
     def item_text(self, item: dict[str, Any]) -> tuple[str, str]:
         """An item's title, and the rest of what it says, for search."""
         parts = [entry["text"] for entry in item["thread"]]
-        if item.get("task"):
-            parts += [item["task"]["brief"], item["task"].get("branch") or ""]
         latest = item["versions"][-1]
         decision = self.decision(item, latest)
         if decision:
@@ -480,6 +478,7 @@ class Topics:
             body = " ".join(
                 [
                     record["description"],
+                    record.get("status") or "",
                     *(entry["text"] for entry in record["thread"]),
                     *(" ".join(self.item_text(item)) for item in self.items(name)),
                 ]
@@ -493,11 +492,17 @@ class Topics:
     # --- topics -----------------------------------------------------------------
 
     def recorded(self) -> dict[str, Any]:
-        return {
-            "moment": now(),
-            "session": self.project.current_session(),
-            "role": self.project.current_role() or "interactive",
-        }
+        return {"moment": now(), **self.project.writer()}
+
+    def worked(self, topic: str, stamp: dict[str, Any]) -> None:
+        """An agent's own work in a topic, as the stop hook counts it: kept
+        apart from what migrations rewrite and from the owner's verdicts,
+        which carry sessions too but are nobody's work there."""
+        if stamp.get("session"):
+            self.project.store.insert(
+                "wrote",
+                {"session": stamp["session"], "parent": stamp.get("parent"), "topic": topic},
+            )
 
     def save_topic(self, topic: dict[str, Any]) -> Path:
         topic["updated"] = now()
@@ -511,22 +516,30 @@ class Topics:
             raise UsageError(
                 "`description` is empty: say why the topic exists, as part of what work"
             )
+        state = State(draft.get("state") or State.ACTIVE)
+        if state in CLOSED:
+            raise UsageError("a topic opens planned or active: its work is still to do")
         with self.project.lock("topics"):
             if (self.directory / name / TOPIC_FILE).is_file():
-                topic, items = self.topic(name), self.items(name)
                 again = (
-                    f' — it is finished; revive it: `.nock/nock topics update {name} --revive "why it is back"`'
-                    if self.finished(topic, items)
+                    f" — it is {state_of(self.topic(name))}; revive it:"
+                    f' `.nock/nock topics update {name} --revive "why it is back"`'
+                    if state_of(self.topic(name)) in CLOSED
                     else ": submit into it"
                 )
                 raise ConflictError(f"topic {name} exists{again}")
-            topic = {
+            topic: dict[str, Any] = {
                 "name": name,
                 "description": draft["description"].strip(),
+                "state": str(state),
+                "status": "",
                 "created": self.recorded(),
                 "thread": [],
             }
+            if str(draft.get("status") or "").strip():
+                self.set_standing(topic, {"status": draft.get("status")}, None)
             path = self.save_topic(topic)
+            self.worked(name, topic["created"])
             return topic, self.commit([path], f"Topic {name}: {topic['description'][:80]}")
 
     def update_topic(
@@ -538,23 +551,37 @@ class Topics:
         author: Author = Author.AGENT,
     ) -> tuple[dict[str, Any], str | None]:
         if not change and reply is None and revive is None:
-            raise UsageError("nothing to do: give a change, `--reply`, or `--revive`")
+            raise UsageError(
+                "nothing to do: give a change (`state`, `status`, …), `--reply`, or `--revive`"
+            )
         with self.project.lock("topics"):
             topic = self.topic(name)
-            session = self.project.current_session()
             touched = [self.directory / name]
+            said = []
             if "description" in change:
                 if not change["description"].strip():
                     raise UsageError("`description` is empty")
                 topic["description"] = change["description"].strip()
+                said.append("updated")
+            standing: dict[str, Any] = {
+                key: value for key, value in change.items() if key in ("state", "status")
+            }
             if revive is not None:
-                if not self.finished(topic, self.items(name)):
+                if state_of(topic) not in CLOSED:
                     raise ConflictError(
-                        f"topic {name} is not finished: submit into it, no need to revive it"
+                        f"topic {name} is {state_of(topic)}, not done or abandoned: submit into"
+                        " it, no need to revive it"
                     )
-                topic["thread"].append(message(author, revive, session, kind="revival"))
+                if State(standing.get("state") or State.ACTIVE) in CLOSED:
+                    raise UsageError("a revived topic is planned or active")
+            if standing or revive is not None:
+                self.set_standing(topic, standing, revive)
+                said.append("revived" if revive is not None else str(state_of(topic)))
             if reply is not None:
-                topic["thread"].append(said_in(topic["thread"], author, reply, session))
+                topic["thread"].append(said_in(topic["thread"], author, reply, self.writer()))
+                said.append("replied")
+                if author == Author.AGENT:
+                    self.worked(topic["name"], topic["thread"][-1])
             if "name" in change and change["name"] != name:
                 renamed = check_name(change["name"])
                 if (self.directory / renamed).exists():
@@ -563,10 +590,68 @@ class Topics:
                 if (self.large / name).is_dir():
                     (self.large / name).rename(self.large / renamed)
                 topic["name"] = renamed
+                with self.project.store.connection() as connection:
+                    connection.execute(
+                        "UPDATE wrote SET topic = ? WHERE topic = ?", (renamed, name)
+                    )
                 touched.append(self.directory / renamed)
+                said.append(f"renamed from {name}")
             self.save_topic(topic)
-            said = "revived" if revive is not None else "updated"
-            return topic, self.commit(touched, f"Topic {topic['name']}, {said}")
+            line = f": {topic['status']}" if standing and topic.get("status") else ""
+            return topic, self.commit(
+                touched, f"Topic {topic['name']}, {', '.join(said or ['updated'])}{line}"
+            )
+
+    def writer(self) -> dict[str, str | None]:
+        return self.project.writer()
+
+    def set_standing(
+        self, topic: dict[str, Any], change: dict[str, Any], revived: str | None
+    ) -> None:
+        """A new state or status, kept in the topic and recorded as a status
+        entry in its thread; a revival sets it active with its note. A change
+        of state without a status clears the status."""
+        state = State(change.get("state") or (State.ACTIVE if revived else state_of(topic)))
+        if "status" in change:
+            status = " ".join(str(change["status"] or "").split())
+        elif state is not state_of(topic):
+            status = ""
+        else:
+            status = topic.get("status") or ""
+        note = (revived or "").strip()
+        if revived is not None and not note:
+            raise UsageError("`--revive` says why the topic is back")
+        topic["state"], topic["status"] = str(state), status
+        entry = message(Author.AGENT, note or status or str(state), self.writer(), kind=STATUS)
+        entry.update({"state": str(state), "status": status})
+        if revived is not None:
+            entry["revived"] = True
+        topic["thread"].append(entry)
+
+    def unstated(self, session: str) -> list[str]:
+        """The planned or active topics this session (or a subagent of it)
+        did its own work in — opened, or submitted, versioned or answered an
+        item there — whose state or status it never set. A migration's
+        rewrites and the owner's verdicts are no one's work there."""
+        mine = {session}
+        worked = {
+            row["topic"]
+            for row in self.project.store.rows(
+                "SELECT DISTINCT topic FROM wrote WHERE session = ? OR parent = ?",
+                (session, session),
+            )
+        }
+        found = []
+        for name in self.names():
+            if name not in worked:
+                continue
+            topic = self.topic(name)
+            if state_of(topic) in CLOSED:
+                continue
+            if any(entry.get("kind") == STATUS and by(entry, mine) for entry in topic["thread"]):
+                continue
+            found.append(name)
+        return found
 
     def delete_topic(self, name: str) -> str | None:
         with self.project.lock("topics"):
@@ -585,9 +670,9 @@ class Topics:
         with self.project.lock("topics"):
             record = self.topic(topic)
             items = self.items(topic)
-            if self.finished(record, items):
+            if state_of(record) in CLOSED:
                 raise ConflictError(
-                    f"topic {topic} is finished: if this brings it back, revive it first —"
+                    f"topic {topic} is {state_of(record)}: if this brings it back, revive it first —"
                     f' `.nock/nock topics update {topic} --revive "why it is back"` — or open another topic'
                 )
             slug = check_name(draft["slug"], "slug") if "slug" in draft else slugged(title)
@@ -609,15 +694,9 @@ class Topics:
                 "thread": [],
                 "versions": [],
             }
-            if "task" in draft:
-                if any(key in draft for key in ("decision", "files", "derived")):
-                    raise UsageError("a task holds nothing else: submit files as their own item")
-                item["task"] = {"brief": "", "state": str(State.QUEUED), "started": None}
-                self.set_task(item, dict(draft["task"]))
-                item["versions"].append({"version": 1, **stamp, "files": []})
-            else:
-                self.add_version(topic, item, draft, None)
+            self.add_version(topic, item, draft, None)
             path = self.save_item(topic, item)
+            self.worked(topic, stamp)
             return self.with_ref(topic, item), self.commit(
                 [path.parent], f"Item {topic}/{slug}: {title}"
             )
@@ -660,43 +739,28 @@ class Topics:
                     if not change["title"].strip():
                         raise UsageError("`title` is empty")
                     item["title"] = change["title"].strip()
-                tasked = {key: value for key, value in change.items() if key in TASK_FIELDS}
-                content = {
-                    key: value
-                    for key, value in change.items()
-                    if key != "title" and key not in TASK_FIELDS
-                }
-                if item.get("task") and content:
-                    raise UsageError("a task holds nothing else: submit files as their own item")
-                if tasked:
-                    if not item.get("task"):
-                        raise UsageError(f"{', '.join(tasked)}: only a task has them")
-                    self.set_task(item, tasked)
+                content = {key: value for key, value in change.items() if key != "title"}
                 if content:
                     latest = item["versions"].pop()
                     self.add_version(topic, item, content, latest)
                 said.append("updated")
+                self.worked(topic, self.recorded())
             if version is not None:
-                if item.get("task"):
-                    raise UsageError("a task has no versions: change its state, or reply")
                 if "title" in version:
                     item["title"] = version["title"].strip() or item["title"]
                 self.add_version(topic, item, version, item["versions"][-1])
                 item["verdict"] = str(Verdict.OPEN)
                 item["decided"] = None
                 said.append(f"version {item['versions'][-1]['version']}")
+                self.worked(topic, item["versions"][-1])
             if reply is not None:
                 said_now = said_in(
-                    item["thread"],
-                    author,
-                    reply,
-                    self.project.current_session(),
-                    item.get("decided"),
+                    item["thread"], author, reply, self.writer(), item.get("decided")
                 )
                 item["thread"].append(said_now)
                 said.append("answered" if "answers" in said_now else "replied")
-            if item.get("task") and author is Author.AGENT:
-                item["task"]["heard"] = now()
+                if author == Author.AGENT:
+                    self.worked(topic, said_now)
             path = self.save_item(topic, item)
             return self.with_ref(topic, item), self.commit(
                 [*touched, path.parent, self.large / topic / item["slug"]],
@@ -728,39 +792,6 @@ class Topics:
             for table in ("told", "shown_items"):
                 connection.execute(f"UPDATE {table} SET item = ? WHERE item = ?", (new, old))
         return f"moved from {old}"
-
-    def set_task(self, item: dict[str, Any], fields: dict[str, Any]) -> None:
-        """Fold a task's fields in: running starts its clock, waiting names
-        what on, done accepts it by itself, failed leaves it open."""
-        task = item["task"]
-        for key in ("brief", "branch", "worktree"):
-            if key in fields:
-                task[key] = str(fields[key]).strip() or None
-        if not task.get("brief"):
-            raise UsageError("a task's `brief` is empty: say what was asked")
-        state = State(fields.get("state") or task["state"])
-        waiting_on = str(fields.get("waiting_on") or "").strip() or None
-        if state is State.WAITING:
-            waiting_on = waiting_on or task.get("waiting_on")
-            if not waiting_on:
-                raise UsageError("`waiting` says on what: `waiting_on` is `owner` or a task's ref")
-            if waiting_on != "owner":
-                self.resolve(waiting_on)
-        else:
-            waiting_on = None
-        task["state"], task["waiting_on"] = str(state), waiting_on
-        if state is not State.QUEUED and not task.get("started"):
-            task["started"] = now()
-        task["heard"] = now()
-        if state is State.DONE:
-            item["verdict"] = str(Verdict.ACCEPTED)
-            item["decided"] = {
-                "moment": now(),
-                "session": self.project.current_session(),
-                "by": "done",
-            }
-        elif item["verdict"] == Verdict.ACCEPTED and item.get("decided", {}).get("by") == "done":
-            item["verdict"], item["decided"] = str(Verdict.OPEN), None
 
     def add_version(
         self,
@@ -964,11 +995,11 @@ class Topics:
         if verdict is Verdict.OPEN:
             raise UsageError("a verdict is accepted or rejected")
         item["verdict"] = str(verdict)
-        item["decided"] = {"moment": now(), "session": self.project.current_session()}
+        item["decided"] = {"moment": now(), **self.writer()}
         comment = str(word.get("comment") or "").strip()
         if comment:
             item["thread"].append(
-                message(Author.OWNER, comment, self.project.current_session(), verdict=str(verdict))
+                message(Author.OWNER, comment, self.writer(), verdict=str(verdict))
             )
 
     def judge_topic(self, name: str, word: Word) -> tuple[list[str], str | None]:
@@ -986,12 +1017,7 @@ class Topics:
             comment = str(word.get("comment") or "").strip()
             if comment:
                 topic["thread"].append(
-                    message(
-                        Author.OWNER,
-                        comment,
-                        self.project.current_session(),
-                        verdict=str(word["verdict"]),
-                    )
+                    message(Author.OWNER, comment, self.writer(), verdict=str(word["verdict"]))
                 )
                 paths.append(self.save_topic(topic))
             return judged, self.commit(
@@ -1012,7 +1038,9 @@ class Topics:
                 raise UsageError("give `ref` or `topic`")
             if not pending(record["thread"], record.get("decided")):
                 raise ConflictError(f"{where} has no message of yours waiting: nothing to withdraw")
-            text = record["thread"].pop()["text"]
+            waiting = talk(record["thread"])[-1]
+            record["thread"].remove(waiting)
+            text = waiting["text"]
             if ref is not None:
                 path = self.save_item(record["topic"], record)
             else:
@@ -1041,7 +1069,7 @@ class Topics:
         }
         news = []
         for item in self.every():
-            if session not in {version.get("session") for version in item["versions"]}:
+            if not any(by(version, {session}) for version in item["versions"]):
                 continue
             said = owner_moment(item)
             if not said or (item["ref"], said) in told:
@@ -1066,7 +1094,10 @@ class Topics:
             if not said or (refs is not None and item["ref"] not in refs):
                 continue
             sessions = {
-                version["session"] for version in item["versions"] if version.get("session")
+                version[key]
+                for version in item["versions"]
+                for key in ("session", "parent")
+                if version.get(key)
             }
             for session in sorted(sessions):
                 if (session, item["ref"], said) not in told:
@@ -1125,20 +1156,27 @@ class Topics:
         return committed(self.project, relative, message) if relative else None
 
 
+def by(stamp: dict[str, Any], sessions: set[str]) -> bool:
+    """Whether one of these sessions wrote it, itself or through a subagent."""
+    return stamp.get("session") in sessions or stamp.get("parent") in sessions
+
+
 def pending(thread: list[dict[str, Any]], decided: dict[str, Any] | None = None) -> bool:
     """The owner wrote last, and not with a verdict: their message waits for
     the agent's answer, and the chat is closed to them until it comes. A
-    verdict given since (`decided`) overrides it: the verdict is the answer."""
-    if not thread or thread[-1]["author"] != Author.OWNER or thread[-1].get("verdict"):
+    verdict given since (`decided`) overrides it: the verdict is the answer.
+    A status entry is no answer."""
+    said = talk(thread)
+    if not said or said[-1]["author"] != Author.OWNER or said[-1].get("verdict"):
         return False
-    return moment(decided) < thread[-1]["moment"]
+    return moment(decided) < said[-1]["moment"]
 
 
 def said_in(
     thread: list[dict[str, Any]],
     author: Author,
     text: str,
-    session: str | None,
+    writer: dict[str, str | None],
     decided: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """A message for this thread: the owner's only once their last has its
@@ -1149,8 +1187,8 @@ def said_in(
             "your last message waits for the agent's answer: withdraw it to change it"
         )
     if author is Author.AGENT and pending(thread, decided):
-        return message(author, text, session, answers=thread[-1]["moment"])
-    return message(author, text, session)
+        return message(author, text, writer, answers=talk(thread)[-1]["moment"])
+    return message(author, text, writer)
 
 
 def chat_state(
@@ -1159,7 +1197,9 @@ def chat_state(
     """Where a thread stands for the owner: `pending`, their message waiting
     for its answer; `unseen`, the agent's messages since they last looked
     (or last wrote), and whether one of them is the answer they waited for.
-    A thread they never opened nor wrote in shows nothing as new."""
+    A thread they never opened nor wrote in shows nothing as new; a status
+    entry is never new."""
+    thread = talk(thread)
     wrote = [index for index, entry in enumerate(thread) if entry["author"] == Author.OWNER]
     after = thread[wrote[-1] + 1 :] if wrote else thread
     new = [
@@ -1177,17 +1217,14 @@ def chat_state(
 
 
 def awaits_owner(item: dict[str, Any]) -> bool:
-    """Open, and the owner's to look at: a task only once it failed."""
-    if item["verdict"] != Verdict.OPEN:
-        return False
-    return not item.get("task") or item["task"]["state"] == State.FAILED
+    """Open: the owner's to look at."""
+    return item["verdict"] == Verdict.OPEN
 
 
 def owner_moment(item: dict[str, Any]) -> str:
-    """When the owner last said something on an item: a verdict (not a task
-    accepted by being done) or a message."""
+    """When the owner last said something on an item: a verdict or a message."""
     decided = item.get("decided") or {}
-    moments = [moment(decided) if decided.get("by") != "done" else ""]
+    moments = [moment(decided)]
     moments += [entry["moment"] for entry in item["thread"] if entry["author"] == Author.OWNER]
     return max(moments)
 

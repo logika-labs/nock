@@ -32,7 +32,7 @@ CONSULT = """\
 TOPICS = """\
 - **Put your work before the owner in Topics:** find the topic for what you
   are doing (`.nock/nock topics list --query …`) or open one (`topics
-  create`); a finished one that comes back is revived, not made again. Into
+  create`); a done one that comes back is revived, not made again. Into
   it, submit items bare (`items create`, `--help` has the fields): a
   decision when a later reader would ask "why" (a choice between real
   alternatives the owner hasn't made, a deliberate simplification, your
@@ -40,9 +40,13 @@ TOPICS = """\
   instruction or a routine detail), project files, or something you made to
   show part of the project (a screenshot, a page) with how to make it again.
   If it is the owner's call, submit the answer you would propose and carry
-  on; the owner gives verdicts later, so don't wait. Work dispatched to an
-  agent is a task item: keep its state current (`items update REF '{"state":
-  …}'`) and post progress in its thread; long silence looks stuck.
+  on; the owner gives verdicts later, so don't wait.
+- **Keep your topic's state and status current:** when you start work, set
+  it active with a status (`.nock/nock topics update TOPIC '{"state":
+  "active", "status": "…"}'`); update the status at each milestone ("waiting
+  for the gate on main", "eval running, about 2 h"); set it `done` or
+  `abandoned` when you finish. Work you dispatch is tracked the same way, in
+  the topic it serves.
 - **Check what awaits you** with `.nock/nock topics list` when you start and
   before you finish: threads where the owner wrote last, items they
   rejected (rework one as a new version: `items update REF --version`).

@@ -329,7 +329,7 @@ land while old code still breaks the rule. A command can be a check too, set
 in `.nock/config.toml` as shown above.
 
 **Hooks** react to Claude Code's events: `session-start`, `prompt`,
-`after-tool`, `tool-failed`, `stop` and `session-end`.
+`before-tool`, `after-tool`, `tool-failed`, `stop` and `session-end`.
 
 - A hook asks for `payload`, the event's JSON.
 - Text a hook returns is added to what the agent reads.
@@ -508,24 +508,36 @@ not there to ask, is a decision whose title is the answer the agent proposes
 agent carries on with it. An item has no notes: anything else the agent has
 to say goes in the thread, when asked.
 
-A **task** is the third kind of item: work an orchestrating agent
-dispatches to another, created when it is dispatched and closed when it is
-merged — a title, its brief (what was asked), its branch and worktree, and a
-state: queued, running, waiting (on the owner or on another task, which
-`waiting_on` names), done or failed.
+A topic's progress is its own: a **state** — planned, active (a new topic's),
+done or abandoned — and a **status**, a free line on where the work is, which
+the agent sets as it works. Each change is a status entry in the topic's
+thread, with its moment and who wrote it, so the history stays; the current
+state and status sit in `topic.json`. Work an orchestrating agent dispatches
+is tracked so too, on the topic it serves.
 
 ```sh
-$ .nock/nock items create charge-sweep '{"title": "Requeue dead charges",
-    "task": {"brief": "Make the sweep requeue only dead charges.", "branch": "sweep"}}'
-$ .nock/nock items update charge-sweep/requeue-dead-charges '{"state": "running"}'
-$ .nock/nock items update charge-sweep/requeue-dead-charges --reply "The sweep test passes; the backoff one next."
-$ .nock/nock items update charge-sweep/requeue-dead-charges '{"state": "done"}' --reply "Merged as 4e1f2a0."
+$ .nock/nock topics update charge-sweep '{"state": "active", "status": "requeueing dead charges"}'
+$ .nock/nock topics update charge-sweep '{"status": "waiting for the gate on main"}'
+$ .nock/nock topics update charge-sweep '{"state": "done"}'
 ```
 
-The working agent posts progress in the task's thread, and every update is
-its last word. Done accepts it by itself, the thread keeping the final
-report; failed leaves it open for the owner. A task counts as new to the
-owner only once it failed.
+A change of state without a status clears the status. The primer asks every
+agent to set its topic active with a status when it starts, update the status
+at milestones and set it done or abandoned when it finishes; a session that
+did its own work in a topic (opened it, or submitted, versioned or answered an
+item there; not a migration, not a verdict) and never set where it stands is
+stopped once, at the end of its turn, and asked to (`reminders = false` turns
+that off).
+
+Every record — a topic's creation, an item's versions, a verdict, a message, a
+status entry — keeps who wrote it: `session`, `role` and, for a subagent,
+`parent`, the session that dispatched it (its `session` the subagent's id,
+its `role` the subagent's type). Claude Code gives a subagent's commands its
+parent's session id and nothing of their own, so nock's before-tool hook
+notes each `.nock/nock` command about to run with the subagent running it
+(the hook input's `agent_id`), and the command, running, claims the note
+that matches it. A session nock dispatches (a consultant, the studio's Ask)
+is told its parent directly. `topics show` and `items show` print them.
 
 An item's ref is `topic/slug`, the slug made from its title (or given as
 `"slug"`), unique in the topic. Everything lives in the main checkout's
@@ -564,11 +576,12 @@ the record says so (`"local": true`).
   number still resolve, so citations of it hold. `items delete
   REF` removes only an open item the owner has not written on; `topics delete`
   only an empty topic; git keeps both.
-- **A finished topic comes back.** A topic whose items are all decided is
-  finished: new items are refused until it is revived, `nock topics update
-  TOPIC --revive "why it is back"`. The note reads as its description from
-  then on, the revival a message in its chat, its items newest first, the
-  earlier rounds after them: the same topic, its history kept.
+- **A done topic comes back.** A done or abandoned topic takes no new items
+  (its items' versions, verdicts and threads go on) until it is revived,
+  `nock topics update TOPIC --revive "why it is back"`, which sets it active
+  again. The note reads as its description from then on, the revival in its
+  chat, its items newest first, the earlier rounds after them: the same
+  topic, its history kept.
 - **The session that submitted it hears.** When the owner next types there,
   the prompt hook tells it their verdict or message, once.
 - **An edit shows the items about a file.** The first time a session edits a
@@ -580,7 +593,8 @@ open items by topic, and what waits on the agent: threads where the owner
 wrote last, items they rejected — then the list, cut short; `--full` prints
 the whole list and no summary. `--query "words"` ranks by plain full text
 across topic names and descriptions, item titles, decisions, threads, file
-paths and `when` conditions. `topics show TOPIC` has its items and thread,
+paths and `when` conditions; `topics list --state active` keeps one state,
+each row with its state and status. `topics show TOPIC` has its items and thread,
 `items show REF` every version, each file and where it is kept, and the
 thread. Agents look at it when they start and before they finish. Once a
 day (sooner when something new calls) a session the human starts says
@@ -590,7 +604,10 @@ says it all in full.
 The studio's **Topics** tab (`nock studio`, or with `{"open": true}`) lists
 the topics, newest activity first, each a row: its name, what it holds ("4
 decisions · 6 images · 3 texts") and its verdicts ("3 open · 12 accepted"),
-its time ("21m", "3h", "2d", on a small grey pill) and its description. A
+its time ("21m", "3h", "2d", on a small grey pill) with its state's foil mark
+beside it (active a slowly turning spinner, planned a ring, done a full circle
+with a tick, abandoned one with a cross), its status line in grey right after
+its name, and its description. A
 topic opens in place, its items in sections, each with its count and a caret
 that folds it: decisions as bubbles that open in place on the answer (its
 whole width; Markdown's single line breaks flow together, a blank line parts
@@ -602,11 +619,9 @@ on the page's address shows two other looks); pictures as one line of
 thumbnails, each with a ribbon of its title, time and verdict along its foot,
 and texts as one line of white previews, their verdict at the bottom right,
 both scrolling sideways; an item's options as one card, its title and time
-over a small list of them (the preferred one starred); other files as rows; tasks
-as bubbles with a slider — the time since it started, coloured by how
-recently it said anything (amber after `topics.silence` minutes without a
-word, 30 by default: only silence, which may be long work as well as stuck
-work; red once it failed). Accept all and Reject all close it. A picture or
+over a small list of them (the preferred one starred); other files as rows;
+an open decision also names the session that wrote it, and its parent's.
+Accept all and Reject all close it. A picture or
 a text opens in a viewer over the list, its title and time on a white
 ribbon — a text in a column about 40% of the screen, a picture's viewer
 shrunk to the picture, on a dim grey bed: a version picked (a pill, "Version
@@ -1132,7 +1147,7 @@ repetitions, write the comparison down first.
 | `nock docs [TERM…]` | nock's documentation for agents, a short article per term: with no term, the terms |
 | `nock calls`, `stats`, `sessions`, `query SQL` | the telemetry |
 | `nock status` | a round due, the open items by topic, what waits on agents in Topics, an unshared summary, a logika round to offer |
-| `nock topics list [--query Q] [--full]`, `create JSON`, `update TOPIC [JSON] [--reply MD] [--revive MD]`, `delete TOPIC`, `show TOPIC`, `judge TOPIC JSON`, `migrate [--mark-seen]` | the topics: a summary and the list (or ranked by a query), opened, changed or answered in, revived, deleted when empty, in full, every open item judged (asks the owner), an earlier nock's decisions and review items moved in |
+| `nock topics list [--query Q] [--state S] [--full]`, `create JSON`, `update TOPIC [JSON] [--reply MD] [--revive MD]`, `delete TOPIC`, `show TOPIC`, `judge TOPIC JSON`, `migrate [--mark-seen]` | the topics: a summary and the list (or ranked by a query, or of one state), opened, their state and status kept current, changed or answered in, revived, deleted when empty, in full, every open item judged (asks the owner), an earlier nock's decisions and review items moved in, earlier topics given their state |
 | `nock items list [TOPIC] [--query Q] [--full]`, `create TOPIC JSON`, `update REF [JSON] [--version JSON] [--reply MD]`, `delete REF`, `show REF`, `judge REF JSON` | the items: a summary and the list, submitted, changed in place or by a new version or answered in, deleted while open and unanswered, in full, judged (asks the owner) |
 | `nock topics ask QUESTION`, `topics answer JSON` | the studio's Ask: a fresh agent answers a question about the topics; only that agent submits the answer |
 | `nock studio [JSON]` | the owner's page, a tab for each thing to look at: the topics and their items, the evaluations |
@@ -1188,7 +1203,6 @@ one machine.
 | `reflect.logika.days` | 30 | in a Logika project, days after a logika round before the next is offered (once the ledger has changed) |
 | `agent.command`, `agent.model`, `agent.deadline` | `claude`, —, 1800 | the headless agent nock dispatches (consult, Ask, share); it may not bypass or set permissions (see [What nock's agents may do](#what-nocks-agents-may-do)) |
 | `permissions.confirm` | `ask` | how Claude Code treats a `confirm=True` command: `ask` has the owner approve each call (even in bypass mode); `allow` lets the agent run it, which it does only when the owner's request calls for it (see [What nock's agents may do](#what-nocks-agents-may-do)); `nock init` rewrites the rules after a change |
-| `topics.silence` | 30 | minutes a running task may go without a word before the studio shows it amber |
 | `consult.enabled`, `consult.deadline` | true, 600 | whether the consultant runs and the primer asks for it; seconds a consultation may take |
 | `upgrade.check`, `upgrade.auto`, `upgrade.index` | true, true, PyPI's `nock` | whether a session start looks for a newer nock (at most daily); whether it then upgrades a core vendored from PyPI by itself when the merge is clean (off, or on a conflict, it only says the release is out); and where releases are looked up |
 | `share` | — (unanswered) | the owner's answer to whether nock sends its makers the weekly usage report: unset sends nothing until they answer, false sends nothing, summaries included, only what you send yourself with `nock report` (see [What nock shares](#what-nock-shares)) |

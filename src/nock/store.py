@@ -1,7 +1,7 @@
 """The telemetry store: one SQLite database in `.nock/local/`, never committed —
 every call to a nock command, every supervised process, and what each Claude
 Code session did (and how far its transcript has been read), read from its transcript (and which items it was told of or
-shown). Reflection reads it; so can any
+shown), and which of a session's agents runs each nock command. Reflection reads it; so can any
 agent, with `nock query`."""
 
 from __future__ import annotations
@@ -95,6 +95,23 @@ CREATE TABLE IF NOT EXISTS told (
 CREATE TABLE IF NOT EXISTS shown_items (
     session TEXT NOT NULL,       -- a session shown an item about a file it edited
     item TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS callers (
+    session TEXT NOT NULL,       -- the Claude Code session a `.nock/nock` Bash command runs in
+    agent TEXT,                  -- the subagent running it (hook input's `agent_id`); NULL: the session's own thread
+    type TEXT,                   -- the subagent's type
+    command TEXT NOT NULL,       -- the command, as the before-tool hook saw it
+    moment TEXT NOT NULL,
+    claimed INTEGER NOT NULL DEFAULT 0 -- 1 once the command, running, took it as its own
+);
+CREATE INDEX IF NOT EXISTS callers_session ON callers (session, claimed);
+CREATE TABLE IF NOT EXISTS wrote (
+    session TEXT NOT NULL,       -- a session that did work in a topic: opened it, or an item, a version or a reply there
+    parent TEXT,                 -- the session that dispatched it, for a subagent or a session nock dispatched
+    topic TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS stated (
+    session TEXT NOT NULL        -- a session the stop hook asked once to set its topics' status
 );
 CREATE TABLE IF NOT EXISTS nudged (
     round TEXT NOT NULL          -- a round whose unshared summary, or a week's logika-round offer, a session start mentioned

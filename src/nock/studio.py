@@ -38,7 +38,7 @@ from nock.evaluation import Evaluations, Run
 from nock.explorer import Explorer, View
 from nock.project import Project
 from nock.schema import validate
-from nock.topics import Author, Topics, Verdict, chat_state
+from nock.topics import Author, Topics, Verdict, chat_state, state_of
 from nock.topics import Word as Verdicted
 from nock.usage import QUESTION, Answer, Usage, sharing
 from nock.utils import now, read_json, write_json
@@ -295,7 +295,6 @@ class TopicsTab(Tab):
             return {
                 "topics": self.everything(),
                 "ask": self.asking.state(),
-                "silence": float(self.project.configuration.get("topics.silence") or 30),
             }
         parts = urllib.parse.unquote(route).split("/")
         if parts[0] != "file" or len(parts) < 5 or not parts[3].isdigit():
@@ -312,7 +311,7 @@ class TopicsTab(Tab):
                 {
                     **record,
                     "current": self.topics.current_description(record),
-                    "finished": self.topics.finished(record, items),
+                    "state": str(state_of(record)),
                     "active": self.topics.activity(record, items),
                     "counts": self.topics.counts(items),
                     "chat": chat_state(record["thread"], seen.get(name)),

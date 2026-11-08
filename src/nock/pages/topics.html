@@ -35,7 +35,7 @@
   const POLL = 3000;
   const state = {
     shown: false, seen: "", topics: [], ask: null, search: "", mode: "search", route: "", arrived: null,
-    drafts: new Map(), open: new Set(), expanded: new Set(), chats: new Set(), silence: 30,
+    drafts: new Map(), open: new Set(), expanded: new Set(), chats: new Set(),
     modal: null, compare: false, single: null, left: null, right: null, reveal: null,
     menu: null, zoom: null, dismissed: null, looking: new Set(), focus: null, reveal_to: null, folded: new Set(),
     hits: [], hitAt: 0, reveal_hit: false, opened: { open: new Set(), expanded: new Set(), folded: new Set() }, drag: null, dragged: false,
@@ -68,12 +68,6 @@
     return `${Math.floor(seconds / 86400 / 365)}y`;
   }
   const time = moment => moment ? `<time datetime="${escape(moment)}" title="${escape(new Date(moment).toLocaleString())}">${escape(short(moment))}</time>` : "";
-  function since(minutes) {
-    if (minutes < 1) return "now";
-    if (minutes < 90) return `${Math.round(minutes)}m`;
-    if (minutes < 48 * 60) return `${Math.round(minutes / 60)}h`;
-    return `${Math.round(minutes / 1440)}d`;
-  }
 
   // --- syntax highlighting: a small tokenizer per language, enough to read a file by -------------
 
@@ -328,16 +322,15 @@
 
   function itemWords(item) {
     const latest = last(item);
-    return [item.ref, item.title, ...(item.aliases || []), ...item.thread.map(entry => entry.text), item.task?.brief || "",
+    return [item.ref, item.title, ...(item.aliases || []), ...item.thread.map(entry => entry.text),
       latest.decision ? decisionText(latest.decision) : "", ...latest.files.flatMap(file => [file.name, ...(file.from || []), file.when || ""])].join(" ").toLowerCase();
   }
-  const topicWords = topic => [topic.name, topic.description, topic.current, ...topic.thread.map(entry => entry.text)].join(" ").toLowerCase();
+  const topicWords = topic => [topic.name, topic.description, topic.current, topic.state, topic.status || "", ...topic.thread.map(entry => entry.text)].join(" ").toLowerCase();
   const said = () => state.search.toLowerCase().split(/\s+/).filter(Boolean);
   const fits = (haystack, wanted) => wanted.every(word => haystack.includes(word));
 
   // What an item is, for the section of its topic it shows in.
   function kindOf(item) {
-    if (item.task) return "task";
     const latest = last(item);
     if (latest.decision) return "decision";
     const types = new Set(latest.files.map(file => file.type));
@@ -346,15 +339,14 @@
     return "files";
   }
   const SECTIONS = [["decision", "Decisions", "decision", "decisions"], ["image", "Images", "image", "images"], ["text", "Texts", "text", "texts"],
-    ["files", "Files", "file", "files"], ["task", "Tasks", "task", "tasks"]];
+    ["files", "Files", "file", "files"]];
   // What the viewer steps through with the arrows: a topic's pictures, then its texts, then its other files.
   const viewable = topic => ["image", "text", "files"].flatMap(kind => topic.items.filter(item => kindOf(item) === kind));
-  const awaitsOwner = item => item.verdict === "open" && (!item.task || item.task.state === "failed");
+  const awaitsOwner = item => item.verdict === "open";
   const joined = parts => parts.filter(Boolean).join(" · ");
 
   // --- drawing: the small parts -------------------------------------------------------------------
 
-  const tag = (word, tone = "") => `<span class="tag${tone ? ` ${tone}` : ""}">${escape(word)}</span>`;
   // The owner's verdict as a mark: a green tick, a red cross; nothing while it is open.
   function verdictMark(item) {
     if (item.verdict !== "accepted" && item.verdict !== "rejected") return "";
@@ -363,6 +355,14 @@
   }
   // A decision is done unless it says otherwise: only a todo one shows its status, a pill under its corner.
   const todoPill = '<span class="todo-pill" title="To do">Todo</span>';
+  // Where a topic's work stands, beside its time: active a turning foil spinner, planned a foil
+  // ring, done and abandoned a full foil circle with a tick or a cross.
+  const STATES = { active: "Active", planned: "Planned", done: "Done", abandoned: "Abandoned" };
+  function stateMark(state) {
+    const word = STATES[state] || STATES.active;
+    const icon = state === "done" ? ICONS.accepted : state === "abandoned" ? ICONS.rejected : "";
+    return `<span class="state-mark ${STATES[state] ? state : "active"}" title="${word}" aria-label="${word}" role="img">${icon}</span>`;
+  }
 
   function chatButton(key, standing) {
     const open = state.chats.has(key);
@@ -377,7 +377,7 @@
   function chat(key, entries, standing) {
     const waiting = standing?.pending;
     const messages = entries.map((entry, index) => {
-      const notes = [{ revival: "revived it", split: "split" }[entry.kind] || "", entry.verdict || ""].filter(Boolean).map(note => `<span class="note">${escape(note)}</span>`).join("");
+      const notes = [{ revival: "revived it", split: "split", status: entry.revived ? "revived it" : entry.state }[entry.kind] || "", entry.verdict || ""].filter(Boolean).map(note => `<span class="note">${escape(note)}</span>`).join("");
       const held = waiting && index === entries.length - 1;
       return `<div class="message ${entry.author}${held ? " waiting" : ""}" data-key="message:${escape(entry.moment)}:${index}">${notes}<div class="context">${markdown(entry.text)}</div>
         <span class="when">${held ? "waiting for the answer · " : ""}${time(entry.moment)}</span></div>`;
@@ -398,60 +398,30 @@
         ${all ? `title="${count} open ${count === 1 ? "item" : "items"}"` : ""}>${choice === "accepted" ? "Accept" : "Reject"}${all ? " all" : ""}</button>`).join("");
   }
 
-  // A task's slider: how long since it started (a log scale up to a day), coloured by how recently
-  // it said anything. Amber is only silence: long work looks the same as stuck work.
-  const SCALE = Math.log10(1 + 24 * 60);
-  const along = minutes => Math.min(100, 6 + 94 * Math.log10(1 + Math.max(0, minutes)) / SCALE);
-  function slider(item) {
-    const task = item.task;
-    const now = Date.now();
-    const heard = Date.parse(task.heard || item.updated);
-    const started = task.started ? Date.parse(task.started) : null;
-    const quiet = (now - heard) / 60000;
-    const live = task.state === "running" || task.state === "waiting";
-    const tone = task.state === "failed" ? "failed" : task.state === "done" ? "done" : task.state === "queued" ? "queued" : quiet > state.silence ? "quiet" : "ok";
-    const end = task.state === "done" || task.state === "failed" ? heard : now;
-    const fill = started ? along((end - started) / 60000) : 0;
-    const mark = started ? along((heard - started) / 60000) : 0;
-    const words = joined([
-      task.state === "waiting" ? `waiting on ${task.waiting_on}` : task.state,
-      started ? `started ${since((now - started) / 60000)} ago` : "not started",
-      live ? `last word ${since(quiet)} ago` : "",
-      live && tone === "quiet" ? "quiet for a while: maybe long work, maybe stuck" : "",
-    ]);
-    return `<span class="slider ${tone}" title="${escape(words)}"><span class="track"><span class="fill" style="width:${fill.toFixed(1)}%"></span>${started ? `<span class="tick" style="left:${mark.toFixed(1)}%"></span>` : ""}</span><span class="words">${escape(words)}</span></span>`;
-  }
-
   // --- drawing: a topic's sections ----------------------------------------------------------------
 
-  // A decision or a task: a bubble opening in place, its chat floating over it.
+  // The session that wrote a version, short, with the session that dispatched it.
+  const sessionTag = version => version.session ? `<p class="where session">Session <code title="${escape(version.session)}">${escape(version.session.slice(0, 8))}</code>${version.parent
+    ? ` of <code title="${escape(version.parent)}">${escape(version.parent.slice(0, 8))}</code>` : ""}${version.role ? ` · ${escape(version.role)}` : ""}</p>` : "";
+
+  // A decision: a bubble opening in place, its chat floating over it.
   function bubble(item) {
     const open = state.expanded.has(item.ref);
-    const todo = !item.task && last(item).decision.status === "todo" ? todoPill : "";
+    const todo = last(item).decision.status === "todo" ? todoPill : "";
     const corner = `<span class="corner">${verdictMark(item)}${time(item.updated)}${chatCorner(item.ref, item.thread, item.chat)}${todo}</span>`;
     const title = `<button type="button" class="title" aria-expanded="${open}">${escape(item.title)}</button>`;
-    let head, body = "";
-    if (item.task) {
-      const tone = { done: "ok", failed: "error", waiting: "warning" }[item.task.state] || "";
-      head = `${title}${corner}<span class="tags">${tag(item.task.state, tone)}</span>${slider(item)}`;
-      if (open) {
-        const where = joined([item.task.branch ? `branch <code>${escape(item.task.branch)}</code>` : "", item.task.worktree ? `worktree <code>${escape(item.task.worktree)}</code>` : ""]);
-        body = `<div class="expanded"><div class="context">${markdown(item.task.brief)}</div>${where ? `<p class="where">${where}</p>` : ""}
-          ${awaitsOwner(item) || (item.task.state === "failed" && item.verdict !== "open") ? `<div class="actions"><span class="hint" data-problem="${escape(item.ref)}"></span><div class="buttons">${verdictButtons(item.ref, item.verdict)}</div></div>` : ""}</div>`;
-      }
-    } else {
-      const latest = last(item);
-      const decision = latest.decision;
-      head = `${title}${corner}`;
-      if (open) {
-        const alternatives = decision.alternatives.length ? `<div class="considered"><span class="label">Considered instead</span><ul class="alternatives">${decision.alternatives.map(entry =>
-          `<li><span class="option">${inline(entry.option)}</span> — <span class="why">${inline(entry.why_not)}</span></li>`).join("")}</ul></div>` : "";
-        const concerns = latest.files.length ? `<p class="where">Concerns ${latest.files.map(file => `<code>${escape(file.name)}</code>`).join(" ")}</p>` : "";
-        body = `<div class="expanded"><div class="context">${markdown(decision.answer)}</div>${alternatives}${concerns}
-          <div class="actions"><span class="hint" data-problem="${escape(item.ref)}"></span><div class="buttons">${verdictButtons(item.ref, item.verdict)}</div></div></div>`;
-      }
+    const latest = last(item);
+    const decision = latest.decision;
+    const head = `${title}${corner}`;
+    let body = "";
+    if (open) {
+      const alternatives = decision.alternatives.length ? `<div class="considered"><span class="label">Considered instead</span><ul class="alternatives">${decision.alternatives.map(entry =>
+        `<li><span class="option">${inline(entry.option)}</span> — <span class="why">${inline(entry.why_not)}</span></li>`).join("")}</ul></div>` : "";
+      const concerns = latest.files.length ? `<p class="where">Concerns ${latest.files.map(file => `<code>${escape(file.name)}</code>`).join(" ")}</p>` : "";
+      body = `<div class="expanded"><div class="context">${markdown(decision.answer)}</div>${alternatives}${concerns}${sessionTag(latest)}
+        <div class="actions"><span class="hint" data-problem="${escape(item.ref)}"></span><div class="buttons">${verdictButtons(item.ref, item.verdict)}</div></div></div>`;
     }
-    return `<div class="item-bubble ${item.task ? "task" : "decision"}${open ? " open" : ""}${hitClass(item)}" data-key="${escape(item.ref)}" id="item-${escape(item.ref)}">
+    return `<div class="item-bubble decision${open ? " open" : ""}${hitClass(item)}" data-key="${escape(item.ref)}" id="item-${escape(item.ref)}">
       <div class="head" data-expand="${escape(item.ref)}">${head}</div>${body}</div>`;
   }
 
@@ -496,7 +466,7 @@
       const found = items.filter(item => kindOf(item) === kind);
       if (!found.length) return "";
       const key = `${topic.name}/${kind}`, folded = state.folded.has(key);
-      const body = folded ? "" : kind === "decision" || kind === "task" ? `<div class="item-bubbles">${found.map(bubble).join("")}</div>`
+      const body = folded ? "" : kind === "decision" ? `<div class="item-bubbles">${found.map(bubble).join("")}</div>`
         : kind === "image" ? `<div class="strip images">${found.map(item => grouped(item) ? optionsCard(item, "image") : thumbnail(item)).join("")}</div>`
         : kind === "text" ? `<div class="strip texts">${found.map(item => grouped(item) ? optionsCard(item, "text") : preview(item)).join("")}</div>`
         : `<div class="rows">${found.map(fileRow).join("")}</div>`;
@@ -517,8 +487,8 @@
     const open = state.open.has(topic.name), key = `topic:${topic.name}`;
     const waiting = topic.items.filter(awaitsOwner).length;
     const head = `<div class="topic-head" data-toggle="${escape(topic.name)}">
-        <button type="button" class="name" aria-expanded="${open}">${escape(topic.name)}</button>
-        <span class="corner">${time(topic.active)}${chatCorner(key, topic.thread, topic.chat)}</span>
+        <span class="title-line"><button type="button" class="name" aria-expanded="${open}">${escape(topic.name)}</button>${topic.status ? `<span class="status">${escape(topic.status)}</span>` : ""}</span>
+        <span class="corner">${stateMark(topic.state)}${time(topic.active)}${chatCorner(key, topic.thread, topic.chat)}</span>
         <span class="counts"><span>${escape(kindCounts(topic.items))}</span><span>${escape(verdictCounts(topic.counts))}</span></span>
         <p class="about">${inline(topic.current)}</p></div>`;
     const body = open ? `<div class="topic-body">${sections(topic, items) || '<p class="nothing">No items yet.</p>'}
@@ -718,7 +688,7 @@
     const hits = findHits(searching());
     const wanted = {
       open: new Set(hits.map(item => item.topic)),
-      expanded: new Set(hits.filter(item => ["decision", "task"].includes(kindOf(item))).map(item => item.ref)),
+      expanded: new Set(hits.filter(item => kindOf(item) === "decision").map(item => item.ref)),
       folded: new Set(hits.map(item => `${item.topic}/${kindOf(item)}`)),
     };
     for (const [place, keys] of Object.entries(state.opened)) {
@@ -927,7 +897,6 @@
       const data = JSON.parse(raw);
       state.topics = data.topics;
       state.ask = data.ask;
-      state.silence = data.silence ?? 30;
       if (searching().length) {
         state.hits = findHits(searching()).map(item => item.ref);
         state.hitAt = Math.min(state.hitAt, Math.max(0, state.hits.length - 1));
@@ -946,7 +915,7 @@
   }
   const where = key => key.startsWith("topic:") ? { topic: key.slice(6) } : { ref: key };
 
-  // Where an address leads: a topic opens in the list; a decision or a task opens in its topic; a
+  // Where an address leads: a topic opens in the list; a decision opens in its topic; a
   // picture or a text in the viewer, comparing its last two versions when it has them.
   function arrive(route) {
     state.arrived = route;
@@ -956,7 +925,7 @@
     const item = route ? itemAt(route) : null;
     if (!item) { state.modal = null; return; }
     state.open.add(item.topic);
-    if (["decision", "task"].includes(kindOf(item))) {
+    if (kindOf(item) === "decision") {
       state.expanded.add(item.ref);
       state.modal = null;
       state.reveal_to = `item-${item.ref}`;
@@ -1196,7 +1165,7 @@
     hide() { state.shown = false; document.documentElement.classList.remove("topics-viewing"); },
   });
   setInterval(() => { if (state.shown) load(); }, POLL);
-  // Times and the tasks' sliders move on with the clock, though nothing new arrives.
+  // Times move on with the clock, though nothing new arrives.
   setInterval(() => { if (state.shown) draw(); }, 30000);
 })();
 </script>

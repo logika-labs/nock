@@ -34,7 +34,7 @@ of it, and waits for your answer. Look through the repository; change nothing.
    sentence (step 5) and stop. That is a fine answer.
 3. Otherwise write advice that tells the agent, in a few lines each:
    - **the topic to submit into**: the existing topic this work belongs to,
-     or that it needs its own (and a finished one it revives);
+     or that it needs its own (and a done one it revives);
    - **what the items mean for this work**: what it must keep to, and
      where; an option the owner rejected that the work would bring back, and
      what would make it viable; a todo it could close on the way. If the

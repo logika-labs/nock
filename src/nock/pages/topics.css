@@ -80,6 +80,26 @@
 }
 .topics .topic-head .counts { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 2px 28px; font: 500 12px/20px var(--mono); color: var(--muted); }
 .topics .topic-head .counts span:empty { display: none; }
+/* Where a topic's work stands: its status line right after its name, dim; its state a foil mark
+   beside its time — active a slowly turning spinner, planned a ring, done and abandoned a full
+   circle with a tick or a cross. */
+.topics .topic-head .title-line { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 12px; min-width: 0; }
+.topics .topic-head .title-line .status { color: var(--muted); font-size: 14px; line-height: 24px; overflow-wrap: anywhere; }
+.topics .state-mark {
+  display: grid; place-items: center; flex: none; width: 20px; height: 20px; border-radius: 50%; color: #111116;
+  background: conic-gradient(from 0deg, var(--cyan), var(--pink), var(--lavender), var(--cyan));
+}
+.topics .state-mark svg { width: 12px; height: 12px; }
+/* As the verdict mark: as far from the time as the time from the chat's glyph. */
+.topics .corner .state-mark { margin-right: 7px; }
+.topics .state-mark.planned, .topics .state-mark.active {
+  -webkit-mask: radial-gradient(circle, transparent 6px, #000 6.5px); mask: radial-gradient(circle, transparent 6px, #000 6.5px);
+}
+.topics .state-mark.active {
+  background: conic-gradient(from 0deg, transparent 0 15%, var(--cyan) 35%, var(--pink) 65%, var(--lavender));
+  animation: topic-spin 2.4s linear infinite;
+}
+@keyframes topic-spin { to { transform: rotate(1turn); } }
 .topics .topic-head .about { grid-column: 1 / -1; margin: 6px 0 0; color: var(--muted); font-size: 14px; line-height: 1.5; max-width: 70ch; }
 .topics .topic-body { display: grid; gap: 22px; padding: 4px 18px 18px; min-width: 0; }
 .topics .section { display: grid; gap: 10px; min-width: 0; }
@@ -100,19 +120,7 @@
 .topics .actions.all { padding-top: 14px; border-top: 1px dashed rgb(17 17 22 / .2); }
 .topics .buttons { display: flex; gap: 8px; margin-left: auto; }
 
-/* Tags: what matters about an item, in a word. */
-.topics .tags { display: flex; flex-wrap: wrap; gap: 6px; }
-.topics .tags:empty { display: none; }
-.topics .tag {
-  display: inline-flex; align-items: center; white-space: nowrap; border: 1px solid var(--input); border-radius: 999px; padding: 3px 8px;
-  font: 500 10px/1 var(--mono); letter-spacing: .05em; text-transform: uppercase; color: var(--foreground);
-}
-.topics .tag.error { color: var(--error); border-color: var(--error); }
-.topics .tag.warning { color: var(--warning); border-color: var(--warning); }
-.topics .tag.info { color: var(--info); border-color: var(--info); }
-.topics .tag.ok { color: var(--ok); border-color: var(--ok); }
-
-/* A decision or a task: a bubble opening in place: a status mark, the title, then its verdict, its
+/* A decision: a bubble opening in place: a status mark, the title, then its verdict, its
    time and its chat. Hovered, and while open, its head takes the foil's tint. How an open one stands
    out is one of three looks (`?decisions=`): foil (a foil frame, the default), rail, lift. */
 .topics .item-bubbles { display: grid; gap: 8px; }
@@ -131,9 +139,7 @@
   border: 0; background: none; padding: 0; color: inherit; text-align: left; font: 600 15px/22px var(--sans); text-wrap: pretty; overflow-wrap: anywhere;
 }
 .topics .item-bubble .head .title:focus-visible { outline: 2px solid #111116; outline-offset: 2px; border-radius: 4px; }
-.topics .item-bubble .head .tags, .topics .item-bubble .head .slider { grid-column: 1 / -1; }
 .topics .item-bubble .expanded { display: grid; gap: 14px; padding: 16px 18px 18px; border-top: 1px dashed rgb(17 17 22 / .14); }
-.topics .item-bubble.task .expanded { padding-left: 18px; }
 .topics .item-bubble .where { margin: 0; color: var(--muted); font-size: 13px; display: flex; flex-wrap: wrap; gap: 4px 6px; align-items: baseline; }
 .topics .item-bubble .where code { font: 12px var(--mono); }
 /* A todo decision: a small pill under its corner, at its right. */
@@ -346,20 +352,6 @@
 .topics .file-row.hit::after { inset: 0; border-radius: 0; }
 .topics .hit.current { box-shadow: -10px 8px 24px -10px rgb(255 120 200 / .75), 10px 10px 24px -10px rgb(90 220 255 / .8); }
 .topics .hit.current::after { padding: 3px; }
-
-/* A task's slider: time since it started; its colour, how recently it said anything. */
-.topics .slider { display: grid; gap: 4px; min-width: 0; --tone: #0a8db5; }
-.topics .slider .track { position: relative; height: 8px; border-radius: 999px; background: rgb(17 17 22 / .07); overflow: hidden; }
-.topics .slider .fill { position: absolute; inset: 0 auto 0 0; border-radius: 999px; background: var(--tone); }
-.topics .slider .tick { position: absolute; top: 0; bottom: 0; width: 3px; margin-left: -1px; background: #111116; border-radius: 2px; }
-.topics .slider .words { font: 500 11px/16px var(--mono); color: var(--muted); }
-.topics .slider.ok { --tone: color-mix(in oklab, #0a8db5 70%, white); }
-.topics .slider.quiet { --tone: #e8a33d; }
-.topics .slider.quiet .words { color: var(--warning); }
-.topics .slider.failed { --tone: var(--error); }
-.topics .slider.failed .words { color: var(--error); }
-.topics .slider.done { --tone: color-mix(in oklab, var(--ok) 55%, white); }
-.topics .slider.queued { --tone: rgb(17 17 22 / .2); }
 
 /* Markdown, in messages, decisions and documents. */
 .topics .context { min-width: 0; overflow-wrap: anywhere; }
@@ -592,4 +584,5 @@
 @media (prefers-reduced-motion: reduce) {
   .topics .spinner { animation-duration: 2.4s; }
   .topics .chat-toggle .swirl span { animation: none; }
+  .topics .state-mark.active { animation: none; }
 }

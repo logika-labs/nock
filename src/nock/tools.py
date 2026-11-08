@@ -36,6 +36,7 @@ class Event(StrEnum):
 
     SESSION_START = "session-start"
     PROMPT = "prompt"
+    BEFORE_TOOL = "before-tool"
     AFTER_TOOL = "after-tool"
     TOOL_FAILED = "tool-failed"
     STOP = "stop"
@@ -46,6 +47,7 @@ class Event(StrEnum):
 NATIVE_EVENTS = {
     Event.SESSION_START: "SessionStart",
     Event.PROMPT: "UserPromptSubmit",
+    Event.BEFORE_TOOL: "PreToolUse",
     Event.AFTER_TOOL: "PostToolUse",
     Event.TOOL_FAILED: "PostToolUseFailure",
     Event.STOP: "Stop",
