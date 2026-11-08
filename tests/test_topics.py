@@ -25,7 +25,7 @@ from nock.hooks import HookRunner
 from nock.migration import Migration
 from nock.project import Project
 from nock.studio import PAGES, TABS, Studio
-from nock.topics import Author, Topics
+from nock.topics import Author, Topics, owner_word
 
 from .conftest import git, nock
 
@@ -496,6 +496,27 @@ def test_a_session_is_never_told_back_the_owner_s_word_it_recorded_itself(
     monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "triage")
     judge(project.root, other, "accepted", "A year is fine after all.")
     assert f"[{other}]" in told(project, "lead") and f"[{ref}]" not in told(project, "lead")
+
+
+def test_two_verdicts_within_one_second_are_two_words_of_the_owner() -> None:
+    said = "2026-01-01T00:00:00Z"
+    rejected = {
+        "verdict": "rejected",
+        "decided": {"moment": said, "session": "helper", "parent": "lead"},
+        "thread": [{"author": "owner", "moment": said, "text": "Two years.", "session": "helper"}],
+    }
+    accepted = {
+        **rejected,
+        "verdict": "accepted",
+        "decided": {"moment": said, "session": "triage"},
+        "thread": [
+            *rejected["thread"],
+            {"author": "owner", "moment": said, "text": "A year is fine.", "session": "triage"},
+        ],
+    }
+    assert owner_word(rejected) != owner_word(accepted)
+    assert owner_word(rejected).startswith(said) and owner_word(accepted).startswith(said)
+    assert owner_word({"verdict": "open", "decided": None, "thread": []}) == ""
 
 
 def test_a_migrated_item_s_submitter_is_the_session_that_made_it_not_the_migrating_one(

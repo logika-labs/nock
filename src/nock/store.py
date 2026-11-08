@@ -90,7 +90,7 @@ CREATE TABLE IF NOT EXISTS transcripts (
 CREATE TABLE IF NOT EXISTS told (
     session TEXT NOT NULL,       -- a session told of the owner's word on an item it made
     item TEXT NOT NULL,          -- the item's ref, topic/slug
-    updated TEXT NOT NULL        -- when the owner last said something on it, as told
+    updated TEXT NOT NULL        -- the owner's word on it, as told: its moment and digest (`owner_word`); a bare moment from an earlier nock
 );
 CREATE TABLE IF NOT EXISTS shown_items (
     session TEXT NOT NULL,       -- a session shown an item about a file it edited

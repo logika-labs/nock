@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import contextlib
 import fnmatch
+import hashlib
 import json
 import re
 import shutil
@@ -1300,8 +1301,8 @@ class Topics:
                 continue
             if not any(by(version, {session}) for version in item["versions"]):
                 continue
-            said = owner_moment(item)
-            if not said or (item["ref"], said) in told:
+            said = owner_word(item)
+            if not said or (item["ref"], said) in told or (item["ref"], owner_moment(item)) in told:
                 continue
             news.append(item)
             self.project.store.insert(
@@ -1319,7 +1320,7 @@ class Topics:
         }
         marked = 0
         for item in self.every():
-            said = owner_moment(item)
+            said = owner_word(item)
             if not said or (refs is not None and item["ref"] not in refs):
                 continue
             sessions = {
@@ -1346,7 +1347,7 @@ class Topics:
         sessions = sorted(filter(None, {writer.get("session"), writer.get("parent")}))
         for ref in refs:
             item = self.item(ref)
-            said = owner_moment(item)
+            said = owner_word(item)
             for session in sessions:
                 self.project.store.insert(
                     "told", {"session": session, "item": item["ref"], "updated": said}
@@ -1485,6 +1486,28 @@ def owner_moment(item: dict[str, Any]) -> str:
     moments = [moment(decided)]
     moments += [entry["moment"] for entry in item["thread"] if entry["author"] == Author.OWNER]
     return max(moments)
+
+
+def owner_word(item: dict[str, Any]) -> str:
+    """The owner's word so far on an item, as a session is told it: when it
+    was last said, and which word it is. Moments are to the second, so two
+    sessions' verdicts within one second share a moment; the verdict, who
+    recorded it and the owner's messages tell them apart. Empty while the
+    owner has said nothing."""
+    said = owner_moment(item)
+    if not said:
+        return ""
+    word = {
+        "verdict": item.get("verdict"),
+        "decided": item.get("decided"),
+        "messages": [
+            [entry["moment"], entry.get("session"), entry.get("parent")]
+            for entry in item["thread"]
+            if entry["author"] == Author.OWNER
+        ],
+    }
+    digest = hashlib.sha256(json.dumps(word, sort_keys=True).encode()).hexdigest()
+    return f"{said} {digest[:12]}"
 
 
 def committed(project: Project, paths: list[str], message: str) -> str | None:
