@@ -86,6 +86,20 @@ DEFAULTS: dict[str, Any] = {
         "deadline": 1800,
         "silence": 600,
     },
+    "studio": {
+        # Where the studio's recorder sends what the owner says, to have it
+        # written into the chat: a Whisper server speaking OpenAI's
+        # `/v1/audio/transcriptions` (OpenAI itself, whisper.cpp's server,
+        # faster-whisper-server). Empty turns the recorder off. A bare server, or
+        # one ending in `/v1`, gets `/v1/audio/transcriptions` added.
+        "transcribe_url": "",
+        # The `model` sent with each recording: OpenAI's is "whisper-1"; whisper.cpp
+        # ignores it; faster-whisper-server takes its own ("Systran/faster-whisper-small").
+        "transcribe_model": "whisper-1",
+        # The name of the environment variable holding the server's key, sent as
+        # a bearer token ("OPENAI_API_KEY"); empty sends none. Never the key itself.
+        "transcribe_key_variable": "",
+    },
     "consult": {
         # Whether the consultant runs, and the primer asks agents to consult.
         "enabled": True,

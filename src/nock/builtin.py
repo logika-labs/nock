@@ -318,8 +318,9 @@ def topics_list(
     best first (topic names and descriptions, statuses, item titles,
     decisions, threads, file paths, conditions); `--state` keeps one state.
     Without `--full`, first a summary: the open items by topic, and what waits
-    on you — threads where the owner wrote last, items they rejected. Look at
-    it when you start and before you finish."""
+    on you — threads where the owner wrote last (with the paths of the files
+    their last message carries, to read), items they rejected. Look at it
+    when you start and before you finish."""
     topics = Topics(project)
     names = topics.search_topics(query) if query else topics.names()
     rows = [topics.row(name) for name in names]
@@ -389,13 +390,14 @@ def topics_delete(project: Project, topic: str) -> dict[str, Any]:
 def topics_show(project: Project, topic: str) -> dict[str, Any]:
     """A topic: its state and status, its description, its items (the newest
     first), its thread — each entry with the session that wrote it, and its
-    parent session for a subagent's."""
+    parent session for a subagent's; each file a message carries with
+    `where`, its path to read."""
     topics = Topics(project)
     record = topics.topic(topic)
     return {
         **topics.row(topic),
         "items": [topics.item_row(item) for item in topics.items(topic)],
-        "thread": record["thread"],
+        "thread": topics.thread_shown(record["thread"], record["name"]),
     }
 
 
@@ -542,7 +544,8 @@ def items_delete(project: Project, item: str) -> dict[str, Any]:
 def items_show(project: Project, item: str) -> dict[str, Any]:
     """An item: its verdict, every version (its decision, each file and where
     it is kept), its thread — each with the session that wrote it, and its
-    parent session for a subagent's. ITEM is `topic/slug`, or an earlier
+    parent session for a subagent's; each file a message carries with
+    `where`, its path to read. ITEM is `topic/slug`, or an earlier
     decision's number."""
     topics = Topics(project)
     return topics.shown(topics.item(item))
