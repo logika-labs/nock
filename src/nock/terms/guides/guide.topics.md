@@ -75,7 +75,9 @@ A topic's progress is its own: a **state** — planned, active (a new topic's),
 done or abandoned — and a **status**, a free line on where the work is, which
 the agent sets as it works. Each change is a status entry in the topic's
 thread, with its moment and who wrote it, so the history stays; the current
-state and status sit in `topic.json`. Work an orchestrating agent dispatches
+state and status sit in `topic.json`. A topic from before states (not yet migrated) reads as
+the migration will set it: done once every item in it is decided, otherwise
+active. Work an orchestrating agent dispatches
 is tracked so too, on the topic it serves.
 
 ```sh
@@ -110,7 +112,14 @@ An item's ref is `topic/slug`, the slug made from its title (or given as
 and its versions' files in `SLUG/N/` — written and committed there whichever
 worktree wrote it, so the owner sees it at once; a file over 20 MB (most
 videos) stays on the machine, under `.nock/local/topics/`, uncommitted, and
-the record says so (`"local": true`). The files a message carries are kept
+the record says so (`"local": true`). A GIF is a picture that animates; a
+video (mp4, webm, mov) may carry `captions`, a WebVTT file (`NAME.vtt` beside
+its `path` by default, or the path given) and a `poster` picture, kept beside
+it in its version's folder; `items show` gives their paths, so an agent reads
+the captions. The studio shows a video's still (its poster, else its first
+frame) with a play mark and its length, plays it with its captions on (space
+or `k` plays and pauses), plays two compared versions together (play, pause
+and seek in step), and its Search finds the captions' words. The files a message carries are kept
 beside its thread, in the topic's `attachments/MOMENT/` or the item's
 `SLUG/attachments/MOMENT/`, the same way.
 

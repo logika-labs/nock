@@ -12,11 +12,13 @@ from pathlib import Path
 import pytest
 
 from nock.asking import ROLE as ASKER
+from nock.chats import CHATTER, NAMER
 from nock.consult import ROLE as CONSULTANT
 from nock.dispatch import ARGUMENT_LIMIT, BYPASS, SEATS, Dispatcher
 from nock.project import Project
 from nock.reflect import Reflection
 from nock.share import ROLE as SHARER
+from nock.topics import TIDIER
 
 from .conftest import FAKE_AGENT, nock, write_tool
 from .test_telemetry_and_reflection import RECORD, finish
@@ -43,10 +45,42 @@ EXPECTED = {
         "Bash(git show:*)",
     ],
     SHARER: ["Bash(git log:*)"],
+    CHATTER: [
+        "Bash(.nock/nock topics list:*)",
+        "Bash(.nock/nock topics show:*)",
+        "Bash(.nock/nock items list:*)",
+        "Bash(.nock/nock items show:*)",
+        "Bash(.nock/nock docs:*)",
+        "Bash(git log:*)",
+        "Bash(git show:*)",
+    ],
+    NAMER: [],
+    TIDIER: [
+        "Bash(.nock/nock topics list:*)",
+        "Bash(.nock/nock topics show:*)",
+        "Bash(.nock/nock topics create:*)",
+        "Bash(.nock/nock topics update:*)",
+        "Bash(.nock/nock topics delete:*)",
+        "Bash(.nock/nock items list:*)",
+        "Bash(.nock/nock items show:*)",
+        "Bash(.nock/nock items update:*)",
+        "Bash(.nock/nock items judge:*)",
+        "Bash(.nock/nock docs:*)",
+        "Bash(git log:*)",
+        "Bash(git show:*)",
+    ],
 }
 WRITING_GIT = ["--disallowedTools", "Bash(git * --ou*)"]
-DENIED = {CONSULTANT: [], ASKER: WRITING_GIT, SHARER: WRITING_GIT}
-TOOLS: dict[str, str] = {}
+DENIED = {
+    CONSULTANT: [],
+    ASKER: WRITING_GIT,
+    SHARER: WRITING_GIT,
+    CHATTER: WRITING_GIT,
+    NAMER: [],
+    TIDIER: WRITING_GIT,
+}
+# The namer has no tools at all, so no rules either.
+TOOLS: dict[str, str] = {NAMER: ""}
 
 
 def seat_flags(role: str, allowed: list[str]) -> list[str]:
@@ -62,8 +96,7 @@ def seat_flags(role: str, allowed: list[str]) -> list[str]:
         "--strict-mcp-config",
         "--tools",
         TOOLS.get(role, READING),
-        "--allowedTools",
-        *allowed,
+        *(["--allowedTools", *allowed] if allowed else []),
     ]
 
 
@@ -85,6 +118,7 @@ def test_each_seat_gets_exactly_its_tools_and_rules(
     monkeypatch.setenv("FAKE_ARGUMENTS", str(arguments))
     brief = (
         "NOTHING TO SHARE: <question> <intent> When each of the project's topics and items matters:"
+        " nock's studio # The conversation # Tidy up Work # Their message <message>\nhi\n</message>"
     )
     session = Dispatcher(project).launch(role, brief, project.root)
     assert session.exit_code == 0 and session.denied == []

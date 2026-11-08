@@ -34,6 +34,15 @@ class Answer(TypedDict):
     """The items it rests on, as `topic/slug`; the owner is shown each as a card."""
 
 
+def listing(topics: Topics) -> str:
+    """Every topic in a line, as a brief shows them: its state, counts and description."""
+    return "\n".join(
+        f"- `{row['name']}` ({row['state']}; {row['open']} open, {row['accepted']} accepted,"
+        f" {row['rejected']} rejected, {row['dropped']} dropped): {row['description']}"
+        for row in (topics.row(name) for name in topics.names())
+    )
+
+
 class Asker:
     def __init__(self, project: Project) -> None:
         self.project = project
@@ -41,14 +50,8 @@ class Asker:
     def ask(self, question: str) -> dict[str, Any]:
         if not question.strip():
             raise UsageError("the question is empty")
-        topics = Topics(self.project)
-        listing = "\n".join(
-            f"- `{row['name']}` ({row['state']}; {row['open']} open, {row['accepted']} accepted,"
-            f" {row['rejected']} rejected, {row['dropped']} dropped): {row['description']}"
-            for row in (topics.row(name) for name in topics.names())
-        )
         brief = Library(self.project.code_path("briefs"), BRIEFS).render(
-            "ask.md", question=question.strip(), topics=listing
+            "ask.md", question=question.strip(), topics=listing(Topics(self.project))
         )
         submission = self.project.local / "answers" / f"{uuid.uuid4()}.json"
         session = Dispatcher(self.project).launch(

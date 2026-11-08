@@ -34,8 +34,10 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, NotRequired, TypedDict
 
+from nock.chats import Chats
 from nock.commands import schema_of
 from nock.comparison import Comparison, Query
+from nock.configuration import with_table_settings
 from nock.errors import Error, NotFoundError, UsageError
 from nock.evaluation import Evaluations, Run
 from nock.explorer import Explorer, View
@@ -48,6 +50,7 @@ from nock.topics import (
     Verdict,
     attachment_name,
     chat_state,
+    in_order,
     kind_of,
     state_of,
 )
@@ -168,6 +171,19 @@ class EvalsTab(Tab):
 
 # How much of a text file Search reads: enough for any document, not a log.
 SEARCHED_BYTES = 256 * 1024
+
+
+def spoken(vtt: str) -> str:
+    """A WebVTT file's words, as its captions show them: no header, cue
+    numbers or timings."""
+    return " ".join(
+        line
+        for line in vtt.splitlines()
+        if line.strip()
+        and "-->" not in line
+        and not line.startswith("WEBVTT")
+        and not line.strip().isdigit()
+    )
 
 
 def talk_of(thread: list[dict[str, Any]]) -> list[str]:
@@ -401,7 +417,8 @@ class TopicsTab(Tab):
         self.texts: dict[Path, tuple[int, str]] = {}
 
     def fragment(self) -> str:
-        return f"<style>\n{(PAGES / 'topics.css').read_text()}</style>\n" + super().fragment()
+        look = (PAGES / "topics.css").read_text() + (PAGES / "chat.css").read_text()
+        return f"<style>\n{look}</style>\n" + super().fragment()
 
     def get(self, route: str) -> Any:
         if not route:
@@ -429,8 +446,8 @@ class TopicsTab(Tab):
     def search(self, query: str) -> dict[str, Any]:
         """What the Search field finds, in what the owner sees: a topic by its
         name, description, status and thread; an item by its title, its
-        decision, its files' names, the text of its text files, and its
-        thread (a thread's messages with the names of the files they carry) — never a recipe, a `from`, a ref or nock's own notes (a split,
+        decision, its files' names, the text of its text files, its videos'
+        captions, and its thread (a thread's messages with the names of the files they carry) — never a recipe, a `from`, a ref or nock's own notes (a split,
         a revival, a task kept as a note). Every word must be found in the
         topic and the item together, and one at least in the item itself."""
         wanted = query.lower().split()
@@ -473,6 +490,8 @@ class TopicsTab(Tab):
             parts.append(file["name"])
             if file.get("type") == "text":
                 parts.append(self.text_of(Path(file["where"])))
+            if file.get("captions_where"):
+                parts.append(spoken(self.text_of(Path(file["captions_where"]))))
         return " ".join(parts).lower()
 
     def text_of(self, path: Path) -> str:
@@ -497,7 +516,7 @@ class TopicsTab(Tab):
                 {
                     **record,
                     "current": self.topics.current_description(record),
-                    "state": str(state_of(record)),
+                    "state": str(state_of(record, items)),
                     "active": self.topics.activity(record, items),
                     "counts": self.topics.counts(items),
                     "chat": chat_state(record["thread"], seen.get(name)),
@@ -512,7 +531,7 @@ class TopicsTab(Tab):
                     ],
                 }
             )
-        return sorted(found, key=lambda topic: topic["active"], reverse=True)
+        return in_order(found)
 
     def post(self, route: str, body: Any) -> Any:
         if route == "upload":
@@ -583,10 +602,84 @@ class TopicsTab(Tab):
 TABS: tuple[type[Tab], ...] = (TopicsTab, EvalsTab)
 
 
+class Said(TypedDict):
+    """The owner's message in the studio's chat: in chat `id`, or a new one,
+    with the files uploaded for it (their tokens)."""
+
+    id: NotRequired[str]
+    text: str
+    attachments: NotRequired[list[str]]
+
+
+class Which(TypedDict):
+    """One of the studio's chats."""
+
+    id: str
+
+
+class ChatRoutes(Tab):
+    """The studio's chat (`chats.Chats`), which no tab owns: the page shows
+    it on every tab, from its button beside the settings. `GET /chat` every
+    chat in a line, the latest first; `GET /chat/ID` one, with the answer
+    being written; `POST /chat/send` the owner's message (a new chat without
+    `id`), `/stop` stops the answer, `/leave` names the chat the owner
+    leaves for a new one, `/tidy` starts Tidy up, `/undo` reverts its commit;
+    `GET /chat/file/ID/PATH` a file a message carries. Files go up as in
+    every chat (`topics/upload`), and are kept beside the chat."""
+
+    name = "chat"
+    title = "Chat"
+
+    def __init__(self, project: Project, uploads: Uploads) -> None:
+        super().__init__(project)
+        self.chats = Chats(project)
+        self.uploads = uploads
+
+    def get(self, route: str) -> Any:
+        if not route:
+            return {"chats": self.chats.listing()}
+        identifier, _, rest = urllib.parse.unquote(route).partition("/")
+        if identifier == "file":
+            chat, _, path = rest.partition("/")
+            return Raw(self.chats.attachment(chat, path))
+        return self.chats.shown(identifier)
+
+    def post(self, route: str, body: Any) -> Any:
+        if route == "send":
+            validate(body, schema_of(Said))
+            tokens = body.get("attachments") or []
+            files = [self.uploads.path(token) for token in tokens]
+            shown = self.chats.send(body.get("id"), body["text"], files)
+            self.uploads.sent(tokens)
+            return shown
+        if route == "tidy":
+            return self.chats.tidy()
+        actions = {"stop": self.chats.stop, "leave": self.chats.leave, "undo": self.chats.undo}
+        if route in actions:
+            validate(body, schema_of(Which))
+            return actions[route](body["id"])
+        raise NotFoundError("no such page")
+
+
 class Choice(TypedDict):
     """The owner's answer on the page to whether nock shares its usage report."""
 
     share: bool
+
+
+class RecorderSettings(TypedDict):
+    """Where the recorder sends what the owner says, set in the settings."""
+
+    transcribe_url: str
+    """A Whisper server speaking OpenAI's `/v1/audio/transcriptions`; empty, off."""
+    transcribe_model: str
+    transcribe_key_variable: str
+    """The name of the environment variable holding its key, never the key."""
+
+
+TRANSCRIPTION = ("transcribe_url", "transcribe_model", "transcribe_key_variable")
+# What a key variable may be called: an environment variable's name, never a key.
+VARIABLE = re.compile(r"[A-Za-z_][A-Za-z0-9_]{0,127}")
 
 
 class Studio(ThreadingHTTPServer):
@@ -594,6 +687,11 @@ class Studio(ThreadingHTTPServer):
         super().__init__(("127.0.0.1", port), Handler)
         self.project = project
         self.tabs = {tab.name: tab(project) for tab in TABS}
+        # What the page asks the server: each tab's routes, and the chat's.
+        topics = self.tabs[TopicsTab.name]
+        assert isinstance(topics, TopicsTab)
+        chat = ChatRoutes(project, topics.uploads)
+        self.routes: dict[str, Tab] = {**self.tabs, chat.name: chat}
 
     def question(self) -> str:
         """Under the title while nobody has answered: a slim line asking, with
@@ -632,9 +730,57 @@ class Studio(ThreadingHTTPServer):
             '          <p class="hint">Weekly at most, counts and categories only: never code,'
             " paths, names or what items say.</p>\n"
             f"          <details><summary>What it holds</summary><p>{html.escape(QUESTION)}</p></details>\n"
+            f"{self.transcription()}"
             "        </div>\n"
             "      </div>"
         )
+
+    def transcription(self) -> str:
+        """The recorder's Whisper server, beside the sharing switch: kept in
+        this machine's `.nock/local/config.toml`, never committed."""
+        settings = self.project.configuration
+        value = {
+            key: html.escape(str(settings.get(f"studio.{key}") or "")) for key in TRANSCRIPTION
+        }
+        return (
+            '          <form class="fields" id="transcription" aria-labelledby="transcription-label">\n'
+            '            <div class="setting"><span id="transcription-label">Transcription</span>'
+            ' <span class="state" id="transcription-state">'
+            f"{'On' if value['transcribe_url'] else 'Off'}</span></div>\n"
+            '            <label>Whisper server <input name="transcribe_url" type="url" spellcheck="false"'
+            ' placeholder="https://api.openai.com/v1" autocomplete="off"'
+            f' value="{value["transcribe_url"]}"></label>\n'
+            '            <label>Model <input name="transcribe_model" spellcheck="false" placeholder="whisper-1"'
+            f' autocomplete="off" value="{value["transcribe_model"]}"></label>\n'
+            '            <label>Key variable <input name="transcribe_key_variable" spellcheck="false"'
+            ' placeholder="OPENAI_API_KEY" autocomplete="off" pattern="[A-Za-z_][A-Za-z0-9_]*"'
+            f' value="{value["transcribe_key_variable"]}"></label>\n'
+            '            <p class="hint">The recorder in every chat sends what you say there. The key'
+            " variable names the environment variable holding the key, never the key. Kept on"
+            " this machine, not committed.</p>\n"
+            '            <button type="submit" class="save">Save</button>\n'
+            "          </form>\n"
+        )
+
+    def configure(self, body: Any) -> dict[str, Any]:
+        """The recorder's settings from the page, written to this machine's
+        `.nock/local/config.toml` under `[studio]`."""
+        validate(body, schema_of(RecorderSettings))
+        values = {key: str(body[key]).strip() for key in TRANSCRIPTION}
+        variable = values["transcribe_key_variable"]
+        if variable and not VARIABLE.fullmatch(variable):
+            raise UsageError(
+                "the key variable is the name of an environment variable (OPENAI_API_KEY),"
+                " never the key itself"
+            )
+        url = values["transcribe_url"]
+        if url and not re.match(r"https?://", url):
+            raise UsageError("the Whisper server is an http:// or https:// address")
+        path = self.project.local / "config.toml"
+        text = path.read_text() if path.is_file() else ""
+        path.write_text(with_table_settings(text, "studio", values))
+        self.project.__dict__.pop("configuration", None)
+        return values
 
     def answer(self, body: Any) -> dict[str, Any]:
         validate(body, schema_of(Choice))
@@ -678,8 +824,9 @@ class Studio(ThreadingHTTPServer):
 
 
 class Handler(BaseHTTPRequestHandler):
-    """`GET /` the page; `POST /usage` the owner's answer on sharing; `/NAME/ROUTE`
-    goes to the tab named."""
+    """`GET /` the page; `POST /usage` the owner's answer on sharing, `/settings`
+    the recorder's server; `/NAME/ROUTE`
+    goes to the tab named, `/chat/ROUTE` to the chat."""
 
     @property
     def studio(self) -> Studio:
@@ -708,9 +855,10 @@ class Handler(BaseHTTPRequestHandler):
             except json.JSONDecodeError as error:
                 self.send_json(HTTPStatus.BAD_REQUEST, {"error": str(error)})
                 return
-        if self.path == "/usage":
+        if self.path in ("/usage", "/settings"):
+            take = self.studio.answer if self.path == "/usage" else self.studio.configure
             try:
-                self.send_json(HTTPStatus.OK, self.studio.answer(body))
+                self.send_json(HTTPStatus.OK, take(body))
             except Error as error:
                 self.send_json(HTTPStatus.BAD_REQUEST, {"error": str(error)})
             return
@@ -718,7 +866,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def answer(self, call: Callable[[Tab, str], Any]) -> None:
         name, _, route = self.path.split("?")[0].removeprefix("/").partition("/")
-        tab = self.studio.tabs.get(name)
+        tab = self.studio.routes.get(name)
         if tab is None:
             self.send_json(HTTPStatus.NOT_FOUND, {"error": "no such page"})
             return

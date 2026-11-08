@@ -32,8 +32,9 @@ SUFFIXES = {
     "x-wav": ".wav",
 }
 HINT = (
-    "Transcription is off: set `transcribe_url` under `[studio]` in .nock/config.toml"
-    " (or .nock/local/config.toml, for this machine only) to a Whisper server —"
+    "Transcription is off: set a Whisper server in the studio's settings (the gear),"
+    " or `transcribe_url` under `[studio]` in .nock/config.toml"
+    " (or .nock/local/config.toml, for this machine only) — e.g."
     ' "https://api.openai.com/v1/audio/transcriptions", or a local whisper.cpp or'
     " faster-whisper-server — then reload the page."
 )

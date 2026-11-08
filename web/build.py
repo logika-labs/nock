@@ -75,6 +75,7 @@ PAGES: dict[str, tuple[str, tuple[str, ...]]] = {
     "session": ("start", ("reminders", "run", "status")),
     "work": ("every-day", ("studio", "topics.verdicts", "topics.search")),
     "chat": ("every-day", ("topics.threads",)),
+    "tidy": ("every-day", ("topics.state",)),
     "topics": (
         "every-day",
         (

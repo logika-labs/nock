@@ -46,6 +46,7 @@ Both are `src/nock/terms/`.
   [The first session](https://nock.dev/docs/session/).
 - **Every day:** [Reviewing in Work](https://nock.dev/docs/work/),
   [Chatting](https://nock.dev/docs/chat/),
+  [Tidy up](https://nock.dev/docs/tidy/),
   [Topics and items](https://nock.dev/docs/topics/),
   [The map and consulting](https://nock.dev/docs/consult/),
   [Reflection rounds](https://nock.dev/docs/reflection/),

@@ -1,0 +1,103 @@
+/* Work's filters and Tidy up, under the bar; and the global chat, which the topics tab draws on
+   every tab. The chat is a chat like the others (pages/topics.css: its foil shadow, its messages,
+   its composer), anchored under its button at the top right with a fixed height; pinned, it docks
+   to the right half of the screen. */
+
+/* The filters: one at a time, as chips with their counts; done and dropped topics on their own
+   toggle; Tidy up at the end of the line. */
+.topics .sift { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 14px; }
+.topics .sift .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.topics .sift .chip[data-sift="me"] { --tone: #b5267a; }
+.topics .sift .chip[data-sift="agent"] { --tone: #0b7f9c; }
+.topics .sift .chip[data-sift="todo"] { --tone: #a35f00; }
+.topics .sift .chip[data-sift="active"] { --tone: #4b3bd6; }
+.topics .sift .chip.closed { border-style: dashed; }
+.topics .sift .chip.closed[aria-pressed="true"] { border-style: solid; }
+.topics .tidy-anchor { position: relative; margin-left: auto; display: inline-grid; }
+/* Its confirm floats over the topics under the bar. */
+.topics .controls:has(.tidy-confirm) { position: relative; z-index: 30; }
+.topics .tidy {
+  display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 12px 0 9px; border-radius: 999px;
+  border: 1px solid transparent; color: var(--foreground); font: 500 12.5px/1 var(--sans);
+  background: linear-gradient(#fff, #fff) padding-box, linear-gradient(100deg, #ff9ad5, #c3b2ff, #8fe9ff) border-box;
+  box-shadow: -4px 4px 12px -6px rgb(255 120 200 / .55), 4px 6px 12px -6px rgb(90 220 255 / .6);
+}
+.topics .tidy svg { width: 16px; height: 16px; }
+.topics .tidy:hover, .topics .tidy[aria-expanded="true"] { background: linear-gradient(#f7f4ff, #f7f4ff) padding-box, linear-gradient(100deg, #ff9ad5, #c3b2ff, #8fe9ff) border-box; }
+.topics .tidy:focus-visible { outline: 2px solid #111116; outline-offset: 2px; }
+.topics .tidy-confirm {
+  position: absolute; z-index: 25; right: 0; top: calc(100% + 8px); width: min(24rem, calc(100vw - 32px));
+  display: grid; gap: 8px; padding: 14px 16px; border-radius: 16px; background: #fff; border: 1px solid var(--border);
+  box-shadow: 0 0 0 1px rgb(17 17 22 / .04), -12px 16px 36px -14px rgb(255 120 200 / .55), 12px 20px 40px -14px rgb(90 220 255 / .6);
+  font-size: 13.5px; line-height: 1.5;
+}
+.topics .tidy-confirm p { margin: 0; }
+.topics .tidy-confirm p + p { color: var(--muted); }
+.topics .tidy-confirm .buttons { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
+.topics .tidy-confirm .button { height: 32px; padding: 0 14px; }
+
+/* The global chat: under its button, the height of most of the screen. */
+.topics .chat.global {
+  position: fixed; z-index: 28; top: var(--chat-top, 16px); right: max(16px, calc((100vw - var(--column)) / 2));
+  width: min(27rem, calc(100vw - 32px)); height: min(40rem, calc(100vh - 96px));
+}
+.topics .chat.global .chat-head { gap: 4px; padding: 0 8px; }
+.topics .chat.global .chat-head .label {
+  flex: 1; min-width: 0; padding: 0 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font: 600 13px/1 var(--sans); letter-spacing: 0; text-transform: none; color: var(--foreground);
+}
+.topics .head-button {
+  flex: none; display: inline-flex; align-items: center; gap: 5px; height: 30px; min-width: 30px; justify-content: center;
+  padding: 0 6px; border: 0; border-radius: 999px; background: none; color: var(--muted); font: 500 12px/1 var(--sans);
+}
+.topics .head-button svg { width: 17px; height: 17px; }
+.topics .head-button:hover { color: var(--foreground); background: rgb(17 17 22 / .06); }
+.topics .head-button[aria-pressed="true"] { color: #fff; background: #111116; }
+.topics .head-button.new { padding: 0 10px 0 7px; color: var(--foreground); border: 1px solid var(--border); background: #fff; }
+.topics .head-button:focus-visible { outline: 2px solid #111116; outline-offset: 2px; }
+.topics .chat.global .messages { padding: 14px; gap: 10px; }
+.topics .chat.global .message { max-width: 92%; }
+.topics .chat.global .message.agent { max-width: 100%; }
+.topics .chat.global .nothing { margin: auto; max-width: 18rem; text-align: center; color: var(--muted); }
+.topics .message .problem { margin: 2px 0 0; color: var(--error); font: 12px/1.5 var(--mono); overflow-wrap: anywhere; }
+.topics .message .working { display: flex; align-items: center; gap: 8px; margin: 2px 0; color: var(--muted); font-size: 12.5px; min-width: 0; }
+.topics .message .working code { font: 11.5px/1.4 var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; display: block; }
+.topics .message.live { border-color: transparent; background: linear-gradient(#fff, #fff) padding-box, linear-gradient(100deg, #ff9ad5, #c3b2ff, #8fe9ff) border-box; }
+.topics .ran { font-size: 12px; color: var(--muted); }
+.topics .ran summary { cursor: pointer; width: max-content; }
+.topics .ran ol { margin: 4px 0 0; padding-left: 18px; display: grid; gap: 2px; }
+.topics .ran code { font: 11px/1.4 var(--mono); overflow-wrap: anywhere; }
+
+/* The list of chats, in place of the messages. */
+.topics .chat-list { overflow-y: auto; display: grid; align-content: start; gap: 4px; padding: 8px; overscroll-behavior: contain; }
+.topics .chat-row {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 10px; padding: 9px 10px; border: 0; border-radius: 12px;
+  background: none; text-align: left; color: var(--foreground); font: inherit;
+}
+.topics .chat-row:hover { background: rgb(17 17 22 / .05); }
+.topics .chat-row.current { background: #fff; box-shadow: 0 0 0 1px var(--border); }
+.topics .chat-row .title { display: flex; align-items: center; gap: 6px; min-width: 0; font: 600 13.5px/1.35 var(--sans); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.topics .chat-row .broom svg { width: 15px; height: 15px; display: block; }
+.topics .chat-row .when { font: 500 11px/1.35 var(--mono); color: var(--muted); }
+.topics .chat-row .summary { grid-column: 1 / -1; font-size: 12.5px; line-height: 1.45; color: var(--muted); }
+.topics .chat-row:focus-visible { outline: 2px solid #111116; outline-offset: 1px; }
+
+/* A Tidy up chat ends with what it committed, and Undo. */
+.topics .tidy-foot {
+  display: flex; align-items: center; gap: 10px; padding: 10px 10px 10px 14px; border-top: 1px solid var(--border);
+  background: #fff; border-radius: 0 0 17px 17px; font-size: 13px; color: var(--muted);
+}
+.topics .tidy-foot span { flex: 1; min-width: 0; }
+.topics .tidy-foot code { font: 12px var(--mono); color: var(--foreground); }
+.topics .tidy-foot .button { height: 30px; padding: 0 14px; }
+
+/* Pinned: docked to the right half, the full height, the studio keeping the left. */
+@media (min-width: 900px) {
+  .topics .chat.global.pinned { top: 0; right: 0; bottom: 0; width: 50vw; height: auto; border-radius: 0; border-width: 0 0 0 1px; }
+  .topics .chat.global.pinned .composer, .topics .chat.global.pinned .tidy-foot { border-radius: 0; }
+}
+@media (max-width: 760px) {
+  .topics .chat.global { top: auto; left: 8px; right: 8px; bottom: 8px; width: auto; height: min(36rem, 80vh); }
+  .topics .head-button.new span { display: none; }
+  .topics .tidy-anchor { margin-left: 0; }
+}

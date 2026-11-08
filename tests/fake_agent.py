@@ -8,7 +8,13 @@ answers through `topics answer` (FAKE_ANSWER, or a stock one; FAKE_ANSWER
 `slow` waits to be cancelled first); as the
 sharer it reads the authors and hands back the vetted summary (FAKE_SHARE,
 or a stock one; `nothing` hands back nothing); as an evaluation step's
-agent it writes its brief to answer.txt, when its allow rules let it write."""
+agent it writes its brief to answer.txt, when its allow rules let it write.
+As the studio's chat it streams its answer word by word (FAKE_CHAT, or what
+it heard), holding half of it until FAKE_CHAT_GATE exists, and resumes only
+a session whose transcript is there, as Claude Code does; as the namer it
+names the chat (FAKE_NAME); as Tidy up it runs the nock commands FAKE_TIDY
+lists and sums up (FAKE_TIDY_SUMMARY). FAKE_LOG collects what each was
+asked."""
 
 from __future__ import annotations
 
@@ -114,8 +120,13 @@ def main() -> int:
     arguments = sys.argv[1:]
     ALLOWED.extend(flags(arguments))
     DENIED_RULES.extend(listed(arguments, "--disallowedTools"))
-    session = arguments[arguments.index("--session-id") + 1]
+    resumed = "--resume" in arguments
+    session = arguments[arguments.index("--resume" if resumed else "--session-id") + 1]
     prompt = arguments[-1]
+    if os.environ.get("FAKE_LOG"):
+        with open(os.environ["FAKE_LOG"], "a") as log:
+            said = {"role": os.environ.get("NOCK_ROLE"), "session": session, "resumed": resumed}
+            log.write(json.dumps({**said, "prompt": prompt}) + "\n")
     if os.environ.get("FAKE_TRY"):
         run(*json.loads(os.environ["FAKE_TRY"]))
     if os.environ.get("NOCK_ROLE") == "consultant":
@@ -130,6 +141,15 @@ def main() -> int:
         text = os.environ.get("FAKE_SHARE", "Early days, vetted.")
         finish("" if text == "nothing" else text)
         return 0
+    if os.environ.get("NOCK_ROLE") == "chatter":
+        return chat(session, prompt, resumed)
+    if os.environ.get("NOCK_ROLE") == "namer":
+        assert "# The conversation" in prompt and "--tools" in arguments
+        named = {"title": "Where orders live", "summary": "The owner asked; SQLite."}
+        finish(os.environ.get("FAKE_NAME") or json.dumps(named))
+        return 0
+    if os.environ.get("NOCK_ROLE") == "tidier":
+        return tidy(session, prompt)
     if os.environ.get("NOCK_ROLE") == "evaluated":
         write_transcript(session, prompt)
         if "Write" in ALLOWED:
@@ -175,6 +195,67 @@ def answer(session: str, prompt: str) -> int:
     result = run(".nock/nock", "topics", "answer", json.dumps(said))
     print(json.dumps({"type": "system", "message": result.stdout + result.stderr}), flush=True)
     finish("answered")
+    return 0
+
+
+def transcript_of(session: str) -> Path:
+    return (
+        Path(os.environ["CLAUDE_CONFIG_DIR"])
+        / "projects"
+        / re.sub(r"[^A-Za-z0-9]", "-", os.getcwd())
+        / f"{session}.jsonl"
+    )
+
+
+def say(text: str) -> None:
+    """An assistant message, word by word as `--include-partial-messages`
+    streams it, then whole; half of it held until FAKE_CHAT_GATE exists."""
+    words = text.split(" ")
+    gate = os.environ.get("FAKE_CHAT_GATE")
+    for index, word in enumerate(words):
+        if gate and index == len(words) // 2:
+            deadline = time.monotonic() + 30
+            while not Path(gate).exists() and time.monotonic() < deadline:
+                time.sleep(0.05)
+        delta = {"type": "text_delta", "text": word if index == 0 else f" {word}"}
+        event = {"type": "content_block_delta", "index": 0, "delta": delta}
+        print(json.dumps({"type": "stream_event", "event": event}), flush=True)
+    message = {"role": "assistant", "content": [{"type": "text", "text": text}]}
+    print(json.dumps({"type": "assistant", "message": message}), flush=True)
+
+
+def chat(session: str, prompt: str, resumed: bool) -> int:
+    if resumed and not transcript_of(session).is_file():
+        print(f"No conversation found with session ID: {session}", file=sys.stderr, flush=True)
+        return 1
+    if resumed:
+        heard = prompt
+    else:
+        assert "# Their message" in prompt and "nock's studio" in prompt
+        heard = prompt.split("<message>\n", 1)[1].split("\n</message>", 1)[0]
+        write_transcript(session, prompt)
+    tool = {"type": "tool_use", "name": "Bash", "input": {"command": ".nock/nock topics list"}}
+    print(json.dumps({"type": "assistant", "message": {"content": [tool]}}), flush=True)
+    listed = run(".nock/nock", "topics", "list")
+    assert listed.returncode == 0, listed.stderr
+    text = os.environ.get("FAKE_CHAT") or f"You said: {heard}"
+    say(text)
+    finish(text)
+    return 0
+
+
+def tidy(session: str, prompt: str) -> int:
+    assert "# Tidy up Work" in prompt
+    write_transcript(session, prompt)
+    say("Reading the topics first.")
+    for command in json.loads(os.environ.get("FAKE_TIDY") or "[]"):
+        tool = {"type": "tool_use", "name": "Bash", "input": {"command": " ".join(command)}}
+        print(json.dumps({"type": "assistant", "message": {"content": [tool]}}), flush=True)
+        result = run(".nock/nock", *command)
+        print(json.dumps({"type": "system", "message": result.stdout + result.stderr}), flush=True)
+    summary = os.environ.get("FAKE_TIDY_SUMMARY") or "Moved one item\n\n- orders: first"
+    say(summary)
+    finish(summary)
     return 0
 
 

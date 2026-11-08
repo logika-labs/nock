@@ -66,10 +66,10 @@
 .evals .wires { position: absolute; inset: 0; pointer-events: none; overflow: visible; }
 .evals .wires path { fill: none; stroke: rgb(17 17 22 / .2); stroke-linecap: round; }
 .evals .wires path.lit { stroke: #111116; stroke-opacity: .75; }
-.evals .wires path.other { stroke-dasharray: 3 5; stroke: rgb(17 17 22 / .45); }
+.evals .wires path.other { stroke: rgb(17 17 22 / .28); }
 .evals .wires path.hot { stroke: #d6338a; stroke-opacity: .7; }
 
-.evals .head { display: grid; gap: 4px; align-content: start; padding-bottom: 4px; border-bottom: 1px dashed rgb(17 17 22 / .18); position: sticky; top: 0; z-index: 2; background: rgb(255 255 255 / .92); padding-top: 4px; }
+.evals .head { display: grid; gap: 4px; align-content: start; padding-bottom: 4px; border-bottom: 1px solid rgb(17 17 22 / .12); position: sticky; top: 0; z-index: 2; background: rgb(255 255 255 / .92); padding-top: 4px; }
 .evals .head h3 { margin: 0; font: 700 15px/20px var(--display); letter-spacing: -.01em; }
 .evals .head .sub { font: 500 12px/16px var(--mono); color: var(--muted); }
 .evals .lane-name { font: 500 11px/14px var(--mono); letter-spacing: .05em; text-transform: uppercase; color: var(--muted); align-self: center; writing-mode: vertical-rl; transform: rotate(180deg); justify-self: center; max-height: 12rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -83,7 +83,7 @@
   transition: box-shadow .15s ease, border-color .15s ease, opacity .15s ease, transform .15s ease;
 }
 .evals .unit.child { margin-left: calc(var(--depth) * 12px); padding: 6px 9px 7px; border-radius: 11px; box-shadow: none; background: rgb(255 255 255 / .9); }
-.evals .unit.run { border-style: dashed; }
+.evals .unit.run { background: rgb(246 243 255 / .95); }
 .evals .unit:hover { border-color: rgb(17 17 22 / .4); box-shadow: 0 0 0 3px rgb(195 178 255 / .35), 0 6px 18px rgb(60 20 120 / .12); }
 .evals .unit.selected { border: 2px solid #111116; box-shadow: 3px 3px 0 0 var(--cyan), -3px -3px 0 0 var(--pink); }
 .evals .unit.lineage { border-color: #111116; }
@@ -124,7 +124,7 @@
 .evals .meter .failed { background: var(--s-failed); }
 .evals .meter .stale { background: var(--s-stale); }
 .evals .meter .missing { background: var(--s-missing); }
-.evals .legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font: 12px/16px var(--mono); color: var(--muted); padding: 10px 20px 12px; border-top: 1px dashed rgb(17 17 22 / .14); }
+.evals .legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font: 12px/16px var(--mono); color: var(--muted); padding: 10px 20px 12px; border-top: 1px solid rgb(17 17 22 / .1); }
 .evals .legend span { display: inline-flex; align-items: center; gap: 6px; }
 
 /* --- the card a hover shows, and the run a selection pins -------------------------------------- */

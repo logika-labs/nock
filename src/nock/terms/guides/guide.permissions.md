@@ -49,12 +49,17 @@ Reading files in the directory it runs in needs no rule.
 | consultant | Read, Grep, Glob, Bash | `.nock/nock topics list`, `topics show`, `items list`, `items show`, `docs`, `advise` |
 | asker | Read, Grep, Glob, Bash | `.nock/nock topics list`, `topics show`, `items list`, `items show`, `topics answer`; `git log`, `git show` |
 | sharer | Read, Grep, Glob, Bash | `git log` |
+| chatter (the studio's chat) | Read, Grep, Glob, Bash | `.nock/nock topics list`, `topics show`, `items list`, `items show`, `docs`; `git log`, `git show` |
+| namer (names a chat) | none | nothing |
+| tidier (Tidy up) | Read, Grep, Glob, Bash | `.nock/nock topics list`, `topics show`, `topics create`, `topics update`, `topics delete`, `items list`, `items show`, `items update`, `items judge` (dropping only), `docs`; `git log`, `git show` |
 
 `git log` and `git show` are allowed without `--output` (or any
 abbreviation of it git accepts, down to `--ou`), which a deny rule refuses:
 it would write their output to a file.
 
-None can edit a file, reach the network or run any other command. What
+None can edit a file, reach the network or run any other command; the
+tidier changes Work only through nock's commands, the owner having pressed
+Tidy up. What
 Claude Code refused comes back with the session: in the consultation's
 record and its failure, in the asker's log, in the vetted summary's
 record and the share's failure, and in the run's log.

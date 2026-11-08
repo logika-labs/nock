@@ -12,11 +12,14 @@
         <button type="button" data-bar-mode="ask" aria-pressed="false">Ask</button>
       </div>
     </div>
+    <div class="sift" id="topics-sift" role="toolbar" aria-label="Filters and Tidy up"></div>
     <div class="answer" id="topics-answer" aria-live="polite" hidden></div>
   </div>
   <main id="topics-main"></main>
   <div id="topics-modal"></div>
+  <div class="tip" id="topics-tip" role="tooltip" hidden></div>
   <div id="topics-lightbox"></div>
+  <div id="topics-global" data-everywhere></div>
 </div>
 <script>
 // The topics tab (its look is pages/topics.css): `GET topics` every topic with its items, each
@@ -183,6 +186,26 @@
     return [rows.length ? `<dl class="frontmatter">${shown}</dl>` : "", source.slice(found[0].length)];
   }
 
+  // A list's items, each with its indent, as lists nested by indent: an item indented more than
+  // the one before opens a list inside it; a change of kind at the same depth starts another list.
+  function nested(items) {
+    let at = 0;
+    const level = indent => {
+      const tag = items[at].tag;
+      let html = `<${tag}>`;
+      while (at < items.length && items[at].indent >= indent) {
+        if (items[at].indent > indent) { html = html.replace(/<\/li>$/, "") + level(items[at].indent) + "</li>"; continue; }
+        if (items[at].tag !== tag) break;
+        html += `<li>${inline(items[at].text)}</li>`;
+        at++;
+      }
+      return `${html}</${tag}>`;
+    };
+    let html = "";
+    while (at < items.length) html += level(items[at].indent);
+    return html;
+  }
+
   // DOCUMENT: a Markdown file, its headings at their own level; otherwise a message's, smaller.
   // Lines of a paragraph or a list item flow together, as in CommonMark: only a blank line parts them.
   function markdown(source, document = false) {
@@ -195,7 +218,7 @@
     const flush = () => {
       if (paragraph.length) out.push(`<p>${inline(paragraph.join(" "))}</p>`);
       paragraph = [];
-      if (list) out.push(`<${list.tag}>${list.items.map(item => `<li>${inline(item)}</li>`).join("")}</${list.tag}>`);
+      if (list) out.push(nested(list.items));
       list = null;
       if (quote.length) out.push(`<blockquote>${markdown(quote.join("\n"), document)}</blockquote>`);
       quote = [];
@@ -222,21 +245,21 @@
         continue;
       }
       const heading = line.match(/^(#{1,6})\s+(.*)$/);
-      const bullet = line.match(/^\s*[-*+]\s+(.*)$/);
-      const numbered = line.match(/^\s*\d+[.)]\s+(.*)$/);
+      const bullet = line.match(/^(\s*)[-*+]\s+(.*)$/);
+      const numbered = line.match(/^(\s*)\d+[.)]\s+(.*)$/);
       const quoted = line.match(/^\s*>\s?(.*)$/);
       if (quoted) { if (paragraph.length || list) { const kept = quote; quote = []; flush(); quote = kept; } quote.push(quoted[1]); continue; }
       if (quote.length) flush();
       if (heading) { flush(); const level = Math.min(6, heading[1].length + (document ? 0 : 2)); out.push(`<h${level}>${inline(heading[2])}</h${level}>`); }
       else if (/^\s*([-*_])(\s*\1){2,}\s*$/.test(line)) { flush(); out.push("<hr>"); }
       else if (bullet || numbered) {
-        const tag = bullet ? "ul" : "ol";
-        if (paragraph.length || (list && list.tag !== tag)) flush();
-        list = list || { tag, items: [] };
-        list.items.push((bullet || numbered)[1]);
+        const [, indent, text] = bullet || numbered;
+        if (paragraph.length) flush();
+        list = list || { items: [] };
+        list.items.push({ indent: indent.replace(/\t/g, "    ").length, tag: bullet ? "ul" : "ol", text });
       }
       else if (!line.trim()) flush();
-      else if (list) list.items[list.items.length - 1] += " " + line.trim();
+      else if (list) list.items[list.items.length - 1].text += " " + line.trim();
       else paragraph.push(line.trim());
     }
     flush();
@@ -304,14 +327,19 @@
       }
     }
     const near = found.map((row, index) => row.kind !== "equal" || found.slice(Math.max(0, index - 3), index + 4).some(other => other.kind !== "equal"));
-    let html = "", folded = 0;
-    const fold = () => { if (folded) html += `<tr class="fold"><td colspan="4">${folded} unchanged ${folded === 1 ? "line" : "lines"}</td></tr>`; folded = 0; };
+    // A long run of unchanged lines folds into one full-width row, which a click unfolds.
+    let html = "", run = "", folded = 0, runs = 0;
+    const fold = () => {
+      if (folded) html += `<tr class="unchanged" data-unfold="${runs}"><td colspan="4">··· ${folded} unchanged ${folded === 1 ? "line" : "lines"}</td></tr>${run}`;
+      folded = 0; run = ""; runs++;
+    };
     found.forEach((row, index) => {
-      if (!near[index] && found.length > 40) { folded++; return; }
-      fold();
       let left = row.before === null ? "" : escape(row.before), right = row.after === null ? "" : escape(row.after);
       if (row.kind === "changed") ({ before: left, after: right } = words(row.before, row.after));
-      html += `<tr class="${row.kind}"><td class="number">${row.left ?? ""}</td><td class="before">${left}</td><td class="number after-side">${row.right ?? ""}</td><td class="after">${right}</td></tr>`;
+      const line = hidden => `<tr class="${row.kind}"${hidden}><td class="number">${row.left ?? ""}</td><td class="before">${left}</td><td class="number after-side">${row.right ?? ""}</td><td class="after">${right}</td></tr>`;
+      if (!near[index] && found.length > 40) { folded++; run += line(` data-run="${runs}" hidden`); return; }
+      fold();
+      html += line("");
     });
     fold();
     return `<table class="diff"><colgroup><col class="number"><col><col class="number"><col></colgroup><tbody>${html}</tbody></table>`;
@@ -338,13 +366,14 @@
     if (latest.decision) return "decision";
     const types = new Set(latest.files.map(file => file.type));
     if (types.size === 1 && types.has("image")) return "image";
+    if (types.size === 1 && types.has("video")) return "video";
     if (types.size === 1 && types.has("text")) return "text";
     return "files";
   }
-  const SECTIONS = [["decision", "Decisions", "decision", "decisions"], ["image", "Images", "image", "images"], ["text", "Texts", "text", "texts"],
+  const SECTIONS = [["decision", "Decisions", "decision", "decisions"], ["image", "Images", "image", "images"], ["video", "Videos", "video", "videos"], ["text", "Texts", "text", "texts"],
     ["files", "Files", "file", "files"]];
   // What the viewer steps through with the arrows: a topic's pictures, then its texts, then its other files.
-  const viewable = topic => ["image", "text", "files"].flatMap(kind => topic.items.filter(item => kindOf(item) === kind));
+  const viewable = topic => ["image", "video", "text", "files"].flatMap(kind => topic.items.filter(item => kindOf(item) === kind));
   const awaitsOwner = item => item.verdict === "open";
   const joined = parts => parts.filter(Boolean).join(" · ");
 
@@ -354,21 +383,47 @@
   const titled = text => escape(text).replace(/`([^`]+)`/g, "<code>$1</code>");
   // The owner's verdict as a mark: a green tick, a red cross, a muted cross for dropped (closed,
   // nothing to rework); nothing while it is open.
-  const VERDICTS = { accepted: "Accepted", rejected: "Rejected", dropped: "Dropped" };
+  // A mark's hover card (`#topics-tip`, the evaluations' card): its name, what it means, and the
+  // line and moment that set it, when there are any.
+  const tipped = (word, means, line = "", moment = "") =>
+    `data-tip="${escape(word)}" data-tip-means="${escape(means)}"${line ? ` data-tip-line="${escape(line)}"` : ""}${moment ? ` data-tip-when="${escape(moment)}"` : ""}`;
+  const VERDICTS = {
+    accepted: ["Accepted", "the owner accepted it"],
+    rejected: ["Rejected", "the owner rejected it: the agent reworks it as a new version"],
+    dropped: ["Dropped", "the owner rejected it with nothing to rework: closed"],
+  };
   function verdictMark(item) {
-    const word = VERDICTS[item.verdict];
+    const [word, means] = VERDICTS[item.verdict] || [];
     if (!word) return "";
-    return `<span class="verdict-mark ${item.verdict}" title="${word}" aria-label="${word}" role="img">${ICONS[item.verdict]}</span>`;
+    return `<span class="verdict-mark ${item.verdict}" aria-label="${word}" role="img" ${tipped(word, means, "", item.decided?.moment)}>${ICONS[item.verdict]}</span>`;
   }
-  // A decision is done unless it says otherwise: only a todo one shows its status, a pill under its corner.
-  const todoPill = '<span class="todo-pill" title="To do">Todo</span>';
+  // A decision is done unless it says otherwise: only a todo one shows its status, a chip under its corner.
+  const todoPill = `<span class="todo-pill" aria-label="To do" ${tipped("To do", "decided, but the work it calls for is still to do")}>Todo</span>`;
   // Where a topic's work stands, beside its time: active a turning foil spinner, planned a foil
   // ring, done and abandoned a full foil circle with a tick or a cross.
-  const STATES = { active: "Active", planned: "Planned", done: "Done", abandoned: "Abandoned" };
-  function stateMark(state) {
-    const word = STATES[state] || STATES.active;
-    const icon = state === "done" ? ICONS.accepted : state === "abandoned" ? ICONS.rejected : "";
-    return `<span class="state-mark ${STATES[state] ? state : "active"}" title="${word}" aria-label="${word}" role="img">${icon}</span>`;
+  const STATES = {
+    active: ["Active", "an agent is working on it"],
+    planned: ["Planned", "the work is set out, not started"],
+    done: ["Done", "the work is finished"],
+    abandoned: ["Abandoned", "the work was stopped before it was finished"],
+  };
+  function stateMark(topic) {
+    const known = STATES[topic.state] ? topic.state : "active";
+    const [word, means] = STATES[known];
+    const icon = known === "done" ? ICONS.accepted : known === "abandoned" ? ICONS.rejected : "";
+    const set = [...topic.thread].reverse().find(entry => entry.kind === "status");
+    return `<span class="state-mark ${known}" aria-label="${word}" role="img" ${tipped(word, means, topic.status || "", set?.moment)}>${icon}</span>`;
+  }
+  function showTip(mark) {
+    const tip = $("topics-tip");
+    const when = mark.dataset.tipWhen;
+    tip.innerHTML = `<strong>${escape(mark.dataset.tip)}</strong><span class="means">${escape(mark.dataset.tipMeans)}</span>${mark.dataset.tipLine
+      ? `<span class="line">${escape(mark.dataset.tipLine)}</span>` : ""}${when ? `<span class="set">set ${escape(short(when))} ago · ${escape(new Date(when).toLocaleString())}</span>` : ""}`;
+    tip.hidden = false;
+    const anchor = mark.getBoundingClientRect();
+    const below = anchor.bottom + 8 + tip.offsetHeight < innerHeight - 8;
+    tip.style.top = `${below ? anchor.bottom + 8 : Math.max(8, anchor.top - 8 - tip.offsetHeight)}px`;
+    tip.style.left = `${Math.max(8, Math.min(anchor.right - tip.offsetWidth + 10, innerWidth - tip.offsetWidth - 8))}px`;
   }
 
   function chatButton(key, standing) {
@@ -384,7 +439,7 @@
   const sizeOf = bytes => bytes < 1024 ? `${bytes} B` : bytes < 1048576 ? `${Math.round(bytes / 1024)} KB` : `${(bytes / 1048576).toFixed(1)} MB`;
   const elapsed = started => { const seconds = Math.max(0, Math.floor((Date.now() - started) / 1000)); return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`; };
   // Where a thread's attachment is served: beside its topic's thread, or its item's.
-  const attachmentUrl = (key, file) => `topics/attachment/${(key.startsWith("topic:") ? key.slice(6) : key).split("/").map(encodeURIComponent).join("/")}/${file.path.split("/").map(encodeURIComponent).join("/")}`;
+  const attachmentUrl = (key, file) => key === GLOBAL ? `chat/file/${encodeURIComponent(talk.id)}/${file.path.split("/").map(encodeURIComponent).join("/")}` : `topics/attachment/${(key.startsWith("topic:") ? key.slice(6) : key).split("/").map(encodeURIComponent).join("/")}/${file.path.split("/").map(encodeURIComponent).join("/")}`;
   const topicOf = key => key.startsWith("topic:") ? key.slice(6) : key.split("/")[0];
 
   // What a message carries: pictures as thumbnails that open enlarged, other files as named chips.
@@ -438,17 +493,24 @@
       return `<div class="message ${entry.author}${held ? " waiting" : ""}${entry.attachments?.length ? " carrying" : ""}" data-key="message:${escape(entry.moment)}:${index}">${notes}${words}${carried(key, entry)}
         <span class="when">${held ? "waiting for the answer · " : ""}${time(entry.moment)}</span></div>`;
     }).join("");
+    return `<aside class="chat${state.dropping === key ? " dropping" : ""}" data-key="chat:${escape(key)}" data-drop="${escape(key)}" aria-label="Chat"><div class="chat-head"><span class="label">Chat</span></div>
+      <div class="messages" data-log="${escape(key)}">${messages || '<p class="nothing">Nothing said yet.</p>'}</div>
+      ${composer(key, waiting)}
+      <div class="drop-veil" aria-hidden="true"><span>Drop to attach</span></div></aside>`;
+  }
+
+  // The field every chat writes in, the global chat's too: its files, the recorder, closed while
+  // WAITING for the agent, its button then FROZEN's (withdraw the message, by default; the global
+  // chat's stops the answer).
+  function composer(key, waiting, frozen = { data: "withdraw", label: "Withdraw it, to edit" }) {
     const button = waiting
-      ? `<button type="button" class="send" data-withdraw="${escape(key)}" aria-label="Withdraw it, to edit" title="Withdraw it, to edit">${ICONS.cancel}</button>`
+      ? `<button type="button" class="send" data-${frozen.data}="${escape(key)}" aria-label="${escape(frozen.label)}" title="${escape(frozen.label)}">${ICONS.cancel}</button>`
       : `<button type="button" class="send" data-send="${escape(key)}" aria-label="Send" title="Send">${ICONS.send}</button>`;
     const failed = state.failed.get(key);
     const problem = failed ? `<div class="recorded-problem" role="alert"><span>${escape(failed.error)}</span><span class="choices"><button type="button" data-retry="${escape(key)}">Try again</button><button type="button" class="quiet" data-forget="${escape(key)}">Discard</button></span></div>` : "";
     const clip = `<button type="button" class="tool" data-attach="${escape(key)}" ${waiting ? "disabled" : ""} aria-label="Attach files" title="${waiting ? "Waiting for the agent's answer" : "Attach files (or drop them here)"}">${ICONS.clip}</button>`;
-    return `<aside class="chat${state.dropping === key ? " dropping" : ""}" data-key="chat:${escape(key)}" data-drop="${escape(key)}" aria-label="Chat"><div class="chat-head"><span class="label">Chat</span></div>
-      <div class="messages" data-log="${escape(key)}">${messages || '<p class="nothing">Nothing said yet.</p>'}</div>
-      <div class="composer${waiting ? " frozen" : ""}">${chips(key)}${problem}<div class="line">${clip}<textarea data-draft="reply:${escape(key)}" rows="1" ${waiting ? "disabled" : ""}
-        placeholder="${waiting ? "Waiting for the agent's answer" : "Write to the agent"}" aria-label="Message"></textarea>${recorder(key, waiting)}${button}</div></div>
-      <div class="drop-veil" aria-hidden="true"><span>Drop to attach</span></div></aside>`;
+    return `<div class="composer${waiting ? " frozen" : ""}">${chips(key)}${problem}<div class="line">${clip}<textarea data-draft="reply:${escape(key)}" rows="1" ${waiting ? "disabled" : ""}
+        placeholder="${waiting ? "Waiting for the agent's answer" : "Write to the agent"}" aria-label="Message"></textarea>${recorder(key, waiting)}${button}</div></div>`;
   }
 
   function verdictButtons(key, verdict, count = 1) {
@@ -462,8 +524,6 @@
   // --- drawing: a topic's sections ----------------------------------------------------------------
 
   // The session that wrote a version, short, with the session that dispatched it.
-  const sessionTag = version => version.session ? `<p class="where session">Session <code title="${escape(version.session)}">${escape(version.session.slice(0, 8))}</code>${version.parent
-    ? ` of <code title="${escape(version.parent)}">${escape(version.parent.slice(0, 8))}</code>` : ""}${version.role ? ` · ${escape(version.role)}` : ""}</p>` : "";
 
   // A decision: a bubble opening in place, its chat floating over it.
   function bubble(item) {
@@ -479,7 +539,7 @@
       const alternatives = decision.alternatives.length ? `<div class="considered"><span class="label">Considered instead</span><ul class="alternatives">${decision.alternatives.map(entry =>
         `<li><span class="option">${inline(entry.option)}</span> — <span class="why">${inline(entry.why_not)}</span></li>`).join("")}</ul></div>` : "";
       const concerns = latest.files.length ? `<p class="where">Concerns ${latest.files.map(file => `<code>${escape(file.name)}</code>`).join(" ")}</p>` : "";
-      body = `<div class="expanded"><div class="context">${markdown(decision.answer)}</div>${alternatives}${concerns}${sessionTag(latest)}
+      body = `<div class="expanded"><div class="context">${markdown(decision.answer)}</div>${alternatives}${concerns}
         <div class="actions"><span class="hint" data-problem="${escape(item.ref)}"></span><div class="buttons">${verdictButtons(item.ref, item.verdict)}</div></div></div>`;
     }
     return `<div class="item-bubble decision${open ? " open" : ""}${hitClass(item)}" data-key="${escape(item.ref)}" id="item-${escape(item.ref)}">
@@ -492,9 +552,20 @@
     const preferred = item.preferred?.version === version.version && version.files.find(file => file.name === item.preferred.name);
     return { version, file: preferred || version.files.find(entry => entry.type === type) };
   }
+  // A video's still: its poster, else its first frame; a play mark, and its length once known.
+  const lengths = new Map();
+  const clock = seconds => `${Math.floor(seconds / 60)}:${String(Math.round(seconds % 60)).padStart(2, "0")}`;
+  function still(item, version, file) {
+    const address = fileUrl(item, version, file.name);
+    if (file.type !== "video") return `<img src="${address}" alt="" loading="lazy">`;
+    const picture = file.poster ? `<img src="${fileUrl(item, version, file.poster)}" alt="" loading="lazy">` : "";
+    const known = lengths.get(address);
+    return `${picture}<video src="${address}#t=0.1" data-length="${address}" preload="metadata" muted playsinline tabindex="-1"${picture ? " hidden" : ""}></video>
+      <span class="play" aria-hidden="true"></span><span class="length">${known ? clock(known) : ""}</span>`;
+  }
   function thumbnail(item) {
-    const { version, file } = cover(item, "image");
-    return `<button type="button" class="thumb${hitClass(item)}" data-key="${escape(item.ref)}" id="item-${escape(item.ref)}" data-view="${escape(item.ref)}" title="${escape(item.title)}" aria-label="${escape(item.title)}"><img src="${fileUrl(item, version, file.name)}" alt="" loading="lazy">
+    const { version, file } = cover(item, kindOf(item) === "video" ? "video" : "image");
+    return `<button type="button" class="thumb${file.type === "video" ? " video" : ""}${hitClass(item)}" data-key="${escape(item.ref)}" id="item-${escape(item.ref)}" data-view="${escape(item.ref)}" title="${escape(item.title)}" aria-label="${escape(item.title)}">${still(item, version, file)}
       <span class="ribbon"><span class="title">${titled(item.title)}</span>${time(item.updated)}${verdictMark(item)}</span></button>`;
   }
   // An item's options belong together: one card, its title and time over a small list of them (the
@@ -503,16 +574,25 @@
     const version = last(item);
     const options = version.files.map(file => {
       const preferred = item.preferred?.version === version.version && item.preferred?.name === file.name;
-      const star = preferred ? `<span class="star" title="Preferred">${ICONS.star}</span>` : "";
-      const shown = type === "image" ? `<img src="${fileUrl(item, version, file.name)}" alt="" loading="lazy">`
-        : `<pre data-text="${fileUrl(item, version, file.name)}" data-lines="4" data-own>…</pre>`;
-      return `<span class="option${preferred ? " preferred" : ""}" data-key="option:${escape(file.name)}">${shown}<span class="name">${escape(file.name)}</span>${star}</span>`;
+      const shown = type !== "text" ? still(item, version, file)
+        : `<pre data-text="${fileUrl(item, version, file.name)}" data-lines="4" data-own>…</pre><span class="name">${escape(file.name)}</span>`;
+      return `<span class="option${preferred ? " preferred" : ""}" data-key="option:${escape(file.name)}">${shown}${star(item, version, file, "span")}</span>`;
     }).join("");
-    return `<button type="button" class="options-card ${type}${hitClass(item)}" data-key="${escape(item.ref)}" id="item-${escape(item.ref)}" data-view="${escape(item.ref)}">
-      <span class="head"><span class="title">${titled(item.title)}</span><span class="side">${time(item.updated)}</span></span>
-      <span class="stack">${options}</span>${verdictMark(item)}</button>`;
+    // Pictures: the options, then the title, time and verdict along the foot. Texts: the title on top.
+    const pictured = type !== "text";
+    const head = `<span class="head"><span class="title">${titled(item.title)}</span><span class="side">${time(item.updated)}${pictured ? verdictMark(item) : ""}</span></span>`;
+    return `<button type="button" class="options-card ${pictured ? "image" : "text"}${type === "video" ? " video" : ""}${hitClass(item)}" data-key="${escape(item.ref)}" id="item-${escape(item.ref)}" data-view="${escape(item.ref)}">
+      ${pictured ? "" : head}<span class="stack">${options}</span>${pictured ? head : verdictMark(item)}</button>`;
   }
   const grouped = item => item.options && last(item).files.length > 1;
+  // An option's star: grey; the preferred one's filled in the foil. A click prefers it, or takes the
+  // preference back. In a card that opens the item it is a span, as a button holds no button.
+  function star(item, version, file, tag = "button") {
+    const preferred = item.preferred?.version === version.version && item.preferred?.name === file.name;
+    const words = preferred ? "Preferred: click to take it back" : "Prefer this option";
+    const kind = tag === "button" ? 'type="button"' : 'role="button" tabindex="-1"';
+    return `<${tag} ${kind} class="star-toggle" data-prefer="${escape(file.name)}" data-ref="${escape(item.ref)}" data-version="${version.version}" aria-pressed="${preferred}" aria-label="${words}" title="${words}"><i></i></${tag}>`;
+  }
   function preview(item) {
     const { version, file } = cover(item, "text");
     return `<button type="button" class="preview${hitClass(item)}" data-key="${escape(item.ref)}" id="item-${escape(item.ref)}" data-view="${escape(item.ref)}">
@@ -528,7 +608,7 @@
       if (!found.length) return "";
       const key = `${topic.name}/${kind}`, folded = state.folded.has(key);
       const body = folded ? "" : kind === "decision" ? `<div class="item-bubbles">${found.map(bubble).join("")}</div>`
-        : kind === "image" ? `<div class="strip images">${found.map(item => grouped(item) ? optionsCard(item, "image") : thumbnail(item)).join("")}</div>`
+        : kind === "image" || kind === "video" ? `<div class="strip images">${found.map(item => grouped(item) ? optionsCard(item, kind) : thumbnail(item)).join("")}</div>`
         : kind === "text" ? `<div class="strip texts">${found.map(item => grouped(item) ? optionsCard(item, "text") : preview(item)).join("")}</div>`
         : `<div class="rows">${found.map(fileRow).join("")}</div>`;
       return `<section class="section ${kind}${folded ? " folded" : ""}" data-key="section:${kind}"><h3 class="label"><button type="button" class="fold" data-fold="${escape(key)}" aria-expanded="${!folded}">${ICONS.caret}${label} <span class="count">· ${found.length}</span></button></h3>${body}</section>`;
@@ -548,7 +628,7 @@
     const waiting = topic.items.filter(awaitsOwner).length;
     const head = `<div class="topic-head" data-toggle="${escape(topic.name)}">
         <span class="title-line"><button type="button" class="name" aria-expanded="${open}">${escape(topic.name)}</button>${topic.status ? `<span class="status">${escape(topic.status)}</span>` : ""}</span>
-        <span class="corner">${stateMark(topic.state)}${time(topic.active)}${chatCorner(key, topic.thread, topic.chat)}</span>
+        <span class="corner">${stateMark(topic)}${time(topic.active)}${chatCorner(key, topic.thread, topic.chat)}</span>
         <span class="counts"><span>${escape(kindCounts(topic.items))}</span><span>${escape(verdictCounts(topic.counts))}</span></span>
         <p class="about">${inline(topic.current)}</p></div>`;
     const body = open ? `<div class="topic-body">${sections(topic, items) || '<p class="nothing">No items yet.</p>'}
@@ -562,13 +642,15 @@
     const found = said().length ? state.found : null;
     const shown = [];
     for (const topic of state.topics) {
-      if (!found || found.topics.has(topic.name)) { shown.push([topic, topic.items]); continue; }
-      const items = topic.items.filter(item => found.items.has(item.ref));
+      const kept = sifted(topic);
+      if (!kept) continue;
+      if (!found || found.topics.has(topic.name)) { shown.push([topic, kept]); continue; }
+      const items = kept.filter(item => found.items.has(item.ref));
       if (items.length) shown.push([topic, items]);
     }
     const empty = !state.topics.length
       ? '<div class="empty" data-key="empty"><strong>No topics yet</strong><span>Agents open a topic for their work with <code>.nock/nock topics create</code> and submit items into it; they appear here.</span></div>'
-      : !shown.length ? '<div class="empty" data-key="empty"><strong>No matches</strong><span>No topic or item fits the search.</span></div>' : "";
+      : !shown.length ? `<div class="empty" data-key="empty"><strong>No matches</strong><span>No topic or item fits the ${said().length ? "search" : "filter"}${state.sift !== "all" || !state.closed ? " as filtered" : ""}.</span></div>` : "";
     studio.morph($("topics-main"), empty + shown.map(([topic, items]) => sheet(topic, items)).join(""));
   }
 
@@ -585,13 +667,13 @@
   }
 
   // The version select: a pill showing the version alone; its list gives each version's time.
-  const versionWords = version => `Version ${version.version} <span class="when">${escape(short(version.moment))}</span>`;
+  const versionWords = version => `<span class="label">v<span class="number">${version.version}</span></span><span class="when">${escape(short(version.moment))}</span>`;
   function picker(item, side, number) {
     const version = versionOf(item, number);
     const open = state.menu === side;
     const options = [...item.versions].reverse().map(entry => `<button type="button" role="option" data-pick="${side}" data-number="${entry.version}" aria-selected="${entry.version === number}" title="${escape(new Date(entry.moment).toLocaleString())}">${versionWords(entry)}</button>`).join("");
     return `<div class="select" data-key="select:${side}"><button type="button" class="select-button" data-menu="${side}" aria-haspopup="listbox" aria-expanded="${open}" ${item.versions.length < 2 ? "disabled" : ""}>
-        Version <span class="number">${version.version}</span>${item.versions.length > 1 ? ICONS.chevron : ""}</button>
+        <span class="label">v<span class="number">${version.version}</span></span>${item.versions.length > 1 ? ICONS.chevron : ""}</button>
         ${open ? `<div class="options" role="listbox" aria-label="${side === "left" ? "Before" : side === "right" ? "After" : "Version"}">${options}</div>` : ""}</div>`;
   }
 
@@ -619,7 +701,12 @@
       const [box, picture] = zoomStyles(index);
       return `<div class="pane"><button type="button" class="shot${box ? " zoomed" : ""}" data-shot="${index}" style="${box}" aria-label="${box ? "Zoom out" : "Zoom in"}"><img data-key="${address}" src="${address}" style="${picture}" alt="${escape(file.name)}, version ${version.version}"></button></div>`;
     }
-    if (file.type === "video") return `<div class="pane"><video data-key="${address}" src="${address}" controls preload="metadata" playsinline></video></div>`;
+    if (file.type === "video") {
+      // Captions on by default: a recording explains each step in its own words.
+      const poster = file.poster ? ` poster="${fileUrl(item, version, file.poster)}"` : "";
+      const track = file.captions ? `<track kind="captions" src="${fileUrl(item, version, file.captions)}" srclang="en" label="Captions" default>` : "";
+      return `<div class="pane"><video class="player" data-key="${address}" src="${address}"${poster} controls preload="metadata" playsinline>${track}</video></div>`;
+    }
     if (file.type === "pdf") return `<div class="pane"><iframe data-key="${address}" src="${address}" title="${escape(file.name)}"></iframe></div>`;
     if (file.type === "html") return `<div class="pane"><iframe data-key="${address}" src="${address}" sandbox="" title="${escape(file.name)}"></iframe></div>`;
     if (file.type === "binary") return `<div class="pane"><a href="${address}" download>${escape(file.name)}</a></div>`;
@@ -630,8 +717,7 @@
   // An option's foot: its name (where it comes from, on a click) and whether the owner prefers it.
   function optionBar(item, version, file, index) {
     const preferred = item.preferred?.version === version.version && item.preferred?.name === file.name;
-    const prefer = item.options ? `<button type="button" class="prefer" data-prefer="${escape(file.name)}" data-version="${version.version}" aria-pressed="${preferred}" title="${preferred ? "Preferred: click to take it back" : "Prefer this option"}">${ICONS.star}${preferred ? "Preferred" : "Prefer"}</button>` : "";
-    return `<div class="option-bar${preferred ? " preferred" : ""}">${pathButton(file, index)}${prefer}</div>`;
+    return `<div class="option-bar${preferred ? " preferred" : ""}">${pathButton(file, index)}</div>`;
   }
 
   // What the viewer shows: compared, one file of each of two versions; otherwise every file of one
@@ -663,10 +749,10 @@
     } else {
       // Keyed apart from a diff, so a diff filled once is not taken for this.
       content = `<div class="panes${panes.length > 1 ? " several" : ""}" data-key="panes" style="--panes:${panes.length}">${panes.map((entry, index) =>
-        `<div class="column">${comparing ? picker(item, sides[index], numbers[index]) : ""}${pane(item, entry.version, entry.file, index)}${several && entry.file ? optionBar(item, entry.version, entry.file, index) : ""}</div>`).join("")}</div>`;
+        `<div class="column${several && entry.file && item.preferred?.version === entry.version.version && item.preferred?.name === entry.file.name ? " preferred" : ""}">${comparing ? picker(item, sides[index], numbers[index]) : ""}${item.options && entry.file ? `<div class="pane-wrap">${pane(item, entry.version, entry.file, index)}${star(item, entry.version, entry.file)}</div>` : pane(item, entry.version, entry.file, index)}${several && entry.file ? optionBar(item, entry.version, entry.file, index) : ""}</div>`).join("")}</div>`;
     }
     const actions = awaitsOwner(item) || item.verdict !== "open" ? `<div class="actions"><span class="hint" data-problem="${escape(item.ref)}"></span><div class="buttons">${verdictButtons(item.ref, item.verdict)}</div></div>` : "";
-    const fits = kind === "image" ? "image" : kind === "text" && !comparing && !several ? "text" : "wide";
+    const fits = kind === "image" || kind === "video" ? "image" : kind === "text" && !comparing && !several ? "text" : "wide";
     return `<div class="overlay" data-key="overlay:${escape(item.ref)}" data-backdrop>
       <article class="sheet open viewer ${fits}${comparing ? " comparing" : ""}" role="dialog" aria-modal="true" aria-label="${escape(item.title)}">
         <div class="ribbon"><h2>${titled(item.title)}</h2><span class="side">${verdictMark(item)}${time(item.updated)}</span><button type="button" class="close" data-close aria-label="Close (Esc)" title="Close (Esc)">×</button></div>
@@ -959,6 +1045,7 @@
     if (state.route !== state.arrived && state.topics.length) arrive(state.route);
     drawCounts();
     drawBar();
+    drawSift();
     drawAnswer();
     drawList();
     drawModal();
@@ -966,6 +1053,7 @@
     fill($("topics"));
     markWords($("topics-main"));
     markWords($("topics-modal"));
+    drawGlobal();
     restoreDrafts();
     keepChats();
     if (state.reveal_to !== null) {
@@ -1030,7 +1118,7 @@
 
   function view(item, addressed = true) {
     state.modal = item.ref;
-    state.compare = comparable(item);
+    state.compare = false;
     state.single = state.left = state.right = state.menu = state.zoom = state.reveal = null;
     if (addressed) address(item.ref);
   }
@@ -1068,6 +1156,7 @@
   }
 
   async function send(key) {
+    if (key === GLOBAL) { sendGlobal(); return; }
     const written = (state.drafts.get(`reply:${key}`) || "").trim();
     const files = state.attached.get(key) || [];
     if (!written && !files.length) return;
@@ -1092,7 +1181,7 @@
   }
 
   async function prefer(button) {
-    const item = itemAt(state.modal);
+    const item = itemAt(button.dataset.ref);
     if (!item) return;
     const taking = button.getAttribute("aria-pressed") === "true";
     const body = { ref: item.ref, version: Number(button.dataset.version), ...(taking ? {} : { name: button.dataset.prefer }) };
@@ -1242,6 +1331,10 @@
     const target = event.target;
     if (state.menu && !target.closest(".select")) { state.menu = null; draw(); if (!target.closest("button")) return; }
     if (state.reveal !== null && !target.closest(".path-anchor")) { state.reveal = null; draw(); if (!target.closest("button")) return; }
+    const globally = target.closest("[data-global]");
+    if (globally) { globalAction(globally); return; }
+    const sifting = target.closest("[data-sift]");
+    if (sifting) { siftAction(sifting); return; }
     const mode = target.closest("[data-bar-mode]");
     if (mode) {
       state.mode = mode.dataset.barMode;
@@ -1288,6 +1381,12 @@
     if (preferring) { prefer(preferring); return; }
     const pathing = target.closest("[data-path]");
     if (pathing) { const index = Number(pathing.dataset.path); state.reveal = state.reveal === index ? null : index; draw(); return; }
+    const unfolding = target.closest("[data-unfold]");
+    if (unfolding) {
+      for (const row of unfolding.closest("table").querySelectorAll(`tr[data-run="${unfolding.dataset.unfold}"]`)) row.hidden = false;
+      unfolding.remove();
+      return;
+    }
     const folding = target.closest("[data-fold]");
     if (folding) { const key = folding.dataset.fold; owned("folded", key); state.folded.has(key) ? state.folded.delete(key) : state.folded.add(key); draw(); return; }
     if (target.closest("[data-close]") || target.matches("[data-backdrop]")) { closeViewer(); return; }
@@ -1327,7 +1426,7 @@
   // nothing happens: the browser does not leave the studio to show them.
   const dragsFiles = event => [...(event.dataTransfer?.types || [])].includes("Files");
   document.addEventListener("dragover", event => {
-    if (!state.shown || !dragsFiles(event)) return;
+    if (!(state.shown || talk.open) || !dragsFiles(event)) return;
     event.preventDefault();
     const over = event.target.closest?.("#topics [data-drop]");
     const key = over && !over.querySelector(".composer.frozen") ? over.dataset.drop : null;
@@ -1338,14 +1437,45 @@
     if (state.dropping && !event.relatedTarget) { state.dropping = null; draw(); }
   });
   document.addEventListener("drop", event => {
-    if (!state.shown || !dragsFiles(event)) return;
+    if (!(state.shown || talk.open) || !dragsFiles(event)) return;
     event.preventDefault();
     const over = event.target.closest?.("#topics [data-drop]");
     state.dropping = null;
     if (over) attach(over.dataset.drop, [...event.dataTransfer.files]); else draw();
   });
   // A zoomed picture follows the mouse; on a touch screen it is dragged, and a tap leaves the zoom.
+  root.addEventListener("mouseover", event => {
+    const mark = event.target.closest("[data-tip]");
+    if (mark) showTip(mark); else $("topics-tip").hidden = true;
+  });
+  root.addEventListener("mouseleave", () => { $("topics-tip").hidden = true; });
+  addEventListener("scroll", () => { $("topics-tip").hidden = true; }, { passive: true });
   root.addEventListener("scroll", event => { if (event.target.matches?.("textarea[data-draft]")) edges(event.target); }, true);
+  // A still's length, once its video's metadata comes.
+  root.addEventListener("loadedmetadata", event => {
+    const video = event.target;
+    if (!video.dataset?.length || !Number.isFinite(video.duration)) return;
+    lengths.set(video.dataset.length, video.duration);
+    const label = video.parentElement.querySelector(".length");
+    if (label) label.textContent = clock(video.duration);
+  }, true);
+  // Compared side by side, two versions play, pause and seek together.
+  let syncing = false;
+  for (const kind of ["play", "pause", "seeked", "ratechange"]) {
+    root.addEventListener(kind, event => {
+      const video = event.target;
+      if (syncing || !video.matches?.("#topics-modal .panes.several video.player")) return;
+      syncing = true;
+      for (const other of document.querySelectorAll("#topics-modal .panes.several video.player")) {
+        if (other === video) continue;
+        if (kind === "seeked" && Math.abs(other.currentTime - video.currentTime) > .05) other.currentTime = video.currentTime;
+        if (kind === "ratechange") other.playbackRate = video.playbackRate;
+        if (kind === "play" && other.paused) { other.currentTime = video.currentTime; other.play().catch(() => {}); }
+        if (kind === "pause" && !other.paused) other.pause();
+      }
+      setTimeout(() => { syncing = false; }, 0);
+    }, true);
+  }
   root.addEventListener("pointerdown", event => {
     const shot = event.target.closest(".shot.zoomed");
     state.dragged = false;
@@ -1400,6 +1530,13 @@
       event.preventDefault();
       return;
     }
+    const players = state.modal && !state.picture ? [...document.querySelectorAll("#topics-modal video.player")] : [];
+    if (players.length && (event.key === " " || event.key === "k") && !target.closest?.("button, video")) {
+      event.preventDefault();
+      const first = players[0];
+      if (first.paused) first.play().catch(() => {}); else first.pause();
+      return;
+    }
     if (state.modal && !state.picture && (event.key === "ArrowLeft" || event.key === "ArrowRight")) {
       event.preventDefault();
       step(event.key === "ArrowLeft" ? -1 : 1);
@@ -1407,6 +1544,268 @@
     }
     if (event.key === "/" && !state.modal) { event.preventDefault(); $("topics-input").focus(); }
   });
+
+  // --- the filters beside the bar, and Tidy up --------------------------------------------------------
+
+  // One filter at a time, with the search: what needs the owner (open items, threads the agent
+  // answered since they looked), what waits on an agent (the owner wrote last, or rejected an item
+  // still to rework), todo decisions, active topics. Done and abandoned topics, and dropped items, show
+  // only when asked.
+  // Kept per browser.
+  const SIFTS = {
+    all: { label: "All" },
+    me: { label: "Needs me", title: "Open items, and chats the agent answered since you looked",
+      topic: topic => topic.chat?.unseen > 0, item: item => item.verdict === "open" || item.chat?.unseen > 0 },
+    agent: { label: "Waiting on agent", title: "You wrote last, or rejected it and the rework is due",
+      topic: topic => topic.chat?.pending, item: item => item.chat?.pending || item.verdict === "rejected" },
+    todo: { label: "Todo", title: "Decisions still to carry out", item: item => last(item).decision?.status === "todo" },
+    active: { label: "Active", title: "Topics whose work is under way", whole: topic => topic.state === "active" },
+  };
+  const CLOSED_STATES = ["done", "abandoned"];
+  const stored = (key, fallback) => { try { return localStorage.getItem(key) ?? fallback; } catch { return fallback; } };
+  const store = (key, value) => { try { if (value === null) localStorage.removeItem(key); else localStorage.setItem(key, value); } catch { /* a private window */ } };
+  state.sift = SIFTS[stored("nock.work.sift", "all")] ? stored("nock.work.sift", "all") : "all";
+  state.closed = stored("nock.work.closed", "") === "1";
+  state.tidying = false;
+
+  // What a topic shows under the filters: its items that pass, or null to leave it out.
+  function sifted(topic, sift = state.sift, closed = state.closed) {
+    if (!closed && CLOSED_STATES.includes(topic.state)) return null;
+    const filter = SIFTS[sift];
+    // Dropped items are closed too: shown with the done and abandoned topics.
+    const kept = closed ? topic.items : topic.items.filter(item => item.verdict !== "dropped");
+    if (filter.whole) return filter.whole(topic) ? kept : null;
+    if (!filter.item) return kept;
+    const items = kept.filter(filter.item);
+    return items.length || filter.topic?.(topic) ? items : null;
+  }
+  function siftCount(sift) {
+    const kept = state.topics.map(topic => [topic, sifted(topic, sift)]).filter(([, items]) => items);
+    if (SIFTS[sift].whole || sift === "all") return kept.length;
+    return kept.reduce((sum, [topic, items]) => sum + items.length + (SIFTS[sift].topic?.(topic) ? 1 : 0), 0);
+  }
+  const BROOM = '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M13.5 2.5 9.7 9.2M6.2 9.4l5.6 3.2-1.1 2c-.9 1.6-2.6 2.6-4.4 2.6H3.4l.6-1.4M6.2 9.4l-1 1.8c-.6 1.1-1.3 2.5-1.8 3.9M6.2 9.4c.9-1.6 2.8-2.1 4.3-1.3l.2.1c1.5.9 2 2.8 1.1 4.4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M7.3 13.4 6.4 15M9.6 14 9 15.3" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>';
+  function drawSift() {
+    const chips = Object.entries(SIFTS).map(([name, filter]) =>
+      `<button type="button" class="chip" data-sift="${name}" data-key="sift:${name}" aria-pressed="${state.sift === name}"${filter.title ? ` title="${escape(filter.title)}"` : ""}>${escape(filter.label)} <span class="count">${state.topics.length ? siftCount(name) : ""}</span></button>`).join("");
+    const closedCount = state.topics.filter(topic => CLOSED_STATES.includes(topic.state)).length
+      + state.topics.flatMap(topic => topic.items).filter(item => item.verdict === "dropped").length;
+    const closed = `<button type="button" class="chip closed" data-sift="closed" data-key="sift:closed" aria-pressed="${state.closed}" title="${state.closed ? "Hide" : "Show"} done and abandoned topics, and dropped items">Done &amp; dropped <span class="count">${closedCount || ""}</span></button>`;
+    const confirm = state.tidying ? `<div class="tidy-confirm" role="dialog" aria-label="Tidy up" data-key="tidy-confirm">
+        <p><strong>Tidy up sends an agent to reorganize Work.</strong> It moves misplaced items, merges near-duplicate topics and splits sprawling ones, sets each topic's state from what is there, drops stale or superseded items with a note (the drop verdict: it never accepts or asks for rework), and puts the topics in order, a reason in each status.</p>
+        <p>You watch it in the chat. Everything lands as one commit, which Undo there reverts.</p>
+        <div class="buttons"><button type="button" class="button secondary" data-sift="tidy-cancel">Cancel</button><button type="button" class="button primary" data-sift="tidy-go">Tidy up</button></div></div>` : "";
+    const tidy = `<span class="tidy-anchor" data-key="tidy"><button type="button" class="tidy" data-sift="tidy" aria-expanded="${state.tidying}" title="Send an agent to tidy Work: regroup, close, drop and order the topics">${BROOM}<span>Tidy up</span></button>${confirm}</span>`;
+    studio.morph($("topics-sift"), `<div class="chips" role="group" aria-label="Filter" data-key="sifts">${chips}</div>${closed}${tidy}`);
+  }
+  function siftAction(button) {
+    const what = button.dataset.sift;
+    if (what === "closed") { state.closed = !state.closed; store("nock.work.closed", state.closed ? "1" : null); }
+    else if (what === "tidy") state.tidying = !state.tidying;
+    else if (what === "tidy-cancel") state.tidying = false;
+    else if (what === "tidy-go") { state.tidying = false; tidyUp(); }
+    else if (SIFTS[what]) { state.sift = what; store("nock.work.sift", what === "all" ? null : what); }
+    draw();
+  }
+  async function tidyUp() {
+    let started;
+    try { started = await post("chat/tidy", {}); } catch (error) { studio.toast(error.message); return; }
+    talk.id = started.id; talk.chat = started; talk.listing = false;
+    store("nock.chat.current", talk.id);
+    openGlobal(true);
+  }
+
+  // --- the global chat: a headless agent in the project, from the button beside the settings ---------
+
+  // It floats under its button, or is pinned to the right half of the screen (kept per browser), on
+  // every tab: the panel is the topics tab's, so it writes with the same composer as every chat. A
+  // new chat starts empty, the one left named by the agent (`chat/leave`); the list holds every chat,
+  // any of them continued. The agent's words stream in as it writes (`GET chat/ID`, often while it
+  // answers). A Tidy up chat ends with its summary and Undo.
+  const GLOBAL = "global";
+  const talk = {
+    open: stored("nock.chat.open", "") === "1", pinned: stored("nock.chat.pinned", "") === "1",
+    id: stored("nock.chat.current", "") || null, chat: null, list: null, listing: false, raw: "", timer: null, follow: true,
+  };
+  const CHAT_ICONS = {
+    list: '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 5.5h12M4 10h12M4 14.5h8" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>',
+    add: '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 4.5v11M4.5 10h11" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>',
+    pin: '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3.5 4.5h13v11h-13zM11.5 4.5v11" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>',
+    close: ICONS.cancel,
+  };
+  const ranOf = activity => activity?.length ? `<details class="ran"><summary>Ran ${activity.length} ${activity.length === 1 ? "command" : "commands"}</summary><ol>${activity.map(line => `<li><code>${escape(line)}</code></li>`).join("")}</ol></details>` : "";
+
+  function globalMessages(chat) {
+    const said = chat.messages.map((entry, index) => `<div class="message ${entry.author}" data-key="said:${index}">
+        ${entry.text ? `<div class="context">${markdown(entry.text)}</div>` : ""}${carried(GLOBAL, entry)}${entry.author === "agent" ? ranOf(entry.activity) : ""}
+        ${entry.problem ? `<p class="problem">${escape(entry.problem === "stopped" ? "Stopped." : entry.problem)}</p>` : ""}
+        <span class="when">${time(entry.moment)}</span></div>`).join("");
+    const live = chat.live;
+    const working = live ? `<div class="message agent live" data-key="live">${live.text ? `<div class="context">${markdown(live.text)}</div>` : ""}
+        <p class="working"><span class="spinner" aria-hidden="true"></span><span>${live.doing ? `<code>${escape(live.doing)}</code>` : live.text ? "Writing…" : "Thinking…"}</span></p>
+        ${ranOf(live.activity)}</div>` : "";
+    // The owner's last message got no answer: the studio stopped while the agent wrote.
+    const lost = !live && chat.messages.length && chat.messages[chat.messages.length - 1].author === "owner"
+      ? '<p class="nothing" data-key="lost">No answer came: the studio stopped while the agent wrote. Write again.</p>' : "";
+    return said + working + lost;
+  }
+  function tidyFoot(chat) {
+    if (chat.running) return `<div class="tidy-foot" data-key="foot"><span>Tidying… your changes land as one commit.</span><button type="button" class="button secondary" data-global="stop">Stop</button></div>`;
+    const done = chat.tidy || {};
+    const short = sha => `<code>${escape(sha.slice(0, 8))}</code>`;
+    const said = done.reverted ? `Undone: ${short(done.reverted)} reverts ${short(done.commit)}.`
+      : done.commit ? `Committed as ${short(done.commit)}.` : done.problem ? escape(done.problem) : "Nothing changed: nothing to commit.";
+    const undo = done.commit && !done.reverted ? '<button type="button" class="button primary" data-global="undo">Undo</button>' : "";
+    return `<div class="tidy-foot" data-key="foot"><span>${said}</span>${undo}</div>`;
+  }
+  function globalList() {
+    const rows = (talk.list || []).map(row => `<button type="button" class="chat-row${row.id === talk.id ? " current" : ""}" data-global="pick" data-id="${escape(row.id)}" data-key="row:${escape(row.id)}">
+        <span class="title">${row.kind === "tidy" ? `<span class="broom" aria-label="Tidy up">${BROOM}</span>` : ""}${escape(row.title)}${row.running ? ' <span class="spinner" aria-hidden="true"></span>' : ""}</span>
+        <span class="when">${time(row.updated)}</span>
+        <span class="summary">${row.naming ? "Naming…" : escape(row.summary)}</span></button>`).join("");
+    return `<div class="chat-list" data-key="list">${talk.list === null ? '<p class="nothing">…</p>' : rows || '<p class="nothing">No chats yet.</p>'}</div>`;
+  }
+  function globalPanel() {
+    if (!talk.open) return "";
+    const chat = talk.id && talk.chat?.id === talk.id ? talk.chat : null;
+    const title = talk.listing ? "Chats" : chat?.title || (chat ? "Chat" : "New chat");
+    const head = `<div class="chat-head">
+        <button type="button" class="head-button" data-global="list" aria-pressed="${talk.listing}" aria-label="Previous chats" title="Previous chats">${CHAT_ICONS.list}</button>
+        <span class="label" title="${escape(chat?.summary || "")}">${escape(title)}</span>
+        <button type="button" class="head-button new" data-global="new" aria-label="New chat" title="New chat">${CHAT_ICONS.add}<span>New chat</span></button>
+        <button type="button" class="head-button" data-global="pin" aria-pressed="${talk.pinned}" aria-label="${talk.pinned ? "Unpin" : "Pin to the right"}" title="${talk.pinned ? "Unpin: float it again" : "Pin it to the right half"}">${CHAT_ICONS.pin}</button>
+        <button type="button" class="head-button" data-global="close" aria-label="Close the chat" title="Close (Esc)">${CHAT_ICONS.close}</button></div>`;
+    let body;
+    if (talk.listing) body = globalList();
+    else if (!chat && talk.id) body = '<div class="messages" data-log="global"><p class="nothing">…</p></div>';
+    else body = `<div class="messages" data-log="global">${chat ? globalMessages(chat) : '<p class="nothing" data-key="hello">Ask the agent anything about the project: it reads the topics, the code and its history, and answers here.</p>'}</div>`;
+    const foot = talk.listing ? "" : chat?.kind === "tidy" ? tidyFoot(chat)
+      : composer(GLOBAL, !!chat?.running, { data: "global-stop", label: "Stop the answer" });
+    const drops = !talk.listing && chat?.kind !== "tidy" && !chat?.running;
+    return `<aside class="chat global${talk.pinned ? " pinned" : ""}${state.dropping === GLOBAL ? " dropping" : ""}" data-key="chat:global"${drops ? ` data-drop="${GLOBAL}"` : ""} aria-label="Chat with the agent">${head}${body}${foot}
+      <div class="drop-veil" aria-hidden="true"><span>Drop to attach</span></div></aside>`;
+  }
+  function drawGlobal() {
+    const place = $("topics-global");
+    const log = place.querySelector('[data-log="global"]');
+    // Following the newest words unless the owner scrolled up to read.
+    if (log) talk.follow = log.scrollTop + log.clientHeight >= log.scrollHeight - 24;
+    studio.morph(place, globalPanel());
+    placeGlobal();
+    document.documentElement.classList.toggle("chat-pinned", talk.open && talk.pinned);
+    const button = document.getElementById("chat-button");
+    if (button) {
+      button.setAttribute("aria-expanded", String(talk.open));
+      button.classList.toggle("running", !!talk.chat?.running || !!talk.list?.some(row => row.running));
+    }
+    const shown = place.querySelector('[data-log="global"]');
+    if (shown && (talk.follow || shown !== log)) shown.scrollTop = shown.scrollHeight;
+    restoreDrafts();
+  }
+
+  async function loadGlobal() {
+    clearTimeout(talk.timer);
+    if (!talk.open) return;
+    try {
+      const [chat, list] = await Promise.all([
+        talk.id ? fetch(`chat/${encodeURIComponent(talk.id)}`).then(response => response.ok ? response.json() : null) : null,
+        talk.listing || talk.list === null ? fetch("chat").then(response => response.json()) : null,
+      ]);
+      if (talk.id && chat === null) { talk.id = null; store("nock.chat.current", null); }
+      const raw = JSON.stringify([chat, list]);
+      if (raw !== talk.raw) {
+        talk.raw = raw;
+        talk.chat = chat;
+        if (list) talk.list = list.chats;
+        drawGlobal();
+      }
+    } catch { /* the studio is gone: the tab says so */ }
+    const busy = talk.chat?.running || talk.list?.some(row => row.running || row.naming);
+    talk.timer = setTimeout(loadGlobal, busy ? 350 : 3000);
+  }
+  function openGlobal(shown) {
+    talk.open = shown;
+    store("nock.chat.open", shown ? "1" : null);
+    if (shown && !talk.chat?.running && !(talk.chat?.kind === "tidy")) state.focus = `reply:${GLOBAL}`;
+    drawGlobal();
+    if (shown) { talk.raw = ""; loadGlobal(); } else clearTimeout(talk.timer);
+  }
+  async function sendGlobal() {
+    const written = (state.drafts.get(`reply:${GLOBAL}`) || "").trim();
+    const files = state.attached.get(GLOBAL) || [];
+    if ((!written && !files.length) || talk.chat?.running) return;
+    if (files.some(file => file.uploading)) { studio.toast("Still uploading: send once the files are up."); return; }
+    let shown;
+    const body = { ...(talk.id ? { id: talk.id } : {}), text: written, ...(files.length ? { attachments: files.map(file => file.token) } : {}) };
+    try { shown = await post("chat/send", body); } catch (error) { studio.toast(error.message); return; }
+    for (const file of files) if (file.preview?.startsWith("blob:")) URL.revokeObjectURL(file.preview);
+    state.attached.delete(GLOBAL);
+    state.drafts.delete(`reply:${GLOBAL}`);
+    talk.id = shown.id; talk.chat = shown; talk.follow = true;
+    store("nock.chat.current", talk.id);
+    drawGlobal();
+    talk.raw = "";
+    loadGlobal();
+  }
+  async function globalAction(button) {
+    const what = button.dataset.global;
+    if (what === "close") { openGlobal(false); return; }
+    if (what === "pin") { talk.pinned = !talk.pinned; store("nock.chat.pinned", talk.pinned ? "1" : null); drawGlobal(); return; }
+    if (what === "list") { talk.listing = !talk.listing; talk.raw = ""; drawGlobal(); loadGlobal(); return; }
+    if (what === "new") {
+      if (talk.id) post("chat/leave", { id: talk.id }).catch(() => {});
+      talk.id = null; talk.chat = null; talk.listing = false; talk.list = null;
+      store("nock.chat.current", null);
+      state.focus = `reply:${GLOBAL}`;
+      drawGlobal(); loadGlobal();
+      return;
+    }
+    if (what === "pick") {
+      const picked = button.dataset.id;
+      if (talk.id && talk.id !== picked) post("chat/leave", { id: talk.id }).catch(() => {});
+      talk.id = picked; talk.listing = false; talk.chat = null; talk.follow = true;
+      store("nock.chat.current", picked);
+      drawGlobal(); talk.raw = ""; loadGlobal();
+      return;
+    }
+    if (what === "stop" && talk.id) { post("chat/stop", { id: talk.id }).catch(error => studio.toast(error.message)); return; }
+    if (what === "undo" && talk.id) {
+      try { talk.chat = await post("chat/undo", { id: talk.id }); studio.toast("Tidy up undone."); } catch (error) { studio.toast(error.message); }
+      state.seen = ""; load(); drawGlobal();
+    }
+  }
+  // Floating, it hangs under the band with its button while the band is in sight, then from the top.
+  function placeGlobal() {
+    const band = document.querySelector(".band");
+    const below = band ? band.getBoundingClientRect().bottom + 4 : 16;
+    $("topics-global").style.setProperty("--chat-top", `${Math.max(16, below)}px`);
+  }
+  addEventListener("scroll", placeGlobal, { passive: true });
+  addEventListener("resize", placeGlobal);
+  root.addEventListener("click", event => {
+    const stopping = event.target.closest("[data-global-stop]");
+    if (stopping && talk.id) post("chat/stop", { id: talk.id }).catch(error => studio.toast(error.message));
+  });
+  document.getElementById("chat-button")?.addEventListener("click", () => openGlobal(!talk.open));
+  // Off the topics tab the tab's keys are off; the chat's field keeps its own.
+  $("topics-global").addEventListener("keydown", event => {
+    if (state.shown || !event.target.dataset?.draft) return;
+    if (event.key === "Enter" && !event.shiftKey && !event.isComposing) { event.preventDefault(); sendGlobal(); }
+  });
+  document.addEventListener("keydown", event => {
+    if (event.key !== "Escape") return;
+    if (state.tidying) { state.tidying = false; draw(); return; }
+    if (talk.open && event.target.closest?.("#topics-global")) openGlobal(false);
+  });
+  // A Tidy up that ends changes Work: the list is read again.
+  let tidied = null;
+  setInterval(() => {
+    const running = !!talk.chat?.running;
+    if (tidied && !running && state.shown) { state.seen = ""; load(); }
+    tidied = talk.chat?.kind === "tidy" && running ? talk.chat.id : null;
+  }, 1000);
+  drawGlobal();
+  if (talk.open) loadGlobal();
 
   // Shown, the tab keeps up with what agents submit: it asks again every few seconds.
   studio.register("topics", {

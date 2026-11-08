@@ -19,7 +19,7 @@ from nock.comparison import Comparison, Query
 from nock.configuration import Confirm
 from nock.consult import Advice, Consultant, Consultation
 from nock.docs import Docs
-from nock.errors import Error, ExitCode, Failed, UsageError
+from nock.errors import Error, ExitCode, Failed, PolicyError, UsageError
 from nock.evaluation import SCENARIOS, Evaluations, Import, Run, Scenario
 from nock.fixtures import Shell
 from nock.generators import Catalogs, Generators
@@ -52,13 +52,16 @@ from nock.templates import SYNTAX
 from nock.tools import NATIVE_EVENTS, Tool, check, command
 from nock.topics import (
     SHORT,
+    TIDIER,
     ItemChange,
     ItemDraft,
     State,
     TopicChange,
     TopicDraft,
     Topics,
+    Verdict,
     Word,
+    in_order,
     verdict_of,
 )
 from nock.usage import QUESTION, Moment, Usage
@@ -313,7 +316,8 @@ def topics_list(
     ] = None,
     full: Annotated[bool, Option(help="The whole list, without the summary.")] = False,
 ) -> dict[str, Any]:
-    """The topics, newest activity first, each with its state and status and
+    """The topics in the owner's order (by `priority`, then newest activity
+    first), each with its state and status and
     its open, accepted and rejected counts — or those matching QUERY, the
     best first (topic names and descriptions, statuses, item titles,
     decisions, threads, file paths, conditions); `--state` keeps one state.
@@ -327,7 +331,7 @@ def topics_list(
     if state is not None:
         rows = [row for row in rows if row["state"] == state]
     if not query:
-        rows.sort(key=lambda row: row["active"], reverse=True)
+        rows = in_order(rows)
     return listed(rows, full, topics.summary())
 
 
@@ -366,13 +370,15 @@ def topics_update(
     change kept in its thread; change its name or description; answer in its
     thread; or revive it when it was done or abandoned and the work comes
     back: active again, the note saying why it is back and reading as its
-    description from then on."""
+    description from then on. `{"priority": 1}` puts it first in the
+    owner's order (0 takes its place away)."""
     record, problem = Topics(project).update_topic(topic, change, reply, revive)
     return not_committed(
         {
             "name": record["name"],
             "state": record["state"],
             **({"status": record["status"]} if record.get("status") else {}),
+            **({"priority": record["priority"]} if record.get("priority") else {}),
             **answered(record, reply),
         },
         problem,
@@ -556,10 +562,17 @@ def items_judge(project: Project, item: str, word: Word) -> dict[str, Any]:
     """The owner's verdict on an item — accepted, or rejected: reworked as
     the thread says, or with `"rework": false` dropped, closed with nothing to
     rework (superseded, say) — with their comment in its thread. Only on the
-    owner's word: `/nock-triage` runs it with them."""
+    owner's word: `/nock-triage` runs it with them. Tidy up only drops."""
     topics = Topics(project)
+    if project.current_role() == TIDIER and verdict_of(word) is not Verdict.DROPPED:
+        raise PolicyError(
+            'Tidy up only drops (`"verdict": "rejected", "rework": false`): accepting,'
+            " and asking for rework, are the owner's alone"
+        )
     record, problem = topics.judge(item, word)
     topics.tell_writer([record["ref"]])
+    if project.current_role() == TIDIER:
+        return {"ref": record["ref"], "verdict": record["verdict"]}
     result = not_committed({"ref": record["ref"], "verdict": record["verdict"]}, problem)
     ask(project, result, Moment.REVIEW)
     return result
