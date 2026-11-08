@@ -95,6 +95,9 @@ class State(StrEnum):
 CLOSED = (State.DONE, State.ABANDONED)
 # A thread's entry recording a change of the topic's state or status.
 STATUS = "status"
+# The studio's Tidy up: its writes are not committed one by one; the studio
+# commits them together when it ends, so one revert undoes them.
+TIDIER = "tidier"
 
 
 class Author(StrEnum):
@@ -190,6 +193,9 @@ class TopicChange(TypedDict):
     status: NotRequired[str]
     """Where the work is, in a line, kept current at each milestone:
     "waiting for the gate on main"."""
+    priority: NotRequired[int]
+    """Its place in the owner's order, 1 first; the studio lists topics so,
+    those without one after, newest activity first. 0 takes it away."""
 
 
 class Word(TypedDict):
@@ -383,6 +389,7 @@ class Topics:
             "name": name,
             "state": str(state_of(topic)),
             **({"status": topic["status"]} if topic.get("status") else {}),
+            **({"priority": topic["priority"]} if topic.get("priority") else {}),
             "description": self.current_description(topic),
             **self.counts(items),
             "active": self.activity(topic, items),
@@ -563,6 +570,15 @@ class Topics:
                     raise UsageError("`description` is empty")
                 topic["description"] = change["description"].strip()
                 said.append("updated")
+            if "priority" in change:
+                priority = int(change["priority"])
+                if priority < 0:
+                    raise UsageError("`priority` is 1 or more (1 first), or 0 to take it away")
+                if priority:
+                    topic["priority"] = priority
+                else:
+                    topic.pop("priority", None)
+                said.append(f"priority {priority}" if priority else "no priority")
             standing: dict[str, Any] = {
                 key: value for key, value in change.items() if key in ("state", "status")
             }
@@ -1149,6 +1165,8 @@ class Topics:
         return problems
 
     def commit(self, paths: list[Path], message: str) -> str | None:
+        if self.project.current_role() == TIDIER:
+            return None
         root = self.project.root
         relative = [
             str(path.relative_to(root)) for path in paths if path.is_relative_to(self.directory)
@@ -1214,6 +1232,16 @@ def chat_state(
         "unseen": len(new),
         "answered": any("answers" in entry for entry in new),
     }
+
+
+def in_order(topics: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Topics (records or rows, with their `active` moment) in the owner's
+    order: by priority, 1 first, then those without one; newest activity
+    first within each."""
+    newest = sorted(topics, key=lambda topic: topic["active"], reverse=True)
+    return sorted(
+        newest, key=lambda topic: (0, topic["priority"]) if topic.get("priority") else (1, 0)
+    )
 
 
 def awaits_owner(item: dict[str, Any]) -> bool:

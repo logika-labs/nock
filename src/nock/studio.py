@@ -31,6 +31,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, NotRequired, TypedDict
 
+from nock.chats import Chats
 from nock.commands import schema_of
 from nock.comparison import Comparison, Query
 from nock.errors import Error, NotFoundError, UsageError
@@ -38,7 +39,7 @@ from nock.evaluation import Evaluations, Run
 from nock.explorer import Explorer, View
 from nock.project import Project
 from nock.schema import validate
-from nock.topics import Author, Topics, Verdict, chat_state, state_of
+from nock.topics import Author, Topics, Verdict, chat_state, in_order, state_of
 from nock.topics import Word as Verdicted
 from nock.usage import QUESTION, Answer, Usage, sharing
 from nock.utils import now, read_json, write_json
@@ -298,7 +299,8 @@ class TopicsTab(Tab):
         self.texts: dict[Path, tuple[int, str]] = {}
 
     def fragment(self) -> str:
-        return f"<style>\n{(PAGES / 'topics.css').read_text()}</style>\n" + super().fragment()
+        look = (PAGES / "topics.css").read_text() + (PAGES / "chat.css").read_text()
+        return f"<style>\n{look}</style>\n" + super().fragment()
 
     def get(self, route: str) -> Any:
         if not route:
@@ -399,7 +401,7 @@ class TopicsTab(Tab):
                     ],
                 }
             )
-        return sorted(found, key=lambda topic: topic["active"], reverse=True)
+        return in_order(found)
 
     def post(self, route: str, body: Any) -> Any:
         if route == "judge":
@@ -448,6 +450,52 @@ class TopicsTab(Tab):
 TABS: tuple[type[Tab], ...] = (TopicsTab, EvalsTab)
 
 
+class Said(TypedDict):
+    """The owner's message in the studio's chat: in chat `id`, or a new one."""
+
+    id: NotRequired[str]
+    text: str
+
+
+class Which(TypedDict):
+    """One of the studio's chats."""
+
+    id: str
+
+
+class ChatRoutes(Tab):
+    """The studio's chat (`chats.Chats`), which no tab owns: the page shows
+    it on every tab, from its button beside the settings. `GET /chat` every
+    chat in a line, the latest first; `GET /chat/ID` one, with the answer
+    being written; `POST /chat/send` the owner's message (a new chat without
+    `id`), `/stop` stops the answer, `/leave` names the chat the owner
+    leaves for a new one, `/tidy` starts Tidy up, `/undo` reverts its commit."""
+
+    name = "chat"
+    title = "Chat"
+
+    def __init__(self, project: Project) -> None:
+        super().__init__(project)
+        self.chats = Chats(project)
+
+    def get(self, route: str) -> Any:
+        if not route:
+            return {"chats": self.chats.listing()}
+        return self.chats.shown(route)
+
+    def post(self, route: str, body: Any) -> Any:
+        if route == "send":
+            validate(body, schema_of(Said))
+            return self.chats.send(body.get("id"), body["text"])
+        if route == "tidy":
+            return self.chats.tidy()
+        actions = {"stop": self.chats.stop, "leave": self.chats.leave, "undo": self.chats.undo}
+        if route in actions:
+            validate(body, schema_of(Which))
+            return actions[route](body["id"])
+        raise NotFoundError("no such page")
+
+
 class Choice(TypedDict):
     """The owner's answer on the page to whether nock shares its usage report."""
 
@@ -459,6 +507,8 @@ class Studio(ThreadingHTTPServer):
         super().__init__(("127.0.0.1", port), Handler)
         self.project = project
         self.tabs = {tab.name: tab(project) for tab in TABS}
+        # What the page asks the server: each tab's routes, and the chat's.
+        self.routes: dict[str, Tab] = {**self.tabs, ChatRoutes.name: ChatRoutes(project)}
 
     def question(self) -> str:
         """Under the title while nobody has answered: a slim line asking, with
@@ -544,7 +594,7 @@ class Studio(ThreadingHTTPServer):
 
 class Handler(BaseHTTPRequestHandler):
     """`GET /` the page; `POST /usage` the owner's answer on sharing; `/NAME/ROUTE`
-    goes to the tab named."""
+    goes to the tab named, `/chat/ROUTE` to the chat."""
 
     @property
     def studio(self) -> Studio:
@@ -573,7 +623,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def answer(self, call: Callable[[Tab, str], Any]) -> None:
         name, _, route = self.path.split("?")[0].removeprefix("/").partition("/")
-        tab = self.studio.tabs.get(name)
+        tab = self.studio.routes.get(name)
         if tab is None:
             self.send_json(HTTPStatus.NOT_FOUND, {"error": "no such page"})
             return

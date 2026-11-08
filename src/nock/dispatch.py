@@ -7,7 +7,9 @@ from __future__ import annotations
 
 import json
 import os
+import threading
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -106,6 +108,43 @@ SEATS = {
     ),
     # Reads what identifies the project and answers in its last message.
     "sharer": Seat(READING, (GIT_READING[0],), GIT_WRITING),
+    # The studio's chat: talks with the owner, reading what the asker reads
+    # (and nock's docs); changes nothing.
+    "chatter": Seat(
+        READING,
+        (
+            nock("topics list"),
+            nock("topics show"),
+            nock("items list"),
+            nock("items show"),
+            nock("docs"),
+            *GIT_READING,
+        ),
+        GIT_WRITING,
+    ),
+    # Names a finished chat from its transcript, in its last message: no tools.
+    "namer": Seat((), ()),
+    # The studio's Tidy up: reorganizes the topics through nock's commands
+    # (moving items, setting states, statuses and priorities, rejecting what
+    # is stale; never accepting, which `items judge` refuses it), its writes
+    # gathered into one commit by the studio.
+    "tidier": Seat(
+        READING,
+        (
+            nock("topics list"),
+            nock("topics show"),
+            nock("topics create"),
+            nock("topics update"),
+            nock("topics delete"),
+            nock("items list"),
+            nock("items show"),
+            nock("items update"),
+            nock("items judge"),
+            nock("docs"),
+            *GIT_READING,
+        ),
+        GIT_WRITING,
+    ),
 }
 
 
@@ -135,14 +174,22 @@ class Dispatcher:
         variables: dict[str, str] | None = None,
         deadline: float | None = None,
         seat: Seat | None = None,
+        resume: str | None = None,
+        arguments: tuple[str, ...] = (),
+        listener: Callable[[bytes], None] | None = None,
+        stop: threading.Event | None = None,
     ) -> Session:
         """`seat` is the role's own when not given; an evaluation step gives
-        its agent's, since what it may do is the scenario's to say."""
-        session = str(uuid.uuid4())
+        its agent's, since what it may do is the scenario's to say. `resume`
+        continues that session (`--resume`) instead of starting one;
+        `arguments` go to Claude Code before the brief; `listener` and `stop`
+        are the Supervisor's: the output as it comes, and a stop."""
+        session = resume or str(uuid.uuid4())
         settings = self.project.configuration
         prompt, allowed = self.carried(session, brief)
         command = [*self.command(role, allowed, seat)]
-        command += ["--session-id", session]
+        command += ["--resume", session] if resume else ["--session-id", session]
+        command += list(arguments)
         model = str(settings.get("agent.model") or "")
         if model:
             command += ["--model", model]
@@ -156,6 +203,8 @@ class Dispatcher:
             silence=float(settings.get("agent.silence")),
             environment={**self.environment(session, role), **(variables or {})},
             session=session,
+            listener=listener,
+            stop=stop,
         ).run()
         transcript = find_transcript(self.project.root, session)
         if transcript is not None:
@@ -199,9 +248,7 @@ class Dispatcher:
             "--strict-mcp-config",
             "--tools",
             ",".join(seat.tools),
-            "--allowedTools",
-            *seat.allowed,
-            *allowed,
+            *(["--allowedTools", *seat.allowed, *allowed] if seat.allowed or allowed else []),
             *(["--disallowedTools", *seat.denied] if seat.denied else []),
         ]
 

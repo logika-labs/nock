@@ -12,10 +12,12 @@
         <button type="button" data-bar-mode="ask" aria-pressed="false">Ask</button>
       </div>
     </div>
+    <div class="sift" id="topics-sift" role="toolbar" aria-label="Filters and Tidy up"></div>
     <div class="answer" id="topics-answer" aria-live="polite" hidden></div>
   </div>
   <main id="topics-main"></main>
   <div id="topics-modal"></div>
+  <div id="topics-global" data-everywhere></div>
 </div>
 <script>
 // The topics tab (its look is pages/topics.css): `GET topics` every topic with its items, each
@@ -373,13 +375,19 @@
       return `<div class="message ${entry.author}${held ? " waiting" : ""}" data-key="message:${escape(entry.moment)}:${index}">${notes}<div class="context">${markdown(entry.text)}</div>
         <span class="when">${held ? "waiting for the answer · " : ""}${time(entry.moment)}</span></div>`;
     }).join("");
-    const button = waiting
-      ? `<button type="button" class="send" data-withdraw="${escape(key)}" aria-label="Withdraw it, to edit" title="Withdraw it, to edit">${ICONS.cancel}</button>`
-      : `<button type="button" class="send" data-send="${escape(key)}" aria-label="Send" title="Send">${ICONS.send}</button>`;
     return `<aside class="chat" data-key="chat:${escape(key)}" aria-label="Chat"><div class="chat-head"><span class="label">Chat</span></div>
       <div class="messages" data-log="${escape(key)}">${messages || '<p class="nothing">Nothing said yet.</p>'}</div>
-      <div class="composer${waiting ? " frozen" : ""}"><textarea data-draft="reply:${escape(key)}" rows="1" ${waiting ? "disabled" : ""}
-        placeholder="${waiting ? "Waiting for the agent's answer" : "Write to the agent"}" aria-label="Message"></textarea>${button}</div></aside>`;
+      ${composer(key, waiting)}</aside>`;
+  }
+
+  // The field every chat writes in, the global chat's too: closed while WAITING for the agent, its
+  // button then FROZEN's (withdraw the message, by default; the global chat's stops the answer).
+  function composer(key, waiting, frozen = { data: "withdraw", label: "Withdraw it, to edit" }) {
+    const button = waiting
+      ? `<button type="button" class="send" data-${frozen.data}="${escape(key)}" aria-label="${escape(frozen.label)}" title="${escape(frozen.label)}">${ICONS.cancel}</button>`
+      : `<button type="button" class="send" data-send="${escape(key)}" aria-label="Send" title="Send">${ICONS.send}</button>`;
+    return `<div class="composer${waiting ? " frozen" : ""}"><textarea data-draft="reply:${escape(key)}" rows="1" ${waiting ? "disabled" : ""}
+        placeholder="${waiting ? "Waiting for the agent's answer" : "Write to the agent"}" aria-label="Message"></textarea>${button}</div>`;
   }
 
   function verdictButtons(key, verdict, count = 1) {
@@ -493,13 +501,15 @@
     const found = said().length ? state.found : null;
     const shown = [];
     for (const topic of state.topics) {
-      if (!found || found.topics.has(topic.name)) { shown.push([topic, topic.items]); continue; }
-      const items = topic.items.filter(item => found.items.has(item.ref));
+      const kept = sifted(topic);
+      if (!kept) continue;
+      if (!found || found.topics.has(topic.name)) { shown.push([topic, kept]); continue; }
+      const items = kept.filter(item => found.items.has(item.ref));
       if (items.length) shown.push([topic, items]);
     }
     const empty = !state.topics.length
       ? '<div class="empty" data-key="empty"><strong>No topics yet</strong><span>Agents open a topic for their work with <code>.nock/nock topics create</code> and submit items into it; they appear here.</span></div>'
-      : !shown.length ? '<div class="empty" data-key="empty"><strong>No matches</strong><span>No topic or item fits the search.</span></div>' : "";
+      : !shown.length ? `<div class="empty" data-key="empty"><strong>No matches</strong><span>No topic or item fits the ${said().length ? "search" : "filter"}${state.sift !== "all" || !state.closed ? " as filtered" : ""}.</span></div>` : "";
     studio.morph($("topics-main"), empty + shown.map(([topic, items]) => sheet(topic, items)).join(""));
   }
 
@@ -871,6 +881,7 @@
     if (state.route !== state.arrived && state.topics.length) arrive(state.route);
     drawCounts();
     drawBar();
+    drawSift();
     drawAnswer();
     drawList();
     drawModal();
@@ -978,6 +989,7 @@
   }
 
   async function send(key) {
+    if (key === GLOBAL) { sendGlobal(); return; }
     const written = (state.drafts.get(`reply:${key}`) || "").trim();
     if (!written) return;
     try { await post("topics/reply", { ...where(key), text: written }); } catch (error) { studio.toast(error.message); return; }
@@ -1034,6 +1046,10 @@
     const target = event.target;
     if (state.menu && !target.closest(".select")) { state.menu = null; draw(); if (!target.closest("button")) return; }
     if (state.reveal !== null && !target.closest(".path-anchor")) { state.reveal = null; draw(); if (!target.closest("button")) return; }
+    const globally = target.closest("[data-global]");
+    if (globally) { globalAction(globally); return; }
+    const sifting = target.closest("[data-sift]");
+    if (sifting) { siftAction(sifting); return; }
     const mode = target.closest("[data-bar-mode]");
     if (mode) {
       state.mode = mode.dataset.barMode;
@@ -1157,6 +1173,257 @@
     }
     if (event.key === "/" && !state.modal) { event.preventDefault(); $("topics-input").focus(); }
   });
+
+  // --- the filters beside the bar, and Tidy up --------------------------------------------------------
+
+  // One filter at a time, with the search: what needs the owner (open items, threads the agent
+  // answered since they looked), what waits on an agent (the owner wrote last, or rejected an item
+  // still to rework), todo decisions, active topics. Done and abandoned topics show only when asked.
+  // Kept per browser.
+  const SIFTS = {
+    all: { label: "All" },
+    me: { label: "Needs me", title: "Open items, and chats the agent answered since you looked",
+      topic: topic => topic.chat?.unseen > 0, item: item => item.verdict === "open" || item.chat?.unseen > 0 },
+    agent: { label: "Waiting on agent", title: "You wrote last, or rejected it and the rework is due",
+      topic: topic => topic.chat?.pending, item: item => item.chat?.pending || item.verdict === "rejected" },
+    todo: { label: "Todo", title: "Decisions still to carry out", item: item => last(item).decision?.status === "todo" },
+    active: { label: "Active", title: "Topics whose work is under way", whole: topic => topic.state === "active" },
+  };
+  const CLOSED_STATES = ["done", "abandoned"];
+  const stored = (key, fallback) => { try { return localStorage.getItem(key) ?? fallback; } catch { return fallback; } };
+  const store = (key, value) => { try { if (value === null) localStorage.removeItem(key); else localStorage.setItem(key, value); } catch { /* a private window */ } };
+  state.sift = SIFTS[stored("nock.work.sift", "all")] ? stored("nock.work.sift", "all") : "all";
+  state.closed = stored("nock.work.closed", "") === "1";
+  state.tidying = false;
+
+  // What a topic shows under the filters: its items that pass, or null to leave it out.
+  function sifted(topic, sift = state.sift, closed = state.closed) {
+    if (!closed && CLOSED_STATES.includes(topic.state)) return null;
+    const filter = SIFTS[sift];
+    if (filter.whole) return filter.whole(topic) ? topic.items : null;
+    if (!filter.item) return topic.items;
+    const items = topic.items.filter(filter.item);
+    return items.length || filter.topic?.(topic) ? items : null;
+  }
+  function siftCount(sift) {
+    const kept = state.topics.map(topic => [topic, sifted(topic, sift)]).filter(([, items]) => items);
+    if (SIFTS[sift].whole || sift === "all") return kept.length;
+    return kept.reduce((sum, [topic, items]) => sum + items.length + (SIFTS[sift].topic?.(topic) ? 1 : 0), 0);
+  }
+  const BROOM = '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M13.5 2.5 9.7 9.2M6.2 9.4l5.6 3.2-1.1 2c-.9 1.6-2.6 2.6-4.4 2.6H3.4l.6-1.4M6.2 9.4l-1 1.8c-.6 1.1-1.3 2.5-1.8 3.9M6.2 9.4c.9-1.6 2.8-2.1 4.3-1.3l.2.1c1.5.9 2 2.8 1.1 4.4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M7.3 13.4 6.4 15M9.6 14 9 15.3" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>';
+  function drawSift() {
+    const chips = Object.entries(SIFTS).map(([name, filter]) =>
+      `<button type="button" class="chip" data-sift="${name}" data-key="sift:${name}" aria-pressed="${state.sift === name}"${filter.title ? ` title="${escape(filter.title)}"` : ""}>${escape(filter.label)} <span class="count">${state.topics.length ? siftCount(name) : ""}</span></button>`).join("");
+    const closedCount = state.topics.filter(topic => CLOSED_STATES.includes(topic.state)).length;
+    const closed = `<button type="button" class="chip closed" data-sift="closed" data-key="sift:closed" aria-pressed="${state.closed}" title="${state.closed ? "Hide" : "Show"} done and abandoned topics">Done &amp; dropped <span class="count">${closedCount || ""}</span></button>`;
+    const confirm = state.tidying ? `<div class="tidy-confirm" role="dialog" aria-label="Tidy up" data-key="tidy-confirm">
+        <p><strong>Tidy up sends an agent to reorganize Work.</strong> It moves misplaced items, merges near-duplicate topics and splits sprawling ones, sets each topic's state from what is there, drops stale or superseded items (rejecting them with a note: it never accepts), and puts the topics in order, a reason in each status.</p>
+        <p>You watch it in the chat. Everything lands as one commit, which Undo there reverts.</p>
+        <div class="buttons"><button type="button" class="button secondary" data-sift="tidy-cancel">Cancel</button><button type="button" class="button primary" data-sift="tidy-go">Tidy up</button></div></div>` : "";
+    const tidy = `<span class="tidy-anchor" data-key="tidy"><button type="button" class="tidy" data-sift="tidy" aria-expanded="${state.tidying}" title="Send an agent to tidy Work: regroup, close, drop and order the topics">${BROOM}<span>Tidy up</span></button>${confirm}</span>`;
+    studio.morph($("topics-sift"), `<div class="chips" role="group" aria-label="Filter" data-key="sifts">${chips}</div>${closed}${tidy}`);
+  }
+  function siftAction(button) {
+    const what = button.dataset.sift;
+    if (what === "closed") { state.closed = !state.closed; store("nock.work.closed", state.closed ? "1" : null); }
+    else if (what === "tidy") state.tidying = !state.tidying;
+    else if (what === "tidy-cancel") state.tidying = false;
+    else if (what === "tidy-go") { state.tidying = false; tidyUp(); }
+    else if (SIFTS[what]) { state.sift = what; store("nock.work.sift", what === "all" ? null : what); }
+    draw();
+  }
+  async function tidyUp() {
+    let started;
+    try { started = await post("chat/tidy", {}); } catch (error) { studio.toast(error.message); return; }
+    talk.id = started.id; talk.chat = started; talk.listing = false;
+    store("nock.chat.current", talk.id);
+    openGlobal(true);
+  }
+
+  // --- the global chat: a headless agent in the project, from the button beside the settings ---------
+
+  // It floats under its button, or is pinned to the right half of the screen (kept per browser), on
+  // every tab: the panel is the topics tab's, so it writes with the same composer as every chat. A
+  // new chat starts empty, the one left named by the agent (`chat/leave`); the list holds every chat,
+  // any of them continued. The agent's words stream in as it writes (`GET chat/ID`, often while it
+  // answers). A Tidy up chat ends with its summary and Undo.
+  const GLOBAL = "global";
+  const talk = {
+    open: stored("nock.chat.open", "") === "1", pinned: stored("nock.chat.pinned", "") === "1",
+    id: stored("nock.chat.current", "") || null, chat: null, list: null, listing: false, raw: "", timer: null, follow: true,
+  };
+  const CHAT_ICONS = {
+    list: '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 5.5h12M4 10h12M4 14.5h8" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>',
+    add: '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 4.5v11M4.5 10h11" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>',
+    pin: '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3.5 4.5h13v11h-13zM11.5 4.5v11" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>',
+    close: ICONS.cancel,
+  };
+  const ranOf = activity => activity?.length ? `<details class="ran"><summary>Ran ${activity.length} ${activity.length === 1 ? "command" : "commands"}</summary><ol>${activity.map(line => `<li><code>${escape(line)}</code></li>`).join("")}</ol></details>` : "";
+
+  function globalMessages(chat) {
+    const said = chat.messages.map((entry, index) => `<div class="message ${entry.author}" data-key="said:${index}">
+        ${entry.text ? `<div class="context">${markdown(entry.text)}</div>` : ""}${entry.author === "agent" ? ranOf(entry.activity) : ""}
+        ${entry.problem ? `<p class="problem">${escape(entry.problem === "stopped" ? "Stopped." : entry.problem)}</p>` : ""}
+        <span class="when">${time(entry.moment)}</span></div>`).join("");
+    const live = chat.live;
+    const working = live ? `<div class="message agent live" data-key="live">${live.text ? `<div class="context">${markdown(live.text)}</div>` : ""}
+        <p class="working"><span class="spinner" aria-hidden="true"></span><span>${live.doing ? `<code>${escape(live.doing)}</code>` : live.text ? "Writing…" : "Thinking…"}</span></p>
+        ${ranOf(live.activity)}</div>` : "";
+    // The owner's last message got no answer: the studio stopped while the agent wrote.
+    const lost = !live && chat.messages.length && chat.messages[chat.messages.length - 1].author === "owner"
+      ? '<p class="nothing" data-key="lost">No answer came: the studio stopped while the agent wrote. Write again.</p>' : "";
+    return said + working + lost;
+  }
+  function tidyFoot(chat) {
+    if (chat.running) return `<div class="tidy-foot" data-key="foot"><span>Tidying… your changes land as one commit.</span><button type="button" class="button secondary" data-global="stop">Stop</button></div>`;
+    const done = chat.tidy || {};
+    const short = sha => `<code>${escape(sha.slice(0, 8))}</code>`;
+    const said = done.reverted ? `Undone: ${short(done.reverted)} reverts ${short(done.commit)}.`
+      : done.commit ? `Committed as ${short(done.commit)}.` : done.problem ? escape(done.problem) : "Nothing changed: nothing to commit.";
+    const undo = done.commit && !done.reverted ? '<button type="button" class="button primary" data-global="undo">Undo</button>' : "";
+    return `<div class="tidy-foot" data-key="foot"><span>${said}</span>${undo}</div>`;
+  }
+  function globalList() {
+    const rows = (talk.list || []).map(row => `<button type="button" class="chat-row${row.id === talk.id ? " current" : ""}" data-global="pick" data-id="${escape(row.id)}" data-key="row:${escape(row.id)}">
+        <span class="title">${row.kind === "tidy" ? `<span class="broom" aria-label="Tidy up">${BROOM}</span>` : ""}${escape(row.title)}${row.running ? ' <span class="spinner" aria-hidden="true"></span>' : ""}</span>
+        <span class="when">${time(row.updated)}</span>
+        <span class="summary">${row.naming ? "Naming…" : escape(row.summary)}</span></button>`).join("");
+    return `<div class="chat-list" data-key="list">${talk.list === null ? '<p class="nothing">…</p>' : rows || '<p class="nothing">No chats yet.</p>'}</div>`;
+  }
+  function globalPanel() {
+    if (!talk.open) return "";
+    const chat = talk.id && talk.chat?.id === talk.id ? talk.chat : null;
+    const title = talk.listing ? "Chats" : chat?.title || (chat ? "Chat" : "New chat");
+    const head = `<div class="chat-head">
+        <button type="button" class="head-button" data-global="list" aria-pressed="${talk.listing}" aria-label="Previous chats" title="Previous chats">${CHAT_ICONS.list}</button>
+        <span class="label" title="${escape(chat?.summary || "")}">${escape(title)}</span>
+        <button type="button" class="head-button new" data-global="new" aria-label="New chat" title="New chat">${CHAT_ICONS.add}<span>New chat</span></button>
+        <button type="button" class="head-button" data-global="pin" aria-pressed="${talk.pinned}" aria-label="${talk.pinned ? "Unpin" : "Pin to the right"}" title="${talk.pinned ? "Unpin: float it again" : "Pin it to the right half"}">${CHAT_ICONS.pin}</button>
+        <button type="button" class="head-button" data-global="close" aria-label="Close the chat" title="Close (Esc)">${CHAT_ICONS.close}</button></div>`;
+    let body;
+    if (talk.listing) body = globalList();
+    else if (!chat && talk.id) body = '<div class="messages" data-log="global"><p class="nothing">…</p></div>';
+    else body = `<div class="messages" data-log="global">${chat ? globalMessages(chat) : '<p class="nothing" data-key="hello">Ask the agent anything about the project: it reads the topics, the code and its history, and answers here.</p>'}</div>`;
+    const foot = talk.listing ? "" : chat?.kind === "tidy" ? tidyFoot(chat)
+      : composer(GLOBAL, !!chat?.running, { data: "global-stop", label: "Stop the answer" });
+    return `<aside class="chat global${talk.pinned ? " pinned" : ""}" data-key="chat:global" aria-label="Chat with the agent">${head}${body}${foot}</aside>`;
+  }
+  function drawGlobal() {
+    const place = $("topics-global");
+    const log = place.querySelector('[data-log="global"]');
+    // Following the newest words unless the owner scrolled up to read.
+    if (log) talk.follow = log.scrollTop + log.clientHeight >= log.scrollHeight - 24;
+    studio.morph(place, globalPanel());
+    placeGlobal();
+    document.documentElement.classList.toggle("chat-pinned", talk.open && talk.pinned);
+    const button = document.getElementById("chat-button");
+    if (button) {
+      button.setAttribute("aria-expanded", String(talk.open));
+      button.classList.toggle("running", !!talk.chat?.running || !!talk.list?.some(row => row.running));
+    }
+    const shown = place.querySelector('[data-log="global"]');
+    if (shown && (talk.follow || shown !== log)) shown.scrollTop = shown.scrollHeight;
+    restoreDrafts();
+  }
+
+  async function loadGlobal() {
+    clearTimeout(talk.timer);
+    if (!talk.open) return;
+    try {
+      const [chat, list] = await Promise.all([
+        talk.id ? fetch(`chat/${encodeURIComponent(talk.id)}`).then(response => response.ok ? response.json() : null) : null,
+        talk.listing || talk.list === null ? fetch("chat").then(response => response.json()) : null,
+      ]);
+      if (talk.id && chat === null) { talk.id = null; store("nock.chat.current", null); }
+      const raw = JSON.stringify([chat, list]);
+      if (raw !== talk.raw) {
+        talk.raw = raw;
+        talk.chat = chat;
+        if (list) talk.list = list.chats;
+        drawGlobal();
+      }
+    } catch { /* the studio is gone: the tab says so */ }
+    const busy = talk.chat?.running || talk.list?.some(row => row.running || row.naming);
+    talk.timer = setTimeout(loadGlobal, busy ? 350 : 3000);
+  }
+  function openGlobal(shown) {
+    talk.open = shown;
+    store("nock.chat.open", shown ? "1" : null);
+    if (shown && !talk.chat?.running && !(talk.chat?.kind === "tidy")) state.focus = `reply:${GLOBAL}`;
+    drawGlobal();
+    if (shown) { talk.raw = ""; loadGlobal(); } else clearTimeout(talk.timer);
+  }
+  async function sendGlobal() {
+    const written = (state.drafts.get(`reply:${GLOBAL}`) || "").trim();
+    if (!written || talk.chat?.running) return;
+    let shown;
+    try { shown = await post("chat/send", { ...(talk.id ? { id: talk.id } : {}), text: written }); } catch (error) { studio.toast(error.message); return; }
+    state.drafts.delete(`reply:${GLOBAL}`);
+    talk.id = shown.id; talk.chat = shown; talk.follow = true;
+    store("nock.chat.current", talk.id);
+    drawGlobal();
+    talk.raw = "";
+    loadGlobal();
+  }
+  async function globalAction(button) {
+    const what = button.dataset.global;
+    if (what === "close") { openGlobal(false); return; }
+    if (what === "pin") { talk.pinned = !talk.pinned; store("nock.chat.pinned", talk.pinned ? "1" : null); drawGlobal(); return; }
+    if (what === "list") { talk.listing = !talk.listing; talk.raw = ""; drawGlobal(); loadGlobal(); return; }
+    if (what === "new") {
+      if (talk.id) post("chat/leave", { id: talk.id }).catch(() => {});
+      talk.id = null; talk.chat = null; talk.listing = false; talk.list = null;
+      store("nock.chat.current", null);
+      state.focus = `reply:${GLOBAL}`;
+      drawGlobal(); loadGlobal();
+      return;
+    }
+    if (what === "pick") {
+      const picked = button.dataset.id;
+      if (talk.id && talk.id !== picked) post("chat/leave", { id: talk.id }).catch(() => {});
+      talk.id = picked; talk.listing = false; talk.chat = null; talk.follow = true;
+      store("nock.chat.current", picked);
+      drawGlobal(); talk.raw = ""; loadGlobal();
+      return;
+    }
+    if (what === "stop" && talk.id) { post("chat/stop", { id: talk.id }).catch(error => studio.toast(error.message)); return; }
+    if (what === "undo" && talk.id) {
+      try { talk.chat = await post("chat/undo", { id: talk.id }); studio.toast("Tidy up undone."); } catch (error) { studio.toast(error.message); }
+      state.seen = ""; load(); drawGlobal();
+    }
+  }
+  // Floating, it hangs under the band with its button while the band is in sight, then from the top.
+  function placeGlobal() {
+    const band = document.querySelector(".band");
+    const below = band ? band.getBoundingClientRect().bottom + 4 : 16;
+    $("topics-global").style.setProperty("--chat-top", `${Math.max(16, below)}px`);
+  }
+  addEventListener("scroll", placeGlobal, { passive: true });
+  addEventListener("resize", placeGlobal);
+  root.addEventListener("click", event => {
+    const stopping = event.target.closest("[data-global-stop]");
+    if (stopping && talk.id) post("chat/stop", { id: talk.id }).catch(error => studio.toast(error.message));
+  });
+  document.getElementById("chat-button")?.addEventListener("click", event => { event.stopPropagation(); openGlobal(!talk.open); });
+  // Off the topics tab the tab's keys are off; the chat's field keeps its own.
+  $("topics-global").addEventListener("keydown", event => {
+    if (state.shown || !event.target.dataset?.draft) return;
+    if (event.key === "Enter" && !event.shiftKey && !event.isComposing) { event.preventDefault(); sendGlobal(); }
+  });
+  document.addEventListener("keydown", event => {
+    if (event.key !== "Escape") return;
+    if (state.tidying) { state.tidying = false; draw(); return; }
+    if (talk.open && event.target.closest?.("#topics-global")) openGlobal(false);
+  });
+  // A Tidy up that ends changes Work: the list is read again.
+  let tidied = null;
+  setInterval(() => {
+    const running = !!talk.chat?.running;
+    if (tidied && !running && state.shown) { state.seen = ""; load(); }
+    tidied = talk.chat?.kind === "tidy" && running ? talk.chat.id : null;
+  }, 1000);
+  drawGlobal();
+  if (talk.open) loadGlobal();
 
   // Shown, the tab keeps up with what agents submit: it asks again every few seconds.
   studio.register("topics", {

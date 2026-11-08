@@ -602,7 +602,9 @@ day (sooner when something new calls) a session the human starts says
 says it all in full.
 
 The studio's **Topics** tab (`nock studio`, or with `{"open": true}`) lists
-the topics, newest activity first, each a row: its name, what it holds ("4
+the topics in the owner's order — by `priority` (1 first; `topics update
+TOPIC '{"priority": 1}'`, 0 takes it away), then the rest, newest activity
+first — each a row: its name, what it holds ("4
 decisions · 6 images · 3 texts") and its verdicts ("3 open · 12 accepted"),
 its time ("21m", "3h", "2d", on a small grey pill) with its state's foil mark
 beside it (active a slowly turning spinner, planned a ring, done a full circle
@@ -667,6 +669,40 @@ it opened, not what the owner did — and **Ask**: a question goes to a headless
 the topics and answers in markdown, with the items it relied on as cards
 that open them, one question at a time, cancellable. The tab keeps up with
 what agents submit without drawing again what did not change.
+
+Under the bar, **filters**, one at a time and combined with the search, each
+with its count: All; **Needs me** (open items, and chats the agent answered
+since the owner looked); **Waiting on agent** (the owner wrote last, or
+rejected an item still to rework); **Todo** (todo decisions); **Active**
+(topics under way). Done and abandoned topics stay hidden until **Done &
+dropped** shows them. The choice is kept per browser.
+
+**Tidy up**, at the end of that line, sends a headless agent (the tidier
+seat, `briefs/tidy.md`) to reorganize Work, after a short confirm: it moves
+misplaced items, merges near-duplicate topics and splits sprawling ones,
+sets each topic's state and status from what is there, rejects stale or
+superseded items with a comment saying they need no rework (it never
+accepts: `items judge` refuses it that), and gives the planned and active
+topics a priority, a one-line reason in each status. Its writes are not
+committed one by one: when it ends they land as **one commit**, "Work tidied
+up: …", with its summary. It runs in the global chat, which opens to show it
+working, and ends with the summary and **Undo**, which `git revert`s that
+commit (refused, nothing changed, when later commits conflict with it).
+
+**The chat** beside the settings gear talks with a headless Claude Code
+session in the project, on every tab: it floats under the band, or is
+pinned to the right half of the screen with the studio on the left (kept
+per browser). The agent (the chatter seat: it reads what Ask's agent reads,
+and nock's docs, and changes nothing) is briefed with the project's
+`.nock/context.md` and its topics, and knows it talks with the owner in the
+studio; its words stream in as it writes, with what it runs. Each chat is
+one session, continued with `--resume`; when Claude Code no longer has it,
+the chat goes on in a new session told what was said, and looks no
+different. **New chat** starts an empty one, and an agent names the one
+left — a short title and a summary of a line or two; the list beside the
+title holds every chat (title, summary, last time) to continue any of them.
+Chats are the owner's conversations, not the project's records: they are
+kept on the machine, in `.nock/local/chats/`, never committed.
 `#topics/TOPIC` opens a topic, `#topics/TOPIC/SLUG` an item; `#170` the item
 an earlier nock's decision 170 became.
 
@@ -890,12 +926,17 @@ Reading files in the directory it runs in needs no rule.
 | consultant | Read, Grep, Glob, Bash | `.nock/nock topics list`, `topics show`, `items list`, `items show`, `docs`, `advise` |
 | asker | Read, Grep, Glob, Bash | `.nock/nock topics list`, `topics show`, `items list`, `items show`, `topics answer`; `git log`, `git show` |
 | sharer | Read, Grep, Glob, Bash | `git log` |
+| chatter (the studio's chat) | Read, Grep, Glob, Bash | `.nock/nock topics list`, `topics show`, `items list`, `items show`, `docs`; `git log`, `git show` |
+| namer (names a chat) | none | nothing |
+| tidier (Tidy up) | Read, Grep, Glob, Bash | `.nock/nock topics list`, `topics show`, `topics create`, `topics update`, `topics delete`, `items list`, `items show`, `items update`, `items judge` (rejecting only), `docs`; `git log`, `git show` |
 
 `git log` and `git show` are allowed without `--output` (or any
 abbreviation of it git accepts, down to `--ou`), which a deny rule refuses:
 it would write their output to a file.
 
-None can edit a file, reach the network or run any other command. What
+None can edit a file, reach the network or run any other command; the
+tidier changes Work only through nock's commands, the owner having pressed
+Tidy up. What
 Claude Code refused comes back with the session: in the consultation's
 record and its failure, in the asker's log, in the vetted summary's
 record and the share's failure, and in the run's log.
@@ -1153,10 +1194,10 @@ repetitions, write the comparison down first.
 | `nock docs [TERM…]` | nock's documentation for agents, a short article per term: with no term, the terms |
 | `nock calls`, `stats`, `sessions`, `query SQL` | the telemetry |
 | `nock status` | a round due, the open items by topic, what waits on agents in Topics, an unshared summary, a logika round to offer |
-| `nock topics list [--query Q] [--state S] [--full]`, `create JSON`, `update TOPIC [JSON] [--reply MD] [--revive MD]`, `delete TOPIC`, `show TOPIC`, `judge TOPIC JSON`, `migrate [--mark-seen]` | the topics: a summary and the list (or ranked by a query, or of one state), opened, their state and status kept current, changed or answered in, revived, deleted when empty, in full, every open item judged (asks the owner), an earlier nock's decisions and review items moved in, earlier topics given their state |
+| `nock topics list [--query Q] [--state S] [--full]`, `create JSON`, `update TOPIC [JSON] [--reply MD] [--revive MD]`, `delete TOPIC`, `show TOPIC`, `judge TOPIC JSON`, `migrate [--mark-seen]` | the topics: a summary and the list (in the owner's order: by priority, then newest activity; or ranked by a query, or of one state), opened, their state, status and priority kept current, changed or answered in, revived, deleted when empty, in full, every open item judged (asks the owner), an earlier nock's decisions and review items moved in, earlier topics given their state |
 | `nock items list [TOPIC] [--query Q] [--full]`, `create TOPIC JSON`, `update REF [JSON] [--version JSON] [--reply MD]`, `delete REF`, `show REF`, `judge REF JSON` | the items: a summary and the list, submitted, changed in place or by a new version or answered in, deleted while open and unanswered, in full, judged (asks the owner) |
 | `nock topics ask QUESTION`, `topics answer JSON` | the studio's Ask: a fresh agent answers a question about the topics; only that agent submits the answer |
-| `nock studio [JSON]` | the owner's page, a tab for each thing to look at: the topics and their items, the evaluations |
+| `nock studio [JSON]` | the owner's page, a tab for each thing to look at: the topics and their items, the evaluations; a chat with a headless agent, and Tidy up |
 | `nock eval init NAME`, `run [TARGETS…] [--dry] [--budget USD] [--limit NAME=N] [--retry]`, `import JSON`, `show [NAME]`, `query SQL`, `compare QUERY`, `prune [NAME] [--dry]` | evaluations: scaffold a Snakemake scenario, run it restoring what the cache has (or the failed again), import outputs computed elsewhere, read it, query it with SQL, compare its outputs, delete stale and failed cache entries |
 | `nock consult JSON` | a fresh agent advises on a task: the topics, items, tools, checks and docs that bear on it; the caller waits |
 | `nock advise JSON` | the consultant's advice, submitted; only a consultant nock dispatched runs it |
@@ -1207,7 +1248,7 @@ one machine.
 | `checks.concurrency` | 2 | checks run at once, machine-wide |
 | `reflect.sessions`, `reflect.days` | 15, 7 | when a round is due, whichever comes first |
 | `reflect.logika.days` | 30 | in a Logika project, days after a logika round before the next is offered (once the ledger has changed) |
-| `agent.command`, `agent.model`, `agent.deadline` | `claude`, —, 1800 | the headless agent nock dispatches (consult, Ask, share); it may not bypass or set permissions (see [What nock's agents may do](#what-nocks-agents-may-do)) |
+| `agent.command`, `agent.model`, `agent.deadline` | `claude`, —, 1800 | the headless agent nock dispatches (consult, Ask, share, the studio's chat and Tidy up); it may not bypass or set permissions (see [What nock's agents may do](#what-nocks-agents-may-do)) |
 | `permissions.confirm` | `ask` | how Claude Code treats a `confirm=True` command: `ask` has the owner approve each call (even in bypass mode); `allow` lets the agent run it, which it does only when the owner's request calls for it (see [What nock's agents may do](#what-nocks-agents-may-do)); `nock init` rewrites the rules after a change |
 | `consult.enabled`, `consult.deadline` | true, 600 | whether the consultant runs and the primer asks for it; seconds a consultation may take |
 | `upgrade.check`, `upgrade.auto`, `upgrade.index` | true, true, PyPI's `nock` | whether a session start looks for a newer nock (at most daily); whether it then upgrades a core vendored from PyPI by itself when the merge is clean (off, or on a conflict, it only says the release is out); and where releases are looked up |

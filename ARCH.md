@@ -63,11 +63,15 @@ src/nock/
                      agent, what an edited file's items are, the map's problems
   migration.py       Migration: an earlier nock's decisions and review items into topics, once; Splitting: one asset per item
   asking.py          Asker: the studio's Ask, a fresh agent answering through `topics answer`
-  studio.py          the owner's page (`nock studio`): a local server, a Tab per tab
+  chats.py           Chats: the studio's chat with a headless agent (a session per chat,
+                     streamed, resumed or re-briefed with its transcript, named on leaving),
+                     and Tidy up (its writes as one commit, Undo a revert); `.nock/local/chats/`
+  studio.py          the owner's page (`nock studio`): a local server, a Tab per tab, the chat's routes
   pages/             studio.html, the shell (band with the title and the menu, routing by
                      `#NAME/ROUTE`); studio.css, its look, put in the shell;
                      NAME.html, each tab's fragment (markup, style, a script registering it);
-                     topics.css and evals.css, the two tabs' own looks, put before their fragments
+                     topics.css and evals.css, the two tabs' own looks, put before their fragments;
+                     chat.css, Work's filters and Tidy up and the global chat, with topics.css
   status.py          Standing: a round due, the open items by topic, what waits on agents in
                      Topics, an unshared summary
   share.py           Sharing: a round's summary, held to naming nothing, sent on the owner's word
@@ -96,6 +100,9 @@ src/nock/
     ask.md           the brief of the agent that answers the studio's Ask
     consult.md       the consultant's brief
     share.md         the brief of the agent that vets a summary before it is shared
+    chat.md          the studio's chat agent's brief, with its first message
+    name.md          the brief of the agent that names a chat the owner leaves
+    tidy.md          Tidy up's brief: regroup, set states, drop what is stale, prioritize
 
   # the rest of the toolbox
   checks.py          Checks: command checks and @check functions → one Verdict
@@ -127,7 +134,7 @@ src/nock/
 tests/               real git repositories and processes; no mocks
   conftest.py        a fresh repository with nock installed, per test; the `nock()` runner
   fake_agent.py      the scripted stand-in for the dispatched agents (consultant, asker, sharer,
-                     an evaluation step's agent)
+                     the studio's chatter, namer and tidier, an evaluation step's agent)
   toy/               the toy Snakefile test_eval.py runs: a word list, a planted bug (a fork), a
                      detector (a checkpoint), a fix when found, a score joining the arms
 scripts/release.py   cut a release: checks, asks, then tags vVERSION and pushes it (standard library)
@@ -525,6 +532,27 @@ exist), and `EvalsTab`
 (below), which also answers `POST /evals/NAME/dry` (a `Run`'s dry pass,
 nothing run) and `POST /evals/NAME/compare`.
 
+The global chat is no tab: `studio.ChatRoutes` answers `/chat/…` for
+`chats.Chats`, and the topics tab's fragment draws it in `#topics-global`,
+marked `data-everywhere`, so it writes with the same composer as every chat;
+on another tab the shell sets the topics panel `data-away` instead of
+hidden (no room, nothing visible but that). Its button sits in the shell
+beside the gear. A turn runs `Dispatcher.launch` in a thread with the
+`chatter` seat, `--include-partial-messages`, and a `listener` the
+Supervisor calls with each chunk of output: `chats.Turn` reads the
+stream-json into whole text blocks, the block being written and the tools
+run, which `GET /chat/ID` serves while it runs (the page polls every 350 ms
+then); a `stop` event kills it. The next turn resumes the session
+(`--resume`) when `sessions.find_transcript` finds it and Claude Code takes
+it; otherwise, or when the resume fails before a word, a new session is
+briefed with the chat's transcript. Leaving a chat for a new one dispatches
+the `namer` (no tools) for a title and summary. Tidy up is a chat whose
+agent is the `tidier`: `Topics.commit` commits nothing for that role, and
+when it ends `Chats.gather` commits `.nock/topics` once; Undo is `git
+revert` of that commit, aborted when it conflicts. `items judge` refuses the
+tidier anything but a rejection. A topic's `priority` orders the list
+(`topics.in_order`) in the studio and in `topics list`.
+
 ### The evaluation explorer
 
 `EvalsTab` keeps an `explorer.Explorer` per scenario. Deriving the jobs is
@@ -572,7 +600,8 @@ tools and allow rules, which a step must state.
 
 `dispatch.Dispatcher.launch` runs `claude -p --output-format stream-json
 --session-id …` (`agent.command`, `agent.model`) for the sessions no human
-sits in: the consultant, the asker and the sharer. (A reflection
+sits in: the consultant, the asker, the sharer, and the studio's chatter,
+namer and tidier. (A reflection
 round's parts are the lead's own subagents, not dispatched: the types in
 `briefs/KIND/agents/`, which `nock init` installs in `.claude/agents/`, each
 with only the tools its part needs.) It:
