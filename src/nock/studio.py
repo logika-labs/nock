@@ -170,6 +170,19 @@ class EvalsTab(Tab):
 SEARCHED_BYTES = 256 * 1024
 
 
+def spoken(vtt: str) -> str:
+    """A WebVTT file's words, as its captions show them: no header, cue
+    numbers or timings."""
+    return " ".join(
+        line
+        for line in vtt.splitlines()
+        if line.strip()
+        and "-->" not in line
+        and not line.startswith("WEBVTT")
+        and not line.strip().isdigit()
+    )
+
+
 def talk_of(thread: list[dict[str, Any]]) -> list[str]:
     """A thread's messages as the owner reads them, without nock's own notes:
     each one's text and the names of the files it carries."""
@@ -429,8 +442,8 @@ class TopicsTab(Tab):
     def search(self, query: str) -> dict[str, Any]:
         """What the Search field finds, in what the owner sees: a topic by its
         name, description, status and thread; an item by its title, its
-        decision, its files' names, the text of its text files, and its
-        thread (a thread's messages with the names of the files they carry) — never a recipe, a `from`, a ref or nock's own notes (a split,
+        decision, its files' names, the text of its text files, its videos'
+        captions, and its thread (a thread's messages with the names of the files they carry) — never a recipe, a `from`, a ref or nock's own notes (a split,
         a revival, a task kept as a note). Every word must be found in the
         topic and the item together, and one at least in the item itself."""
         wanted = query.lower().split()
@@ -473,6 +486,8 @@ class TopicsTab(Tab):
             parts.append(file["name"])
             if file.get("type") == "text":
                 parts.append(self.text_of(Path(file["where"])))
+            if file.get("captions_where"):
+                parts.append(spoken(self.text_of(Path(file["captions_where"]))))
         return " ".join(parts).lower()
 
     def text_of(self, path: Path) -> str:

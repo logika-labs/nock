@@ -413,6 +413,25 @@
   transition: border-color .15s, box-shadow .15s; text-align: left; color: inherit; font: inherit;
 }
 .topics .thumb img { display: block; height: 100%; width: auto; max-width: 320px; min-width: 140px; object-fit: cover; object-position: top center; border-radius: 11px; }
+/* A video's still: its first frame or poster, a play mark in a glass circle, its length. */
+.topics .thumb video { display: block; height: 100%; width: auto; max-width: 320px; min-width: 140px; object-fit: cover; border-radius: 11px; background: #111116; pointer-events: none; }
+.topics .options-card .option video { display: block; width: 100%; height: 64px; object-fit: cover; border-radius: 8px; background: #111116; pointer-events: none; }
+.topics .play {
+  position: absolute; left: 50%; top: calc(50% - 15px); width: 38px; height: 38px; margin: -19px 0 0 -19px; border-radius: 50%;
+  background: rgb(255 255 255 / .82); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); box-shadow: 0 4px 14px -4px rgb(17 17 22 / .45);
+}
+.topics .play::after {
+  content: ""; position: absolute; left: 15px; top: 11px; border-style: solid; border-width: 8px 0 8px 13px;
+  border-color: transparent transparent transparent #111116;
+}
+.topics .options-card .option .play { top: 50%; width: 28px; height: 28px; margin: -14px 0 0 -14px; }
+.topics .options-card .option .play::after { left: 11px; top: 8px; border-width: 6px 0 6px 9px; }
+.topics .length {
+  position: absolute; right: 8px; top: 8px; padding: 2px 7px; border-radius: 999px; background: rgb(17 17 22 / .72); color: #fff;
+  font: 600 10.5px/16px var(--mono); font-variant-numeric: tabular-nums;
+}
+.topics .length:empty { display: none; }
+.topics .options-card .option .length { right: 5px; top: 5px; }
 .topics .thumb .ribbon {
   position: absolute; left: 0; right: 0; bottom: 0; display: flex; align-items: center; gap: 8px; min-width: 0; height: 30px; padding: 0 6px 0 10px;
   border-radius: 0 0 11px 11px; border-top: 1px solid rgb(17 17 22 / .08);
@@ -667,7 +686,11 @@
 .topics .pane img { max-width: 100%; display: block; background: repeating-conic-gradient(#ece8f6 0 25%, #fff 0 50%) 0 0 / 16px 16px; }
 .topics .viewer.image .pane img { max-height: calc(100vh - 250px); width: auto; }
 .topics .viewer.image.comparing .pane img { max-height: calc(100vh - 286px); }
-.topics .pane video { width: 100%; background: #000; }
+/* A video: framed like a picture, its captions on. */
+.topics .pane video { display: block; max-width: 100%; background: #000; border: 1px solid var(--border); border-radius: 8px; }
+.topics .viewer.image .pane video { width: auto; max-height: calc(100vh - 250px); min-width: min(100%, 28rem); }
+.topics .viewer.image .panes.several .pane video { width: 100%; min-width: 0; }
+.topics .pane video::cue { font: 500 15px/1.4 var(--sans); background: rgb(17 17 22 / .78); color: #fff; }
 .topics .pane iframe { width: 100%; height: 70vh; border: 0; background: #fff; }
 .topics .pane a { padding: 16px; color: var(--link); }
 .topics .missing { color: var(--muted); font-size: 14px; padding: 20px; text-align: center; margin: 0; }

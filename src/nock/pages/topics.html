@@ -364,13 +364,14 @@
     if (latest.decision) return "decision";
     const types = new Set(latest.files.map(file => file.type));
     if (types.size === 1 && types.has("image")) return "image";
+    if (types.size === 1 && types.has("video")) return "video";
     if (types.size === 1 && types.has("text")) return "text";
     return "files";
   }
-  const SECTIONS = [["decision", "Decisions", "decision", "decisions"], ["image", "Images", "image", "images"], ["text", "Texts", "text", "texts"],
+  const SECTIONS = [["decision", "Decisions", "decision", "decisions"], ["image", "Images", "image", "images"], ["video", "Videos", "video", "videos"], ["text", "Texts", "text", "texts"],
     ["files", "Files", "file", "files"]];
   // What the viewer steps through with the arrows: a topic's pictures, then its texts, then its other files.
-  const viewable = topic => ["image", "text", "files"].flatMap(kind => topic.items.filter(item => kindOf(item) === kind));
+  const viewable = topic => ["image", "video", "text", "files"].flatMap(kind => topic.items.filter(item => kindOf(item) === kind));
   const awaitsOwner = item => item.verdict === "open";
   const joined = parts => parts.filter(Boolean).join(" · ");
 
@@ -542,9 +543,20 @@
     const preferred = item.preferred?.version === version.version && version.files.find(file => file.name === item.preferred.name);
     return { version, file: preferred || version.files.find(entry => entry.type === type) };
   }
+  // A video's still: its poster, else its first frame; a play mark, and its length once known.
+  const lengths = new Map();
+  const clock = seconds => `${Math.floor(seconds / 60)}:${String(Math.round(seconds % 60)).padStart(2, "0")}`;
+  function still(item, version, file) {
+    const address = fileUrl(item, version, file.name);
+    if (file.type !== "video") return `<img src="${address}" alt="" loading="lazy">`;
+    const picture = file.poster ? `<img src="${fileUrl(item, version, file.poster)}" alt="" loading="lazy">` : "";
+    const known = lengths.get(address);
+    return `${picture}<video src="${address}#t=0.1" data-length="${address}" preload="metadata" muted playsinline tabindex="-1"${picture ? " hidden" : ""}></video>
+      <span class="play" aria-hidden="true"></span><span class="length">${known ? clock(known) : ""}</span>`;
+  }
   function thumbnail(item) {
-    const { version, file } = cover(item, "image");
-    return `<button type="button" class="thumb${hitClass(item)}" data-key="${escape(item.ref)}" id="item-${escape(item.ref)}" data-view="${escape(item.ref)}" title="${escape(item.title)}" aria-label="${escape(item.title)}"><img src="${fileUrl(item, version, file.name)}" alt="" loading="lazy">
+    const { version, file } = cover(item, kindOf(item) === "video" ? "video" : "image");
+    return `<button type="button" class="thumb${file.type === "video" ? " video" : ""}${hitClass(item)}" data-key="${escape(item.ref)}" id="item-${escape(item.ref)}" data-view="${escape(item.ref)}" title="${escape(item.title)}" aria-label="${escape(item.title)}">${still(item, version, file)}
       <span class="ribbon"><span class="title">${titled(item.title)}</span>${time(item.updated)}${verdictMark(item)}</span></button>`;
   }
   // An item's options belong together: one card, its title and time over a small list of them (the
@@ -553,14 +565,15 @@
     const version = last(item);
     const options = version.files.map(file => {
       const preferred = item.preferred?.version === version.version && item.preferred?.name === file.name;
-      const shown = type === "image" ? `<img src="${fileUrl(item, version, file.name)}" alt="" loading="lazy">`
+      const shown = type !== "text" ? still(item, version, file)
         : `<pre data-text="${fileUrl(item, version, file.name)}" data-lines="4" data-own>…</pre><span class="name">${escape(file.name)}</span>`;
       return `<span class="option${preferred ? " preferred" : ""}" data-key="option:${escape(file.name)}">${shown}${star(item, version, file, "span")}</span>`;
     }).join("");
     // Pictures: the options, then the title, time and verdict along the foot. Texts: the title on top.
-    const head = `<span class="head"><span class="title">${titled(item.title)}</span><span class="side">${time(item.updated)}${type === "image" ? verdictMark(item) : ""}</span></span>`;
-    return `<button type="button" class="options-card ${type}${hitClass(item)}" data-key="${escape(item.ref)}" id="item-${escape(item.ref)}" data-view="${escape(item.ref)}">
-      ${type === "image" ? "" : head}<span class="stack">${options}</span>${type === "image" ? head : verdictMark(item)}</button>`;
+    const pictured = type !== "text";
+    const head = `<span class="head"><span class="title">${titled(item.title)}</span><span class="side">${time(item.updated)}${pictured ? verdictMark(item) : ""}</span></span>`;
+    return `<button type="button" class="options-card ${pictured ? "image" : "text"}${type === "video" ? " video" : ""}${hitClass(item)}" data-key="${escape(item.ref)}" id="item-${escape(item.ref)}" data-view="${escape(item.ref)}">
+      ${pictured ? "" : head}<span class="stack">${options}</span>${pictured ? head : verdictMark(item)}</button>`;
   }
   const grouped = item => item.options && last(item).files.length > 1;
   // An option's star: grey; the preferred one's filled in the foil. A click prefers it, or takes the
@@ -586,7 +599,7 @@
       if (!found.length) return "";
       const key = `${topic.name}/${kind}`, folded = state.folded.has(key);
       const body = folded ? "" : kind === "decision" ? `<div class="item-bubbles">${found.map(bubble).join("")}</div>`
-        : kind === "image" ? `<div class="strip images">${found.map(item => grouped(item) ? optionsCard(item, "image") : thumbnail(item)).join("")}</div>`
+        : kind === "image" || kind === "video" ? `<div class="strip images">${found.map(item => grouped(item) ? optionsCard(item, kind) : thumbnail(item)).join("")}</div>`
         : kind === "text" ? `<div class="strip texts">${found.map(item => grouped(item) ? optionsCard(item, "text") : preview(item)).join("")}</div>`
         : `<div class="rows">${found.map(fileRow).join("")}</div>`;
       return `<section class="section ${kind}${folded ? " folded" : ""}" data-key="section:${kind}"><h3 class="label"><button type="button" class="fold" data-fold="${escape(key)}" aria-expanded="${!folded}">${ICONS.caret}${label} <span class="count">· ${found.length}</span></button></h3>${body}</section>`;
@@ -677,7 +690,12 @@
       const [box, picture] = zoomStyles(index);
       return `<div class="pane"><button type="button" class="shot${box ? " zoomed" : ""}" data-shot="${index}" style="${box}" aria-label="${box ? "Zoom out" : "Zoom in"}"><img data-key="${address}" src="${address}" style="${picture}" alt="${escape(file.name)}, version ${version.version}"></button></div>`;
     }
-    if (file.type === "video") return `<div class="pane"><video data-key="${address}" src="${address}" controls preload="metadata" playsinline></video></div>`;
+    if (file.type === "video") {
+      // Captions on by default: a recording explains each step in its own words.
+      const poster = file.poster ? ` poster="${fileUrl(item, version, file.poster)}"` : "";
+      const track = file.captions ? `<track kind="captions" src="${fileUrl(item, version, file.captions)}" srclang="en" label="Captions" default>` : "";
+      return `<div class="pane"><video class="player" data-key="${address}" src="${address}"${poster} controls preload="metadata" playsinline>${track}</video></div>`;
+    }
     if (file.type === "pdf") return `<div class="pane"><iframe data-key="${address}" src="${address}" title="${escape(file.name)}"></iframe></div>`;
     if (file.type === "html") return `<div class="pane"><iframe data-key="${address}" src="${address}" sandbox="" title="${escape(file.name)}"></iframe></div>`;
     if (file.type === "binary") return `<div class="pane"><a href="${address}" download>${escape(file.name)}</a></div>`;
@@ -723,7 +741,7 @@
         `<div class="column${several && entry.file && item.preferred?.version === entry.version.version && item.preferred?.name === entry.file.name ? " preferred" : ""}">${comparing ? picker(item, sides[index], numbers[index]) : ""}${item.options && entry.file ? `<div class="pane-wrap">${pane(item, entry.version, entry.file, index)}${star(item, entry.version, entry.file)}</div>` : pane(item, entry.version, entry.file, index)}${several && entry.file ? optionBar(item, entry.version, entry.file, index) : ""}</div>`).join("")}</div>`;
     }
     const actions = awaitsOwner(item) || item.verdict !== "open" ? `<div class="actions"><span class="hint" data-problem="${escape(item.ref)}"></span><div class="buttons">${verdictButtons(item.ref, item.verdict)}</div></div>` : "";
-    const fits = kind === "image" ? "image" : kind === "text" && !comparing && !several ? "text" : "wide";
+    const fits = kind === "image" || kind === "video" ? "image" : kind === "text" && !comparing && !several ? "text" : "wide";
     return `<div class="overlay" data-key="overlay:${escape(item.ref)}" data-backdrop>
       <article class="sheet open viewer ${fits}${comparing ? " comparing" : ""}" role="dialog" aria-modal="true" aria-label="${escape(item.title)}">
         <div class="ribbon"><h2>${titled(item.title)}</h2><span class="side">${verdictMark(item)}${time(item.updated)}</span><button type="button" class="close" data-close aria-label="Close (Esc)" title="Close (Esc)">×</button></div>
@@ -1415,6 +1433,31 @@
   root.addEventListener("mouseleave", () => { $("topics-tip").hidden = true; });
   addEventListener("scroll", () => { $("topics-tip").hidden = true; }, { passive: true });
   root.addEventListener("scroll", event => { if (event.target.matches?.("textarea[data-draft]")) edges(event.target); }, true);
+  // A still's length, once its video's metadata comes.
+  root.addEventListener("loadedmetadata", event => {
+    const video = event.target;
+    if (!video.dataset?.length || !Number.isFinite(video.duration)) return;
+    lengths.set(video.dataset.length, video.duration);
+    const label = video.parentElement.querySelector(".length");
+    if (label) label.textContent = clock(video.duration);
+  }, true);
+  // Compared side by side, two versions play, pause and seek together.
+  let syncing = false;
+  for (const kind of ["play", "pause", "seeked", "ratechange"]) {
+    root.addEventListener(kind, event => {
+      const video = event.target;
+      if (syncing || !video.matches?.("#topics-modal .panes.several video.player")) return;
+      syncing = true;
+      for (const other of document.querySelectorAll("#topics-modal .panes.several video.player")) {
+        if (other === video) continue;
+        if (kind === "seeked" && Math.abs(other.currentTime - video.currentTime) > .05) other.currentTime = video.currentTime;
+        if (kind === "ratechange") other.playbackRate = video.playbackRate;
+        if (kind === "play" && other.paused) { other.currentTime = video.currentTime; other.play().catch(() => {}); }
+        if (kind === "pause" && !other.paused) other.pause();
+      }
+      setTimeout(() => { syncing = false; }, 0);
+    }, true);
+  }
   root.addEventListener("pointerdown", event => {
     const shot = event.target.closest(".shot.zoomed");
     state.dragged = false;
@@ -1467,6 +1510,13 @@
       else if (state.modal) closeViewer();
       else return;
       event.preventDefault();
+      return;
+    }
+    const players = state.modal && !state.picture ? [...document.querySelectorAll("#topics-modal video.player")] : [];
+    if (players.length && (event.key === " " || event.key === "k") && !target.closest?.("button, video")) {
+      event.preventDefault();
+      const first = players[0];
+      if (first.paused) first.play().catch(() => {}); else first.pause();
       return;
     }
     if (state.modal && !state.picture && (event.key === "ArrowLeft" || event.key === "ArrowRight")) {

@@ -8,6 +8,8 @@ items move into topics once."""
 from __future__ import annotations
 
 import json
+import shutil
+import subprocess
 import threading
 import time
 import urllib.error
@@ -728,6 +730,83 @@ def test_search_finds_what_the_owner_sees_and_not_what_nock_keeps_aside(
     assert search("notes.md")["items"] == [ref]
     assert search("checkout sqlite") == {"topics": [], "items": [decided]}
     assert search("checkout orders") == {"topics": ["orders"], "items": [decided]}
+
+
+FFMPEG = shutil.which("ffmpeg") or next(
+    (
+        path
+        for path in ("/opt/homebrew/bin/ffmpeg", "/usr/local/bin/ffmpeg")
+        if Path(path).is_file()
+    ),
+    None,
+)
+
+
+@pytest.mark.skipif(FFMPEG is None, reason="ffmpeg makes the video")
+def test_a_video_keeps_its_captions_and_poster_beside_it_and_search_reads_the_captions(
+    project: Project, page: str, tmp_path: Path
+) -> None:
+    video = tmp_path / "run.mp4"
+    subprocess.run(
+        [
+            str(FFMPEG),
+            "-loglevel",
+            "error",
+            "-f",
+            "lavfi",
+            "-i",
+            "testsrc=duration=2:size=160x120:rate=10",
+            "-pix_fmt",
+            "yuv420p",
+            str(video),
+        ],
+        check=True,
+    )
+    (tmp_path / "run.vtt").write_text(
+        "WEBVTT\n\n1\n00:00:00.000 --> 00:00:02.000\nThe agent opens the ledger page.\n"
+    )
+    (tmp_path / "poster.png").write_bytes(b"\x89PNG\r\n\x1a\n")
+    ref = submit(
+        project.root,
+        {
+            "title": "The run",
+            "derived": [{"path": str(video), "poster": str(tmp_path / "poster.png")}],
+        },
+    )
+    shown = run(project.root, "items", "show", ref)["versions"][0]["files"][0]
+    assert (shown["type"], shown["captions"], shown["poster"]) == (
+        "video",
+        "run.vtt",
+        "run.poster.png",
+    )
+    assert Path(shown["captions_where"]).read_text().startswith("WEBVTT")
+    assert Path(shown["poster_where"]).is_file()
+    slug = ref.split("/")[1]
+    with urllib.request.urlopen(f"{page}topics/file/orders/{slug}/1/run.vtt") as response:
+        assert b"opens the ledger page" in response.read()
+    with urllib.request.urlopen(
+        f"{page}topics/search/{urllib.parse.quote('opens the ledger')}"
+    ) as response:
+        assert json.loads(response.read())["items"] == [ref]
+    run(project.root, "items", "update", ref, "--version", json.dumps({"title": "The run, again"}))
+    again = run(project.root, "items", "show", ref)["versions"][1]["files"][0]
+    assert Path(again["captions_where"]).read_text() == Path(shown["captions_where"]).read_text()
+    (tmp_path / "notes.md").write_text("# Notes\n")
+    result = nock(
+        project.root,
+        "items",
+        "create",
+        "orders",
+        json.dumps(
+            {
+                "title": "Notes",
+                "derived": [
+                    {"path": str(tmp_path / "notes.md"), "captions": str(tmp_path / "run.vtt")}
+                ],
+            }
+        ),
+    )
+    assert result.returncode != 0 and "only a video" in result.stdout + result.stderr
 
 
 def test_the_owner_asks_and_the_answer_names_items_that_exist(
