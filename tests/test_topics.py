@@ -135,9 +135,8 @@ def test_a_new_version_copies_project_files_as_they_are_now_and_reopens_the_item
 ) -> None:
     shot = tmp_path / "email.png"
     shot.write_bytes(b"\x89PNG one")
-    item = {
+    picture = {
         "title": "The lapsed payment email",
-        "files": ["README.md"],
         "derived": [
             {
                 "path": str(shot),
@@ -147,7 +146,12 @@ def test_a_new_version_copies_project_files_as_they_are_now_and_reopens_the_item
             }
         ],
     }
-    ref = submit(project.root, item)
+    drawn = submit(project.root, picture)
+    run(project.root, "items", "update", drawn, "--version", "{}")
+    carried = run(project.root, "items", "show", drawn)["versions"][1]["files"][0]
+    assert carried["name"] == "email.png" and carried["when"] == "the payment lapsed"
+    assert Path(carried["where"]).read_bytes() == b"\x89PNG one"
+    ref = submit(project.root, {"title": "The README", "files": ["README.md"]})
     judge(project.root, ref, "rejected", "Bolder subject line.")
     refused = nock(project.root, "items", "update", ref, '{"title": "Bolder"}')
     assert refused.returncode == 49 and "--version" in refused.stderr
@@ -159,15 +163,13 @@ def test_a_new_version_copies_project_files_as_they_are_now_and_reopens_the_item
     first, second = (version["files"] for version in shown["versions"])
     assert Path(first[0]["where"]).read_text() == "# demo\n"
     assert Path(second[0]["where"]).read_text() == "# demo, changed\n"
-    assert second[1]["name"] == "email.png" and second[1]["when"] == "the payment lapsed"
-    assert Path(second[1]["where"]).read_bytes() == b"\x89PNG one"
     assert shown["thread"][0] == {
         **shown["thread"][0],
         "author": "owner",
         "text": "Bolder subject line.",
         "verdict": "rejected",
     }
-    run(project.root, "items", "update", ref, '{"title": "The lapsed payment email, bolder"}')
+    run(project.root, "items", "update", ref, '{"title": "The README, bolder"}')
     assert run(project.root, "items", "show", ref)["versions"][-1]["version"] == 2
 
 
@@ -190,7 +192,9 @@ def test_only_an_open_item_the_owner_has_not_written_on_is_deleted(project: Proj
 def test_an_item_moves_to_another_topic_whatever_its_verdict_and_its_old_refs_resolve(
     project: Project, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    ref = submit(project.root, {**DECISION, "derived": [{"text": "big", "name": "big.txt"}]})
+    ref = submit(
+        project.root, {"title": DECISION["title"], "derived": [{"text": "big", "name": "big.txt"}]}
+    )
     item = project.root / ".nock" / "topics" / "orders" / "orders-live-in-sqlite" / "item.json"
     record = json.loads(item.read_text())
     item.write_text(json.dumps({**record, "aliases": ["7"]}))
@@ -620,3 +624,88 @@ def test_a_task_keeps_its_state_and_is_accepted_when_done(
     failing = run(project.root, "items", "list")
     assert failing["summary"]["open"] == {"orders": 1}
     assert run(project.root, "items", "show", other)["verdict"] == "open"
+
+
+def test_an_item_holds_one_asset_or_options_of_one_the_owner_may_prefer(
+    project: Project, page: str
+) -> None:
+    def text(name: str, words: str = "x") -> dict[str, str]:
+        return {"text": words, "name": name}
+
+    open_topic(project.root)
+    two = nock(
+        project.root, "items", "create", "orders",
+        json.dumps({"title": "Two", "derived": [text("a.md"), text("b.md")]}),
+    )  # fmt: skip
+    assert two.returncode == 40 and "an item holds one file" in two.stderr
+    pictured = nock(
+        project.root, "items", "create", "orders",
+        json.dumps({**DECISION, "derived": [text("a.md")]}),
+    )  # fmt: skip
+    assert pictured.returncode == 40 and "a decision holds no derived file" in pictured.stderr
+    mixed = nock(
+        project.root, "items", "create", "orders",
+        json.dumps({"title": "Mixed", "options": True, "derived": [text("a.md"), text("b.svg", "<svg/>")]}),
+    )  # fmt: skip
+    assert mixed.returncode == 40 and "of one type" in mixed.stderr
+    submit(project.root, {**DECISION, "files": ["README.md"]})
+    ref = submit(
+        project.root,
+        {"title": "The banner", "options": True, "derived": [text(f"{name}.md") for name in "abc"]},
+    )
+    row = next(row for row in run(project.root, "items", "list")["rows"] if row["ref"] == ref)
+    assert row["options"] is True and "preferred" not in row
+    assert post(page, "prefer", {"ref": ref, "version": 1, "name": "b.md"}) == (
+        200,
+        {"preferred": {"version": 1, "name": "b.md"}},
+    )
+    assert run(project.root, "items", "show", ref)["preferred"] == {"version": 1, "name": "b.md"}
+    row = next(row for row in run(project.root, "items", "list")["rows"] if row["ref"] == ref)
+    assert row["preferred"] == {"version": 1, "name": "b.md"}
+    assert post(page, "prefer", {"ref": ref, "version": 1, "name": "z.md"})[0] == 404
+    assert post(page, "prefer", {"ref": "orders/orders-live-in-sqlite", "version": 1})[0] != 200
+    assert post(page, "prefer", {"ref": ref, "version": 1}) == (200, {"preferred": None})
+    assert git(project.root, "status", "--porcelain") == ""
+
+
+def test_an_item_holding_several_files_splits_into_one_item_per_file_once(
+    project: Project,
+) -> None:
+    ref = submit(
+        project.root,
+        {
+            "title": "Texts",
+            "options": True,
+            "derived": [{"text": n, "name": f"{n}.md"} for n in "ab"],
+        },
+    )
+    topics = Topics(project)
+    topics.update_item(
+        ref, None, version={"derived": [{"text": n, "name": f"{n}.md"} for n in "abc"]}
+    )
+    topics.reply(ref, "Shorter, all of them.", Author.OWNER)
+    judge(project.root, ref, "rejected")
+    path = project.root / ".nock" / "topics" / "orders" / "texts" / "item.json"
+    record = json.loads(path.read_text())
+    del record["options"]
+    path.write_text(json.dumps(record))
+    git(project.root, "commit", "-qam", "An item from before one asset per item")
+    assert Migration(project).run() == {"migrated": False, "split": {"items": 1, "into": 3}}
+    pieces = [topics.item(f"orders/texts{suffix}") for suffix in ("", "-b", "-c")]
+    assert [piece["title"] for piece in pieces] == ["Texts", "Texts — b.md", "Texts — c.md"]
+    assert [[version["version"] for version in piece["versions"]] for piece in pieces] == [
+        [1, 2],
+        [1, 2],
+        [2],
+    ]
+    for piece, name in zip(pieces, "abc", strict=True):
+        assert piece["verdict"] == "rejected"
+        assert {entry["name"] for version in piece["versions"] for entry in version["files"]} == {
+            f"{name}.md"
+        }
+        note, *thread = piece["thread"]
+        assert note["kind"] == "split" and "[orders/texts-c]" in note["text"]
+        assert [entry["text"] for entry in thread] == ["Shorter, all of them."]
+    assert topics.file("orders", "texts-c", 2, "c.md").read_text() == "c"
+    assert git(project.root, "status", "--porcelain") == ""
+    assert Migration(project).run() == {"migrated": False}

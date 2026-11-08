@@ -1,10 +1,12 @@
 """Topics and items: what agents put before the owner. A topic is a piece of
 work — a name, why it exists, a thread — holding items; an item is bare: a
-title and, in each of its versions, files of three kinds: a decision (nock's
-own JSON: the answer, the alternatives weighed, done or todo), project files
-(copied when the version is made, so versions compare) and derived files
-(something made to show part of the project, with what it comes from, when
-it applies and how to make it again). The owner alone gives an item its
+title and, in each of its versions, one of: a decision (nock's own JSON: the
+answer, the alternatives weighed, done or todo, with the project files it
+concerns), a project file (copied when the version is made, so versions
+compare) or a derived file (something made to show part of the project, with
+what it comes from, when it applies and how to make it again). One asset per
+item; several only as options, variants of one asset side by side, of which
+the owner may prefer one. The owner alone gives an item its
 verdict (accepted, rejected; open until then), on the page or with
 `/nock-triage`; both sides talk in the threads, a chat: the owner's
 message waits for the agent's one answer (`pending`), and is withdrawn
@@ -41,6 +43,8 @@ DECISION_FILE = "decision.json"
 PROJECT_FILES = "project"
 MAP = "map.md"
 GENERAL = "general"
+# A thread's note that the item was split out of one holding several files.
+SPLIT = "split"
 # The git states in which a commit would land in the middle of someone's work.
 BUSY_MARKERS = ("MERGE_HEAD", "CHERRY_PICK_HEAD", "REVERT_HEAD", "rebase-merge", "rebase-apply")
 # A file larger than this (most videos) is kept on this machine, uncommitted.
@@ -130,12 +134,18 @@ lapsed"); `recipe`, how to make it again."""
 
 
 class Content(TypedDict):
-    """What a version holds: a decision, project files, derived files, or several."""
+    """What a version holds: a decision (with the project files it concerns),
+    or one file, project or derived; several files only as options."""
 
     decision: NotRequired[Decision]
     files: NotRequired[list[str]]
-    """Project files, by their path in the repository, copied as they are now."""
+    """Project files, by their path in the repository, copied as they are now:
+    one, or with a decision those it concerns."""
     derived: NotRequired[list[Derived]]
+    options: NotRequired[bool]
+    """The files are options: variants of one asset (three takes on one
+    picture), of one type, shown side by side for the owner to prefer one;
+    never unrelated files, which are items of their own."""
 
 
 class Task(TypedDict):
@@ -414,6 +424,8 @@ class Topics:
             "verdict": item["verdict"],
             **({"state": item["task"]["state"]} if item.get("task") else {}),
             "kinds": kinds,
+            **({"options": True} if item.get("options") else {}),
+            **({"preferred": item["preferred"]} if item.get("preferred") else {}),
             "versions": len(item["versions"]),
             "updated": item["updated"],
         }
@@ -760,6 +772,8 @@ class Topics:
         """Write a version from the content given, what it leaves out carried
         from `previous` (project files copied again as they are now). When
         `previous` is the latest version it is replaced in place."""
+        if "options" in content:
+            item["options"] = bool(content["options"])
         in_place = previous is not None and (
             not item["versions"] or item["versions"][-1] is not previous
         )
@@ -795,6 +809,7 @@ class Topics:
         for given in derived or []:
             made.append(self.derived_file(dict(given)))
         made += carried
+        self.check_assets(item, [entry for entry, _ in made])
         names = [stored(entry) for entry, _ in made]
         doubled = sorted({name for name in names if names.count(name) > 1})
         if doubled:
@@ -817,6 +832,34 @@ class Topics:
         stamp = self.recorded()
         record = {"version": number, **stamp, "files": entries}
         item["versions"].append(record)
+
+    def check_assets(self, item: dict[str, Any], entries: list[dict[str, Any]]) -> None:
+        """One asset per item: a decision (with the project files it
+        concerns), or one file; several only as options of one type."""
+        files = [entry for entry in entries if entry["kind"] != "decision"]
+        if len(files) < len(entries):
+            if item.get("options"):
+                raise UsageError(
+                    "a decision has no options: its alternatives say what else was weighed"
+                )
+            derived = [entry["name"] for entry in files if entry["kind"] == "derived"]
+            if derived:
+                raise UsageError(
+                    f"a decision holds no derived file: submit {derived[0]} as an item of its"
+                    " own, and cite it in the answer"
+                )
+            return
+        if len(files) > 1 and not item.get("options"):
+            raise UsageError(
+                "an item holds one file: submit each as an item of its own — several only"
+                ' as options, variants of one asset for the owner to prefer one (`"options": true`)'
+            )
+        types = sorted({entry["type"] for entry in files})
+        if item.get("options") and len(types) > 1:
+            raise UsageError(
+                f"options are variants of one asset, of one type — not {' and '.join(types)}:"
+                " unrelated files are items of their own"
+            )
 
     def project_file(self, given: str) -> tuple[dict[str, Any], bytes]:
         here = self.project.here.resolve()
@@ -879,6 +922,33 @@ class Topics:
             return self.commit([folder], f"Item {item['ref']}, deleted: {item['title']}")
 
     # --- the owner's word -------------------------------------------------------
+
+    def prefer(self, ref: str, version: int, name: str | None) -> tuple[dict[str, Any], str | None]:
+        """The owner's preferred option in a version of an item with options,
+        or none (`name` None): recorded and shown, changing nothing else."""
+        with self.project.lock("topics"):
+            item = self.item(ref)
+            if not item.get("options"):
+                raise UsageError(f"{item['ref']} has no options to prefer one of")
+            if name is None:
+                item["preferred"] = None
+            else:
+                record = next(
+                    (entry for entry in item["versions"] if entry["version"] == version), None
+                )
+                names = [
+                    entry_name(entry)
+                    for entry in (record or {}).get("files", [])
+                    if entry["kind"] != "decision"
+                ]
+                if name not in names:
+                    raise NotFoundError(f"{item['ref']} has no option {name} in version {version}")
+                item["preferred"] = {"version": version, "name": name}
+            path = self.save_item(item["topic"], item)
+            said = (
+                f"option {name} of version {version} preferred" if name else "no option preferred"
+            )
+            return item, self.commit([path], f"Item {item['ref']}, {said}: {item['title']}")
 
     def judge(self, ref: str, word: Word) -> tuple[dict[str, Any], str | None]:
         with self.project.lock("topics"):

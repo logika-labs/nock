@@ -60,7 +60,7 @@ src/nock/
   topics.py          Topics: topics and their items (decision, project and derived files, by
                      version), the owner's verdicts, the threads, search, what waits on an
                      agent, what an edited file's items are, the map's problems
-  migration.py       Migration: an earlier nock's decisions and review items into topics, once
+  migration.py       Migration: an earlier nock's decisions and review items into topics, once; Splitting: one asset per item
   asking.py          Asker: the studio's Ask, a fresh agent answering through `topics answer`
   studio.py          the owner's page (`nock studio`): a local server, a Tab per tab
   pages/             studio.html, the shell (band with the title and the menu, routing by
@@ -422,7 +422,10 @@ revival since the last verdict): `update_topic --revive` posts a revival note
 first, and `current_description` reads the latest one as the description.
 `add_version` writes a version from `Content` (decision, files, derived),
 carrying over what it leaves out from the previous one, project files copied
-again from the working tree; `update_item` does it in place for an open item
+again from the working tree, and `check_assets` holds it to one asset: a
+decision (with the project files it concerns, no derived file) or one file;
+several only when the item has `options` (variants of one type, of which the
+owner's `prefer` records `preferred`, its version and name); `update_item` does it in place for an open item
 (the latest version rewritten) or as `--version` (a new one, reopening the
 item), refusing an in-place change to a decided item (`ConflictError`). The
 owner's word is `judge` and `judge_topic` (a `Word`: verdict and comment, the
@@ -450,7 +453,13 @@ the `[decisions]` tags dropped from the config, in one commit. The owner's words
 every session that made a version), so the prompt hook announces only what
 the owner says afterwards; `topics migrate --mark-seen`, on a project already
 migrated, records every word said so far as told (local state, nothing
-committed), idempotently.
+committed), idempotently. Then `migration.Splitting`, by the same commands,
+splits each item from before one asset per item that holds several files
+(not options): the item keeps its first file (a decision, its decision and
+project files) under its ref, each other file becomes `SLUG-FILE` with the
+versions holding it under their own numbers, the verdict kept and the thread
+copied after a `split` note dated at the item's creation, so it changes
+nothing about who spoke last; one commit, once.
 
 `consult.Consultant` renders `briefs/consult.md` with the caller's intent
 and context, the map, the project's tools and the checks, and dispatches a
@@ -486,7 +495,7 @@ and its style under its own class. Two tabs: `TopicsTab`, which serves every
 topic with its items and where each chat stands (`topics.chat_state`:
 pending, unseen since `studio.Seen`'s last look, kept in
 `.nock/local/studio/seen.json`), a version's files as they are, the owner's
-verdicts and messages (`withdraw` takes back one still waiting), and the Ask (`studio.Asking`: one `nock topics ask` process at a
+verdicts, preferred options and messages (`withdraw` takes back one still waiting), and the Ask (`studio.Asking`: one `nock topics ask` process at a
 time, cancelled by stopping it; `asking.Asker` dispatches the asker seat,
 which answers through `nock topics answer`, held to naming items that
 exist), and `EvalsTab`

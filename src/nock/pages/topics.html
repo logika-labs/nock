@@ -34,15 +34,25 @@
   const state = {
     shown: false, seen: "", topics: [], ask: null, search: "", mode: "search", route: "", arrived: null,
     drafts: new Map(), open: new Set(), expanded: new Set(), chats: new Set(), silence: 30,
-    modal: null, compare: false, single: null, left: null, right: null, file: null, reveal: false,
-    menu: null, zoom: null, dismissed: null, looking: new Set(), focus: null, reveal_to: null,
+    modal: null, compare: false, single: null, left: null, right: null, reveal: null,
+    menu: null, zoom: null, dismissed: null, looking: new Set(), focus: null, reveal_to: null, folded: new Set(),
   };
+  // How decisions look, for the owner to compare (`?decisions=rail` or `lift`); `foil` by default.
+  const LOOKS = ["foil", "rail", "lift"];
+  const look = new URLSearchParams(location.search).get("decisions");
+  document.documentElement.dataset.decisions = LOOKS.includes(look) ? look : LOOKS[0];
 
   const ICONS = {
     chat: '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 4.5h12a1.5 1.5 0 0 1 1.5 1.5v7a1.5 1.5 0 0 1-1.5 1.5H9l-3.5 3v-3H4A1.5 1.5 0 0 1 2.5 13V6A1.5 1.5 0 0 1 4 4.5z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>',
     send: '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 15.5v-11M5.5 9 10 4.5 14.5 9" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>',
     cancel: '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="m6 6 8 8M14 6l-8 8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>',
     chevron: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4.5 6.5 3.5 3.5 3.5-3.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+    caret: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="m6 4 4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+    accepted: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="m3.5 8.5 3 3 6-7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+    rejected: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4.5 4.5 7 7m0-7-7 7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>',
+    done: '<svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="4.5" fill="currentColor"/></svg>',
+    todo: '<svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-dasharray="2.6 2.2"/></svg>',
+    star: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="m8 2.2 1.8 3.65 4 .58-2.9 2.83.69 4L8 11.37l-3.59 1.89.69-4-2.9-2.83 4-.58z" fill="currentColor" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg>',
   };
 
   // --- time: short, "21m", "3h", "2d" -------------------------------------------------------------
@@ -140,9 +150,39 @@
       .replace(/\[([^\]]+)\]\((https?:[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>')
       .replace(/\[([a-z0-9][a-z0-9-]*\/[a-z0-9][a-z0-9-]*|D\d+)\]/g, '<a href="#topics/$1">$1</a>');
   }
+  // A Markdown file's frontmatter, the simple YAML agents write (`key: value`, a list under a key or
+  // in brackets), as a ribbon of keys and values; the file without it.
+  function frontmatter(source) {
+    const found = source.match(/^---\n([\s\S]*?)\n---[ \t]*(?:\n|$)/);
+    if (!found) return ["", source];
+    const bare = value => value.trim().replace(/^(["'])(.*)\1$/, "$2");
+    const rows = [];
+    for (const line of found[1].split("\n")) {
+      const pair = line.match(/^([^\s#:][^:]*):(?:\s+(.*))?$/);
+      const entry = line.match(/^\s*-\s+(.*)$/);
+      if (pair) {
+        const value = (pair[2] || "").trim();
+        const values = /^\[.*\]$/.test(value) ? value.slice(1, -1).split(",").map(bare).filter(Boolean)
+          : value && !/^[|>][+-]?$/.test(value) ? [bare(value)] : [];
+        rows.push({ key: pair[1].trim(), values, list: /^\[.*\]$/.test(value) });
+      } else if (entry && rows.length) { rows[rows.length - 1].values.push(bare(entry[1])); rows[rows.length - 1].list = true; }
+      else if (line.trim() && rows.length) {
+        const row = rows[rows.length - 1];
+        if (row.list || !row.values.length) row.values.push(line.trim()); else row.values[row.values.length - 1] += ` ${line.trim()}`;
+      }
+    }
+    const shown = rows.map(row => `<div class="pair"><dt>${escape(row.key)}</dt><dd>${row.list
+      ? row.values.map(value => `<span class="value">${inline(value)}</span>`).join("") : inline(row.values.join(" "))}</dd></div>`).join("");
+    return [rows.length ? `<dl class="frontmatter">${shown}</dl>` : "", source.slice(found[0].length)];
+  }
+
   // DOCUMENT: a Markdown file, its headings at their own level; otherwise a message's, smaller.
+  // Lines of a paragraph or a list item flow together, as in CommonMark: only a blank line parts them.
   function markdown(source, document = false) {
-    const lines = String(source || "").replace(/\r/g, "").split("\n");
+    let ribbon = "";
+    source = String(source || "").replace(/\r/g, "");
+    if (document) [ribbon, source] = frontmatter(source);
+    const lines = source.split("\n");
     const out = [];
     let paragraph = [], list = null, quote = [];
     const flush = () => {
@@ -189,11 +229,11 @@
         list.items.push((bullet || numbered)[1]);
       }
       else if (!line.trim()) flush();
-      else if (list && /^\s{2,}/.test(line)) list.items[list.items.length - 1] += " " + line.trim();
-      else { if (list) flush(); paragraph.push(line.trim()); }
+      else if (list) list.items[list.items.length - 1] += " " + line.trim();
+      else paragraph.push(line.trim());
     }
     flush();
-    return out.join("");
+    return ribbon + out.join("");
   }
 
   // --- the diff: an LCS over lines, then over the words of a changed line -------------------------
@@ -284,7 +324,6 @@
     return texts.get(address);
   }
   const decisionText = decision => [decision.answer, ...decision.alternatives.map(entry => `${entry.option} ${entry.why_not}`)].join(" ");
-  const baseName = name => name.split("/").pop();
 
   function itemWords(item) {
     const latest = last(item);
@@ -315,24 +354,29 @@
   // --- drawing: the small parts -------------------------------------------------------------------
 
   const tag = (word, tone = "") => `<span class="tag${tone ? ` ${tone}` : ""}">${escape(word)}</span>`;
-  // The tags that matter: rejected wins over waiting for an answer.
-  function verdictTags(item) {
-    if (item.verdict === "accepted") return tag("accepted", "ok");
-    if (item.verdict === "rejected") return tag("rejected", "error");
-    return item.chat?.pending ? tag("pending", "info") : "";
+  // The owner's verdict as a mark: a green tick, a red cross; nothing while it is open.
+  function verdictMark(item) {
+    if (item.verdict !== "accepted" && item.verdict !== "rejected") return "";
+    const word = item.verdict === "accepted" ? "Accepted" : "Rejected";
+    return `<span class="verdict-mark ${item.verdict}" title="${word}" aria-label="${word}" role="img">${ICONS[item.verdict]}</span>`;
   }
+  // A decision's status before its title: done, a full dot; todo, a dashed ring.
+  const statusMark = status => `<span class="status-mark ${status}" title="${status === "todo" ? "To do" : "Done"}" aria-label="${status === "todo" ? "To do" : "Done"}" role="img">${ICONS[status]}</span>`;
 
   function chatButton(key, standing) {
     const open = state.chats.has(key);
     const mark = standing?.unseen ? (standing.answered ? "a reply" : `${standing.unseen} new`) : "";
-    const title = mark ? `Chat: ${mark}` : standing?.pending ? "Chat: waiting for the agent's answer" : "Chat";
+    const title = open ? "Close the chat" : mark ? `Chat: ${mark}` : standing?.pending ? "Chat: waiting for the agent's answer" : "Chat";
     return `<button type="button" class="chat-toggle${standing?.unseen ? " unseen" : ""}${standing?.pending ? " pending" : ""}" data-chat="${escape(key)}" aria-pressed="${open}" aria-label="${escape(title)}" title="${escape(title)}">${ICONS.chat}<span class="mark" aria-hidden="true"></span></button>`;
   }
+  // The chat's icon, and the chat itself floating from it over what is under it: the icon stays
+  // where it is, on the chat's corner, whether it is open or not.
+  const chatCorner = (key, entries, standing) => `<span class="chat-anchor${state.chats.has(key) ? " open" : ""}">${chatButton(key, standing)}${state.chats.has(key) ? chat(key, entries, standing) : ""}</span>`;
 
   function chat(key, entries, standing) {
     const waiting = standing?.pending;
     const messages = entries.map((entry, index) => {
-      const notes = [entry.kind === "revival" ? "revived it" : "", entry.verdict || ""].filter(Boolean).map(note => `<span class="note">${escape(note)}</span>`).join("");
+      const notes = [{ revival: "revived it", split: "split" }[entry.kind] || "", entry.verdict || ""].filter(Boolean).map(note => `<span class="note">${escape(note)}</span>`).join("");
       const held = waiting && index === entries.length - 1;
       return `<div class="message ${entry.author}${held ? " waiting" : ""}" data-key="message:${escape(entry.moment)}:${index}">${notes}<div class="context">${markdown(entry.text)}</div>
         <span class="when">${held ? "waiting for the answer · " : ""}${time(entry.moment)}</span></div>`;
@@ -340,7 +384,7 @@
     const button = waiting
       ? `<button type="button" class="send" data-withdraw="${escape(key)}" aria-label="Withdraw it, to edit" title="Withdraw it, to edit">${ICONS.cancel}</button>`
       : `<button type="button" class="send" data-send="${escape(key)}" aria-label="Send" title="Send">${ICONS.send}</button>`;
-    return `<aside class="chat" data-key="chat:${escape(key)}" aria-label="Chat">
+    return `<aside class="chat" data-key="chat:${escape(key)}" aria-label="Chat"><div class="chat-head"><span class="label">Chat</span></div>
       <div class="messages" data-log="${escape(key)}">${messages || '<p class="nothing">Nothing said yet.</p>'}</div>
       <div class="composer${waiting ? " frozen" : ""}"><textarea data-draft="reply:${escape(key)}" rows="1" ${waiting ? "disabled" : ""}
         placeholder="${waiting ? "Waiting for the agent's answer" : "Write to the agent"}" aria-label="Message"></textarea>${button}</div></aside>`;
@@ -379,60 +423,66 @@
 
   // --- drawing: a topic's sections ----------------------------------------------------------------
 
-  // A decision or a task: a bubble opening in place; its chat splits it.
+  // A decision or a task: a bubble opening in place, its chat floating over it.
   function bubble(item) {
-    const open = state.expanded.has(item.ref), talking = state.chats.has(item.ref);
-    let tags, body = "";
+    const open = state.expanded.has(item.ref);
+    const corner = `<span class="corner">${verdictMark(item)}${time(item.updated)}${chatCorner(item.ref, item.thread, item.chat)}</span>`;
+    const title = `<button type="button" class="title" aria-expanded="${open}">${escape(item.title)}</button>`;
+    let head, body = "";
     if (item.task) {
       const tone = { done: "ok", failed: "error", waiting: "warning" }[item.task.state] || "";
-      tags = `${tag(item.task.state, tone)}${item.task.state === "failed" ? verdictTags(item) : ""}`;
+      head = `${title}${corner}<span class="tags">${tag(item.task.state, tone)}</span>${slider(item)}`;
       if (open) {
         const where = joined([item.task.branch ? `branch <code>${escape(item.task.branch)}</code>` : "", item.task.worktree ? `worktree <code>${escape(item.task.worktree)}</code>` : ""]);
         body = `<div class="expanded"><div class="context">${markdown(item.task.brief)}</div>${where ? `<p class="where">${where}</p>` : ""}
           ${awaitsOwner(item) || (item.task.state === "failed" && item.verdict !== "open") ? `<div class="actions"><span class="hint" data-problem="${escape(item.ref)}"></span><div class="buttons">${verdictButtons(item.ref, item.verdict)}</div></div>` : ""}</div>`;
       }
     } else {
-      const decision = last(item).decision;
-      tags = `${decision.status === "todo" ? tag("todo", "info") : tag("done")}${verdictTags(item)}`;
+      const latest = last(item);
+      const decision = latest.decision;
+      head = `${statusMark(decision.status === "todo" ? "todo" : "done")}${title}${corner}`;
       if (open) {
         const alternatives = decision.alternatives.length ? `<div class="considered"><span class="label">Considered instead</span><ul class="alternatives">${decision.alternatives.map(entry =>
           `<li><span class="option">${inline(entry.option)}</span> — <span class="why">${inline(entry.why_not)}</span></li>`).join("")}</ul></div>` : "";
-        body = `<div class="expanded"><div class="context">${markdown(decision.answer)}</div>${alternatives}
+        const concerns = latest.files.length ? `<p class="where">Concerns ${latest.files.map(file => `<code>${escape(file.name)}</code>`).join(" ")}</p>` : "";
+        body = `<div class="expanded"><div class="context">${markdown(decision.answer)}</div>${alternatives}${concerns}
           <div class="actions"><span class="hint" data-problem="${escape(item.ref)}"></span><div class="buttons">${verdictButtons(item.ref, item.verdict)}</div></div></div>`;
       }
     }
-    return `<div class="item-bubble${open ? " open" : ""}${talking ? " split" : ""}" data-key="${escape(item.ref)}" id="item-${escape(item.ref)}">
-      <div class="main"><div class="head" data-expand="${escape(item.ref)}">
-        <button type="button" class="title" aria-expanded="${open}">${escape(item.title)}</button>
-        <span class="corner">${time(item.updated)}${chatButton(item.ref, item.chat)}</span>
-        <span class="tags">${tags}</span>${item.task ? slider(item) : ""}</div>${body}</div>
-      ${talking ? chat(item.ref, item.thread, item.chat) : ""}</div>`;
+    return `<div class="item-bubble ${item.task ? "task" : "decision"}${open ? " open" : ""}" data-key="${escape(item.ref)}" id="item-${escape(item.ref)}">
+      <div class="head" data-expand="${escape(item.ref)}">${head}</div>${body}</div>`;
   }
 
-  function thumbnail(item) {
+  // What an item shows first: its preferred option, else its first file of that type.
+  function cover(item, type) {
     const version = last(item);
-    const file = version.files.find(entry => entry.type === "image");
-    return `<button type="button" class="thumb" data-key="${escape(item.ref)}" data-view="${escape(item.ref)}" title="${escape(item.title)}" aria-label="${escape(item.title)}"><img src="${fileUrl(item, version, file.name)}" alt="" loading="lazy"></button>`;
+    const preferred = item.preferred?.version === version.version && version.files.find(file => file.name === item.preferred.name);
+    return { version, file: preferred || version.files.find(entry => entry.type === type) };
+  }
+  function thumbnail(item) {
+    const { version, file } = cover(item, "image");
+    const count = item.options ? version.files.length : 0;
+    return `<button type="button" class="thumb" data-key="${escape(item.ref)}" data-view="${escape(item.ref)}" title="${escape(item.title)}" aria-label="${escape(item.title)}"><img src="${fileUrl(item, version, file.name)}" alt="" loading="lazy">${count > 1 ? `<span class="count-badge">${count} options</span>` : ""}</button>`;
   }
   function preview(item) {
-    const version = last(item);
-    const file = version.files.find(entry => entry.type === "text");
+    const { version, file } = cover(item, "text");
     return `<button type="button" class="preview" data-key="${escape(item.ref)}" data-view="${escape(item.ref)}">
-      <span class="head"><span class="title">${escape(item.title)}</span><span class="side">${verdictTags(item)}${time(item.updated)}</span></span>
+      <span class="head"><span class="title">${escape(item.title)}</span><span class="side">${verdictMark(item)}${time(item.updated)}</span></span>
       <pre data-text="${fileUrl(item, version, file.name)}" data-lines="8" data-own>…</pre></button>`;
   }
   const fileRow = item => `<button type="button" class="file-row" data-key="${escape(item.ref)}" data-view="${escape(item.ref)}">
-      <span class="title">${escape(item.title)}</span><span class="side">${verdictTags(item)}${time(item.updated)}</span></button>`;
+      <span class="title">${escape(item.title)}</span><span class="side">${verdictMark(item)}${time(item.updated)}</span></button>`;
 
   function sections(topic, items) {
     return SECTIONS.map(([kind, label]) => {
       const found = items.filter(item => kindOf(item) === kind);
       if (!found.length) return "";
-      const body = kind === "decision" || kind === "task" ? `<div class="bubbles">${found.map(bubble).join("")}</div>`
+      const key = `${topic.name}/${kind}`, folded = state.folded.has(key);
+      const body = folded ? "" : kind === "decision" || kind === "task" ? `<div class="item-bubbles">${found.map(bubble).join("")}</div>`
         : kind === "image" ? `<div class="strip images">${found.map(thumbnail).join("")}</div>`
         : kind === "text" ? `<div class="strip texts">${found.map(preview).join("")}</div>`
         : `<div class="rows">${found.map(fileRow).join("")}</div>`;
-      return `<section class="section ${kind}" data-key="section:${kind}"><h3 class="label">${label} <span class="count">· ${found.length}</span></h3>${body}</section>`;
+      return `<section class="section ${kind}${folded ? " folded" : ""}" data-key="section:${kind}"><h3 class="label"><button type="button" class="fold" data-fold="${escape(key)}" aria-expanded="${!folded}">${ICONS.caret}${label} <span class="count">· ${found.length}</span></button></h3>${body}</section>`;
     }).join("");
   }
 
@@ -446,17 +496,17 @@
   const hue = name => [...name].reduce((sum, character) => sum + character.charCodeAt(0), 0) % 4;
 
   function sheet(topic, items) {
-    const open = state.open.has(topic.name), key = `topic:${topic.name}`, talking = open && state.chats.has(key);
+    const open = state.open.has(topic.name), key = `topic:${topic.name}`;
     const waiting = topic.items.filter(awaitsOwner).length;
     const head = `<div class="topic-head" data-toggle="${escape(topic.name)}">
         <button type="button" class="name" aria-expanded="${open}">${escape(topic.name)}</button>
-        <span class="corner">${time(topic.active)}${open ? chatButton(key, topic.chat) : (topic.chat?.unseen ? '<span class="dot" title="A new message in its chat"></span>' : "")}</span>
+        <span class="corner">${time(topic.active)}${chatCorner(key, topic.thread, topic.chat)}</span>
         <span class="counts"><span>${escape(kindCounts(topic.items))}</span><span>${escape(verdictCounts(topic.counts))}</span></span>
         <p class="about">${inline(topic.current)}</p></div>`;
     const body = open ? `<div class="topic-body">${sections(topic, items) || '<p class="nothing">No items yet.</p>'}
         ${waiting ? `<div class="actions all" data-key="judge"><span class="hint" data-problem="${escape(key)}"></span><div class="buttons">${verdictButtons(key, null, waiting)}</div></div>` : ""}</div>` : "";
-    return `<article class="sheet topic${open ? " open" : ""}${talking ? " split" : ""}" data-key="topic:${escape(topic.name)}" data-hue="${hue(topic.name)}" id="topic-${escape(topic.name)}">
-      <div class="main">${head}${body}</div>${talking ? chat(key, topic.thread, topic.chat) : ""}</article>`;
+    return `<article class="sheet topic${open ? " open" : ""}" data-key="topic:${escape(topic.name)}" data-hue="${hue(topic.name)}" id="topic-${escape(topic.name)}">
+      <div class="main">${head}${body}</div></article>`;
   }
 
   function drawList() {
@@ -475,41 +525,48 @@
 
   // --- drawing: the viewer, a picture or a text over the list -------------------------------------
 
+  // Compare is for versions: an item with options shows one version's options side by side instead.
+  const comparable = item => item.versions.length > 1 && !item.options;
   function chosen(item) {
     const numbers = item.versions.map(version => version.version);
-    if (!state.compare) return [numbers.includes(state.single) ? state.single : numbers[numbers.length - 1]];
+    if (!state.compare || !comparable(item)) return [numbers.includes(state.single) ? state.single : numbers[numbers.length - 1]];
     const right = numbers.includes(state.right) ? state.right : numbers[numbers.length - 1];
     const left = numbers.includes(state.left) ? state.left : numbers[Math.max(0, numbers.length - 2)];
     return [left, right];
   }
 
+  // The version select: a pill like the times, its list the same.
+  const versionWords = version => `Version ${version.version} <span class="when">${escape(short(version.moment))}</span>`;
   function picker(item, side, number) {
     const version = versionOf(item, number);
     const open = state.menu === side;
-    const options = [...item.versions].reverse().map(entry => `<button type="button" role="option" data-pick="${side}" data-number="${entry.version}" aria-selected="${entry.version === number}">
-        Version ${entry.version} <span class="muted">(${escape(short(entry.moment))})</span></button>`).join("");
+    const options = [...item.versions].reverse().map(entry => `<button type="button" role="option" data-pick="${side}" data-number="${entry.version}" aria-selected="${entry.version === number}" title="${escape(new Date(entry.moment).toLocaleString())}">${versionWords(entry)}</button>`).join("");
     return `<div class="select" data-key="select:${side}"><button type="button" class="select-button" data-menu="${side}" aria-haspopup="listbox" aria-expanded="${open}" ${item.versions.length < 2 ? "disabled" : ""}>
-        Version ${version.version} <span class="muted">(${escape(short(version.moment))})</span>${item.versions.length > 1 ? ICONS.chevron : ""}</button>
+        ${versionWords(version)}${item.versions.length > 1 ? ICONS.chevron : ""}</button>
         ${open ? `<div class="options" role="listbox" aria-label="${side === "left" ? "Before" : side === "right" ? "After" : "Version"}">${options}</div>` : ""}</div>`;
   }
 
-  function derivation(file) {
+  // Where a file comes from, in words: no times, no sizes.
+  function source(file) {
+    const code = path => `<code>${escape(path)}</code>`;
+    const listed = paths => paths.length < 2 ? paths.map(code).join("") : `${paths.slice(0, -1).map(code).join(", ")} and ${code(paths[paths.length - 1])}`;
     const lines = [];
-    if (file.kind === "project") lines.push(`<span><code>${escape(file.name)}</code></span>`);
-    if (file.kind === "derived") {
-      lines.push(`<span>from ${file.from?.length ? file.from.map(path => `<code>${escape(path)}</code>`).join(" ") : "nothing named"}</span>`);
-      if (file.when) lines.push(`<span>when ${inline(file.when)}</span>`);
-      lines.push(`<span>made ${escape(new Date(file.moment).toLocaleString())}</span>`);
-      if (file.recipe) lines.push(`<span>recipe ${file.recipe.command ? `<code>${escape(file.recipe.command)}</code>` : ""}${file.recipe.command && file.recipe.instruction ? " — " : ""}${file.recipe.instruction ? inline(file.recipe.instruction) : ""}</span>`);
+    if (file.kind === "project") lines.push(`<p>A copy of ${code(file.name)}, as the repository had it when this version was made.</p>`);
+    else {
+      lines.push(file.from?.length ? `<p>Made to show ${listed(file.from)}.</p>` : "<p>Made by an agent to show part of the project.</p>");
+      if (file.when) lines.push(`<p>It shows the case when ${inline(file.when)}.</p>`);
+      if (file.recipe?.command) lines.push(`<p>To make it again, run ${code(file.recipe.command)}.</p>`);
+      if (file.recipe?.instruction) lines.push(`<p class="how">${file.recipe.command ? "Or, for an agent" : "To make it again, an agent"}: ${inline(file.recipe.instruction)}</p>`);
     }
-    if (file.local) lines.push("<span>kept on this machine only (too large to commit)</span>");
-    return `<div class="derivation" data-key="derivation">${lines.join("")}</div>`;
+    if (file.local) lines.push("<p>It is large, so it stays on this machine.</p>");
+    return `<div class="source" data-key="source" role="dialog" aria-label="Where it comes from">${lines.join("")}</div>`;
   }
+  const pathButton = (file, index) => `<span class="path-anchor"><button type="button" class="path" data-path="${index}" aria-expanded="${state.reveal === index}" title="Where it comes from">${escape(file.name)}</button>${state.reveal === index ? source(file) : ""}</span>`;
 
-  function pane(item, version, file, side) {
-    if (!file) return `<div class="pane"><p class="missing">Not in version ${version.version}.</p></div>`;
+  function pane(item, version, file, index) {
+    if (!file) return `<div class="pane"><p class="missing">Nothing in version ${version.version}.</p></div>`;
     const address = fileUrl(item, version, file.name);
-    if (file.type === "image") return `<div class="pane"><button type="button" class="shot" data-zoom="${side}" aria-label="Enlarge"><img data-key="${address}" src="${address}" alt="${escape(file.name)}, version ${version.version}"></button></div>`;
+    if (file.type === "image") return `<div class="pane"><button type="button" class="shot" data-zoom="${index}" aria-label="Enlarge"><img data-key="${address}" src="${address}" alt="${escape(file.name)}, version ${version.version}"></button></div>`;
     if (file.type === "video") return `<div class="pane"><video data-key="${address}" src="${address}" controls preload="metadata" playsinline></video></div>`;
     if (file.type === "pdf") return `<div class="pane"><iframe data-key="${address}" src="${address}" title="${escape(file.name)}"></iframe></div>`;
     if (file.type === "html") return `<div class="pane"><iframe data-key="${address}" src="${address}" sandbox="" title="${escape(file.name)}"></iframe></div>`;
@@ -518,50 +575,57 @@
     return `<div class="pane"><div class="document ${how}" data-key="${address}" data-text="${address}" data-render="${how}" data-language="${LANGUAGES[extension(file.name)] || ""}" data-own>…</div></div>`;
   }
 
+  // An option's foot: its name (where it comes from, on a click) and whether the owner prefers it.
+  function optionBar(item, version, file, index) {
+    const preferred = item.preferred?.version === version.version && item.preferred?.name === file.name;
+    const prefer = item.options ? `<button type="button" class="prefer" data-prefer="${escape(file.name)}" data-version="${version.version}" aria-pressed="${preferred}" title="${preferred ? "Preferred: click to take it back" : "Prefer this option"}">${ICONS.star}${preferred ? "Preferred" : "Prefer"}</button>` : "";
+    return `<div class="option-bar${preferred ? " preferred" : ""}">${pathButton(file, index)}${prefer}</div>`;
+  }
+
+  // What the viewer shows: compared, one file of each of two versions; otherwise every file of one
+  // version (an item's options side by side).
+  function shownPanes(item) {
+    const versions = chosen(item).map(number => versionOf(item, number));
+    if (versions.length === 2) return versions.map(version => ({ version, file: version.files[0] || null }));
+    const files = versions[0].files;
+    return files.length ? files.map(file => ({ version: versions[0], file })) : [{ version: versions[0], file: null }];
+  }
+
   function viewer(item) {
     const numbers = chosen(item);
-    const versions = numbers.map(number => versionOf(item, number));
-    const names = [];
-    for (const version of versions) for (const file of version.files) if (!names.includes(file.name)) names.push(file.name);
-    const name = names.includes(state.file) ? state.file : names[0];
-    const found = versions.map(version => version.files.find(file => file.name === name));
-    const file = found[found.length - 1] || found[0];
-    const two = versions.length === 2;
-    const talking = state.chats.has(item.ref);
-    const compare = `<button type="button" class="toggle" data-compare aria-pressed="${state.compare}" ${item.versions.length < 2 ? "disabled" : ""}><span class="switch" aria-hidden="true"><span></span></span>Compare</button>`;
-    const pickers = two
-      ? `<div class="half">${picker(item, "left", numbers[0])}</div><div class="half">${picker(item, "right", numbers[1])}${compare}</div>`
-      : `<div class="half">${picker(item, "single", numbers[0])}</div><div class="half end">${compare}</div>`;
-    const tabs = names.map(entry => `<button type="button" class="file-name" data-file="${escape(entry)}" aria-pressed="${entry === name}" ${entry === name ? `aria-expanded="${state.reveal}" title="${file?.kind === "derived" ? "How it was made" : "Its path"}"` : ""}>${escape(baseName(entry))}</button>`).join("");
+    const panes = shownPanes(item);
+    const comparing = numbers.length === 2;
+    const several = !comparing && panes.length > 1;
+    const kind = kindOf(item);
+    const compare = `<button type="button" class="toggle" data-compare aria-pressed="${comparing}" ${comparable(item) ? "" : "disabled"} title="${item.options ? "Compare is for versions: options show side by side" : item.versions.length < 2 ? "One version: nothing to compare" : "Compare two versions"}"><span class="switch" aria-hidden="true"><span></span></span>Compare</button>`;
+    const first = panes[panes.length - 1].file;
+    const pickers = comparing ? `${picker(item, "left", numbers[0])}<span class="arrow" aria-hidden="true">→</span>${picker(item, "right", numbers[1])}` : picker(item, "single", numbers[0]);
+    const path = !several && first && !comparing ? pathButton(first, 0) : "";
     let content;
-    if (!file) content = '<p class="missing">No files.</p>';
-    else if (two && found.every(entry => entry && entry.type === "text")) {
-      const pair = versions.map((version, index) => fileUrl(item, version, found[index].name)).join(" ");
+    if (comparing && panes.every(entry => entry.file?.type === "text")) {
+      const pair = panes.map(entry => fileUrl(item, entry.version, entry.file.name)).join(" ");
       content = `<div class="panes" data-key="pair:${escape(pair)}" data-own data-pair="${escape(pair)}"><p class="missing">…</p></div>`;
     } else {
       // Keyed apart from a diff, so a diff filled once is not taken for this.
-      content = `<div class="panes${two ? " two" : ""}" data-key="panes">${versions.map((version, index) => pane(item, version, found[index], two ? (index ? "right" : "left") : "single")).join("")}</div>`;
+      content = `<div class="panes${panes.length > 1 ? " several" : ""}" data-key="panes" style="--panes:${panes.length}">${panes.map((entry, index) =>
+        `<div class="column">${pane(item, entry.version, entry.file, index)}${several && entry.file ? optionBar(item, entry.version, entry.file, index) : ""}</div>`).join("")}</div>`;
     }
     let zoom = "";
-    if (state.zoom && file?.type === "image") {
-      const index = state.zoom === "left" ? 0 : versions.length - 1;
-      const version = versions[index], shown = found[index];
-      if (shown) {
-        const address = fileUrl(item, version, shown.name);
-        zoom = `<div class="zoom" data-key="zoom" data-unzoom><img data-key="zoom:${address}" src="${address}" alt="${escape(shown.name)}, version ${version.version}">
-          <span class="which">Version ${version.version}${two ? ` · ${state.zoom === "left" ? "before" : "after"} · ← → to switch` : ""} · Esc to go back</span></div>`;
-      }
+    const zoomed = state.zoom !== null && panes[state.zoom];
+    if (zoomed && zoomed.file?.type === "image") {
+      const address = fileUrl(item, zoomed.version, zoomed.file.name);
+      const which = comparing ? ` · ${state.zoom ? "after" : "before"}` : several ? ` · ${escape(zoomed.file.name)}` : "";
+      zoom = `<div class="zoom" data-key="zoom" data-unzoom><img data-key="zoom:${address}" src="${address}" alt="${escape(zoomed.file.name)}, version ${zoomed.version.version}">
+          <span class="which">Version ${zoomed.version.version}${which}${panes.length > 1 ? " · ← → to switch" : ""} · Esc to go back</span></div>`;
     }
     const actions = awaitsOwner(item) || item.verdict !== "open" ? `<div class="actions"><span class="hint" data-problem="${escape(item.ref)}"></span><div class="buttons">${verdictButtons(item.ref, item.verdict)}</div></div>` : "";
+    const fits = kind === "image" ? "image" : kind === "text" && !comparing && !several ? "text" : "wide";
     return `<div class="overlay" data-key="overlay:${escape(item.ref)}" data-backdrop>
-      <article class="sheet open viewer${talking ? " split" : ""}" data-hue="${hue(item.topic)}" role="dialog" aria-modal="true" aria-label="${escape(item.title)}">
-        <div class="line heading-line"><h2>${escape(item.title)}</h2><span class="tags">${verdictTags(item)}</span><button type="button" class="close" data-close aria-label="Close (Esc)" title="Close (Esc)">×</button></div>
-        <div class="viewer-body"><div class="main">
-          <div class="line versions${two ? " two" : ""}">${pickers}</div>
-          <div class="line names"><span class="file-names">${tabs}</span>${chatButton(item.ref, item.chat)}</div>
-          ${state.reveal && file ? derivation({ ...file, moment: versions[versions.length - 1].moment }) : ""}
+      <article class="sheet open viewer ${fits}" data-hue="${hue(item.topic)}" role="dialog" aria-modal="true" aria-label="${escape(item.title)}">
+        <div class="ribbon"><h2>${escape(item.title)}</h2><span class="side">${verdictMark(item)}${time(item.updated)}</span><button type="button" class="close" data-close aria-label="Close (Esc)" title="Close (Esc)">×</button></div>
+        <div class="main">
+          <div class="line versions"><span class="pickers">${pickers}</span>${path}<span class="end">${compare}${chatCorner(item.ref, item.thread, item.chat)}</span></div>
           <div class="content">${content}</div>${actions}</div>
-          ${talking ? chat(item.ref, item.thread, item.chat) : ""}</div>
       </article>${zoom}</div>`;
   }
 
@@ -569,6 +633,17 @@
     const item = state.modal ? itemAt(state.modal) : null;
     document.documentElement.classList.toggle("topics-viewing", !!item && state.shown);
     studio.morph($("topics-modal"), item ? viewer(item) : "");
+    placeSource();
+  }
+  // A path's bubble floats free of the content that scrolls: under its path, or over it when the
+  // screen has no room below.
+  function placeSource() {
+    const bubble = document.querySelector("#topics .source");
+    if (!bubble) return;
+    const anchor = bubble.previousElementSibling.getBoundingClientRect();
+    const below = anchor.bottom + 10 + bubble.offsetHeight < innerHeight - 8;
+    bubble.style.top = `${below ? anchor.bottom + 10 : Math.max(8, anchor.top - 10 - bubble.offsetHeight)}px`;
+    bubble.style.left = `${Math.max(8, Math.min(anchor.left - 10, innerWidth - bubble.offsetWidth - 8))}px`;
   }
 
   // --- filling what is fetched, keeping what is typed ---------------------------------------------
@@ -725,9 +800,8 @@
 
   function view(item, addressed = true) {
     state.modal = item.ref;
-    state.compare = item.versions.length > 1;
-    state.single = state.left = state.right = state.file = state.menu = state.zoom = null;
-    state.reveal = false;
+    state.compare = comparable(item);
+    state.single = state.left = state.right = state.menu = state.zoom = state.reveal = null;
     if (addressed) address(item.ref);
   }
   function address(route) {
@@ -737,7 +811,7 @@
   }
   function closeViewer() {
     const item = itemAt(state.modal);
-    state.modal = state.zoom = state.menu = null;
+    state.modal = state.zoom = state.menu = state.reveal = null;
     address(item ? item.topic : "");
     draw();
   }
@@ -782,6 +856,16 @@
     await load();
   }
 
+  async function prefer(button) {
+    const item = itemAt(state.modal);
+    if (!item) return;
+    const taking = button.getAttribute("aria-pressed") === "true";
+    const body = { ref: item.ref, version: Number(button.dataset.version), ...(taking ? {} : { name: button.dataset.prefer }) };
+    try { await post("topics/prefer", body); } catch (error) { studio.toast(error.message); return; }
+    state.seen = "";
+    await load();
+  }
+
   async function ask() {
     const question = $("topics-input").value.trim();
     if (!question || state.ask?.running) return;
@@ -791,11 +875,13 @@
     draw();
   }
 
+  // A chat opens what it belongs to: its topic, or its decision.
   function toggleChat(key) {
     if (state.chats.has(key)) state.chats.delete(key);
     else {
       state.chats.add(key);
-      if (!key.startsWith("topic:") && !state.modal) state.expanded.add(key);
+      if (key.startsWith("topic:")) state.open.add(key.slice(6));
+      else if (!state.modal) state.expanded.add(key);
       if (!state.drafts.get(`reply:${key}`)) state.focus = `reply:${key}`;
     }
     draw();
@@ -807,6 +893,7 @@
   root.addEventListener("click", event => {
     const target = event.target;
     if (state.menu && !target.closest(".select")) { state.menu = null; draw(); if (!target.closest("button")) return; }
+    if (state.reveal !== null && !target.closest(".path-anchor")) { state.reveal = null; draw(); if (!target.closest("button")) return; }
     const mode = target.closest("[data-bar-mode]");
     if (mode) {
       state.mode = mode.dataset.barMode;
@@ -829,20 +916,19 @@
     if (judging) { judge(judging.dataset.judge, judging.dataset.verdictChoice); return; }
     if (target.closest("[data-unzoom]")) { state.zoom = null; draw(); return; }
     const zooming = target.closest("[data-zoom]");
-    if (zooming) { state.zoom = zooming.dataset.zoom; draw(); return; }
+    if (zooming) { state.zoom = Number(zooming.dataset.zoom); draw(); return; }
+    const preferring = target.closest("[data-prefer]");
+    if (preferring) { prefer(preferring); return; }
+    const pathing = target.closest("[data-path]");
+    if (pathing) { const index = Number(pathing.dataset.path); state.reveal = state.reveal === index ? null : index; draw(); return; }
+    const folding = target.closest("[data-fold]");
+    if (folding) { const key = folding.dataset.fold; state.folded.has(key) ? state.folded.delete(key) : state.folded.add(key); draw(); return; }
     if (target.closest("[data-close]") || target.matches("[data-backdrop]")) { closeViewer(); return; }
     const menu = target.closest("[data-menu]");
     if (menu) { state.menu = state.menu === menu.dataset.menu ? null : menu.dataset.menu; draw(); return; }
     const pick = target.closest("[data-pick]");
     if (pick) { state[pick.dataset.pick] = Number(pick.dataset.number); state.menu = null; draw(); return; }
-    if (target.closest("[data-compare]")) { state.compare = !state.compare; state.left = state.right = state.zoom = null; draw(); return; }
-    const naming = target.closest("[data-file]");
-    if (naming) {
-      if (naming.getAttribute("aria-pressed") === "true") state.reveal = !state.reveal;
-      else { state.file = naming.dataset.file; state.reveal = false; }
-      draw();
-      return;
-    }
+    if (target.closest("[data-compare]")) { state.compare = !state.compare; state.left = state.right = state.zoom = state.reveal = null; draw(); return; }
     const viewing = target.closest("[data-view]");
     if (viewing) { const item = itemAt(viewing.dataset.view); if (item) { view(item); draw(); } return; }
     const going = target.closest("[data-go]");
@@ -878,7 +964,8 @@
     if (["TEXTAREA", "INPUT"].includes(target.tagName)) return;
     if (event.key === "Escape") {
       if (state.menu) { state.menu = null; draw(); }
-      else if (state.zoom) { state.zoom = null; draw(); }
+      else if (state.reveal !== null) { state.reveal = null; draw(); }
+      else if (state.zoom !== null) { state.zoom = null; draw(); }
       else if (state.modal) closeViewer();
       else return;
       event.preventDefault();
@@ -886,8 +973,9 @@
     }
     if (state.modal && (event.key === "ArrowLeft" || event.key === "ArrowRight")) {
       event.preventDefault();
-      if (state.zoom && state.compare) { state.zoom = state.zoom === "left" ? "right" : "left"; draw(); }
-      else if (!state.zoom) step(event.key === "ArrowLeft" ? -1 : 1);
+      const count = state.zoom !== null ? shownPanes(itemAt(state.modal)).length : 0;
+      if (count > 1) { state.zoom = (state.zoom + (event.key === "ArrowLeft" ? count - 1 : 1)) % count; draw(); }
+      else if (state.zoom === null) step(event.key === "ArrowLeft" ? -1 : 1);
       return;
     }
     if (event.key === "/" && !state.modal) { event.preventDefault(); $("topics-input").focus(); }

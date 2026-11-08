@@ -2,8 +2,11 @@
 decision becomes a decision item, each review item a derived-file item with
 its versions and recipe, each old tag a topic (an item with several goes to
 its first; one with none to `general`), notes and the owner's feedback thread
-messages, verdicts kept. Done once per project, by `nock init` (so `nock
-upgrade` does it too) or `nock topics migrate`; committed in one commit."""
+messages, verdicts kept. Then the move to one asset per item: an item
+holding several files becomes one item per file, each with the versions
+that hold it, the thread copied and the verdict kept. Each done once per
+project, by `nock init` (so `nock upgrade` does it too) or `nock topics
+migrate`; each committed in one commit."""
 
 from __future__ import annotations
 
@@ -21,14 +24,17 @@ from nock.topics import (
     LARGE,
     MAP,
     NAME,
+    SPLIT,
     TOPIC_FILE,
     Author,
     Topics,
     Verdict,
     checked_decision,
     committed,
+    entry_name,
     kind_of,
     slugged,
+    stored,
 )
 from nock.utils import now, read_json, write_json
 
@@ -71,10 +77,14 @@ class Migration:
         verdicts it carries over were acted on long ago, so they count as
         told already. A project that migrated before that, `mark_seen`, has
         every word the owner has said so far marked told instead."""
+        split = Splitting(self.project)
         if not self.pending():
+            done: dict[str, Any] = {"migrated": False}
             if mark_seen:
-                return {"migrated": False, "marked_told": self.topics.mark_told()}
-            return {"migrated": False}
+                done["marked_told"] = self.topics.mark_told()
+            if split.pending():
+                done["split"] = split.run()
+            return done
         with self.project.lock("topics"):
             self.made: dict[str, dict[str, Any]] = {}
             self.slugs: dict[str, set[str]] = {}
@@ -100,6 +110,7 @@ class Migration:
                 f" {items} review item(s), {len(self.made)} topic(s)",
             )
         counts = {name: len(topic["items"]) for name, topic in sorted(self.made.items())}
+        divided = split.run() if split.pending() else None
         return {
             "migrated": True,
             "decisions": len(refs),
@@ -108,6 +119,7 @@ class Migration:
             "marked_told": marked,
             **({"map": moved_map} if moved_map else {}),
             **({"not_committed": problem} if problem else {}),
+            **({"split": divided} if divided else {}),
         }
 
     def tracked(self, path: str) -> bool:
@@ -412,8 +424,147 @@ def moment_of(record: dict[str, Any] | None) -> str:
     return (record or {}).get("moment") or ""
 
 
+class Splitting:
+    """One asset per item: an item holding several files (not as options)
+        becomes one item per file. The item keeps its first file (a decision, its
+        decision and the project files it concerns) under its ref; each other
+        file goes to `SLUG-FILE`, with the versions that hold it, numbered as
+    they were, so the thread's "version 3" still means the same. Each
+        keeps the verdict and a copy of the thread, opened by a note that says
+        so, dated before the rest so it changes nothing about who spoke last."""
+
+    def __init__(self, project: Project) -> None:
+        self.project = project
+        self.topics = Topics(project)
+
+    def crowded(self) -> list[dict[str, Any]]:
+        return [item for item in self.topics.every() if len(self.pieces(item)) > 1]
+
+    def pending(self) -> bool:
+        return bool(self.crowded())
+
+    def pieces(self, item: dict[str, Any]) -> list[str]:
+        """What it splits into, by file name: the item itself first (`""`
+        for a decision), then each file of its own."""
+        if item.get("task") or item.get("options"):
+            return [""]
+        decided = any(
+            entry["kind"] == "decision"
+            for version in item["versions"]
+            for entry in version["files"]
+        )
+        names: list[str] = []
+        for version in reversed(item["versions"]):
+            for entry in version["files"]:
+                if entry["kind"] == "decision" or (decided and entry["kind"] == "project"):
+                    continue
+                if entry_name(entry) not in names:
+                    names.append(entry_name(entry))
+        return ["", *names] if decided else names or [""]
+
+    def run(self) -> dict[str, Any]:
+        with self.project.lock("topics"):
+            crowded = self.crowded()
+            made: list[str] = []
+            for item in crowded:
+                made += self.split(item)
+            self.topics.mark_told(set(made))
+            problem = committed(
+                self.project,
+                [".nock/topics"],
+                f"One asset per item: {len(crowded)} item(s) holding several files split into"
+                f" {len(crowded) + len(made)}",
+            )
+        return {
+            "items": len(crowded),
+            "into": len(crowded) + len(made),
+            **({"not_committed": problem} if problem else {}),
+        }
+
+    def split(self, item: dict[str, Any]) -> list[str]:
+        """Split one item; the refs of the items it made."""
+        topic, slug = item["topic"], item["slug"]
+        pieces = self.pieces(item)
+        taken = {other["slug"] for other in self.topics.items(topic)}
+        slugs = [slug]
+        for name in pieces[1:]:
+            wanted = f"{slug[:30]}-{slugged(Path(name).stem)}"[:60].strip("-")
+            candidate, number = wanted, 2
+            while candidate in taken or candidate.isdigit():
+                candidate, number = f"{wanted}-{number}", number + 1
+            taken.add(candidate)
+            slugs.append(candidate)
+        refs = [f"{topic}/{piece}" for piece in slugs]
+        aside = f".{slug}.splitting"
+        bases = [self.topics.directory, self.topics.large]
+        for base in bases:
+            if (base / topic / slug).is_dir():
+                (base / topic / slug).rename(base / topic / aside)
+        note = (
+            f"Split out of [{refs[0]}], which held {len(pieces)} files: each is an item of its own"
+            f" now — {', '.join(f'[{ref}]' for ref in refs)}. The thread before this is copied"
+            " to each."
+        )
+        for index, (name, piece) in enumerate(zip(pieces, slugs, strict=True)):
+            versions = []
+            for version in item["versions"]:
+                if name:
+                    kept = [entry for entry in version["files"] if entry_name(entry) == name]
+                else:
+                    kept = [
+                        entry for entry in version["files"] if entry_name(entry) not in pieces[1:]
+                    ]
+                if not kept:
+                    continue
+                number = version["version"]
+                for entry in kept:
+                    base = self.topics.large if entry.get("local") else self.topics.directory
+                    source = base / topic / aside / str(version["version"]) / stored(entry)
+                    target = base / topic / piece / str(number) / stored(entry)
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(source, target)
+                (self.topics.directory / topic / piece / str(number)).mkdir(
+                    parents=True, exist_ok=True
+                )
+                versions.append({**version, "version": number, "files": kept})
+            title = item["title"] if not index else f"{item['title']} — {Path(name).name}"
+            first = moment_of(item["created"]) or item["updated"]
+            thread = [
+                {
+                    "author": str(Author.AGENT),
+                    "moment": first,
+                    "text": note,
+                    "kind": SPLIT,
+                    "split": now(),
+                },
+                *item["thread"],
+            ]
+            record = {
+                key: value
+                for key, value in item.items()
+                if key not in ("topic", "ref", "slug", "title", "versions", "thread", "aliases")
+            }
+            write_json(
+                self.topics.directory / topic / piece / ITEM_FILE,
+                {
+                    "slug": piece,
+                    "title": title,
+                    "aliases": item.get("aliases", []) if not index else [],
+                    **record,
+                    "thread": thread,
+                    "versions": versions,
+                },
+            )
+        for base in bases:
+            shutil.rmtree(base / topic / aside, ignore_errors=True)
+        return refs[1:]
+
+
 def migrate_in(root: Path) -> dict[str, Any] | None:
-    """Migrate the project at `root`, when it holds decisions or review items."""
+    """Migrate the project at `root`, when it holds decisions or review
+    items, or items holding several files."""
     project = Project.discover(root)
     migration = Migration(project)
-    return migration.run() if migration.pending() else None
+    if migration.pending() or Splitting(project).pending():
+        return migration.run()
+    return None

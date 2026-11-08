@@ -181,6 +181,14 @@ class Where(TypedDict):
     topic: NotRequired[str]
 
 
+class Preferred(TypedDict):
+    """The owner's preferred option of an item's version; without `name`, none."""
+
+    ref: str
+    version: int
+    name: NotRequired[str]
+
+
 class Question(TypedDict):
     question: str
 
@@ -265,10 +273,10 @@ class TopicsTab(Tab):
     files), where each chat stands (`chat`: pending, unseen) and the question
     being asked; `GET /topics/file/TOPIC/SLUG/N/NAME` one of a version's
     files, as it is; `POST /topics/judge` the owner's verdict on an item or a
-    whole topic, `/reply` their message in a chat, `/withdraw` takes it back
-    while it waits for its answer, `/seen` records that they looked at a
-    chat, `/ask` a question about the topics (one at a time), `/ask/cancel`
-    stops it."""
+    whole topic, `/prefer` their preferred option of an item, `/reply` their
+    message in a chat, `/withdraw` takes it back while it waits for its
+    answer, `/seen` records that they looked at a chat, `/ask` a question
+    about the topics (one at a time), `/ask/cancel` stops it."""
 
     name = "topics"
     title = "Topics"
@@ -353,6 +361,10 @@ class TopicsTab(Tab):
                 raise UsageError("give `ref` or `topic`")
             self.seen.look(where)
             return {"seen": where}
+        if route == "prefer":
+            validate(body, schema_of(Preferred))
+            item, _ = self.topics.prefer(body["ref"], body["version"], body.get("name"))
+            return {"preferred": item["preferred"]}
         if route == "ask":
             validate(body, schema_of(Question))
             return self.asking.start(body["question"])

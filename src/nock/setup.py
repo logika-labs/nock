@@ -246,11 +246,17 @@ class Installer:
         self.install_skills()
         self.start_map()
         migrated = migrate_in(self.root)
-        if migrated:
+        if migrated and migrated["migrated"]:
             self.report.written.append(
                 f"{NOCK_DIRECTORY}/topics/: {migrated['decisions']} decision(s) and"
                 f" {migrated['review_items']} review item(s) migrated into"
                 f" {len(migrated['topics'])} topic(s)"
+            )
+        if migrated and migrated.get("split"):
+            split = migrated["split"]
+            self.report.written.append(
+                f"{NOCK_DIRECTORY}/topics/: {split['items']} item(s) holding several files"
+                f" split into {split['into']}, one asset each"
             )
         return self.report
 

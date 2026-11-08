@@ -463,19 +463,26 @@ $ .nock/nock topics create '{"name": "charge-sweep",
     "description": "The nightly sweep of failed charges, for the payments rework."}'
 ```
 
-An **item** is bare: a title, and in each of its versions a set of files of
-three kinds, any of them together:
+An **item** is bare: a title, and in each of its versions one asset, of
+three kinds:
 
 - a **decision**, nock's own JSON: the answer (markdown, for someone who
   knows what the system does but not how it is built), the alternatives
-  really weighed, and done or todo;
-- **project files**, paths in the repository, copied as they are when the
+  really weighed, and done or todo — with the project files it concerns,
+  if any;
+- a **project file**, a path in the repository, copied as it is when the
   version is made, so versions compare;
-- **derived files**, made to show part of the project — a screenshot of an
+- a **derived file**, made to show part of the project — a screenshot of an
   email, a video of a flow, a rendered page, a PDF — with `from` (the project
   files it shows), `when` (the condition it shows: "the payment lapsed") and
   a `recipe` to make it again (a command, an instruction for an agent, or
   both).
+
+Several files are several items. The one exception is **options**: variants
+of one asset (three takes on one banner, of one type), submitted with
+`"options": true`, shown side by side; the owner may mark one preferred, which
+is recorded (`items show` has `preferred`, its version and name) and changes
+nothing else. Options are never unrelated files.
 
 ```sh
 $ .nock/nock items create charge-sweep '{"title": "The sweep requeues dead charges only",
@@ -483,10 +490,11 @@ $ .nock/nock items create charge-sweep '{"title": "The sweep requeues dead charg
                  "alternatives": [{"option": "Requeue failed and dead jobs",
                                    "why_not": "failed jobs are on their backoff; it doubles the attempts"}]}}'
 $ .nock/nock items create charge-sweep '{"title": "The lapsed payment email",
-    "files": ["billing/emails/lapsed.py"],
     "derived": [{"path": "out/lapsed.png", "from": ["billing/emails/lapsed.py"],
                  "when": "the payment lapsed",
                  "recipe": {"command": "uv run python dev/render.py lapsed --output out/"}}]}'
+$ .nock/nock items create charge-sweep '{"title": "The lapsed email's subject line", "options": true,
+    "derived": [{"path": "out/subject-a.png"}, {"path": "out/subject-b.png"}, {"path": "out/subject-c.png"}]}'
 ```
 
 A decision is submitted only when a later reader would ask "why": a choice
@@ -582,26 +590,37 @@ says it all in full.
 The studio's **Topics** tab (`nock studio`, or with `{"open": true}`) lists
 the topics, newest activity first, each a row: its name, what it holds ("4
 decisions · 6 images · 3 texts") and its verdicts ("3 open · 12 accepted"),
-its time ("21m", "3h", "2d") and its description. A topic opens in place, its
-items in sections, each with its count: decisions as bubbles that open in
-place on the answer, the alternatives and Accept and Reject, tagged todo or
-done, accepted or rejected; pictures as one line of thumbnails and texts as
+its time ("21m", "3h", "2d", on a small grey pill) and its description. A
+topic opens in place, its items in sections, each with its count and a caret
+that folds it: decisions as bubbles that open in place on the answer (its
+whole width; Markdown's single line breaks flow together, a blank line parts
+paragraphs), the alternatives, the files it concerns and Accept and Reject,
+a dot before the title for done and a dashed ring for todo, a green tick or a
+red cross after it once accepted or rejected; an open decision is framed in
+the foil's cyan and pink (`?decisions=rail` or `lift` on the page's address
+shows two other looks); pictures as one line of thumbnails and texts as
 one line of previews, both scrolling sideways; other files as rows; tasks
 as bubbles with a slider — the time since it started, coloured by how
 recently it said anything (amber after `topics.silence` minutes without a
 word, 30 by default: only silence, which may be long work as well as stuck
 work; red once it failed). Accept all and Reject all close it. A picture or
-a text opens in a viewer over the list: a version picked ("Version 3 (2d)"),
-or Compare for two side by side, the newest and the one before by default (a
-text's as a line diff with the changed words marked); a Markdown file
-rendered, code and data highlighted, plain text as it is; the file's name
-shows its path, or for a derived file how it was made; a picture opens
-larger, and in a comparison the arrows switch sides. ← and → step through the
+a text opens in a viewer over the list, its title and time on a white
+ribbon — a text in a column about 40% of the screen, a picture's viewer
+shrunk to the picture: a version picked (a pill, "Version 3 · 2d"), or
+Compare for two side by side, the newest and the one before by default (a
+text's as a line diff with the changed words marked); an item's options side
+by side instead, each with a star to prefer it, Compare off; a Markdown file
+rendered, its frontmatter as a ribbon of keys and values, code and data
+highlighted, plain text as it is; a click on the file's path says where it
+comes from, in a bubble; a picture opens larger, and with two or more side
+by side the arrows switch between them. ← and → step through the
 topic's pictures and texts, Esc closes. A video, a PDF, a page (an HTML page
 runs no script there) open there too.
 
 Every word goes through a chat — a topic's, a decision's, a file's — opened
-by its icon beside the time: the agent's messages on one side, the owner's
+by its icon beside the time, even on a closed topic (which it opens), and
+floating over what is under it from the icon, which stays put: the agent's
+messages on one side, the owner's
 on the other. The owner's message waits for the agent's answer, the item
 "pending" meanwhile: the chat takes nothing more until it comes, and the
 owner can withdraw the message to edit it; a verdict given since overrides
@@ -626,7 +645,12 @@ notes and the owner's feedback thread messages, verdicts kept — and drops
 the `[decisions]` tags from `.nock/config.toml`. A project running nock from
 source runs `nock topics migrate`. What the owner said before the migration counts
 as told, so no session hears it as news; a project that migrated before
-that runs `nock topics migrate --mark-seen` once.
+that runs `nock topics migrate --mark-seen` once. The same commands split, once,
+an item from before one asset per item that holds several files: it keeps its
+first file (a decision, its decision and the project files it concerns) and
+its ref, and each other file becomes an item `SLUG-FILE` with the versions
+that hold it, numbered as they were, the verdict kept and the thread copied,
+opened by a note that says so.
 
 ### The map
 
