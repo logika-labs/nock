@@ -247,6 +247,7 @@ def chat(session: str, prompt: str, resumed: bool) -> int:
 def tidy(session: str, prompt: str) -> int:
     assert "# Tidy up Work" in prompt
     write_transcript(session, prompt)
+    say("Reading the topics first.")
     for command in json.loads(os.environ.get("FAKE_TIDY") or "[]"):
         tool = {"type": "tool_use", "name": "Bash", "input": {"command": " ".join(command)}}
         print(json.dumps({"type": "assistant", "message": {"content": [tool]}}), flush=True)

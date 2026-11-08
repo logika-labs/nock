@@ -4,6 +4,8 @@ overlaid by the machine's own `.nock/local/config.toml`."""
 from __future__ import annotations
 
 import copy
+import json
+import re
 import tomllib
 from enum import StrEnum
 from pathlib import Path
@@ -85,6 +87,20 @@ DEFAULTS: dict[str, Any] = {
         "model": "",
         "deadline": 1800,
         "silence": 600,
+    },
+    "studio": {
+        # Where the studio's recorder sends what the owner says, to have it
+        # written into the chat: a Whisper server speaking OpenAI's
+        # `/v1/audio/transcriptions` (OpenAI itself, whisper.cpp's server,
+        # faster-whisper-server). Empty turns the recorder off. A bare server, or
+        # one ending in `/v1`, gets `/v1/audio/transcriptions` added.
+        "transcribe_url": "",
+        # The `model` sent with each recording: OpenAI's is "whisper-1"; whisper.cpp
+        # ignores it; faster-whisper-server takes its own ("Systran/faster-whisper-small").
+        "transcribe_model": "whisper-1",
+        # The name of the environment variable holding the server's key, sent as
+        # a bearer token ("OPENAI_API_KEY"); empty sends none. Never the key itself.
+        "transcribe_key_variable": "",
     },
     "consult": {
         # Whether the consultant runs, and the primer asks agents to consult.
@@ -175,3 +191,37 @@ class Configuration:
     def section(self, key: str) -> dict[str, Any]:
         value = self.get(key, {})
         return value if isinstance(value, dict) else {}
+
+
+def with_table_settings(text: str, table: str, values: dict[str, str]) -> str:
+    """A TOML file's text with `key = "value"` set in `[table]`: each key's
+    line replaced where the table has it, the rest added at the table's end;
+    the table added at the file's end when it has none."""
+    lines = text.splitlines(keepends=True)
+    if lines and not lines[-1].endswith("\n"):
+        lines[-1] += "\n"
+    start = next((index for index, line in enumerate(lines) if line.strip() == f"[{table}]"), None)
+    if start is None:
+        if lines and lines[-1].strip():
+            lines.append("\n")
+        lines.append(f"[{table}]\n")
+        start = len(lines) - 1
+    end = next(
+        (index for index in range(start + 1, len(lines)) if lines[index].lstrip().startswith("[")),
+        len(lines),
+    )
+    while end > start + 1 and not lines[end - 1].strip():
+        end -= 1
+    added = []
+    for key, value in values.items():
+        setting = f"{key} = {json.dumps(value)}\n"
+        found = next(
+            (index for index in range(start + 1, end) if re.match(rf"^\s*{key}\s*=", lines[index])),
+            None,
+        )
+        if found is None:
+            added.append(setting)
+        else:
+            lines[found] = setting
+    lines[end:end] = added
+    return "".join(lines)

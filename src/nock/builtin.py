@@ -62,6 +62,7 @@ from nock.topics import (
     Verdict,
     Word,
     in_order,
+    verdict_of,
 )
 from nock.usage import QUESTION, Moment, Usage
 
@@ -406,10 +407,13 @@ def topics_show(project: Project, topic: str) -> dict[str, Any]:
 
 @command(name="judge", group="topics", confirm=True)
 def topics_judge(project: Project, topic: str, word: Word) -> dict[str, Any]:
-    """The owner's verdict on every open item of a topic, with their comment
-    in its thread. Only on the owner's word: `/nock-triage` runs it with them."""
-    judged, problem = Topics(project).judge_topic(topic, word)
-    result = not_committed({"judged": judged, "verdict": word["verdict"]}, problem)
+    """The owner's verdict on every open item of a topic (`"rework": false`
+    with rejected drops them), with their comment in its thread. Only on the
+    owner's word: `/nock-triage` runs it with them."""
+    topics = Topics(project)
+    judged, problem = topics.judge_topic(topic, word)
+    topics.tell_writer(judged)
+    result = not_committed({"judged": judged, "verdict": str(verdict_of(word))}, problem)
     ask(project, result, Moment.REVIEW)
     return result
 
@@ -552,13 +556,20 @@ def items_show(project: Project, item: str) -> dict[str, Any]:
 
 @command(name="judge", group="items", confirm=True)
 def items_judge(project: Project, item: str, word: Word) -> dict[str, Any]:
-    """The owner's verdict on an item — accepted or rejected — with their
-    comment in its thread. Only on the owner's word: `/nock-triage` runs it with them."""
+    """The owner's verdict on an item — accepted, or rejected: reworked as
+    the thread says, or with `"rework": false` dropped, closed with nothing to
+    rework (superseded, say) — with their comment in its thread. Only on the
+    owner's word: `/nock-triage` runs it with them. Tidy up only drops."""
+    topics = Topics(project)
+    if project.current_role() == TIDIER and verdict_of(word) is not Verdict.DROPPED:
+        raise PolicyError(
+            'Tidy up only drops (`"verdict": "rejected", "rework": false`): accepting,'
+            " and asking for rework, are the owner's alone"
+        )
+    record, problem = topics.judge(item, word)
+    topics.tell_writer([record["ref"]])
     if project.current_role() == TIDIER:
-        if word["verdict"] != Verdict.REJECTED:
-            raise PolicyError("Tidy up never accepts: acceptance is the owner's alone")
-        return {"ref": Topics(project).judge(item, word)[0]["ref"], "verdict": "rejected"}
-    record, problem = Topics(project).judge(item, word)
+        return {"ref": record["ref"], "verdict": record["verdict"]}
     result = not_committed({"ref": record["ref"], "verdict": record["verdict"]}, problem)
     ask(project, result, Moment.REVIEW)
     return result

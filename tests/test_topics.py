@@ -349,6 +349,8 @@ def test_what_a_subagent_writes_names_the_session_that_dispatched_it(
     assert shown["versions"][0]["role"] == "general-purpose"
     noted = project.store.rows("SELECT command, claimed FROM callers")
     assert [row["claimed"] for row in noted] == [1, 1]
+    # The owner's word, recorded in another session: news to the one whose subagent made it.
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "triage")
     judge(project.root, ref, "rejected", "Not SQLite.")
     news = HookRunner(project, {"session_id": "lead"}).handle("UserPromptSubmit")
     assert news is not None and ref in news["hookSpecificOutput"]["additionalContext"]
@@ -438,12 +440,12 @@ def test_the_owner_judges_on_the_page_and_the_submitting_session_hears_once(
     other = submit(project.root, {**DECISION, "title": "Orders are kept a year"})
     with urllib.request.urlopen(page) as response:
         shown = response.read().decode()
-    assert '<a href="#topics" data-tab-link="topics">Topics</a>' in shown
+    assert '<a href="#topics" data-tab-link="topics">Work</a>' in shown
     assert "<!-- nock:" not in shown
     with urllib.request.urlopen(f"{page}topics") as response:
         listed = json.loads(response.read())
     (topic,) = listed["topics"]
-    assert topic["counts"] == {"open": 2, "accepted": 0, "rejected": 0}
+    assert topic["counts"] == {"open": 2, "accepted": 0, "rejected": 0, "dropped": 0}
     assert topic["items"][1]["versions"][0]["decision"]["answer"].startswith("One file")
     status, _ = post(page, "judge", {"ref": ref, "verdict": "maybe"})
     assert status == 400
@@ -466,6 +468,112 @@ def test_the_owner_judges_on_the_page_and_the_submitting_session_hears_once(
     assert status == 200 and judged["judged"] == [other]
     post(page, "reply", {"topic": "orders", "text": "All good otherwise."})
     assert Topics(project).topic("orders")["thread"][-1]["author"] == "owner"
+
+
+def told(project: Project, session: str) -> str:
+    output = HookRunner(project, {"session_id": session}).handle("UserPromptSubmit")
+    return output["hookSpecificOutput"]["additionalContext"] if output else ""
+
+
+def test_a_session_is_never_told_back_the_owner_s_word_it_recorded_itself(
+    project: Project, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "lead")
+    ref = submit(project.root)
+    other = submit(project.root, {**DECISION, "title": "Orders are kept a year"})
+    judge(project.root, ref, "rejected", "Superseded by later work.")
+    assert told(project, "lead") == ""
+    run(project.root, "topics", "judge", "orders", json.dumps({"verdict": "accepted"}))
+    assert told(project, "lead") == ""
+    # A subagent of it records the owner's word for it: still its own.
+    monkeypatch.setenv("NOCK_PARENT_SESSION", "lead")
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "helper")
+    judge(project.root, other, "rejected", "Two years.")
+    assert told(project, "lead") == ""
+    monkeypatch.delenv("NOCK_PARENT_SESSION")
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "triage")
+    judge(project.root, other, "accepted", "A year is fine after all.")
+    assert f"[{other}]" in told(project, "lead") and f"[{ref}]" not in told(project, "lead")
+
+
+def test_a_migrated_item_s_submitter_is_the_session_that_made_it_not_the_migrating_one(
+    project: Project, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    decisions = project.root / ".nock" / "decisions"
+    decisions.mkdir(parents=True, exist_ok=True)
+    (decisions / "0001.json").write_text(
+        json.dumps(
+            {
+                "number": 1,
+                "title": "Orders live in SQLite",
+                "summary": "One file.",
+                "status": "done",
+                "review": "unreviewed",
+                "tags": ["storage"],
+                "recorded": {"moment": "2026-01-01T00:00:00Z", "session": "maker"},
+                "updated": "2026-01-01T00:00:00Z",
+            }
+        )
+    )
+    git(project.root, "add", "-A")
+    git(project.root, "commit", "-qm", "An earlier nock's decision")
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "migrator")
+    run(project.root, "topics", "migrate")
+    item = Topics(project).item("1")
+    assert item["created"]["session"] == "maker"
+    assert [version["session"] for version in item["versions"]] == ["maker"]
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "triage")
+    judge(project.root, item["ref"], "rejected", "Postgres.")
+    assert told(project, "migrator") == ""
+    assert f"[{item['ref']}]" in told(project, "maker")
+
+
+def test_a_dropped_item_is_closed_asks_no_rework_and_is_news_to_no_one(
+    project: Project, page: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "maker")
+    ref = submit(project.root, {"title": "The README's intro", "files": ["README.md"]})
+    other = submit(project.root, {**DECISION, "title": "Orders are kept a year"})
+    third = submit(project.root, {**DECISION, "title": "Orders are archived"})
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "triage")
+    refused = nock(project.root, "items", "judge", ref, '{"verdict": "accepted", "rework": false}')
+    assert refused.returncode == 40, refused.stdout + refused.stderr
+    dropped = run(
+        project.root,
+        "items",
+        "judge",
+        ref,
+        json.dumps({"verdict": "rejected", "rework": False, "comment": "Superseded."}),
+    )
+    assert dropped["verdict"] == "dropped"
+    assert told(project, "maker") == ""
+    status, _ = post(page, "judge", {"ref": other, "verdict": "dropped"})
+    assert status == 200 and told(project, "maker") == ""
+    topics = Topics(project)
+    assert topics.awaiting()["rejected"] == []
+    assert topics.summary()["open"] == {"orders": 1}
+    assert topics.row("orders")["dropped"] == 2
+    payload = {"session_id": "maker", "tool_input": {"file_path": str(project.root / "README.md")}}
+    assert HookRunner(project, payload).handle("PostToolUse") is None
+    judged = run(
+        project.root,
+        "topics",
+        "judge",
+        "orders",
+        json.dumps({"verdict": "rejected", "rework": False}),
+    )
+    assert judged == {"judged": [third], "verdict": "dropped"}
+    assert topics.item(third)["verdict"] == "dropped"
+    # A new version reopens a dropped item, like any decided one.
+    run(
+        project.root,
+        "items",
+        "update",
+        third,
+        "--version",
+        json.dumps({"title": "Archived yearly"}),
+    )
+    assert topics.item(third)["verdict"] == "open"
 
 
 def chat_of(address: str, ref: str) -> dict[str, Any]:
@@ -768,6 +876,7 @@ def test_a_project_migrated_before_marks_what_the_owner_said_as_told_once(
 ) -> None:
     monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "s1")
     ref = submit(project.root)
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "triage")
     judge(project.root, ref, "accepted", "Fine.")
     assert run(project.root, "topics", "migrate", "--mark-seen") == {
         "migrated": False,

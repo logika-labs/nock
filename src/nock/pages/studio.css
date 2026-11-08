@@ -201,11 +201,7 @@
   background: var(--noise), rgb(255 255 255 / .95); background-blend-mode: soft-light, normal;
   box-shadow: 0 6px 24px rgb(60 20 120 / .1);
 }
-/* An open one takes a pair of foil colours by its number, so open ones tell apart. */
-:root .sheet[data-hue="0"] { --one: var(--cyan); --two: var(--pink); }
-:root .sheet[data-hue="1"] { --one: var(--yellow); --two: var(--cyan); }
-:root .sheet[data-hue="2"] { --one: var(--lavender); --two: var(--yellow); }
-:root .sheet[data-hue="3"] { --one: var(--pink); --two: var(--lavender); }
+/* An open one takes the menu's pair: pink above and to the left, cyan below and to the right. */
 :root .sheet.open {
   border: 2px solid #111116;
   box-shadow: 5px 5px 0 0 var(--one), -5px -5px 0 0 var(--two), 0 12px 32px rgb(60 20 120 / .18);

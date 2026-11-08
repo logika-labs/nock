@@ -33,13 +33,14 @@ what is there. Read first:
    A done or abandoned topic takes no new items: move items before closing it.
 3. **Drop what matters less.** An open item superseded by a newer one, or
    stale (what it decides was changed since, what it shows is gone, an
-   older render a newer item replaces): reject it with a comment saying
-   so, that it needs no rework:
-   `.nock/nock items judge <topic/slug> '{"verdict": "rejected", "comment":
-   "Dropped by Tidy up: superseded by [topic/slug]; no rework needed."}'`.
-   Never accept anything: acceptance is the owner's alone, and nock refuses
-   it from you. Leave alone what the owner is still discussing (the owner
-   wrote last in its thread) and anything you are unsure of.
+   older render a newer item replaces): drop it — rejected with nothing to
+   rework, so no agent is asked to — with a comment saying why:
+   `.nock/nock items judge <topic/slug> '{"verdict": "rejected", "rework":
+   false, "comment": "Dropped by Tidy up: superseded by [topic/slug]."}'`.
+   Dropping is the only verdict you give: accepting, and asking for
+   rework, are the owner's alone, and nock refuses them from you. Leave
+   alone what the owner is still discussing (the owner wrote last in its
+   thread) and anything you are unsure of.
 4. **Prioritize.** Give every planned or active topic its place in the
    owner's order, 1 first, by what needs the owner soonest and matters
    most, with a one-line reason in its status:

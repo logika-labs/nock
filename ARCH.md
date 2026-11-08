@@ -550,7 +550,7 @@ the `namer` (no tools) for a title and summary. Tidy up is a chat whose
 agent is the `tidier`: `Topics.commit` commits nothing for that role, and
 when it ends `Chats.gather` commits `.nock/topics` once; Undo is `git
 revert` of that commit, aborted when it conflicts. `items judge` refuses the
-tidier anything but a rejection. A topic's `priority` orders the list
+tidier anything but a drop (`"rework": false`). A topic's `priority` orders the list
 (`topics.in_order`) in the studio and in `topics list`.
 
 ### The evaluation explorer

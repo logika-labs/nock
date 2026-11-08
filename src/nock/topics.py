@@ -7,10 +7,10 @@ compare) or a derived file (something made to show part of the project, with
 what it comes from, when it applies and how to make it again). One asset per
 item; several only as options, variants of one asset side by side, of which
 the owner may prefer one. The owner alone gives an item its
-verdict (accepted, rejected; open until then), on the page or with
-`/nock-triage`; both sides talk in the threads, a chat: the owner's
-message waits for the agent's one answer (`pending`), and is withdrawn
-until it comes. Everything lives in the main
+verdict (accepted; rejected, to be reworked; dropped, rejected with nothing
+to rework, closed; open until then), on the page or with `/nock-triage`;
+both sides talk in the threads, a chat: the owner's message waits for the
+agent's one answer (`pending`), and is withdrawn until it comes. Everything lives in the main
 checkout's `.nock/topics/TOPIC/` (a file over `LARGE` bytes under
 `.nock/local/topics/` instead, uncommitted), committed as it is written,
 whichever worktree writes it, so the owner sees it at once.
@@ -71,6 +71,8 @@ class Verdict(StrEnum):
     ACCEPTED = "accepted"
     REJECTED = "rejected"
     """Rework it as the thread says (a todo: do not do it)."""
+    DROPPED = "dropped"
+    """Rejected with nothing to rework (superseded, say): closed, nobody is asked to."""
 
 
 class Status(StrEnum):
@@ -203,6 +205,21 @@ class Word(TypedDict):
 
     verdict: Verdict
     comment: NotRequired[str]
+    rework: NotRequired[bool]
+    """With rejected: false drops the item instead — closed, nothing to rework
+    (superseded, say), so no agent is asked to; true, the default, asks for rework."""
+
+
+def verdict_of(word: Word) -> Verdict:
+    """The verdict a word gives: rejected without rework is dropped."""
+    verdict = Verdict(word["verdict"])
+    if verdict is Verdict.OPEN:
+        raise UsageError("a verdict is accepted, rejected or dropped")
+    if word.get("rework") is False:
+        if verdict not in (Verdict.REJECTED, Verdict.DROPPED):
+            raise UsageError("`rework` goes with rejected: false drops the item")
+        return Verdict.DROPPED
+    return verdict
 
 
 def check_name(name: str, what: str = "topic") -> str:
@@ -1003,13 +1020,11 @@ class Topics:
             self.give(item, word)
             path = self.save_item(item["topic"], item)
             return item, self.commit(
-                [path], f"Item {item['ref']}, {word['verdict']}: {item['title']}"
+                [path], f"Item {item['ref']}, {item['verdict']}: {item['title']}"
             )
 
     def give(self, item: dict[str, Any], word: Word) -> None:
-        verdict = Verdict(word["verdict"])
-        if verdict is Verdict.OPEN:
-            raise UsageError("a verdict is accepted or rejected")
+        verdict = verdict_of(word)
         item["verdict"] = str(verdict)
         item["decided"] = {"moment": now(), **self.writer()}
         comment = str(word.get("comment") or "").strip()
@@ -1022,10 +1037,11 @@ class Topics:
         """The verdict on every open item of a topic; the comment in the topic's thread."""
         with self.project.lock("topics"):
             topic = self.topic(name)
+            verdict = verdict_of(word)
             judged, paths = [], []
             for item in self.items(name):
                 if awaits_owner(item):
-                    self.give(item, Word(verdict=word["verdict"]))
+                    self.give(item, Word(verdict=verdict))
                     paths.append(self.save_item(name, item))
                     judged.append(item["ref"])
             if not judged:
@@ -1033,12 +1049,10 @@ class Topics:
             comment = str(word.get("comment") or "").strip()
             if comment:
                 topic["thread"].append(
-                    message(Author.OWNER, comment, self.writer(), verdict=str(word["verdict"]))
+                    message(Author.OWNER, comment, self.writer(), verdict=str(verdict))
                 )
                 paths.append(self.save_topic(topic))
-            return judged, self.commit(
-                paths, f"Topic {name}, {word['verdict']}: {len(judged)} item(s)"
-            )
+            return judged, self.commit(paths, f"Topic {name}, {verdict}: {len(judged)} item(s)")
 
     def withdraw(self, ref: str | None = None, topic: str | None = None) -> str:
         """Take back the owner's message still waiting for its answer, in an
@@ -1076,7 +1090,8 @@ class Topics:
 
     def news_for(self, session: str) -> list[dict[str, Any]]:
         """The items this session made on which the owner has said something
-        (a verdict, a message) it has not been told yet; telling it is recorded."""
+        (a verdict, a message) it has not been told yet; telling it is
+        recorded. A dropped item is closed: nothing on it is news."""
         told = {
             (row["item"], row["updated"])
             for row in self.project.store.rows(
@@ -1085,6 +1100,8 @@ class Topics:
         }
         news = []
         for item in self.every():
+            if item["verdict"] == Verdict.DROPPED:
+                continue
             if not any(by(version, {session}) for version in item["versions"]):
                 continue
             said = owner_moment(item)
@@ -1123,9 +1140,25 @@ class Topics:
                     marked += 1
         return marked
 
+    def tell_writer(self, refs: list[str]) -> None:
+        """The owner's word on these items, just recorded by this session (or
+        a subagent of it, or one nock dispatched), as told to it: a session is
+        never told back what it wrote itself. Only for the commands an agent
+        runs on the owner's word; the studio is the owner's own page, whatever
+        session started it."""
+        writer = self.writer()
+        sessions = sorted(filter(None, {writer.get("session"), writer.get("parent")}))
+        for ref in refs:
+            item = self.item(ref)
+            said = owner_moment(item)
+            for session in sessions:
+                self.project.store.insert(
+                    "told", {"session": session, "item": item["ref"], "updated": said}
+                )
+
     def governing(self, session: str, path: str) -> list[dict[str, Any]]:
-        """The items not rejected whose latest version holds this project file
-        or was derived from it, not yet shown this session; showing them is
+        """The items neither rejected nor dropped whose latest version holds
+        this project file or was derived from it, not yet shown this session; showing them is
         recorded."""
         shown = {
             row["item"]
@@ -1135,7 +1168,7 @@ class Topics:
         }
         found = []
         for item in self.every():
-            if item["verdict"] == Verdict.REJECTED or item["ref"] in shown:
+            if item["verdict"] in (Verdict.REJECTED, Verdict.DROPPED) or item["ref"] in shown:
                 continue
             latest = item["versions"][-1]["files"]
             if any(

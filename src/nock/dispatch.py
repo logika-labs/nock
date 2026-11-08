@@ -125,8 +125,9 @@ SEATS = {
     # Names a finished chat from its transcript, in its last message: no tools.
     "namer": Seat((), ()),
     # The studio's Tidy up: reorganizes the topics through nock's commands
-    # (moving items, setting states, statuses and priorities, rejecting what
-    # is stale; never accepting, which `items judge` refuses it), its writes
+    # (moving items, setting states, statuses and priorities, dropping what
+    # is stale; never accepting nor asking rework, which `items judge`
+    # refuses it), its writes
     # gathered into one commit by the studio.
     "tidier": Seat(
         READING,

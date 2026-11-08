@@ -34,6 +34,7 @@ from typing import Any, NotRequired, TypedDict
 from nock.chats import Chats
 from nock.commands import schema_of
 from nock.comparison import Comparison, Query
+from nock.configuration import with_table_settings
 from nock.errors import Error, NotFoundError, UsageError
 from nock.evaluation import Evaluations, Run
 from nock.explorer import Explorer, View
@@ -289,7 +290,7 @@ class TopicsTab(Tab):
     about the topics (one at a time), `/ask/cancel` stops it."""
 
     name = "topics"
-    title = "Topics"
+    title = "Work"
 
     def __init__(self, project: Project) -> None:
         super().__init__(project)
@@ -502,6 +503,21 @@ class Choice(TypedDict):
     share: bool
 
 
+class Transcription(TypedDict):
+    """Where the recorder sends what the owner says, set in the settings."""
+
+    transcribe_url: str
+    """A Whisper server speaking OpenAI's `/v1/audio/transcriptions`; empty, off."""
+    transcribe_model: str
+    transcribe_key_variable: str
+    """The name of the environment variable holding its key, never the key."""
+
+
+TRANSCRIPTION = ("transcribe_url", "transcribe_model", "transcribe_key_variable")
+# What a key variable may be called: an environment variable's name, never a key.
+VARIABLE = re.compile(r"[A-Za-z_][A-Za-z0-9_]{0,127}")
+
+
 class Studio(ThreadingHTTPServer):
     def __init__(self, project: Project, port: int) -> None:
         super().__init__(("127.0.0.1", port), Handler)
@@ -547,9 +563,57 @@ class Studio(ThreadingHTTPServer):
             '          <p class="hint">Weekly at most, counts and categories only: never code,'
             " paths, names or what items say.</p>\n"
             f"          <details><summary>What it holds</summary><p>{html.escape(QUESTION)}</p></details>\n"
+            f"{self.transcription()}"
             "        </div>\n"
             "      </div>"
         )
+
+    def transcription(self) -> str:
+        """The recorder's Whisper server, beside the sharing switch: kept in
+        this machine's `.nock/local/config.toml`, never committed."""
+        settings = self.project.configuration
+        value = {
+            key: html.escape(str(settings.get(f"studio.{key}") or "")) for key in TRANSCRIPTION
+        }
+        return (
+            '          <form class="fields" id="transcription" aria-labelledby="transcription-label">\n'
+            '            <div class="setting"><span id="transcription-label">Transcription</span>'
+            ' <span class="state" id="transcription-state">'
+            f"{'On' if value['transcribe_url'] else 'Off'}</span></div>\n"
+            '            <label>Whisper server <input name="transcribe_url" type="url" spellcheck="false"'
+            ' placeholder="https://api.openai.com/v1" autocomplete="off"'
+            f' value="{value["transcribe_url"]}"></label>\n'
+            '            <label>Model <input name="transcribe_model" spellcheck="false" placeholder="whisper-1"'
+            f' autocomplete="off" value="{value["transcribe_model"]}"></label>\n'
+            '            <label>Key variable <input name="transcribe_key_variable" spellcheck="false"'
+            ' placeholder="OPENAI_API_KEY" autocomplete="off" pattern="[A-Za-z_][A-Za-z0-9_]*"'
+            f' value="{value["transcribe_key_variable"]}"></label>\n'
+            '            <p class="hint">The recorder in every chat sends what you say there. The key'
+            " variable names the environment variable holding the key, never the key. Kept on"
+            " this machine, not committed.</p>\n"
+            '            <button type="submit" class="save">Save</button>\n'
+            "          </form>\n"
+        )
+
+    def configure(self, body: Any) -> dict[str, Any]:
+        """The recorder's settings from the page, written to this machine's
+        `.nock/local/config.toml` under `[studio]`."""
+        validate(body, schema_of(Transcription))
+        values = {key: str(body[key]).strip() for key in TRANSCRIPTION}
+        variable = values["transcribe_key_variable"]
+        if variable and not VARIABLE.fullmatch(variable):
+            raise UsageError(
+                "the key variable is the name of an environment variable (OPENAI_API_KEY),"
+                " never the key itself"
+            )
+        url = values["transcribe_url"]
+        if url and not re.match(r"https?://", url):
+            raise UsageError("the Whisper server is an http:// or https:// address")
+        path = self.project.local / "config.toml"
+        text = path.read_text() if path.is_file() else ""
+        path.write_text(with_table_settings(text, "studio", values))
+        self.project.__dict__.pop("configuration", None)
+        return values
 
     def answer(self, body: Any) -> dict[str, Any]:
         validate(body, schema_of(Choice))
@@ -593,7 +657,8 @@ class Studio(ThreadingHTTPServer):
 
 
 class Handler(BaseHTTPRequestHandler):
-    """`GET /` the page; `POST /usage` the owner's answer on sharing; `/NAME/ROUTE`
+    """`GET /` the page; `POST /usage` the owner's answer on sharing, `/settings`
+    the recorder's server; `/NAME/ROUTE`
     goes to the tab named, `/chat/ROUTE` to the chat."""
 
     @property
@@ -613,9 +678,10 @@ class Handler(BaseHTTPRequestHandler):
         except json.JSONDecodeError as error:
             self.send_json(HTTPStatus.BAD_REQUEST, {"error": str(error)})
             return
-        if self.path == "/usage":
+        if self.path in ("/usage", "/settings"):
+            take = self.studio.answer if self.path == "/usage" else self.studio.configure
             try:
-                self.send_json(HTTPStatus.OK, self.studio.answer(body))
+                self.send_json(HTTPStatus.OK, take(body))
             except Error as error:
                 self.send_json(HTTPStatus.BAD_REQUEST, {"error": str(error)})
             return

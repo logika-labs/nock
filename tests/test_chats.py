@@ -202,7 +202,7 @@ def test_a_new_chat_names_the_one_left_and_every_chat_is_listed(
     assert leaving == {"naming": True}
 
 
-def test_tidy_up_lands_as_one_commit_never_accepts_and_undo_reverts_it(
+def test_tidy_up_lands_as_one_commit_only_drops_and_undo_reverts_it(
     project: Project, page: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     kept = submit(project.root)
@@ -219,11 +219,14 @@ def test_tidy_up_lands_as_one_commit_never_accepts_and_undo_reverts_it(
             [
                 ["items", "update", misplaced, json.dumps({"topic": "billing"})],
                 ["items", "judge", kept, json.dumps({"verdict": "accepted"})],
+                ["items", "judge", kept, json.dumps({"verdict": "rejected"})],
                 [
                     "items",
                     "judge",
                     stale,
-                    json.dumps({"verdict": "rejected", "comment": "Dropped: superseded."}),
+                    json.dumps(
+                        {"verdict": "rejected", "rework": False, "comment": "Dropped: superseded."}
+                    ),
                 ],
                 ["topics", "update", "billing", json.dumps({"priority": 1, "status": "first"})],
                 ["topics", "update", "orders", json.dumps({"priority": 2, "status": "next"})],
@@ -237,7 +240,10 @@ def test_tidy_up_lands_as_one_commit_never_accepts_and_undo_reverts_it(
     shown = answered(page, started["id"])
     owner, agent = shown["messages"]
     assert owner["author"] == "owner" and "Tidy up Work" in owner["text"]
-    assert agent["text"] == "Moved refunds to billing\n\n- billing first"
+    # What it said along the way is shown; its last message is the summary.
+    assert (
+        agent["text"] == "Reading the topics first.\n\nMoved refunds to billing\n\n- billing first"
+    )
     assert shown["summary"] == "Moved refunds to billing - billing first"
     # One commit for everything it did, and nothing left uncommitted.
     commits = git(project.root, "log", "--format=%H %s", f"{head}..HEAD").splitlines()
@@ -248,7 +254,7 @@ def test_tidy_up_lands_as_one_commit_never_accepts_and_undo_reverts_it(
     assert topics.item(misplaced)["topic"] == "billing"
     assert topics.item(kept)["verdict"] == "open"
     rejected = topics.item(stale)
-    assert rejected["verdict"] == "rejected"
+    assert rejected["verdict"] == "dropped"
     assert rejected["thread"][-1]["text"] == "Dropped: superseded."
     assert rejected["decided"]["role"] == "tidier"
     # The Work list follows the order it gave.
@@ -313,3 +319,41 @@ def test_a_topic_s_priority_orders_the_list_and_zero_takes_it_away(project: Proj
     assert run(project.root, "topics", "show", "orders")["priority"] == 1
     run(project.root, "topics", "update", "orders", json.dumps({"priority": 0}))
     assert "priority" not in run(project.root, "topics", "show", "orders")
+
+
+def test_the_recorder_s_server_is_set_in_the_settings_on_this_machine_only(
+    project: Project, page: str
+) -> None:
+    def settings(body: dict[str, Any]) -> tuple[int, Any]:
+        request = urllib.request.Request(
+            f"{page}settings", data=json.dumps(body).encode(), method="POST"
+        )
+        try:
+            with urllib.request.urlopen(request) as response:
+                return response.status, json.loads(response.read())
+        except urllib.error.HTTPError as error:
+            return error.code, json.loads(error.read())
+
+    local = project.root / ".nock" / "local" / "config.toml"
+    before = local.read_text()
+    chosen = {
+        "transcribe_url": "http://127.0.0.1:8000/v1",
+        "transcribe_model": "Systran/faster-whisper-small",
+        "transcribe_key_variable": "WHISPER_KEY",
+    }
+    assert settings(chosen) == (200, chosen)
+    written = local.read_text()
+    assert (
+        written.startswith(before)
+        and '[studio]\ntranscribe_url = "http://127.0.0.1:8000/v1"' in written
+    )
+    # Changed again, each key's line is replaced in place.
+    assert settings({**chosen, "transcribe_model": "whisper-1"})[0] == 200
+    assert local.read_text().count("transcribe_model") == 1
+    assert 'transcribe_model = "whisper-1"' in local.read_text()
+    status, refused = settings({**chosen, "transcribe_key_variable": "sk-abc 123"})
+    assert status == 400 and "never the key itself" in refused["error"]
+    with urllib.request.urlopen(page) as response:
+        shown = response.read().decode()
+    assert 'value="http://127.0.0.1:8000/v1"' in shown and 'value="WHISPER_KEY"' in shown
+    assert git(project.root, "status", "--porcelain") == ""

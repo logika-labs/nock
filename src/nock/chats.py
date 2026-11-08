@@ -317,8 +317,10 @@ class Chats:
                 chat["session"] = session.id
             chat["messages"].append(reply)
             if chat["kind"] == Kind.TIDY:
-                chat["tidy"] = self.gather(reply)
-                chat["summary"] = " ".join((reply["text"] or "").split())[:300]
+                # Its last message is the summary: what it said along the way is not.
+                summary = (turn.result or reply["text"] or "").strip()
+                chat["tidy"] = self.gather(summary)
+                chat["summary"] = " ".join(summary.split())[:300]
             self.save(chat)
 
     def converse(self, chat: dict[str, Any], turn: Turn) -> Session:
@@ -400,13 +402,12 @@ class Chats:
 
     # --- Tidy up's one commit ---------------------------------------------------
 
-    def gather(self, reply: dict[str, Any]) -> dict[str, Any]:
-        """Tidy up's writes to the topics, committed as one; nothing changed,
-        nothing committed."""
+    def gather(self, summary: str) -> dict[str, Any]:
+        """Tidy up's writes to the topics, committed as one, its summary the
+        message; nothing changed, nothing committed."""
         git = self.project.git
         if not git("status", "--porcelain", "--", TOPICS):
             return {"commit": None}
-        summary = (reply.get("text") or "").strip()
         first = next(
             (line.strip("#*- ").strip() for line in summary.splitlines() if line.strip()), ""
         )

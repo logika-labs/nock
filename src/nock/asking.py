@@ -38,7 +38,7 @@ def listing(topics: Topics) -> str:
     """Every topic in a line, as a brief shows them: its state, counts and description."""
     return "\n".join(
         f"- `{row['name']}` ({row['state']}; {row['open']} open, {row['accepted']} accepted,"
-        f" {row['rejected']} rejected): {row['description']}"
+        f" {row['rejected']} rejected, {row['dropped']} dropped): {row['description']}"
         for row in (topics.row(name) for name in topics.names())
     )
 

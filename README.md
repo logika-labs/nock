@@ -547,11 +547,11 @@ worktree wrote it, so the owner sees it at once; a file over 20 MB (most
 videos) stays on the machine, under `.nock/local/topics/`, uncommitted, and
 the record says so (`"local": true`).
 
-| | open | accepted | rejected |
-|---|---|---|---|
-| **a decision, done** | done; please check | it stands | rework it |
-| **a decision, todo** | worth doing later? | on the backlog | do not do it |
-| **files** | please look | it stands | make it again |
+| | open | accepted | rejected | dropped |
+|---|---|---|---|---|
+| **a decision, done** | done; please check | it stands | rework it | closed: nothing to rework |
+| **a decision, todo** | worth doing later? | on the backlog | do not do it | do not do it |
+| **files** | please look | it stands | make it again | closed: nothing to remake |
 
 - **Verdicts are the owner's.** In the studio, or in a session with
   `/nock-triage`, which goes through the open items with the owner one at a
@@ -559,6 +559,11 @@ the record says so (`"local": true`).
   …}'`, or `nock topics judge TOPIC …` for every open item of a topic; Claude
   Code asks the owner before each). A comment goes into the item's thread;
   on the page the owner's words go through the chat instead.
+- **A rejection asks for rework, unless it is dropped.** `"rework": false`
+  with rejected (the page's Drop) drops the item: superseded, say, nothing to
+  rework. It is closed — decided in its topic's counts, in no list of what
+  waits on an agent, news to no session — and the page marks it with a muted
+  cross. A new version reopens it like any other.
 - **The threads are where the two sides talk.** `--reply "markdown"` on
   `topics update` or `items update` adds a message; while the owner's last
   message waits, it is that message's one answer. When the owner is in the
@@ -583,7 +588,10 @@ the record says so (`"local": true`).
   chat, its items newest first, the earlier rounds after them: the same
   topic, its history kept.
 - **The session that submitted it hears.** When the owner next types there,
-  the prompt hook tells it their verdict or message, once.
+  the prompt hook tells it their verdict or message, once — never what that
+  session recorded itself (a `judge` it ran on the owner's word), and nothing
+  on a dropped item. The submitter is whoever made a version of the item; a
+  migration keeps the sessions the earlier records name, never its own.
 - **An edit shows the items about a file.** The first time a session edits a
   file an item holds, or a derived file shows (`from`), the edit hook names
   the item.
@@ -601,11 +609,11 @@ day (sooner when something new calls) a session the human starts says
 "N new in Topics (emails: 2, pricing: 1)" and what waits on it; `nock status`
 says it all in full.
 
-The studio's **Topics** tab (`nock studio`, or with `{"open": true}`) lists
+The studio's **Work** tab (`nock studio`, or with `{"open": true}`; `#topics` or `#work`) lists
 the topics in the owner's order — by `priority` (1 first; `topics update
 TOPIC '{"priority": 1}'`, 0 takes it away), then the rest, newest activity
 first — each a row: its name, what it holds ("4
-decisions · 6 images · 3 texts") and its verdicts ("3 open · 12 accepted"),
+decisions · 6 images · 3 texts") and its verdicts ("3 open · 12 accepted · 2 dropped"),
 its time ("21m", "3h", "2d", on a small grey pill) with its state's foil mark
 beside it (active a slowly turning spinner, planned a ring, done a full circle
 with a tick, abandoned one with a cross), its status line in grey right after
@@ -613,9 +621,9 @@ its name, and its description. A
 topic opens in place, its items in sections, each with its count and a caret
 that folds it: decisions as bubbles that open in place on the answer (its
 whole width; Markdown's single line breaks flow together, a blank line parts
-paragraphs), the alternatives, the files it concerns and Accept and Reject;
+paragraphs), the alternatives, the files it concerns and Drop, Reject and Accept;
 a decision is done unless a small TODO pill under its time says otherwise; a
-green tick or a red cross before its time once accepted or rejected; an open
+green tick, a red cross or a muted cross before its time once accepted, rejected or dropped; an open
 decision is framed in the foil's cyan and pink (`?decisions=rail` or `lift`
 on the page's address shows two other looks); pictures as one line of
 thumbnails, each with a ribbon of its title, time and verdict along its foot,
@@ -680,9 +688,10 @@ dropped** shows them. The choice is kept per browser.
 **Tidy up**, at the end of that line, sends a headless agent (the tidier
 seat, `briefs/tidy.md`) to reorganize Work, after a short confirm: it moves
 misplaced items, merges near-duplicate topics and splits sprawling ones,
-sets each topic's state and status from what is there, rejects stale or
-superseded items with a comment saying they need no rework (it never
-accepts: `items judge` refuses it that), and gives the planned and active
+sets each topic's state and status from what is there, drops stale or
+superseded items with a comment (`"rework": false`: dropped, nothing to
+rework; it never accepts nor asks for rework, which `items judge` refuses
+it), and gives the planned and active
 topics a priority, a one-line reason in each status. Its writes are not
 committed one by one: when it ends they land as **one commit**, "Work tidied
 up: …", with its summary. It runs in the global chat, which opens to show it
@@ -703,6 +712,11 @@ left — a short title and a summary of a line or two; the list beside the
 title holds every chat (title, summary, last time) to continue any of them.
 Chats are the owner's conversations, not the project's records: they are
 kept on the machine, in `.nock/local/chats/`, never committed.
+
+The **settings** behind the gear hold, beside whether nock shares its usage
+report, the recorder's transcription server: its address, model and the name
+of the environment variable holding its key (never the key), saved to this
+machine's `.nock/local/config.toml`, never committed.
 `#topics/TOPIC` opens a topic, `#topics/TOPIC/SLUG` an item; `#170` the item
 an earlier nock's decision 170 became.
 
@@ -928,7 +942,7 @@ Reading files in the directory it runs in needs no rule.
 | sharer | Read, Grep, Glob, Bash | `git log` |
 | chatter (the studio's chat) | Read, Grep, Glob, Bash | `.nock/nock topics list`, `topics show`, `items list`, `items show`, `docs`; `git log`, `git show` |
 | namer (names a chat) | none | nothing |
-| tidier (Tidy up) | Read, Grep, Glob, Bash | `.nock/nock topics list`, `topics show`, `topics create`, `topics update`, `topics delete`, `items list`, `items show`, `items update`, `items judge` (rejecting only), `docs`; `git log`, `git show` |
+| tidier (Tidy up) | Read, Grep, Glob, Bash | `.nock/nock topics list`, `topics show`, `topics create`, `topics update`, `topics delete`, `items list`, `items show`, `items update`, `items judge` (dropping only), `docs`; `git log`, `git show` |
 
 `git log` and `git show` are allowed without `--output` (or any
 abbreviation of it git accepts, down to `--ou`), which a deny rule refuses:
@@ -1249,6 +1263,7 @@ one machine.
 | `reflect.sessions`, `reflect.days` | 15, 7 | when a round is due, whichever comes first |
 | `reflect.logika.days` | 30 | in a Logika project, days after a logika round before the next is offered (once the ledger has changed) |
 | `agent.command`, `agent.model`, `agent.deadline` | `claude`, —, 1800 | the headless agent nock dispatches (consult, Ask, share, the studio's chat and Tidy up); it may not bypass or set permissions (see [What nock's agents may do](#what-nocks-agents-may-do)) |
+| `studio.transcribe_url`, `studio.transcribe_model`, `studio.transcribe_key_variable` | —, `whisper-1`, — | the Whisper server the studio's recorder sends speech to, its model, and the name of the environment variable holding its key (never the key); set in the studio's settings, which write them to `.nock/local/config.toml` |
 | `permissions.confirm` | `ask` | how Claude Code treats a `confirm=True` command: `ask` has the owner approve each call (even in bypass mode); `allow` lets the agent run it, which it does only when the owner's request calls for it (see [What nock's agents may do](#what-nocks-agents-may-do)); `nock init` rewrites the rules after a change |
 | `consult.enabled`, `consult.deadline` | true, 600 | whether the consultant runs and the primer asks for it; seconds a consultation may take |
 | `upgrade.check`, `upgrade.auto`, `upgrade.index` | true, true, PyPI's `nock` | whether a session start looks for a newer nock (at most daily); whether it then upgrades a core vendored from PyPI by itself when the merge is clean (off, or on a conflict, it only says the release is out); and where releases are looked up |

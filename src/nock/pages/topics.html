@@ -55,6 +55,7 @@
     caret: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="m6 4 4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>',
     accepted: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="m3.5 8.5 3 3 6-7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
     rejected: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4.5 4.5 7 7m0-7-7 7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>',
+    dropped: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="m5 5 6 6m0-6-6 6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>',
     star: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="m8 2.2 1.8 3.65 4 .58-2.9 2.83.69 4L8 11.37l-3.59 1.89.69-4-2.9-2.83 4-.58z" fill="currentColor" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg>',
   };
 
@@ -340,10 +341,14 @@
 
   // --- drawing: the small parts -------------------------------------------------------------------
 
-  // The owner's verdict as a mark: a green tick, a red cross; nothing while it is open.
+  // A title as it is written, its `code` set as code.
+  const titled = text => escape(text).replace(/`([^`]+)`/g, "<code>$1</code>");
+  // The owner's verdict as a mark: a green tick, a red cross, a muted cross for dropped (closed,
+  // nothing to rework); nothing while it is open.
+  const VERDICTS = { accepted: "Accepted", rejected: "Rejected", dropped: "Dropped" };
   function verdictMark(item) {
-    if (item.verdict !== "accepted" && item.verdict !== "rejected") return "";
-    const word = item.verdict === "accepted" ? "Accepted" : "Rejected";
+    const word = VERDICTS[item.verdict];
+    if (!word) return "";
     return `<span class="verdict-mark ${item.verdict}" title="${word}" aria-label="${word}" role="img">${ICONS[item.verdict]}</span>`;
   }
   // A decision is done unless it says otherwise: only a todo one shows its status, a pill under its corner.
@@ -392,9 +397,10 @@
 
   function verdictButtons(key, verdict, count = 1) {
     const all = key.startsWith("topic:");
-    return ["rejected", "accepted"].filter(choice => all || choice !== verdict).map(choice =>
+    const labels = { dropped: "Drop", rejected: "Reject", accepted: "Accept" };
+    return ["dropped", "rejected", "accepted"].filter(choice => all || choice !== verdict).map(choice =>
       `<button type="button" class="button ${choice === "accepted" ? "primary" : "secondary"}" data-judge="${escape(key)}" data-verdict-choice="${choice}"
-        ${all ? `title="${count} open ${count === 1 ? "item" : "items"}"` : ""}>${choice === "accepted" ? "Accept" : "Reject"}${all ? " all" : ""}</button>`).join("");
+        title="${joined([choice === "dropped" ? "Rejected, nothing to rework: closed" : "", all ? `${count} open ${count === 1 ? "item" : "items"}` : ""])}">${labels[choice]}${all ? " all" : ""}</button>`).join("");
   }
 
   // --- drawing: a topic's sections ----------------------------------------------------------------
@@ -408,7 +414,7 @@
     const open = state.expanded.has(item.ref);
     const todo = last(item).decision.status === "todo" ? todoPill : "";
     const corner = `<span class="corner">${verdictMark(item)}${time(item.updated)}${chatCorner(item.ref, item.thread, item.chat)}${todo}</span>`;
-    const title = `<button type="button" class="title" aria-expanded="${open}">${escape(item.title)}</button>`;
+    const title = `<button type="button" class="title" aria-expanded="${open}">${titled(item.title)}</button>`;
     const latest = last(item);
     const decision = latest.decision;
     const head = `${title}${corner}`;
@@ -433,7 +439,7 @@
   function thumbnail(item) {
     const { version, file } = cover(item, "image");
     return `<button type="button" class="thumb${hitClass(item)}" data-key="${escape(item.ref)}" id="item-${escape(item.ref)}" data-view="${escape(item.ref)}" title="${escape(item.title)}" aria-label="${escape(item.title)}"><img src="${fileUrl(item, version, file.name)}" alt="" loading="lazy">
-      <span class="ribbon"><span class="title">${escape(item.title)}</span>${time(item.updated)}${verdictMark(item)}</span></button>`;
+      <span class="ribbon"><span class="title">${titled(item.title)}</span>${time(item.updated)}${verdictMark(item)}</span></button>`;
   }
   // An item's options belong together: one card, its title and time over a small list of them (the
   // preferred one starred), its verdict at its foot; it opens on all of them side by side.
@@ -447,18 +453,18 @@
       return `<span class="option${preferred ? " preferred" : ""}" data-key="option:${escape(file.name)}">${shown}<span class="name">${escape(file.name)}</span>${star}</span>`;
     }).join("");
     return `<button type="button" class="options-card ${type}${hitClass(item)}" data-key="${escape(item.ref)}" id="item-${escape(item.ref)}" data-view="${escape(item.ref)}">
-      <span class="head"><span class="title">${escape(item.title)}</span><span class="side">${time(item.updated)}</span></span>
+      <span class="head"><span class="title">${titled(item.title)}</span><span class="side">${time(item.updated)}</span></span>
       <span class="stack">${options}</span>${verdictMark(item)}</button>`;
   }
   const grouped = item => item.options && last(item).files.length > 1;
   function preview(item) {
     const { version, file } = cover(item, "text");
     return `<button type="button" class="preview${hitClass(item)}" data-key="${escape(item.ref)}" id="item-${escape(item.ref)}" data-view="${escape(item.ref)}">
-      <span class="head"><span class="title">${escape(item.title)}</span><span class="side">${time(item.updated)}</span></span>
+      <span class="head"><span class="title">${titled(item.title)}</span><span class="side">${time(item.updated)}</span></span>
       <pre data-text="${fileUrl(item, version, file.name)}" data-lines="8" data-own>…</pre>${verdictMark(item)}</button>`;
   }
   const fileRow = item => `<button type="button" class="file-row${hitClass(item)}" data-key="${escape(item.ref)}" id="item-${escape(item.ref)}" data-view="${escape(item.ref)}">
-      <span class="title">${escape(item.title)}</span><span class="side">${verdictMark(item)}${time(item.updated)}</span></button>`;
+      <span class="title">${titled(item.title)}</span><span class="side">${verdictMark(item)}${time(item.updated)}</span></button>`;
 
   function sections(topic, items) {
     return SECTIONS.map(([kind, label]) => {
@@ -479,8 +485,7 @@
       return count ? `${count} ${count === 1 ? one : many}` : "";
     }));
   }
-  const verdictCounts = counts => joined(["open", "accepted", "rejected"].map(verdict => counts[verdict] ? `${counts[verdict]} ${verdict}` : ""));
-  const hue = name => [...name].reduce((sum, character) => sum + character.charCodeAt(0), 0) % 4;
+  const verdictCounts = counts => joined(["open", "accepted", "rejected", "dropped"].map(verdict => counts[verdict] ? `${counts[verdict]} ${verdict}` : ""));
 
   function sheet(topic, items) {
     const open = state.open.has(topic.name), key = `topic:${topic.name}`;
@@ -492,7 +497,7 @@
         <p class="about">${inline(topic.current)}</p></div>`;
     const body = open ? `<div class="topic-body">${sections(topic, items) || '<p class="nothing">No items yet.</p>'}
         ${waiting ? `<div class="actions all" data-key="judge"><span class="hint" data-problem="${escape(key)}"></span><div class="buttons">${verdictButtons(key, null, waiting)}</div></div>` : ""}</div>` : "";
-    return `<article class="sheet topic${open ? " open" : ""}" data-key="topic:${escape(topic.name)}" data-hue="${hue(topic.name)}" id="topic-${escape(topic.name)}">
+    return `<article class="sheet topic${open ? " open" : ""}" data-key="topic:${escape(topic.name)}" id="topic-${escape(topic.name)}">
       <div class="main">${head}${body}</div></article>`;
   }
 
@@ -609,8 +614,8 @@
     const actions = awaitsOwner(item) || item.verdict !== "open" ? `<div class="actions"><span class="hint" data-problem="${escape(item.ref)}"></span><div class="buttons">${verdictButtons(item.ref, item.verdict)}</div></div>` : "";
     const fits = kind === "image" ? "image" : kind === "text" && !comparing && !several ? "text" : "wide";
     return `<div class="overlay" data-key="overlay:${escape(item.ref)}" data-backdrop>
-      <article class="sheet open viewer ${fits}${comparing ? " comparing" : ""}" data-hue="${hue(item.topic)}" role="dialog" aria-modal="true" aria-label="${escape(item.title)}">
-        <div class="ribbon"><h2>${escape(item.title)}</h2><span class="side">${verdictMark(item)}${time(item.updated)}</span><button type="button" class="close" data-close aria-label="Close (Esc)" title="Close (Esc)">×</button></div>
+      <article class="sheet open viewer ${fits}${comparing ? " comparing" : ""}" role="dialog" aria-modal="true" aria-label="${escape(item.title)}">
+        <div class="ribbon"><h2>${titled(item.title)}</h2><span class="side">${verdictMark(item)}${time(item.updated)}</span><button type="button" class="close" data-close aria-label="Close (Esc)" title="Close (Esc)">×</button></div>
         <div class="main">
           <div class="line versions">${pickers ? `<span class="pickers">${pickers}</span>` : ""}${path}<span class="end">${compare}${chatCorner(item.ref, item.thread, item.chat)}</span></div>
           ${heads}<div class="content">${content}</div>${actions}</div>
@@ -847,7 +852,7 @@
       return;
     }
     const cards = (ask.items || []).map(ref => itemAt(ref)).filter(Boolean).map(item =>
-      `<button type="button" class="mini" data-key="mini:${escape(item.ref)}" data-go="${escape(item.ref)}"><span class="title">${escape(item.title)}</span><span class="ref">${escape(item.ref)} · ${item.verdict}</span></button>`).join("");
+      `<button type="button" class="mini" data-key="mini:${escape(item.ref)}" data-go="${escape(item.ref)}"><span class="title">${titled(item.title)}</span><span class="ref">${escape(item.ref)} · ${item.verdict}</span></button>`).join("");
     studio.morph(place, `<div class="head"><span class="question">${escape(ask.question)}</span>${close}</div>
       ${ask.problem ? `<pre class="problem">${escape(ask.problem)}</pre>` : `<div class="context">${markdown(ask.answer)}</div>`}
       ${cards ? `<div class="cards">${cards}</div>` : ""}`);
@@ -1178,7 +1183,8 @@
 
   // One filter at a time, with the search: what needs the owner (open items, threads the agent
   // answered since they looked), what waits on an agent (the owner wrote last, or rejected an item
-  // still to rework), todo decisions, active topics. Done and abandoned topics show only when asked.
+  // still to rework), todo decisions, active topics. Done and abandoned topics, and dropped items, show
+  // only when asked.
   // Kept per browser.
   const SIFTS = {
     all: { label: "All" },
@@ -1200,9 +1206,11 @@
   function sifted(topic, sift = state.sift, closed = state.closed) {
     if (!closed && CLOSED_STATES.includes(topic.state)) return null;
     const filter = SIFTS[sift];
-    if (filter.whole) return filter.whole(topic) ? topic.items : null;
-    if (!filter.item) return topic.items;
-    const items = topic.items.filter(filter.item);
+    // Dropped items are closed too: shown with the done and abandoned topics.
+    const kept = closed ? topic.items : topic.items.filter(item => item.verdict !== "dropped");
+    if (filter.whole) return filter.whole(topic) ? kept : null;
+    if (!filter.item) return kept;
+    const items = kept.filter(filter.item);
     return items.length || filter.topic?.(topic) ? items : null;
   }
   function siftCount(sift) {
@@ -1214,10 +1222,11 @@
   function drawSift() {
     const chips = Object.entries(SIFTS).map(([name, filter]) =>
       `<button type="button" class="chip" data-sift="${name}" data-key="sift:${name}" aria-pressed="${state.sift === name}"${filter.title ? ` title="${escape(filter.title)}"` : ""}>${escape(filter.label)} <span class="count">${state.topics.length ? siftCount(name) : ""}</span></button>`).join("");
-    const closedCount = state.topics.filter(topic => CLOSED_STATES.includes(topic.state)).length;
-    const closed = `<button type="button" class="chip closed" data-sift="closed" data-key="sift:closed" aria-pressed="${state.closed}" title="${state.closed ? "Hide" : "Show"} done and abandoned topics">Done &amp; dropped <span class="count">${closedCount || ""}</span></button>`;
+    const closedCount = state.topics.filter(topic => CLOSED_STATES.includes(topic.state)).length
+      + state.topics.flatMap(topic => topic.items).filter(item => item.verdict === "dropped").length;
+    const closed = `<button type="button" class="chip closed" data-sift="closed" data-key="sift:closed" aria-pressed="${state.closed}" title="${state.closed ? "Hide" : "Show"} done and abandoned topics, and dropped items">Done &amp; dropped <span class="count">${closedCount || ""}</span></button>`;
     const confirm = state.tidying ? `<div class="tidy-confirm" role="dialog" aria-label="Tidy up" data-key="tidy-confirm">
-        <p><strong>Tidy up sends an agent to reorganize Work.</strong> It moves misplaced items, merges near-duplicate topics and splits sprawling ones, sets each topic's state from what is there, drops stale or superseded items (rejecting them with a note: it never accepts), and puts the topics in order, a reason in each status.</p>
+        <p><strong>Tidy up sends an agent to reorganize Work.</strong> It moves misplaced items, merges near-duplicate topics and splits sprawling ones, sets each topic's state from what is there, drops stale or superseded items with a note (the drop verdict: it never accepts or asks for rework), and puts the topics in order, a reason in each status.</p>
         <p>You watch it in the chat. Everything lands as one commit, which Undo there reverts.</p>
         <div class="buttons"><button type="button" class="button secondary" data-sift="tidy-cancel">Cancel</button><button type="button" class="button primary" data-sift="tidy-go">Tidy up</button></div></div>` : "";
     const tidy = `<span class="tidy-anchor" data-key="tidy"><button type="button" class="tidy" data-sift="tidy" aria-expanded="${state.tidying}" title="Send an agent to tidy Work: regroup, close, drop and order the topics">${BROOM}<span>Tidy up</span></button>${confirm}</span>`;
@@ -1404,7 +1413,7 @@
     const stopping = event.target.closest("[data-global-stop]");
     if (stopping && talk.id) post("chat/stop", { id: talk.id }).catch(error => studio.toast(error.message));
   });
-  document.getElementById("chat-button")?.addEventListener("click", event => { event.stopPropagation(); openGlobal(!talk.open); });
+  document.getElementById("chat-button")?.addEventListener("click", () => openGlobal(!talk.open));
   // Off the topics tab the tab's keys are off; the chat's field keeps its own.
   $("topics-global").addEventListener("keydown", event => {
     if (state.shown || !event.target.dataset?.draft) return;

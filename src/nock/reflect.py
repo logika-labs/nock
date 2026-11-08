@@ -585,7 +585,11 @@ class Reflection(Round):
             ),
             "items_decided": len(decided),
             "items_accepted": sum(1 for item in decided if item["verdict"] == ItemVerdict.ACCEPTED),
-            "items_rejected": sum(1 for item in decided if item["verdict"] == ItemVerdict.REJECTED),
+            "items_rejected": sum(
+                1
+                for item in decided
+                if item["verdict"] in (ItemVerdict.REJECTED, ItemVerdict.DROPPED)
+            ),
             "items_open": sum(1 for item in every if item["verdict"] == ItemVerdict.OPEN),
             "tools": len(tools),
             "tools_used": sum(1 for row in tools if row["calls"]),
