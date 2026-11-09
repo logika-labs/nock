@@ -22,8 +22,11 @@ topic opens in place, its items in sections, each with its count and a caret
 that folds it: decisions as bubbles that open in place on the answer (its
 whole width; Markdown's single line breaks flow together, a blank line parts
 paragraphs), the alternatives, the files it concerns and Drop, Reject and Accept;
-a decision is done unless a yellow-to-orange TODO chip under its time says otherwise; a
-white tick or cross on a green or red gradient circle, or a muted cross, before its time once accepted, rejected or dropped (hovered, "Accepted on Nov 23, 2026 at 14:05", in local time); an open
+a decision is done unless a Todo pill under its time (white on a foil edge, like Tidy up) says
+otherwise; before its title, its verdict: a dashed foil ring while open, a black tick on a cool foil
+circle (cyan into lavender) once accepted, a black cross on a warm one (yellow into pink) once
+rejected, a muted cross once dropped (hovered, in plain words: "Accepted on Nov 23, 2026 at 14:05",
+in local time; a topic's state mark likewise says when it was set); an open
 decision is framed in the foil's cyan and pink (`?decisions=rail` or `lift`
 on the page's address shows two other looks); pictures as one line of
 thumbnails, each with a ribbon of its title, time and verdict along its foot,
@@ -82,8 +85,8 @@ Under the bar, **filters**, one at a time and combined with the search, each
 with its count: All; **Needs me** (topics in review, open items, and chats the agent answered
 since the owner looked); **Waiting on agent** (the owner wrote last, or
 rejected an item still to rework); **Todo** (todo decisions); **Active**
-(topics under way). Done and abandoned topics stay hidden until **Done &
-dropped** shows them. The choice is kept per browser. **Tidy up** is at the
+(topics under way). Done and abandoned topics, and dropped items, stay hidden until **Show
+closed** shows them. The choice is kept per browser. **Tidy up** is at the
 right end of that line (see [Tidy up](#tidy-up)); on a phone the chips
 scroll sideways beside it.
 

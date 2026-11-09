@@ -34,11 +34,11 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, NotRequired, TypedDict
 
-from nock.chats import Chats
+from nock.chats import Chats, Kind
 from nock.commands import schema_of
 from nock.comparison import Comparison, Query
 from nock.configuration import with_table_settings
-from nock.errors import Error, NotFoundError, PreconditionError, UsageError
+from nock.errors import ConflictError, Error, NotFoundError, PreconditionError, UsageError
 from nock.evaluation import Evaluations, Run
 from nock.experiments import Experiment
 from nock.explorer import Explorer, View
@@ -61,6 +61,14 @@ from nock.usage import QUESTION, Answer, Usage, sharing
 from nock.utils import now, read_json, write_json
 
 PACKAGE = Path(__file__).resolve().parent
+# Set across a restart, so the browser is not opened a second time.
+RESTARTED = "NOCK_STUDIO_RESTARTED"
+# What each kind of chat is doing while its answer is being written.
+WORK = {
+    Kind.CHAT: "a chat is answering",
+    Kind.TIDY: "Tidy up is running",
+    Kind.ADDRESS: "Address my comments is running",
+}
 PAGES = PACKAGE / "pages"
 SHELL = PAGES / "studio.html"
 LOOK = PAGES / "studio.css"
@@ -69,7 +77,7 @@ LOOK = PAGES / "studio.css"
 def code_moment() -> int:
     """When nock's code last changed on disk. The pages are read at each
     request but the code only at start, so a studio left running across an
-    update serves new pages to old routes: the page says to restart it."""
+    update serves new pages to old routes: the page offers to restart it."""
     return max(path.stat().st_mtime_ns for path in PACKAGE.glob("*.py"))
 
 
@@ -487,7 +495,6 @@ class TopicsTab(Tab):
         self.seen = Seen(project)
         self.uploads = Uploads(project)
         self.texts: dict[Path, tuple[int, str]] = {}
-        self.started = code_moment()
 
     def fragment(self) -> str:
         look = (PAGES / "topics.css").read_text() + (PAGES / "chat.css").read_text()
@@ -499,7 +506,6 @@ class TopicsTab(Tab):
             return {
                 "topics": self.everything(),
                 "ask": self.asking.state(),
-                **({"restart": True} if code_moment() != self.started else {}),
                 "transcription": {
                     "enabled": transcription.enabled,
                     **({} if transcription.enabled else {"hint": HINT}),
@@ -769,6 +775,34 @@ class Studio(ThreadingHTTPServer):
         assert isinstance(topics, TopicsTab)
         chat = ChatRoutes(project, topics.uploads)
         self.routes: dict[str, Tab] = {**self.tabs, chat.name: chat}
+        self.chats = chat.chats
+        self.asking = topics.asking
+        self.started = code_moment()
+        # Tells one run of the studio from the next, which a restart keeps in the same process.
+        self.instance = secrets.token_hex(8)
+        self.restarting = False
+
+    def standing(self) -> dict[str, Any]:
+        """`GET /restart`: whether the code changed since the studio started,
+        what a restart would cut off (an answer being written, a question
+        being asked), and which run of the studio answers."""
+        busy = [WORK[Kind(self.chats.load(key)["kind"])] for key in list(self.chats.turns)]
+        if self.chats.naming:
+            busy.append("a chat is being named")
+        if (self.asking.state() or {}).get("running"):
+            busy.append("a question is being asked")
+        return {"stale": code_moment() != self.started, "busy": busy, "instance": self.instance}
+
+    def restart(self) -> None:
+        """`POST /restart`: stop serving, then `run` starts the studio again
+        in this process with the same arguments, on the same port. Refused
+        while something runs that it would cut off."""
+        busy = self.standing()["busy"]
+        if busy:
+            raise ConflictError(f"{', '.join(busy)}: restart once it is done, or it is cut off")
+        self.restarting = True
+        # Not from the handler's own thread: shutdown waits for the serving loop.
+        threading.Thread(target=self.shutdown, daemon=True).start()
 
     def question(self) -> str:
         """Under the title while nobody has answered: a slim line asking, with
@@ -890,7 +924,7 @@ class Studio(ThreadingHTTPServer):
 
     def run(self, open_browser: bool) -> None:
         print(f"nock: {self.address} (Ctrl-C to stop)", flush=True)
-        if open_browser:
+        if open_browser and not os.environ.pop(RESTARTED, ""):
             webbrowser.open(self.address)
         try:
             self.serve_forever()
@@ -898,10 +932,16 @@ class Studio(ThreadingHTTPServer):
             pass
         finally:
             self.server_close()
+        if self.restarting:
+            print("nock: restarting the studio", flush=True)
+            os.environ[RESTARTED] = "1"
+            os.execv(sys.executable, [sys.executable, *sys.orig_argv[1:]])
 
 
 class Handler(BaseHTTPRequestHandler):
-    """`GET /` the page; `POST /usage` the owner's answer on sharing, `/settings`
+    """`GET /` the page; `GET /restart` whether the code changed since it
+    started and what is running, `POST /restart` starts it again in place;
+    `POST /usage` the owner's answer on sharing, `/settings`
     the recorder's server; `/NAME/ROUTE`
     goes to the tab named, `/chat/ROUTE` to the chat."""
 
@@ -913,6 +953,9 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
         if self.path.split("?")[0] == "/":
             self.send(HTTPStatus.OK, self.studio.page(), "text/html")
+            return
+        if self.path == "/restart":
+            self.send_json(HTTPStatus.OK, self.studio.standing())
             return
         self.answer(lambda tab, route: tab.get(route))
 
@@ -932,6 +975,14 @@ class Handler(BaseHTTPRequestHandler):
             except json.JSONDecodeError as error:
                 self.send_json(HTTPStatus.BAD_REQUEST, {"error": str(error)})
                 return
+        if self.path == "/restart":
+            try:
+                self.studio.restart()
+            except Error as error:
+                self.send_json(HTTPStatus.CONFLICT, {"error": str(error)})
+                return
+            self.send_json(HTTPStatus.OK, {"restarting": True})
+            return
         if self.path in ("/usage", "/settings"):
             take = self.studio.answer if self.path == "/usage" else self.studio.configure
             try:

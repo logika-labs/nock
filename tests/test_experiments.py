@@ -7,6 +7,9 @@ from __future__ import annotations
 
 import json
 import re
+import threading
+import time
+import urllib.request
 from pathlib import Path
 from typing import Any
 
@@ -14,7 +17,7 @@ from nock.evaluation import Evaluations
 from nock.experiments import Experiment
 from nock.explorer import Explorer
 from nock.project import Project
-from nock.studio import ExperimentsTab
+from nock.studio import ExperimentsTab, Studio
 
 from .test_eval import call
 
@@ -123,3 +126,35 @@ def test_the_tab_answers_a_scenario_and_its_results(project: Project, toy: Path)
     assert model["name"] == "toy" and model["states"]
     output = "results/plant/bug=drop-banana"
     assert output in tab.post("toy/results", {"outputs": [output]})
+
+
+def test_a_scenario_worded_with_a_question_and_decisions_opens_on_both_tabs(
+    project: Project, toy: Path
+) -> None:
+    """Both tabs read `studio.json` through one schema, which a scenario's
+    `question` and `decisions` pass: neither says "invalid record"."""
+    worded(toy)
+    server = Studio(project, 0)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+
+        def fetch(path: str, body: Any = None) -> Any:
+            data = None if body is None else json.dumps(body).encode()
+            with urllib.request.urlopen(f"{server.address}{path}", data, timeout=60) as response:
+                return json.loads(response.read())
+
+        assert fetch("evals")["scenarios"][0]["name"] == "toy"
+        explored = fetch("evals/toy/explore", {})
+        assert "problem" not in explored or not explored["problem"]
+        for _ in range(600):
+            drawn = fetch("experiments/toy")
+            if "nodes" in drawn or drawn.get("problem"):
+                break
+            time.sleep(0.1)
+        assert drawn.get("problem") is None
+        assert drawn["question"] == "Does the toolbox find the planted bug?"
+        assert any(node["kind"] == "decision" for node in drawn["nodes"])
+    finally:
+        server.shutdown()
+        server.server_close()

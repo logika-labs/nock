@@ -1,7 +1,8 @@
 /* The topics tab: the bar (the field, then Search or Ask) on a glass card, then the topics as rows
    that open in place, and the viewer over them for a picture or a text. */
-/* The wash a hovered or open thing takes: silver, with a breath of yellow, orange and purple. */
-.topics { --wash: linear-gradient(100deg, rgb(196 200 212 / .16), rgb(255 226 122 / .10) 35%, rgb(255 168 110 / .08) 65%, rgb(185 166 255 / .13)); }
+/* The wash a hovered or open thing takes: the foil, bright and light enough to read on: pink,
+   cyan, yellow and lavender. */
+.topics { --wash: linear-gradient(100deg, rgb(255 140 205 / .24), rgb(110 225 255 / .22) 35%, rgb(255 228 100 / .26) 65%, rgb(180 155 255 / .26)); }
 .topics.frame { padding-block: 0 80px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
 .topics.frame > * { min-width: 0; }
 .topics main { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
@@ -143,32 +144,49 @@
 }
 .topics .item-bubble:hover { border-color: rgb(17 17 22 / .2); }
 .topics .item-bubble .head {
-  display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px 10px; padding: 13px 14px 13px 18px;
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: start; gap: 8px 12px; padding: 13px 14px 13px 14px;
   border-radius: 14px; cursor: pointer; transition: background-color .15s;
 }
+/* Its verdict before its title and its corner after it, all level with the title's first line
+   (the corner's 28px buttons), however many lines the title and a todo pill take. */
+.topics .item-bubble .head > .verdict-mark { margin-top: 3px; }
 .topics .item-bubble .head:hover, .topics .item-bubble.open .head { background: var(--wash); }
 .topics .item-bubble.open .head { border-radius: 14px 14px 0 0; }
 .topics .item-bubble .head .title {
-  border: 0; background: none; padding: 0; color: inherit; text-align: left; font: 600 15px/22px var(--sans); text-wrap: pretty; overflow-wrap: anywhere;
+  border: 0; background: none; padding: 3px 0 0; color: inherit; text-align: left; font: 600 15px/22px var(--sans); text-wrap: pretty; overflow-wrap: anywhere;
 }
 .topics .item-bubble .head .title:focus-visible { outline: 2px solid #111116; outline-offset: 2px; border-radius: 4px; }
 .topics .item-bubble .expanded { display: grid; gap: 14px; padding: 16px 18px 18px; border-top: 1px solid var(--border); }
 .topics .item-bubble .where { margin: 0; color: var(--muted); font-size: 13px; display: flex; flex-wrap: wrap; gap: 4px 6px; align-items: baseline; }
 .topics .item-bubble .where code { font: 12px var(--mono); }
-/* A todo decision: a small yellow-to-orange chip under its corner, at its right. */
-.topics .item-bubble .corner:has(.todo-pill) { position: relative; padding-bottom: 20px; }
+/* A todo decision: a pill under its corner, at its right, in Tidy up's look: white on a foil edge,
+   a soft foil shadow. */
+.topics .item-bubble .corner:has(.todo-pill) { position: relative; padding-bottom: 28px; }
 .topics .todo-pill {
-  position: absolute; right: 4px; bottom: 0; padding: 3px 7px; border-radius: 999px;
-  font: 700 9.5px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: #4a2500;
-  background: linear-gradient(120deg, #ffe27a, #ffb347 60%, #ff8a3d);
+  position: absolute; right: 2px; bottom: 0; display: inline-flex; align-items: center; height: 22px; padding: 0 10px; border-radius: 999px;
+  border: 1px solid transparent; color: var(--foreground); font: 500 11.5px/1 var(--sans);
+  background: linear-gradient(#fff, #fff) padding-box, linear-gradient(100deg, #ff9ad5, #c3b2ff, #8fe9ff) border-box;
+  box-shadow: -4px 4px 12px -6px rgb(255 120 200 / .55), 4px 6px 12px -6px rgb(90 220 255 / .6);
 }
 .topics .verdict-mark { display: grid; place-items: center; flex: none; width: 22px; height: 22px; border-radius: 50%; }
 /* The chat icon's glyph sits inside its button: the mark keeps as far from the time as the time from the glyph. */
 .topics .corner .verdict-mark { margin-right: 7px; }
 .topics .verdict-mark svg { width: 13px; height: 13px; }
-/* Accepted and rejected: a white tick or cross on a gradient circle, green or red. */
-.topics .verdict-mark.accepted { color: #fff; background: linear-gradient(135deg, #48d08a, #13874a); }
-.topics .verdict-mark.rejected { color: #fff; background: linear-gradient(135deg, #ff7a96, #c8233f); }
+/* Accepted and rejected: a black tick or cross on a foil circle, told apart by the glyph and the
+   foil's side: accepted the cool one (cyan into lavender, lit from the top left), rejected the warm
+   one (yellow into pink, lit from the bottom right). */
+.topics .verdict-mark.accepted, .topics .verdict-mark.rejected {
+  color: #111116; box-shadow: inset 0 1px 0 rgb(255 255 255 / .6), inset 0 0 0 1px rgb(17 17 22 / .07);
+}
+.topics .verdict-mark.accepted { background: linear-gradient(135deg, #7ff0ff, #9dc4ff 50%, #c3a6ff); }
+.topics .verdict-mark.rejected { background: linear-gradient(315deg, #ffe46b, #ffa6c9 55%, #ff7cc4); }
+/* Open: a dashed ring in the foil, waiting for its verdict. */
+.topics .verdict-mark.open {
+  background: conic-gradient(from 210deg, #2fcdf5, #8f6bff, #ff5cb8, #ffc93d, #2fcdf5);
+  -webkit-mask: radial-gradient(circle, transparent 8.5px, #000 9px), repeating-conic-gradient(#000 0 20deg, transparent 20deg 30deg);
+  -webkit-mask-composite: source-in;
+  mask: radial-gradient(circle, transparent 8.5px, #000 9px) intersect, repeating-conic-gradient(#000 0 20deg, transparent 20deg 30deg);
+}
 .topics .verdict-mark.dropped { color: var(--muted); background: var(--selection-tint); box-shadow: inset 0 0 0 1px var(--border); opacity: .8; }
 .topics .considered { display: grid; gap: 6px; }
 .topics .considered .label { color: var(--muted); }
@@ -214,11 +232,10 @@
 .topics .tip strong { font: 700 13.5px/18px var(--display); letter-spacing: -.01em; }
 .topics .tip .means { color: var(--muted); }
 .topics .tip .line { font-weight: 500; overflow-wrap: anywhere; }
-.topics .tip .set { font: 500 11px/16px var(--mono); color: var(--muted); }
 .topics [data-tip] { cursor: help; }
 
 /* The chat toggle: a bubble icon; a glowing foil dot when the agent said something not yet seen; its
-   outline a slowly swirling foil while the owner's message waits for the agent's answer. */
+   outline a slowly swirling foil, no glow, while the owner's message waits for the agent's answer. */
 .topics .chat-toggle {
   position: relative; z-index: 2; display: grid; place-items: center; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 8px;
   background: none; color: var(--muted);
@@ -233,7 +250,7 @@
 }
 .topics .chat-toggle.unseen .mark { display: block; }
 @property --swirl { syntax: "<angle>"; inherits: false; initial-value: 0deg; }
-.topics .chat-toggle .swirl { display: none; position: absolute; inset: 5px; filter: drop-shadow(0 0 2px rgb(90 220 255 / .9)) drop-shadow(0 0 3px rgb(255 120 200 / .7)); }
+.topics .chat-toggle .swirl { display: none; position: absolute; inset: 5px; }
 .topics .chat-toggle .swirl span {
   position: absolute; inset: 0;
   /* The foil's colours, deepened enough to read as a line on white. */
@@ -405,7 +422,8 @@
    and taking its foil tint when hovered; the verdict at the foot's right. */
 .topics .strip {
   display: flex; align-items: flex-start; gap: 12px; overflow-x: auto; overscroll-behavior-x: contain; scroll-snap-type: x proximity;
-  padding: 7px 7px 10px; margin: -7px -7px -2px; scroll-padding-inline: 7px; scrollbar-width: thin;
+  /* Room inside the scroller for a hovered card's shadow, which it would clip otherwise. */
+  padding: 10px 12px 24px; margin: -10px -12px -16px; scroll-padding-inline: 12px; scrollbar-width: thin;
 }
 .topics .strip > * { scroll-snap-align: start; flex: none; }
 .topics .thumb {

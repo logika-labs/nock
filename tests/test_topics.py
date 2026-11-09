@@ -8,7 +8,9 @@ items move into topics once."""
 from __future__ import annotations
 
 import json
+import os
 import shutil
+import socket
 import subprocess
 import threading
 import time
@@ -21,10 +23,11 @@ from typing import Any
 
 import pytest
 
+from nock.chats import Kind, Turn
 from nock.hooks import HookRunner
 from nock.migration import Migration
 from nock.project import Project
-from nock.studio import PAGES, TABS, Studio, TopicsTab
+from nock.studio import PAGES, TABS, Studio
 from nock.topics import Author, Topics, owner_word
 
 from .conftest import git, nock
@@ -414,24 +417,83 @@ def test_a_topic_in_review_waits_on_the_owner_and_its_work_counts_as_stated(
     assert Topics(project).unstated("s2") == []
 
 
-def test_a_studio_older_than_its_code_asks_to_be_restarted(project: Project) -> None:
+def test_a_studio_older_than_its_code_asks_to_be_restarted_unless_it_would_cut_something_off(
+    project: Project,
+) -> None:
     server = Studio(project, 0)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     try:
 
-        def restart() -> bool:
-            with urllib.request.urlopen(f"{server.address}topics") as response:
-                return json.loads(response.read()).get("restart", False)
+        def standing() -> dict[str, Any]:
+            with urllib.request.urlopen(f"{server.address}restart") as response:
+                return json.loads(response.read())
 
-        assert not restart()
-        tab = server.tabs["topics"]
-        assert isinstance(tab, TopicsTab)
-        tab.started -= 1
-        assert restart()
+        assert standing()["stale"] is False and standing()["busy"] == []
+        server.started -= 1
+        assert standing()["stale"] is True
+        tidy = server.chats.create(Kind.TIDY)
+        server.chats.save(tidy)
+        server.chats.turns[tidy["id"]] = Turn(started=tidy["created"])
+        assert standing()["busy"] == ["Tidy up is running"]
+        refused = urllib.request.Request(f"{server.address}restart", b"{}", method="POST")
+        with pytest.raises(urllib.error.HTTPError) as error:
+            urllib.request.urlopen(refused)
+        assert (
+            error.value.code == 409
+            and "Tidy up is running" in json.loads(error.value.read())["error"]
+        )
+        assert not server.restarting
     finally:
         server.shutdown()
         server.server_close()
+
+
+def test_a_restart_starts_the_studio_again_in_place_on_its_port(project: Project) -> None:
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        port = probe.getsockname()[1]
+    process = subprocess.Popen(
+        [str(project.root / ".nock" / "nock"), "studio", json.dumps({"port": port})],
+        cwd=project.root,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+    )
+    address = f"http://127.0.0.1:{port}/restart"
+
+    def standing() -> dict[str, Any] | None:
+        try:
+            with urllib.request.urlopen(address, timeout=2) as response:
+                return json.loads(response.read())
+        except OSError:
+            return None
+
+    def answered(check: Any) -> dict[str, Any]:
+        for _ in range(200):
+            seen = standing()
+            if seen is not None and check(seen):
+                return seen
+            time.sleep(0.05)
+        raise AssertionError("the studio did not answer as expected")
+
+    try:
+        first = answered(lambda seen: True)
+        assert first["stale"] is False
+        code = project.root / ".nock" / "core" / "nock" / "studio.py"
+        later = code.stat().st_mtime_ns + 1_000_000_000
+        os.utime(code, ns=(later, later))
+        assert answered(lambda seen: seen["stale"])["instance"] == first["instance"]
+        request = urllib.request.Request(address, b"{}", method="POST")
+        with urllib.request.urlopen(request) as response:
+            assert json.loads(response.read()) == {"restarting": True}
+        again = answered(lambda seen: seen["instance"] != first["instance"])
+        assert again["stale"] is False and process.poll() is None
+    finally:
+        process.terminate()
+        output, _ = process.communicate(timeout=10)
+    assert "nock: restarting the studio" in output
+    assert output.count(f"http://127.0.0.1:{port}/") == 2
 
 
 def test_topics_with_a_priority_come_first_in_order_then_the_newest(

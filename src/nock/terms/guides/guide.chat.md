@@ -83,4 +83,8 @@ the owner to look at. Its words stream in as any chat's, and its last
 message is the summary; the button goes once nothing waits.
 
 A studio left running across an update of nock serves the new pages with
-the old code; the Work tab then says to restart it.
+the old code; a toast on every tab then says so, with **Restart**, which starts
+the studio again in place, on the same port, and reloads the page once it
+answers. While a chat, Tidy up, Address my comments or a question is under
+way, the toast says what a restart would cut off and holds Restart back
+until it is done.

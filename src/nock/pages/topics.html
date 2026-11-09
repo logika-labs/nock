@@ -15,7 +15,6 @@
     <div class="sift" id="topics-sift" role="toolbar" aria-label="Filters and Tidy up"></div>
     <div class="answer" id="topics-answer" aria-live="polite" hidden></div>
   </div>
-  <p class="restart" id="topics-restart" role="status" hidden><strong>nock was updated since this studio started.</strong> Stop <code>nock studio</code> and start it again: until then parts of the page may not work.</p>
   <main id="topics-main"></main>
   <div id="topics-modal"></div>
   <div class="tip" id="topics-tip" role="tooltip" hidden></div>
@@ -382,16 +381,16 @@
 
   // A title as it is written, its `code` set as code.
   const titled = text => escape(text).replace(/`([^`]+)`/g, "<code>$1</code>");
-  // The owner's verdict as a mark: a green tick, a red cross, a muted cross for dropped (closed,
+  // A verdict as a mark: a tick or a cross on a foil circle, a muted cross for dropped (closed,
   // nothing to rework); nothing while it is open.
-  // A mark's hover card (`#topics-tip`, the evaluations' card): its name, what it means, and the
-  // line and moment that set it, when there are any.
-  const tipped = (word, means, line = "", moment = "") =>
-    `data-tip="${escape(word)}" data-tip-means="${escape(means)}"${line ? ` data-tip-line="${escape(line)}"` : ""}${moment ? ` data-tip-when="${escape(moment)}"` : ""}`;
+  // A mark's hover card (`#topics-tip`, the evaluations' card), in plain words: what it is and
+  // when ("Accepted on Nov 8, 2026 at 17:57"), what follows from it, and the line that set it.
+  const tipped = (said, means = "", line = "") =>
+    `data-tip="${escape(said)}"${means ? ` data-tip-means="${escape(means)}"` : ""}${line ? ` data-tip-line="${escape(line)}"` : ""}`;
   const VERDICTS = {
-    accepted: ["Accepted", "the owner accepted it"],
-    rejected: ["Rejected", "the owner rejected it: the agent reworks it as a new version"],
-    dropped: ["Dropped", "the owner rejected it with nothing to rework: closed"],
+    accepted: ["Accepted", ""],
+    rejected: ["Rejected", "To be reworked as a new version"],
+    dropped: ["Dropped", "Closed, with nothing to rework"],
   };
   // "Accepted on Nov 23, 2026 at 14:05", in local time.
   function decidedOn(word, moment) {
@@ -401,22 +400,24 @@
     const hour = when.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
     return `${word} on ${day} at ${hour}`;
   }
-  function verdictMark(item) {
+  // A decision's mark stands before its title, open ones too: a dashed foil ring, waiting.
+  function verdictMark(item, open = false) {
+    if (open && item.verdict === "open") return `<span class="verdict-mark open" aria-label="Open" role="img" ${tipped("Open", "Waiting for a verdict")}></span>`;
     const [word, means] = VERDICTS[item.verdict] || [];
     if (!word) return "";
     const said = decidedOn(word, item.decided?.moment);
     return `<span class="verdict-mark ${item.verdict}" aria-label="${escape(said)}" role="img" ${tipped(said, means)}>${ICONS[item.verdict]}</span>`;
   }
   // A decision is done unless it says otherwise: only a todo one shows its status, a chip under its corner.
-  const todoPill = `<span class="todo-pill" aria-label="To do" ${tipped("To do", "decided, but the work it calls for is still to do")}>Todo</span>`;
+  const todoPill = `<span class="todo-pill" aria-label="To do" ${tipped("To do", "Decided; the work it calls for is still to do")}>Todo</span>`;
   // Where a topic's work stands, beside its time: active a turning foil spinner, planned a foil
   // ring, done and abandoned a full foil circle with a tick or a cross. A topic in review (built,
   // only the owner's verdicts remain) shows none: waiting on the owner needs no mark.
   const STATES = {
-    active: ["Active", "an agent is working on it"],
-    planned: ["Planned", "the work is set out, not started"],
-    done: ["Done", "the work is finished"],
-    abandoned: ["Abandoned", "the work was stopped before it was finished"],
+    active: ["Active", "An agent is working on it"],
+    planned: ["Planned", "Set out, not started"],
+    done: ["Done", "The work is finished"],
+    abandoned: ["Abandoned", "Stopped before it was finished"],
   };
   function stateMark(topic) {
     if (topic.state === "review") return "";
@@ -424,13 +425,13 @@
     const [word, means] = STATES[known];
     const icon = known === "done" ? ICONS.accepted : known === "abandoned" ? ICONS.rejected : "";
     const set = [...topic.thread].reverse().find(entry => entry.kind === "status");
-    return `<span class="state-mark ${known}" aria-label="${word}" role="img" ${tipped(word, means, topic.status || "", set?.moment)}>${icon}</span>`;
+    const said = decidedOn(word, set?.moment);
+    return `<span class="state-mark ${known}" aria-label="${escape(said)}" role="img" ${tipped(said, means, topic.status || "")}>${icon}</span>`;
   }
   function showTip(mark) {
     const tip = $("topics-tip");
-    const when = mark.dataset.tipWhen;
-    tip.innerHTML = `<strong>${escape(mark.dataset.tip)}</strong><span class="means">${escape(mark.dataset.tipMeans)}</span>${mark.dataset.tipLine
-      ? `<span class="line">${escape(mark.dataset.tipLine)}</span>` : ""}${when ? `<span class="set">set ${escape(short(when))} ago · ${escape(new Date(when).toLocaleString())}</span>` : ""}`;
+    const { tip: said, tipMeans: means, tipLine: line } = mark.dataset;
+    tip.innerHTML = `<strong>${escape(said)}</strong>${means ? `<span class="means">${escape(means)}</span>` : ""}${line ? `<span class="line">${escape(line)}</span>` : ""}`;
     tip.hidden = false;
     const anchor = mark.getBoundingClientRect();
     const below = anchor.bottom + 8 + tip.offsetHeight < innerHeight - 8;
@@ -503,7 +504,7 @@
       const held = waiting && index === entries.length - 1;
       const words = entry.text ? `<div class="context">${markdown(entry.text)}</div>` : "";
       return `<div class="message ${entry.author}${held ? " waiting" : ""}${entry.attachments?.length ? " carrying" : ""}" data-key="message:${escape(entry.moment)}:${index}">${notes}${words}${carried(key, entry)}
-        <span class="when">${held ? "waiting for the answer · " : ""}${time(entry.moment)}</span></div>`;
+        <span class="when">${time(entry.moment)}</span></div>`;
     }).join("");
     return `<aside class="chat${state.dropping === key ? " dropping" : ""}" data-key="chat:${escape(key)}" data-drop="${escape(key)}" aria-label="Chat"><div class="chat-head"><span class="label">Chat</span></div>
       <div class="messages" data-log="${escape(key)}">${messages || '<p class="nothing">Nothing said yet.</p>'}</div>
@@ -541,11 +542,11 @@
   function bubble(item) {
     const open = state.expanded.has(item.ref);
     const todo = last(item).decision.status === "todo" ? todoPill : "";
-    const corner = `<span class="corner">${verdictMark(item)}${time(item.updated)}${chatCorner(item.ref, item.thread, item.chat)}${todo}</span>`;
+    const corner = `<span class="corner">${time(item.updated)}${chatCorner(item.ref, item.thread, item.chat)}${todo}</span>`;
     const title = `<button type="button" class="title" aria-expanded="${open}">${titled(item.title)}</button>`;
     const latest = last(item);
     const decision = latest.decision;
-    const head = `${title}${corner}`;
+    const head = `${verdictMark(item, true)}${title}${corner}`;
     let body = "";
     if (open) {
       const alternatives = decision.alternatives.length ? `<div class="considered"><span class="label">Considered instead</span><ul class="alternatives">${decision.alternatives.map(entry =>
@@ -1107,7 +1108,6 @@
       state.topics = data.topics;
       state.ask = data.ask;
       state.transcription = data.transcription || null;
-      $("topics-restart").hidden = !data.restart;
       if (said().length) find(false);
       draw();
     } catch {
@@ -1615,7 +1615,7 @@
       `<button type="button" class="chip" data-sift="${name}" data-key="sift:${name}" aria-pressed="${state.sift === name}"${filter.title ? ` title="${escape(filter.title)}"` : ""}>${escape(filter.label)} <span class="count">${state.topics.length ? siftCount(name) : ""}</span></button>`).join("");
     const closedCount = state.topics.filter(topic => CLOSED_STATES.includes(topic.state)).length
       + state.topics.flatMap(topic => topic.items).filter(item => item.verdict === "dropped").length;
-    const closed = `<button type="button" class="chip closed" data-sift="closed" data-key="sift:closed" aria-pressed="${state.closed}" title="${state.closed ? "Hide" : "Show"} done and abandoned topics, and dropped items">Done &amp; dropped <span class="count">${closedCount || ""}</span></button>`;
+    const closed = `<button type="button" class="chip closed" data-sift="closed" data-key="sift:closed" aria-pressed="${state.closed}" title="${state.closed ? "Hide" : "Show"} done and abandoned topics, and dropped items">Show closed <span class="count">${closedCount || ""}</span></button>`;
     const confirm = state.tidying ? `<div class="tidy-confirm" role="dialog" aria-label="Tidy up" data-key="tidy-confirm">
         <p><strong>Tidy up sends an agent to reorganize Work.</strong> It moves misplaced items, merges near-duplicate topics and splits sprawling ones, sets each topic's state from what is there, drops stale or superseded items with a note (the drop verdict: it never accepts or asks for rework), and puts the topics in order, a reason in each status.</p>
         <p>You watch it in the chat. Everything lands as one commit, which Undo there reverts.</p>

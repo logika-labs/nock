@@ -142,6 +142,17 @@ button:not(:disabled), label[for] { cursor: pointer; }
   opacity: 0; pointer-events: none; transition: opacity .15s, transform .15s; max-width: calc(100vw - 32px);
 }
 .toast.shown { opacity: 1; transform: translate(-50%, 0); }
+/* A studio older than its code: a toast that stays, with Restart, and what a restart would cut off. */
+.toast.restart { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; width: max-content; pointer-events: auto; line-height: 1.45; }
+.toast.restart[hidden] { display: none; }
+body:has(#restart:not([hidden])) #toast { bottom: calc(84px + env(safe-area-inset-bottom, 0px)); }
+.toast.restart .busy { flex-basis: 100%; color: #ffd36e; font-size: 13px; }
+.toast.restart .busy:empty { display: none; }
+.toast.restart button {
+  border: 0; padding: 0; background: none; color: #8fe9ff; font: 600 14px var(--sans); text-decoration: underline; text-underline-offset: 3px; cursor: pointer;
+}
+.toast.restart button:disabled { color: rgb(255 255 255 / .45); text-decoration: none; cursor: default; }
+.toast.restart button:focus-visible { outline: 2px solid #fff; outline-offset: 2px; border-radius: 2px; }
 
 /* A tab away that holds something shown on every tab: nothing of it shows or takes room but that. */
 [data-tab-panel][data-away] { height: 0; overflow: hidden; visibility: hidden; }
@@ -402,6 +413,7 @@ function morphElement(element, next) {
 <!-- nock:panels -->
 </div>
 <div class="toast" id="toast" role="status"></div>
+<div class="toast restart shown" id="restart" role="status" hidden><span>nock was updated since this studio started.</span> <button type="button">Restart</button><span class="busy"></span></div>
 <script>
 // The owner's answer to whether nock shares its usage report: asked under the title until
 // given, changed later with the switch in the settings; the same answer either way.
@@ -451,6 +463,42 @@ document.addEventListener("click", event => {
 document.addEventListener("keydown", event => {
   if (event.key === "Escape" && !settings.panel.hidden) { settings.open(false); settings.gear.focus(); }
 });
+// A studio older than its code serves new pages to old routes: a toast offers to restart it in
+// place (`POST /restart`), held back while a chat, Tidy up or a question would be cut off; the
+// page then waits for the studio to answer again and reloads.
+const restart = {
+  toast: document.getElementById("restart"),
+  restarting: false,
+  async check() {
+    if (this.restarting) return;
+    let standing;
+    try { standing = await (await fetch("/restart")).json(); } catch { return; }
+    this.instance = standing.instance;
+    this.toast.hidden = !standing.stale;
+    const busy = standing.busy.join(", ");
+    this.toast.querySelector(".busy").textContent = busy ? `Restart once it is done: ${busy}.` : "";
+    this.toast.querySelector("button").disabled = Boolean(busy);
+  },
+  async go() {
+    const button = this.toast.querySelector("button");
+    const response = await fetch("/restart", { method: "POST", body: "{}" });
+    if (!response.ok) { this.toast.querySelector(".busy").textContent = (await response.json()).error; return; }
+    this.restarting = true;
+    button.disabled = true;
+    button.textContent = "Restarting…";
+    for (let tries = 0; tries < 120; tries++) {
+      await new Promise(resolve => setTimeout(resolve, 500));
+      try {
+        const standing = await (await fetch("/restart")).json();
+        if (standing.instance !== this.instance) { location.reload(); return; }
+      } catch { /* not answering yet */ }
+    }
+    this.toast.querySelector(".busy").textContent = "The studio did not come back: start it again with nock studio.";
+  },
+};
+restart.toast.querySelector("button").addEventListener("click", () => restart.go());
+restart.check();
+setInterval(() => { if (!document.hidden) restart.check(); }, 5000);
 addEventListener("hashchange", () => studio.open());
 studio.open();
 </script>

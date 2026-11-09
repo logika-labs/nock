@@ -68,7 +68,8 @@ src/nock/
                      Tidy up (its writes as one commit, Undo a revert) and Address my
                      comments; `.nock/local/chats/`
   studio.py          the owner's page (`nock studio`): a local server, a Tab per tab, the chat's
-                     routes; `code_moment`, so a studio older than its code asks for a restart
+                     routes; `code_moment`, so a studio older than its code offers to restart
+                     in place (`POST /restart`, a re-exec on the same port)
   transcription.py   Transcription: the studio's recorder, a recording forwarded to the
                      Whisper server `studio.transcribe_url` names and made text
   pages/             studio.html, the shell (band with the title and the menu, routing by
