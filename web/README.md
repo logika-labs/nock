@@ -10,7 +10,8 @@ landing/           the landing page, About and Getting started: their templates 
                    about.html, start.html) and copy.html, the words they share, a block each
 legal/             privacy.md and terms.md, each with its plain-words summary (NAME-plain.md)
 site/              style.css, demo.js and demo.css (the demo), fonts/, logika.webp and .png
-                   (Logika's art, beside "nock in Logika"); the pages are built into
+                   (Logika's art, beside "nock in Logika"), og.jpg (the link preview, the
+                   owner's art cropped to 1200x630); the pages are built into
                    it (gitignored), and studio/topics.css, the studio's sheet, copied in
 build.py           the pages: landing/; the docs from ../src/nock/terms/ (a page per
                    guide, in four groups, with the terms an agent reads on it); legal/; and

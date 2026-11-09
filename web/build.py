@@ -33,10 +33,14 @@ REPOSITORY = GITHUB + "/blob/main/"
 LOGIKA = "https://logika.host"
 
 # The story pages, by where they are served, with their title, description and template in landing/.
+# nock's one line, everywhere it is named: the home page's title, its description's first sentence,
+# llms.txt's summary and the JSON-LD.
+TAGLINE = "A self-improving toolbox for coding agents."
+
 STORY = {
     "/": (
-        "nock",
-        "A toolbox your coding agents build for themselves, in your repository: every session recorded, their work put before you to review, and reflection rounds that write the tools they need.",
+        f"nock — {TAGLINE}",
+        f"{TAGLINE} It lives in your repository, records every session, puts their work before you and writes the tools they need.",
         "home",
     ),
     "/about/": (
@@ -707,7 +711,7 @@ def layout(url: str, title: str, description: str, current: str, main: str, head
         LAYOUT.read_text()
         .replace("{{ title }}", html.escape(title))
         .replace("{{ description }}", html.escape(description))
-        .replace("{{ seo }}", seo_head(url))
+        .replace("{{ seo }}", seo_head(url) + "\n" + social_head(url, title, description))
         .replace("{{ head }}", head)
         .replace("{{ menu }}", menu(current))
         .replace("{{ main }}", main)
@@ -819,7 +823,7 @@ def software() -> dict[str, object]:
         "@type": "SoftwareApplication",
         "name": "nock",
         "url": f"{ORIGIN}/",
-        "description": STORY["/"][1],
+        "description": TAGLINE,
         "applicationCategory": "DeveloperApplication",
         "operatingSystem": "macOS, Linux",
         "license": "https://opensource.org/licenses/MIT",
@@ -847,6 +851,39 @@ def seo_head(url: str) -> str:
         for data in structured_data(url)
     ]
     return "\n".join([f'<link rel="canonical" href="{ORIGIN}{url}">', *scripts])
+
+
+# The preview a link to any page shows: the owner's art, cropped to 1200x630 from its 16:9 original
+# around the large creature at the bottom left and the one at the top right.
+OG_IMAGE = "/og.jpg"
+OG_IMAGE_SIZE = (1200, 630)
+OG_IMAGE_ALT = (
+    "nock's pixel creatures, chunky black blocks with foil eyes, floating over an iridescent foil "
+    "field on black halftone."
+)
+
+
+def social_head(url: str, title: str, description: str) -> str:
+    """The OpenGraph and Twitter tags a shared link is previewed from: the page's own title,
+    description and canonical address, and the site's one image."""
+    width, height = OG_IMAGE_SIZE
+    tags = [
+        ("property", "og:type", "website"),
+        ("property", "og:site_name", "nock"),
+        ("property", "og:title", title),
+        ("name", "twitter:title", title),
+        ("property", "og:description", description),
+        ("property", "og:url", f"{ORIGIN}{url}"),
+        ("property", "og:image", f"{ORIGIN}{OG_IMAGE}"),
+        ("property", "og:image:width", str(width)),
+        ("property", "og:image:height", str(height)),
+        ("property", "og:image:alt", OG_IMAGE_ALT),
+        ("name", "twitter:card", "summary_large_image"),
+        ("name", "twitter:image:alt", OG_IMAGE_ALT),
+    ]
+    return "\n".join(
+        f'<meta {kind}="{name}" content="{html.escape(value)}">' for kind, name, value in tags
+    )
 
 
 def last_changed(sources: list[Path], today: str) -> str:

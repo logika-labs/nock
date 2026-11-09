@@ -1,6 +1,6 @@
 # nock
 
-A toolbox your coding agents build for themselves.
+A self-improving toolbox for coding agents.
 
 Agents repeat themselves: the same five shell commands to find out why a test
 fails, the same throwaway script, the mistake you have already corrected
