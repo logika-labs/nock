@@ -9,3 +9,4 @@ web/site/**/*.html
 web/site/studio/
 web/pages/
 server/build/
+web/build/
