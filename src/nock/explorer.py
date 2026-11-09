@@ -139,6 +139,55 @@ STATUS_WORDS = {
 # --- the words a scenario may give ---------------------------------------------------
 
 
+class Branch(TypedDict):
+    id: str
+    label: NotRequired[str]
+    verdict: NotRequired[str]
+    """`good` or `bad`: the branch ends the trajectory with it."""
+    equals: NotRequired[Any]
+    """Taken when the metric is this value."""
+    above: NotRequired[float]
+    """Taken when the metric is above this number. A branch with neither takes the rest."""
+
+
+class Decision(TypedDict):
+    """Code over a step's metrics that picks one of its branches."""
+
+    after: str
+    """The rule whose outputs it reads."""
+    label: str
+    """Its short label, a question: `Fixed?`."""
+    metric: str
+    """The key of the outputs' metrics.json it reads."""
+    branches: list[Branch]
+    condition: NotRequired[str]
+    """The full condition, in words."""
+    measure: NotRequired[str]
+    """The name of the measure its good branch counts: `Bugs fixed`."""
+
+
+class ResultWords(TypedDict):
+    """One result an output holds: a file inside it, or the metrics under a prefix."""
+
+    name: str
+    kind: str
+    """How it is shown: facts, text, patch, list, checks or steps."""
+    about: NotRequired[str]
+    file: NotRequired[str]
+    metrics: NotRequired[str]
+    """A prefix of metrics.json's keys, true or false each: shown as checks."""
+
+
+class ScoreWords(TypedDict):
+    metric: str
+    name: NotRequired[str]
+    about: NotRequired[str]
+    better: NotRequired[str]
+    """`higher` (the default) or `lower`."""
+    of: NotRequired[str]
+    """A metric holding what the score is out of."""
+
+
 class RuleWords(TypedDict):
     title: NotRequired[str]
     """The column's title: `Observation`."""
@@ -149,6 +198,10 @@ class RuleWords(TypedDict):
     highlights: NotRequired[list[str]]
     """Sentences about one output, `{name}` filled from its metrics, cost and parameters;
     a sentence naming something the output lacks is left out."""
+    results: NotRequired[list[ResultWords]]
+    """What one of its outputs holds, for the Experiments tab; its metrics and diff.patch by default."""
+    score: NotRequired[ScoreWords]
+    """The metric that scores one of its outputs, for the Experiments tab."""
 
 
 class ParameterWords(TypedDict):
@@ -156,6 +209,15 @@ class ParameterWords(TypedDict):
     """What the parameter is: `Instrumentation setup`."""
     values: NotRequired[dict[str, str]]
     """Its values in words: `{"none": "no skill"}`."""
+    about: NotRequired[str]
+    """What it is, in a sentence."""
+    pooled: NotRequired[bool]
+    """Added up rather than compared, like a bug in a bank: the Experiments tab's variants
+    are the values of the parameters that are not."""
+    repeat: NotRequired[bool]
+    """It repeats a step (`rep` by default)."""
+    controls: NotRequired[list[str]]
+    """Its values that are a control, not a case: `["none"]` for no bug."""
 
 
 class Analysis(TypedDict):
@@ -184,6 +246,10 @@ class Words(TypedDict):
     """The parameter whose values are the graph's rows; the earliest that forks by default."""
     analyses: NotRequired[list[Analysis]]
     """The comparisons the scenario was run to answer, written down first."""
+    question: NotRequired[str]
+    """What the experiment asks, for the Experiments tab."""
+    decisions: NotRequired[list[Decision]]
+    """Code over a step's metrics that picks a branch, for the Experiments tab."""
 
 
 class Selection(TypedDict):

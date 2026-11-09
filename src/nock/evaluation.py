@@ -29,6 +29,7 @@ from typing import TYPE_CHECKING, Any, NotRequired, TypedDict
 from nock.errors import NotFoundError, PreconditionError, UsageError
 from nock.processes import Output, Supervisor
 from nock.steps import COST, ERROR, METRICS, attempts_of
+from nock.utils import now
 
 if TYPE_CHECKING:
     from nock.project import Project
@@ -39,6 +40,9 @@ RESULTS = "results"
 CACHE = "cache"
 PROFILE = "profile"
 LFS_POINTER = b"version https://git-lfs.github.com/spec/v1"
+RUNS = ".runs.jsonl"
+"""The cache's log of runs, a line each: when, the targets, what it computed, restored and
+failed. Dotted, so pruning passes it over; committed with a committed cache."""
 # Runs in uv's interpreter with Snakemake: loads the workflow as `--list-untracked`
 # would, with the profile and the targets, and prints each cached output's entry
 # in the cache (its provenance hash, and the extension Snakemake keeps) instead.
@@ -258,6 +262,21 @@ class Scenario:
             return self.directory / CACHE
         base = Path(configured).expanduser()
         return (base if base.is_absolute() else self.project.here / base) / self.name
+
+    def runs(self) -> list[dict[str, Any]]:
+        """The runs the cache's log holds, oldest first; a line it cannot read is passed over."""
+        path = self.cache / RUNS
+        if not path.is_file():
+            return []
+        found = []
+        for line in path.read_text().splitlines():
+            try:
+                record = json.loads(line)
+            except ValueError:
+                continue
+            if isinstance(record, dict):
+                found.append(record)
+        return found
 
     @property
     def committed(self) -> bool:
@@ -666,6 +685,7 @@ class Run:
             raise UsageError(refused, self.summary())
         entries = {path.name for path in self.scenario.cache.iterdir()}
         before = {result.path: result.entry for result in self.scenario.materialised()}
+        started = now()
         output = self.scenario.run(self.targets, cores, limits)
         made = [
             result
@@ -685,6 +705,7 @@ class Run:
             for result in made
             if (self.scenario.directory / result.path / ERROR).is_file()
         ]
+        self.log(started, computed, made, failed, spent)
         summary: dict[str, Any] = {
             "scenario": self.scenario.name,
             "computed": len(computed),
@@ -710,6 +731,31 @@ class Run:
             + ("; `nock eval run --retry` computes the failed again" if failed else "")
         )
         return summary
+
+    def log(
+        self,
+        started: str,
+        computed: list[Result],
+        made: list[Result],
+        failed: list[str],
+        spent: float,
+    ) -> None:
+        """A line in the cache's log of runs (`RUNS`): what this run computed and restored."""
+        if not made:
+            return
+        fresh = {result.path for result in computed}
+        record = {
+            "started": started,
+            "finished": now(),
+            "targets": self.targets,
+            "computed": {result.path: result.entry for result in computed},
+            "restored": sorted(result.path for result in made if result.path not in fresh),
+            "failed": failed,
+            "usd": round(spent, 6),
+        }
+        self.scenario.cache.mkdir(parents=True, exist_ok=True)
+        with (self.scenario.cache / RUNS).open("a") as handle:
+            handle.write(json.dumps(record) + "\n")
 
 
 def read(path: Path) -> dict[str, Any]:

@@ -1,0 +1,750 @@
+<div class="frame experiments" id="experiments">
+  <div class="xp-picker" id="xp-picker" role="group" aria-label="Scenario" hidden></div>
+  <p class="glass xp-note" id="xp-note" hidden></p>
+  <div class="xp-main" id="xp-main" hidden>
+    <header class="glass">
+      <h2 class="xp-question" id="xp-question"></h2>
+      <div class="measures"><div class="mtable" id="xp-measures"></div></div>
+    </header>
+    <section class="glass window" id="xp-window">
+      <div class="zoomer"><button data-zoom="1.25" aria-label="Zoom in">+</button><button data-zoom="0.8" aria-label="Zoom out">−</button></div>
+      <div class="overlays" id="xp-overlays"></div>
+      <svg id="xp-tree" role="img" aria-label="The experiment's steps"></svg>
+    </section>
+  </div>
+  <div class="tip" id="xp-tip" hidden></div>
+  <aside class="panel" id="xp-panel" aria-hidden="true" tabindex="-1"></aside>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
+<script>
+// The Experiments tab (its look is pages/experiments.css): `GET experiments/NAME` is a scenario as an
+// experiment (nock.experiments), drawn here with D3 — its steps forking by parameter, repeat and
+// decision on a black field, a panel for a step, a decision, a run or a measure — and `POST
+// experiments/NAME/results` the results of the outputs a panel shows, fetched when it shows them.
+(() => {
+const $ = id => document.getElementById("xp-" + id);
+const shell = { name: null, route: "", shown: false, controller: null, names: [] };
+function load(name, route) {
+  return fetch(`experiments/${encodeURIComponent(name)}`).then(r => r.json()).then(X => {
+    if (X.error || X.deriving || X.problem) {
+      $("main").hidden = true; $("note").hidden = false;
+      $("note").textContent = X.error || X.problem || "Reading the workflow… this takes as long as a dry run, once.";
+      studio.summary("experiments", `${name}: ${X.problem ? "can't read it" : "reading the workflow…"}`);
+      if (X.deriving) setTimeout(() => shell.shown && shell.name === name && load(name, route), 3000);
+      return;
+    }
+    $("note").hidden = true; $("main").hidden = false;
+    shell.controller?.abort(); shell.controller = new AbortController();
+    boot(X, route, shell.controller.signal);
+  });
+}
+function pick() {
+  const box = $("picker");
+  box.hidden = shell.names.length < 2;
+  box.innerHTML = shell.names.map(n => `<button type="button" class="chip" aria-pressed="${n === shell.name}" data-name="${n}">${n}</button>`).join("");
+  box.querySelectorAll("[data-name]").forEach(b => b.onclick = () => { location.hash = `experiments/${b.dataset.name}`; });
+}
+studio.register("experiments", {
+  show(route) {
+    shell.shown = true;
+    const [name, ...rest] = (route || "").split("/");
+    fetch("experiments").then(r => r.json()).then(data => {
+      shell.names = data.scenarios || [];
+      if (!shell.names.length) { $("main").hidden = true; $("note").hidden = false; $("note").textContent = "No scenarios yet: nock eval init NAME makes one."; studio.summary("experiments", "No scenarios yet"); return; }
+      const chosen = shell.names.includes(name) ? name : shell.name && shell.names.includes(shell.name) ? shell.name : shell.names[0];
+      const again = chosen === shell.name && shell.loaded;
+      shell.name = chosen; shell.loaded = true; pick();
+      if (!again) load(chosen, rest.join("/"));
+    });
+  },
+  hide() { shell.shown = false; },
+});
+function boot(X, route, signal) {
+const tellStudio = text => studio.summary("experiments", text);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const time = m => m == null ? "" : m < 1 ? `${Math.round(m * 60)}s` : m < 90 ? `${m < 10 ? m.toFixed(1) : Math.round(m)}min` : `${(m / 60).toFixed(1)}h`;
+const cost = u => u == null ? "" : u === 0 ? "$0" : u < 1 ? `${Math.round(u * 100)}¢` : `$${u.toFixed(2)}`;
+const num = v => Number.isInteger(v) ? String(v) : v.toFixed(1);
+const MONTH = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const pad = n => String(n).padStart(2, "0");
+const when = iso => { if (!iso) return "—"; const d = new Date(iso); return `${d.getDate()} ${MONTH[d.getMonth()]}, ${pad(d.getHours())}:${pad(d.getMinutes())}`; };
+
+// --- icons: only staleness has one (what didn't run is dimmed); verdicts are green ✓ and red ✗ ----------
+const GLYPH = {
+  outdated: `<g fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><circle cx="8" cy="8" r="4.1"/><path d="M8 5.7V8l1.6 1.1"/></g>`,
+  good: `<path d="M4.6 8.3l2.3 2.4 4.7-5" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/>`,
+  bad: `<path d="M5.4 5.4l5.2 5.2M10.6 5.4l-5.2 5.2" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/>`,
+};
+const svgIcon = (cls, g, label) => `<span class="ico ${cls}" role="img" aria-label="${label}" title="${label}"><svg viewBox="0 0 16 16">${g}</svg></span>`;
+const staleIcon = () => svgIcon("", GLYPH.outdated, "stale run");
+const verdictIcon = (v, small) => svgIcon(`v-${v}${small ? " sm" : ""}`, GLYPH[v], v === "good" ? "good" : "bad");
+const TYPE = {
+  stage: `<svg viewBox="0 0 16 16"><rect x="2.5" y="4" width="11" height="8" rx="2.4" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>`,
+  decision: `<svg viewBox="0 0 16 16"><path d="M8 2.6 13.4 8 8 13.4 2.6 8Z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>`,
+  measure: `<svg viewBox="0 0 16 16"><path d="M3.5 12.5v-4M8 12.5v-9M12.5 12.5v-6" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>`,
+};
+const BACK = `<svg viewBox="0 0 16 16"><path d="M9.8 3.8 5.6 8l4.2 4.2" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+const CHEV = `<svg class="arr" viewBox="0 0 12 12" aria-hidden="true"><path d="M4.2 2.5 7.8 6l-3.6 3.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+
+// --- the model ---------------------------------------------------------------------------------
+const P = X.parameters, ST = X.stages, KEYS = Object.keys(P);
+// A branch that leads nowhere ends the trajectory with its verdict, drawn as a leaf of its own.
+for (const d of X.nodes.filter(n => n.kind === "decision")) for (const br of d.branches)
+  if (!X.nodes.some(n => n.parent === d.id && n.via.branch === br.id)) X.nodes.push({ id: `${d.id}~${br.id}`, kind: "end", parent: d.id, via: { kind: "branch", branch: br.id } });
+const NODE = Object.fromEntries(X.nodes.map(n => [n.id, n]));
+const KIDS = d3.group(X.nodes.filter(n => n.parent), n => n.parent);
+const iso = t => t == null ? null : new Date(t * 1000).toISOString();
+for (const r of X.runs) r.ts = iso(r.ts);
+for (const s of X.states) { s.started = iso(s.started); s.finished = iso(s.finished); }
+const RUN = Object.fromEntries(X.runs.map(r => [r.id, r]));
+// The `nock eval run`s that made the results, from the cache's log.
+const LAUNCH = Object.fromEntries((X.launches || []).map(l => [l.id, l]));
+const madeBy = ss => { const ids = [...new Set(ss.map(s => s.launch).filter(Boolean))];
+  if (!ids.length) return "";
+  if (ids.length > 1) return `<dt>made by</dt><dd>${ids.length} runs, ${esc(when(LAUNCH[ids[0]].started))} to ${esc(when(LAUNCH[ids.at(-1)].started))}</dd>`;
+  const l = LAUNCH[ids[0]];
+  return `<dt>made by</dt><dd>the run of ${esc(when(l.started))}${l.targets.length ? ` <span class="muted">· ${esc(l.targets.join(" "))}</span>` : ""}</dd>`; };
+const S = Object.fromEntries(X.states.map(s => [s.id, s]));
+const AT = d3.group(X.states, s => s.node);
+const valueOf = (p, v) => P[p]?.values.find(x => x.id === v);
+const labelOf = (p, v) => valueOf(p, v)?.label ?? v;
+const nameP = p => P[p]?.label || p;
+const kv = (p, v) => `<b>${esc(nameP(p))}</b>: ${esc(labelOf(p, v))}`;
+const SEP = `<span class="sep"> » </span>`;
+const pathKv = pairs => pairs.map(([p, v]) => kv(p, v)).join(SEP);
+const runPairs = r => KEYS.filter(p => r.params[p] !== undefined).map(p => [p, r.params[p]]);
+const pathOf = n => { const out = []; for (let m = n; m; m = NODE[m.parent]) if (m.via.values) out.unshift(...Object.entries(m.via.values)); return out; };
+const pooled = n => !!n.via.pooled?.length;
+const poolOf = n => n.via.pooled?.[0] ?? null;
+// A node's variant: the values of every parameter that isn't pooled, on the way to it.
+const variantOf = n => { const out = []; for (let m = n; m; m = NODE[m.parent]) if (m.via.values) out.unshift(...Object.entries(m.via.values).map(([p, v]) => labelOf(p, v))); return out.join(" · "); };
+// A variant is a set of values that isn't pooled; a pooled step with none (a bank of bugs) is no variant.
+const VARIANTS = [...new Set(X.nodes.filter(pooled).map(variantOf))].filter(Boolean);
+const sumBy = (xs, f) => d3.sum(xs, f);
+const nameOf = n => n.kind === "stage" ? ST[n.stage].name : n.label;
+const branchOf = n => NODE[n.parent].branches.find(br => br.id === n.via.branch);
+const live = ss => ss.filter(s => s.status !== "outdated");
+// The iterations a state descends from, outermost first: what a trajectory narrows on.
+const repKey = s => { const out = []; for (let t = s; t; t = S[t.parent]) if (NODE[t.node].via.repeat) out.unshift(t.rep); return out; };
+for (const s of X.states) s.reps = repKey(s);
+const repOf = s => s.reps.at(-1);
+const byRep = (a, b) => (repOf(a) ?? 0) - (repOf(b) ?? 0);
+// A count: the total over every iteration, then the median per iteration and its spread when there is one.
+function count(ss, hit) {
+  if (!ss.length) return "not run";
+  const k = ss.filter(hit).length, groups = d3.groups(ss, s => s.reps[0]).filter(([r]) => r != null);
+  if (groups.length < 2) return `${k}/${ss.length}`;
+  const ks = groups.map(([, xs]) => xs.filter(hit).length), ns = groups.map(([, xs]) => xs.length), sd = d3.deviation(ks) || 0;
+  return `${k}/${ss.length} (${num(d3.median(ks))}/${num(d3.median(ns))}${sd ? ` ±${num(sd)}` : ""})`;
+}
+
+// --- the view: what is followed, filtered, open, split -------------------------------------------------
+// reps: per level of iteration, the iterations kept (null for all of them).
+const view = { run: null, reps: [], filter: null, at: null, measure: null, split: [] };
+const norm = reps => reps.map(x => x == null ? null : Array.isArray(x) ? x : [x]);
+function trajectory(rid) {
+  const own = X.states.filter(s => s.run === rid), set = new Set(own.map(s => s.id));
+  for (const s of own) for (let t = S[s.parent]; t && !set.has(t.id); t = S[t.parent]) set.add(t.id);
+  return set;
+}
+let TRAJ = null;
+const passFilter = s => !view.filter || s.params[view.filter.param] === undefined || s.params[view.filter.param] === view.filter.value;
+const repsOk = (s, k) => { for (let i = 0; i < Math.min(k, view.reps.length); i++) { const v = view.reps[i]; if (v && s.reps[i] != null && !v.includes(s.reps[i])) return false; } return true; };
+const fits = s => passFilter(s) && (!TRAJ || TRAJ.has(s.id) && repsOk(s, s.reps.length));
+const visible = id => (AT.get(id) || []).filter(fits);
+const all = id => AT.get(id) || [];
+// A node has run if any of its results finished; stale if any of them is.
+const statusOf = ss => ss.some(s => s.status === "outdated") ? "outdated" : ss.some(s => s.status === "complete") ? "complete" : "incomplete";
+
+// --- what is drawn: the configuration, with any repeat the viewer split shown once per iteration ---------
+const levelOf = n => { let k = 0; for (let m = NODE[n.parent]; m; m = NODE[m.parent]) if (m.via.repeat) k++; return k; };
+const itersOf = n => [...new Set(all(n.id).map(s => s.rep))].filter(x => x != null).sort((a, b) => a - b);
+const fixOk = (s, fix) => Object.entries(fix).every(([L, r]) => s.reps[+L] === r);
+const dvis = d => visible(d.node.id).filter(s => fixOk(s, d.fix));
+const dall = d => all(d.node.id).filter(s => fixOk(s, d.fix));
+const whole = n => ({ id: n.id, node: n, fix: {}, parent: n.parent ? `@${n.parent}` : null });
+function nodeState(d, par = DNODE[d.parent] || (d.node.parent ? whole(NODE[d.node.parent]) : null)) {
+  const n = d.node;
+  if (n.kind === "end") { const took = par && live(dvis(par)).some(s => s.branch === n.via.branch); return took ? "complete" : TRAJ || view.filter && dall(par).length ? "off" : "incomplete"; }
+  const vis = dvis(d), any = dall(d).length;
+  // A run that took a branch but hasn't gone down it yet: not run, rather than not in this view.
+  if (!vis.length && (any || TRAJ)) return n.via.kind === "branch" && par && live(dvis(par)).some(s => s.branch === n.via.branch) ? "incomplete" : "off";
+  return statusOf(vis);
+}
+const cases = p => v => !P[p].controls.includes(v);
+const poolCount = (d, p) => new Set(dall(d).map(s => s.params[p]).filter(cases(p))).size || P[p].values.filter(x => cases(p)(x.id)).length;
+const branchCount = d => count(live(dvis(DNODE[d.parent])), s => s.branch === d.node.via.branch);
+function labelParts(d) {
+  const n = d.node, v = n.via, parts = [];
+  if (v.kind === "branch") return n.kind === "end" ? null : [[branchOf(n).label, true], [` · ${branchCount(d)}`]];
+  const sep = () => { if (parts.length) parts.push([" · "]); };
+  for (const [p, value] of Object.entries(v.values || {})) { sep(); parts.push([nameP(p), true], [`: ${labelOf(p, value)}`]); }
+  for (const p of v.pooled || []) { sep(); parts.push([nameP(p), true], [` · ${poolCount(d, p)} values`]); }
+  if (v.repeat) { sep(); parts.push([d.it != null ? `#${d.it}` : `×${v.repeat}`]); }
+  return parts.length ? parts : null;
+}
+const DY = 84, BOX = { w: 204, h: 66, r: 16 }, DIA = { w: 104, h: 62 }, CH = 6.9;
+const labelW = parts => parts.reduce((a, [t]) => a + t.length, 0) * CH + 18;
+const half = n => n.kind === "stage" ? BOX.w / 2 : n.kind === "decision" ? DIA.w / 2 : 20;
+let DN = [], DNODE = {}, POS = {}, W = 0, H = 0;
+function build() {
+  DN = [];
+  const add = (n, parent, fix) => {
+    const split = !!n.via.repeat && view.split.includes(n.id), L = levelOf(n);
+    for (const it of split ? itersOf(n) : [null]) {
+      const f = it == null ? fix : { ...fix, [L]: it }, tag = Object.entries(f).map(([a, b]) => `${a}.${b}`).join(",");
+      const d = { id: tag ? `${n.id}@${tag}` : n.id, node: n, parent, fix: f, it };
+      DN.push(d);
+      for (const k of KIDS.get(n.id) || []) add(k, d.id, f);
+    }
+  };
+  add(X.nodes.find(n => !n.parent), null, {});
+  DNODE = Object.fromEntries(DN.map(d => [d.id, d]));
+  const root = d3.stratify().id(d => d.id).parentId(d => d.parent)(DN);
+  d3.tree().nodeSize([DY, 1]).separation((a, b) => a.parent === b.parent ? 1 : 1.25)(root);
+  const byDepth = d3.group(root.descendants(), e => e.depth), colX = {};
+  let x = 0, hw = 0;
+  for (const dep of [...byDepth.keys()].sort((a, b) => a - b)) {
+    const ds = byDepth.get(dep).map(e => e.data), h = d3.max(ds, d => half(d.node));
+    const lw = d3.max(ds, d => { const p = labelParts(d); return p ? labelW(p) : 0; }) || 0;
+    x = dep === 0 ? 40 + h : x + hw + (lw ? lw + 84 : 64) + h; colX[dep] = x; hw = h;
+  }
+  POS = {}; root.each(e => POS[e.id] = { x: colX[e.depth], y: e.x });
+  const ys = Object.values(POS).map(p => p.y), minY = d3.min(ys);
+  for (const p of Object.values(POS)) p.y += -minY + 60;
+  W = d3.max(Object.values(POS), p => p.x) + 280; H = d3.max(ys) - minY + 140;
+}
+
+// --- drawing ---------------------------------------------------------------------------------------
+// Items are black with white text, and white when selected; what didn't run is at 75%, what isn't in this view fainter.
+const fillOf = () => "#000";
+const edgeOf = () => "#fff";
+const textOf = () => "#fff";
+const softOf = () => "rgba(255,255,255,.66)";
+// Inactive at half strength, in solid colours so the grid never shows through.
+const tone = (off, dim) => off ? "#4a4a4f" : dim ? "#808080" : "#fff";
+const toneSoft = (off, dim) => off ? "#38383d" : dim ? "#5f5f63" : "rgba(255,255,255,.66)";
+const INK = "#f6f4ff", LINE_INK = "rgba(255,255,255,.82)", GREY = "#5f5d70", DIM = "rgba(255,255,255,.26)", OFF = "rgba(255,255,255,.12)", BG = "#000", FAINT = "rgba(255,255,255,.38)", MUTED = "rgba(255,255,255,.62)";
+const svg = d3.select("#xp-tree"); svg.selectAll("*").remove(); const defs = svg.append("defs");
+const foil = defs.append("linearGradient").attr("id", "foil").attr("x1", 0).attr("y1", 0).attr("x2", 1).attr("y2", 1);
+[["0", "#ff9cf0"], [".35", "#fff27a"], [".7", "#7dffd2"], ["1", "#8cb8ff"]].forEach(([o, c]) => foil.append("stop").attr("offset", o).attr("stop-color", c));
+const LINE = ["#ff9cf0", "#fff27a", "#7dffd2", "#8cb8ff"];
+// The grid the diagram sits on, moving with it.
+const grid = defs.append("pattern").attr("id", "grid").attr("width", 36).attr("height", 36).attr("patternUnits", "userSpaceOnUse");
+grid.append("path").attr("d", "M36 0H0V36").attr("fill", "none").attr("stroke", "#000").attr("stroke-width", .5);
+// The diagram's ground: black, with the grid's lines cut out of it so the coloured field behind shows through.
+const gridMask = defs.append("mask").attr("id", "gridmask").attr("maskUnits", "userSpaceOnUse").attr("x", -6000).attr("y", -6000).attr("width", 16000).attr("height", 12000);
+gridMask.append("rect").attr("x", -6000).attr("y", -6000).attr("width", 16000).attr("height", 12000).attr("fill", "#fff");
+gridMask.append("rect").attr("x", -6000).attr("y", -6000).attr("width", 16000).attr("height", 12000).attr("fill", "url(#grid)");
+const lift = defs.append("filter").attr("id", "lift").attr("x", "-30%").attr("y", "-30%").attr("width", "160%").attr("height", "180%");
+lift.append("feDropShadow").attr("dx", 0).attr("dy", 6).attr("stdDeviation", 7).attr("flood-color", "#c9a8ff").attr("flood-opacity", .28);
+const glow = defs.append("filter").attr("id", "glow").attr("filterUnits", "userSpaceOnUse").attr("x", -200).attr("y", -200).attr("width", 12000).attr("height", 6000);
+glow.append("feDropShadow").attr("dx", 0).attr("dy", 2).attr("stdDeviation", 3).attr("flood-color", "#d9b8ff").attr("flood-opacity", .55);
+// Dark glass for what didn't run: mostly opaque, lighter at the top like a pane catching light.
+const glass = defs.append("linearGradient").attr("id", "glass").attr("x1", 0).attr("y1", 0).attr("x2", 0).attr("y2", 1);
+[["0", "#4a4860", .94], ["1", "#1d1c28", .94]].forEach(([o, c, a]) => glass.append("stop").attr("offset", o).attr("stop-color", c).attr("stop-opacity", a));
+for (const [id, a, z] of [["v-good", "#9cffb0", "#12b76a"], ["v-bad", "#ffa08a", "#e3264f"]]) {
+  const v = defs.append("linearGradient").attr("id", id).attr("x1", 0).attr("y1", 0).attr("x2", 1).attr("y2", 1);
+  v.append("stop").attr("offset", 0).attr("stop-color", a); v.append("stop").attr("offset", 1).attr("stop-color", z);
+}
+const world = svg.append("g");
+let gid = 0;
+const subOf = () => null;
+function draw() {
+  world.selectAll("*").remove(); defs.selectAll(".tmp").remove();
+  const gE = world.append("g"), gC = world.append("g"), gN = world.append("g");
+  for (const d of DN) if (d.parent) drawEdge(gE, gC, DNODE[d.parent], d);
+  for (const d of DN) drawNode(gN, d);
+}
+// A fork: the curve leaves the parent, settles on the child's row, and runs into its label and then the child.
+function edgePath(x1, y1, x2, y2, lw) {
+  const span = Math.max(40, x2 - x1 - (lw ? lw + 18 : 0)), c = x1 + span / 2;
+  return `M${x1},${y1}C${c},${y1} ${c},${y2} ${x1 + span},${y2}L${x2},${y2}`;
+}
+// What didn't run, or isn't in this view, is dimmed; on a followed run its path carries the gradient.
+const look = st => ({ off: st === "off", dim: st === "off" || st === "incomplete", on: TRAJ && st !== "off" });
+function drawEdge(gE, gC, a, b) {
+  const st = nodeState(b), { off, dim, on } = look(st), pa = POS[a.id], pb = POS[b.id];
+  const x1 = pa.x + half(a.node), y1 = pa.y, x2 = pb.x - half(b.node), y2 = pb.y;
+  const parts = labelParts(b), lw = parts ? labelW(parts) : 0, d = edgePath(x1, y1, x2, y2, lw);
+  let stroke = LINE_INK;
+  if (on) {
+    const id = `eg${gid++}`, grad = defs.append("linearGradient").attr("class", "tmp").attr("id", id).attr("gradientUnits", "userSpaceOnUse").attr("x1", x1).attr("y1", y1).attr("x2", x2).attr("y2", y2 + .01);
+    LINE.forEach((c, i) => grad.append("stop").attr("offset", i / (LINE.length - 1)).attr("stop-color", c));
+    stroke = `url(#${id})`;
+  }
+  if (!on) stroke = tone(off, dim);
+  const g = gE.append("g").attr("opacity", on && dim ? .5 : 1);
+  g.append("path").attr("d", d).attr("fill", "none").attr("stroke", stroke).attr("stroke-width", on ? 3.4 : 2.6).attr("stroke-linecap", "round").attr("filter", on && !dim ? "url(#glow)" : null);
+  const hit = g.append("path").attr("d", d).attr("fill", "none").attr("stroke", "#fff").attr("stroke-opacity", 0).attr("stroke-width", 18).style("cursor", "pointer");
+  let chip = null;
+  if (parts) {
+    chip = gC.append("g").attr("transform", `translate(${x2 - 8 - lw / 2} ${y2})`).style("cursor", "pointer");
+    chip.append("rect").attr("x", -lw / 2).attr("y", -11).attr("width", lw).attr("height", 22).attr("rx", 11).attr("fill", fillOf(off, dim))
+      .attr("stroke", on ? "url(#foil)" : tone(off, dim)).attr("stroke-width", on ? 2 : 1.3);
+    const t = chip.append("text").attr("text-anchor", "middle").attr("y", 4).attr("font-size", 11.5).attr("font-family", "IBM Plex Mono, monospace").attr("fill", tone(off, dim));
+    for (const [s, bold] of parts) t.append("tspan").attr("font-weight", bold ? 700 : 500).text(s);
+  }
+  // A repeat's line splits into one line per iteration and back; any other line opens what it leads to.
+  const click = b.node.via.repeat ? () => toggleSplit(b.node.id) : () => openD(b);
+  for (const el of [hit, chip].filter(Boolean)) el.on("mousemove", ev => tipShow(edgeTip(a, b), ev)).on("mouseleave", tipHide).on("click", ev => { ev.stopPropagation(); click(); });
+}
+function drawNode(gN, d) {
+  const n = d.node, st = nodeState(d), p = POS[d.id], sel = view.at === n.id, { off, dim, on } = look(st);
+  const fill = sel ? "#fff" : "#000", stroke = sel || on ? "url(#foil)" : tone(off, dim), sw = sel ? 4 : on ? 3 : 1.5, so = 1;
+  const ink = sel ? "#111116" : tone(off, dim), soft = sel ? "#5a596b" : toneSoft(off, dim);
+  const g = gN.append("g").attr("class", "node").attr("transform", `translate(${p.x} ${p.y})`).attr("tabindex", 0).attr("role", "button")
+    .attr("aria-label", `${n.kind}: ${n.kind === "end" ? branchOf(n).label : nameOf(n)}${st === "outdated" ? ", stale" : dim ? ", not run" : ""}`)
+    .on("click", ev => { ev.stopPropagation(); openD(d); })
+    .on("keydown", ev => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); openD(d); } });
+  const stale = (x, y) => { const c = g.append("g").attr("transform", `translate(${x} ${y})`); c.append("title").text("stale run");
+    c.append("circle").attr("r", 9).attr("fill", GREY); c.append("g").attr("transform", "translate(-8 -8)").attr("color", "#fff").html(GLYPH.outdated); };
+  if (n.kind === "stage") {
+    const { w, h, r } = BOX, vis = dvis(d);
+    g.append("rect").attr("class", "halo").attr("x", -w / 2 - 5).attr("y", -h / 2 - 5).attr("width", w + 10).attr("height", h + 10).attr("rx", r + 5).attr("fill", "none").attr("stroke", INK).attr("stroke-width", 2).attr("stroke-opacity", 0);
+    g.append("rect").attr("x", -w / 2).attr("y", -h / 2).attr("width", w).attr("height", h).attr("rx", r).attr("fill", fill)
+      .attr("stroke", stroke).attr("stroke-opacity", so).attr("stroke-width", sw).attr("filter", (on && !dim) || sel ? "url(#lift)" : null);
+    const sub = subOf(d), lines = sub ? [-11, 6, 22] : [-4, null, 14], x0 = -w / 2 + 15;
+    if (st === "outdated") stale(w / 2 - 17, -h / 2 + 17);
+    g.append("text").attr("x", x0).attr("y", lines[0]).attr("font-size", 14).attr("font-weight", 600).attr("fill", ink).text(ST[n.stage].name);
+    if (sub) { const t = g.append("text").attr("x", x0).attr("y", lines[1]).attr("font-size", 12).attr("fill", soft);
+      t.append("tspan").attr("font-weight", 650).attr("fill", ink).text(sub[0]); t.append("tspan").text(sub[1]); }
+    const tc = vis.length ? `${time(sumBy(vis, s => s.minutes))} · ${cost(sumBy(vis, s => s.usd))}` : off ? "not in this view" : "not run";
+    g.append("text").attr("x", x0).attr("y", lines[2]).attr("font-size", 11).attr("font-family", "IBM Plex Mono, monospace").attr("fill", soft).text(tc);
+  } else if (n.kind === "decision") {
+    const { w, h } = DIA, dia = (w, h) => `M0 ${-h / 2}L${w / 2} 0L0 ${h / 2}L${-w / 2} 0Z`;
+    g.append("path").attr("class", "halo").attr("d", dia(w + 14, h + 14)).attr("fill", "none").attr("stroke", INK).attr("stroke-width", 2).attr("stroke-opacity", 0);
+    g.append("path").attr("d", dia(w, h)).attr("fill", fill).attr("stroke-linejoin", "round")
+      .attr("stroke", stroke).attr("stroke-opacity", so).attr("stroke-width", sw).attr("filter", (on && !dim) || sel ? "url(#lift)" : null);
+    g.append("text").attr("text-anchor", "middle").attr("y", 4.5).attr("font-size", 13).attr("font-weight", 600).attr("fill", ink).text(n.label);
+    if (st === "outdated") stale(w / 2 - 6, -h / 2 + 6);
+  } else {
+    // An ending branch: its verdict and how many got it; the icon says which branch it is.
+    const br = branchOf(n), text = off ? "–" : branchCount(d), w = text.length * 6.9 + 44;
+    g.append("rect").attr("x", -20).attr("y", -15).attr("width", w).attr("height", 30).attr("rx", 15).attr("fill", fill)
+      .attr("stroke", on || sel ? "url(#foil)" : tone(off, dim)).attr("stroke-opacity", so).attr("stroke-width", on ? 2.4 : 1.5).attr("filter", on && !dim ? "url(#lift)" : null);
+    const c = g.append("g").attr("transform", "translate(-3 0)").attr("opacity", dim ? .45 : 1);
+    c.append("title").text(`${br.label}: ${br.verdict === "good" ? "good" : "bad"}`);
+    c.append("circle").attr("r", 9).attr("fill", `url(#v-${br.verdict})`);
+    c.append("g").attr("transform", "translate(-8 -8)").attr("color", "#fff").html(GLYPH[br.verdict]);
+    g.append("text").attr("x", 13).attr("y", 4.5).attr("font-size", 11.5).attr("font-family", "IBM Plex Mono, monospace").attr("fill", ink).text(text);
+  }
+}
+
+// --- the window: dragged to move, pinched or ctrl-scrolled (or the buttons) to zoom --------------------
+const win = $("window");
+const zoom = d3.zoom().scaleExtent([.3, 1.6]).clickDistance(5)
+  .filter(ev => ev.type === "wheel" ? ev.ctrlKey || ev.metaKey : !ev.button)
+  .on("start", () => svg.classed("dragging", true)).on("end", () => svg.classed("dragging", false))
+  .on("zoom", ev => world.attr("transform", ev.transform));
+function fit() {
+  const w = win.clientWidth, h = win.clientHeight;
+  zoom.extent([[0, 0], [w, h]]).translateExtent([[-200, -200], [Math.max(W, w) + 200, Math.max(H + 60, h) + 200]]);
+  svg.call(zoom);
+}
+win.addEventListener("wheel", ev => { if (ev.ctrlKey || ev.metaKey) return; if (Math.abs(ev.deltaX) > Math.abs(ev.deltaY) || ev.shiftKey) { ev.preventDefault(); zoom.translateBy(svg, -(ev.deltaX || ev.deltaY) / d3.zoomTransform(svg.node()).k, 0); } }, { passive: false, signal });
+win.querySelectorAll("[data-zoom]").forEach(b => b.onclick = ev => { ev.stopPropagation(); svg.transition().duration(200).call(zoom.scaleBy, +b.dataset.zoom); });
+addEventListener("resize", fit, { signal });
+function reveal(id) {
+  const d = DN.find(x => x.node.id === id); if (!d) return;
+  const p = POS[d.id], w = win.clientWidth - (panel.classList.contains("open") ? Math.min(500, innerWidth) : 0), h = win.clientHeight;
+  const t = d3.zoomTransform(svg.node()), sx = p.x * t.k + t.x, sy = p.y * t.k + t.y;
+  if (sx > 130 && sx < w - 130 && sy > 60 && sy < h - 110) return;
+  svg.transition().duration(350).call(zoom.translateTo, p.x + (win.clientWidth - w) / 2 / t.k, p.y);
+}
+function toggleSplit(id) { view.split = view.split.includes(id) ? view.split.filter(x => x !== id) : [...view.split, id]; tipHide(); build(); fit(); render(false); }
+
+// --- hover on a line: its time and cost, broken down by what the line stands for ----------------
+const tip = $("tip");
+function tipShow(html, ev) { tip.innerHTML = html; tip.hidden = false; const w = tip.offsetWidth, h = tip.offsetHeight;
+  let x = ev.clientX + 14, y = ev.clientY + 14; if (x + w > innerWidth - 8) x = ev.clientX - w - 14; if (y + h > innerHeight - 8) y = ev.clientY - h - 14;
+  tip.style.left = `${Math.max(8, x)}px`; tip.style.top = `${Math.max(8, y)}px`; }
+function tipHide() { tip.hidden = true; }
+const tc = ss => `${time(sumBy(ss, s => s.minutes))} · ${cost(sumBy(ss, s => s.usd))}`;
+const rows = (groups, max = 7) => { const g = [...groups]; const shown = g.slice(0, max);
+  return `<table>${shown.map(([k, ss]) => `<tr><td>${esc(k)}</td><td>${ss.length ? tc(ss) : "not run"}</td></tr>`).join("")}${g.length > max ? `<tr><td>and ${g.length - max} more</td><td></td></tr>` : ""}</table>`; };
+function edgeTip(a, b) {
+  const n = b.node, v = n.via, ss = dvis(b), to = n.kind === "end" ? "" : nameOf(n);
+  const total = ss.length ? `Total ${tc(ss)}` : "Hasn't run";
+  if (v.kind === "fork") {
+    const pool = poolOf(n), head = Object.entries(v.values || {}).map(([p, x]) => kv(p, x)).join(" · ");
+    const lines = [head ? `${head}` : `<b>${esc(to)}</b>`];
+    if (head) lines.push(`<span class="sub">${esc(to)} · ${total}</span>`); else lines.push(`<span class="sub">${total}</span>`);
+    let table = "";
+    if (pool) { const by = d3.groups(ss, s => s.params[pool]).map(([k, xs]) => [labelOf(pool, k), xs]).sort((x, y) => sumBy(y[1], s => s.usd) - sumBy(x[1], s => s.usd));
+      lines.push(`<span class="sub">${by.length} values of ${esc(nameP(pool))}</span>`); table = rows(by); }
+    else if (v.repeat && b.it == null) table = rows(d3.groups(ss, s => s.rep).sort((x, y) => x[0] - y[0]).map(([r, xs]) => [`#${r}`, xs]));
+    if (v.repeat) lines.push(`<span class="sub">${b.it != null ? `#${b.it}: click to merge the iterations again.` : `${v.repeat} iterations: click to split them.`}</span>`);
+    return lines.join("<br>") + table;
+  }
+  if (v.kind === "branch") {
+    const ds = live(dvis(a)), br = branchOf(n), took = s => s.branch === br.id;
+    const reps = d3.groups(ds, s => repOf(s) ?? 1).sort((x, y) => x[0] - y[0]);
+    return `<b>${esc(br.label)}: ${esc(a.node.condition)}</b><br><span class="sub">${n.kind === "end" ? (br.verdict === "good" ? "good, and it ends here" : "bad, and it ends here") : `then ${esc(to)}`} · ${count(ds, took)}</span>${reps.length > 1 ? `<table>${reps.map(([r, xs]) => `<tr><td>#${r}</td><td>${xs.filter(took).length}/${xs.length}</td></tr>`).join("")}</table>` : ""}`;
+  }
+  return `<b>${esc(to)}</b><br><span class="sub">${total}</span>`;
+}
+
+// --- navigation: every page the panel shows is a state of the view, with a way back ---------------------
+const panel = $("panel"), stack = [], FOLD = new Map();
+let keepOpen = false;
+function render(pan = true) {
+  TRAJ = view.run ? trajectory(view.run) : null;
+  draw(); overlays(); hash(); measures();
+  if (view.measure) measurePanel(X.measures.find(m => m.id === view.measure));
+  else if (view.at) nodePanel(NODE[view.at]);
+  else { panel.classList.remove("open"); panel.setAttribute("aria-hidden", "true"); }
+  if (keepOpen) { const l = panel.querySelector(".sel-l"); if (l) l.hidden = false; keepOpen = false; }
+  if (view.at && pan) reveal(view.at);
+}
+function go(change) {
+  const was = JSON.stringify(view), shown = panel.classList.contains("open"), split = view.split.join();
+  change(); tipHide();
+  if (JSON.stringify(view) === was && shown) return;
+  if (shown) stack.push(was);
+  if (view.split.join() !== split) { build(); fit(); }
+  render();
+}
+function back() { const s = stack.pop(); if (!s) return; const split = view.split.join(); Object.assign(view, JSON.parse(s)); if (view.split.join() !== split) { build(); fit(); } render(); }
+function closePanel() { stack.length = 0; view.at = null; view.measure = null; render(false); }
+// Opening a node drawn inside a split iteration, while following a run, narrows the run to that iteration.
+const openD = d => go(() => {
+  view.at = d.node.kind === "end" ? d.node.parent : d.node.id; view.measure = null;
+  if (view.run) for (const [L, r] of Object.entries(d.fix)) { while (view.reps.length <= +L) view.reps.push(null); view.reps[+L] = [r]; }
+});
+function follow(rid, at, reps = []) {
+  go(() => {
+    view.run = rid; view.reps = norm(reps); view.measure = null; view.filter = null; TRAJ = trajectory(rid);
+    view.at = at && visible(at).length ? at : X.states.filter(s => s.run === rid).map(s => s.node)[0];
+  });
+}
+const unfollow = () => go(() => { view.run = null; view.reps = []; });
+function setFilter(f) { view.filter = f; render(false); }
+
+function shell(kind, title, html) {
+  const lead = stack.length ? `<button class="close" id="xp-p-back" aria-label="Back">${BACK}</button>` : `<span class="close kindi" role="img" aria-label="${kind}" title="${kind}">${TYPE[kind]}</span>`;
+  panel.innerHTML = `<div class="top">${lead}<h2>${esc(title)}</h2><button class="close" id="xp-p-close" aria-label="Close">✕</button></div>${html}`;
+  panel.classList.add("open"); panel.setAttribute("aria-hidden", "false");
+  $("p-close").onclick = closePanel;
+  if ($("p-back")) $("p-back").onclick = back;
+  panel.querySelectorAll("[data-run]").forEach(b => b.onclick = () => follow(b.dataset.run, b.dataset.at || view.at, b.dataset.reps ? JSON.parse(b.dataset.reps) : []));
+  panel.querySelectorAll("[data-open]").forEach(b => b.onclick = () => go(() => { if (b.dataset.reps) view.reps = norm(JSON.parse(b.dataset.reps)); view.at = b.dataset.open; }));
+  panel.querySelectorAll("[data-value]").forEach(b => b.onclick = () => { const [p, v] = b.dataset.value.split("|"); setFilter(view.filter?.param === p && view.filter.value === v ? null : { param: p, value: v }); });
+  panel.querySelectorAll("[data-toggle]").forEach(b => b.onclick = () => {
+    const box = b.nextElementSibling, opened = box.hidden; box.hidden = !opened; FOLD.set(b.dataset.key, opened);
+    b.setAttribute("aria-expanded", opened);
+    if (b.parentElement.matches(".run, .param")) b.parentElement.classList.toggle("on", opened);
+  });
+  panel.querySelectorAll("[data-res]").forEach(b => b.onclick = () => {
+    const box = b.closest(".result").querySelector(".rbody"), opened = box.hidden; box.hidden = !opened; FOLD.set(b.dataset.res, opened); b.setAttribute("aria-expanded", opened);
+  });
+  panel.querySelectorAll(".sel-b").forEach(b => b.onclick = ev => { ev.stopPropagation(); const l = b.nextElementSibling; l.hidden = !l.hidden; b.setAttribute("aria-expanded", !l.hidden); });
+  panel.querySelectorAll("[data-iter]").forEach(b => b.onclick = ev => { ev.stopPropagation(); toggleIter(+b.dataset.iter); });
+  panel.querySelectorAll("[data-step]").forEach(b => b.onclick = () => {
+    const rot = b.closest(".rot"), panes = [...rot.querySelectorAll(".rot-p")], i = panes.findIndex(p => !p.hidden), j = (i + +b.dataset.step + panes.length) % panes.length;
+    panes[i].hidden = true; panes[j].hidden = false; rot.querySelector(".rot-n").textContent = rot.dataset.names.split(",")[j];
+  });
+}
+panel.addEventListener("click", ev => { if (!ev.target.closest(".sel")) panel.querySelectorAll(".sel-l").forEach(l => l.hidden = true); }, { signal });
+addEventListener("keydown", e => {
+  if (!shell.shown) return;
+  if (e.key !== "Escape") return;
+  const l = [...panel.querySelectorAll(".sel-l")].find(x => !x.hidden);
+  if (l) l.hidden = true; else if (panel.classList.contains("open")) closePanel();
+}, { signal });
+const folded = (key, dflt) => FOLD.has(key) ? FOLD.get(key) : dflt;
+const where = (n, note) => { const ps = pathOf(n); return ps.length || note ? `<div class="where">${pathKv(ps)}${note ? `${ps.length ? SEP : ""}<span class="muted">${note}</span>` : ""}</div>` : ""; };
+function nodePanel(n) {
+  const onPath = view.run && visible(n.id).length;
+  if (onPath) runPanel(n); else if (n.kind === "decision") decisionPanel(n, view.run ? "not in this run" : ""); else stagePanel(n, view.run ? "not in this run" : "");
+}
+
+// --- runs through a node: nested by the parameters that tell them apart -------------------------------
+function runsAt(id, pred = () => true) {
+  const ss = visible(id).filter(pred), users = new Map();
+  // A result cached for later runs belongs to each of them.
+  for (const r of X.runs) { const t = trajectory(r.id); for (const s of ss) if (t.has(s.id)) (users.get(r.id) || users.set(r.id, []).get(r.id)).push(s); }
+  return [...users.entries()].map(([rid, xs]) => ({ run: RUN[rid], states: xs })).sort((a, b) => a.run.ts.localeCompare(b.run.ts));
+}
+const scoreText = sc => !sc ? "" : sc.of != null ? `${sc.value}/${sc.of}` : `${sc.value}`;
+const upTo = r => { const own = X.states.filter(s => s.run === r.id).sort((a, c) => a.started.localeCompare(c.started)), last = own.at(-1);
+  return last ? `only up to ${nameOf(NODE[last.node])}` : "nothing of its own"; };
+// What a decision took, for one result: its verdict if the branch has one, the score it read, and where it led.
+function tookLine(dec, s, many) {
+  const br = dec.branches.find(x => x.id === s.branch), kid = (KIDS.get(dec.id) || []).find(k => k.via.branch === s.branch), sc = ST[NODE[dec.parent].stage].scorer;
+  return `<div>${br.verdict ? verdictIcon(br.verdict) : `<span class="ico none"></span>`}<span>${many ? `#${repOf(s)}` : ""}</span><span>${esc(dec.reads)}: <b>${esc(String(S[s.parent]?.metrics?.[dec.reads] ?? "—"))}</b>${kid?.kind === "stage" ? ` <span class="muted">→ ${esc(nameOf(kid))}</span>` : ""}</span><span>${s.status === "outdated" ? staleIcon() : ""}</span></div>`;
+}
+const followText = id => id ? `${nameOf(NODE[id])} →` : "Follow this run →";
+function runList(id, pred) {
+  const rs = runsAt(id, pred), dec = NODE[id].kind === "decision" ? NODE[id] : null;
+  if (!rs.length) return `<p class="small muted">None in this view.</p>`;
+  const vary = KEYS.filter(p => new Set(rs.map(x => x.run.params[p])).size > 1), stage = NODE[id].stage;
+  const leaf = (x, done) => {
+    const r = x.run, key = `run:${id}:${r.id}`, isOpen = folded(key, false), rest = vary.filter(p => !done.has(p) && r.params[p] !== undefined);
+    const label = rest.length ? pathKv(rest.map(p => [p, r.params[p]])) : vary.length ? `<span class="muted">${esc(upTo(r))}</span>` : pathKv(runPairs(r));
+    const ss = x.states.slice().sort(byRep).filter(pred || (() => true)), t = trajectory(r.id), ids = new Set(ss.map(s => s.id));
+    // Following lands on what came next in this run.
+    const after = X.states.find(c => ids.has(c.parent) && t.has(c.id));
+    const body = dec ? `<div class="here">${ss.map(s => tookLine(dec, s, ss.length > 1)).join("")}</div>` : whenHtml(r, ss) + resultsHtml(ss, stage);
+    return `<div class="run${isOpen ? " on" : ""}"><button class="rh" data-toggle data-key="${esc(key)}" aria-expanded="${isOpen}">${CHEV}<span class="t">${label}</span>${ss.some(s => s.status === "outdated") ? staleIcon() : ""}<span class="m">${dec ? "" : tc(ss)}</span></button>
+      <div class="rb"${isOpen ? "" : " hidden"}>${body}<button class="cta" data-run="${esc(r.id)}" data-at="${esc(after ? after.node : id)}">${esc(followText(after?.node))}</button></div></div>`;
+  };
+  const level = (items, done, path) => {
+    const p = vary.find(q => !done.has(q) && new Set(items.map(x => x.run.params[q])).size > 1);
+    if (!p || items.length === 1) return items.map(x => leaf(x, done)).join("");
+    const next = new Set(done).add(p);
+    return d3.groups(items, x => x.run.params[p]).map(([v, xs]) => {
+      if (xs.length === 1) return leaf(xs[0], done);
+      const key = `grp:${id}:${path}/${p}=${v}`, isOpen = folded(key, rs.length <= 8);
+      return `<div class="grp"><button class="gh" data-toggle data-key="${esc(key)}" aria-expanded="${isOpen}">${CHEV}<span class="t">${v === undefined ? `<b>${esc(p)}</b>: none` : kv(p, v)}</span><span class="m">${xs.length} runs${dec ? "" : ` · ${tc(xs.flatMap(x => x.states))}`}</span></button>
+        <div class="gk"${isOpen ? "" : " hidden"}>${level(xs, next, `${path}/${p}=${v}`)}</div></div>`;
+    }).join("");
+  };
+  return `<div class="runs">${level(rs, new Set(), "")}</div>`;
+}
+
+// Parameters: the ones that vary first, folding their values under their name; then the fixed ones.
+function paramsAt(n) {
+  const ss = all(n.id), out = [];
+  const valSt = xs => { const k = xs.filter(s => s.status === "complete").length;
+    return [statusOf(xs), k && k < xs.length && !xs.some(s => s.status === "outdated") ? `${k}/${xs.length} ran` : null]; };
+  for (const p of KEYS.filter(p => ss.some(s => s.params[p] !== undefined))) {
+    const vals = d3.groups(ss.filter(s => s.params[p] !== undefined), s => s.params[p]).map(([v, xs]) => { const [st, note] = valSt(xs); return { v, label: labelOf(p, v), st, note }; });
+    out.push({ p, about: P[p]?.about, vals });
+  }
+  if (!ss.length) for (const [p, v] of pathOf(n).reverse()) out.unshift({ p, about: P[p].about, vals: [{ v, label: labelOf(p, v), st: "incomplete" }] });
+  for (const [k, v] of Object.entries(ST[n.stage]?.settings || {})) if (!out.some(o => o.p === k)) out.push({ p: k, about: P[k]?.about || "A setting of this stage, the same for every run.", vals: [{ v, label: v, st: statusOf(ss) }] });
+  return [...out.filter(o => o.vals.length > 1), ...out.filter(o => o.vals.length === 1)];
+}
+function paramsHtml(n) {
+  const ps = paramsAt(n);
+  if (!ps.length) return "";
+  const mark = st => st === "outdated" ? staleIcon() : "";
+  return `<section><span class="eyebrow">parameters</span><div class="params">${ps.map(({ p, about, vals }) => {
+    if (vals.length === 1) return `<div class="param fixed${vals[0].st === "incomplete" ? " dim" : ""}"><div class="ph"><span class="pn"><b>${esc(nameP(p))}</b>: ${esc(vals[0].label)}</span>${mark(vals[0].st)}<span class="pa">${esc(about || "")}</span></div></div>`;
+    const on = view.filter?.param === p, key = `param:${p}`, isOpen = folded(key, false) || on;
+    return `<div class="param${isOpen ? " on" : ""}"><button class="ph" data-toggle data-key="${key}" aria-expanded="${isOpen}"><span class="pn"><b>${esc(nameP(p))}</b><span class="sep"> · </span>${vals.length} values</span>${vals.some(x => x.st === "outdated") ? staleIcon() : ""}${CHEV}<span class="pa">${esc(about || "")}</span></button>
+      <div class="values"${isOpen ? "" : " hidden"}>${vals.map(x => { const sel = on && view.filter.value === x.v;
+        return `<button class="value${sel ? " on" : ""}${x.st === "incomplete" ? " dim" : ""}" data-value="${esc(p)}|${esc(x.v)}" aria-pressed="${sel}" title="${sel ? "Show every value" : "Show only runs with this value"}"><span class="t">${esc(x.label)}</span>${x.note ? `<span class="note">${esc(x.note)}</span>` : ""}${mark(x.st)}</button>`; }).join("")}</div></div>`;
+  }).join("")}</div></section>`;
+}
+const costHtml = ss => `<section><span class="eyebrow">time and cost</span><p>${ss.length ? tc(ss) : "Hasn't run."}</p></section>`;
+function stagePanel(n, note) {
+  const s = ST[n.stage], ss = visible(n.id), why = [...new Set(ss.filter(x => x.why).map(x => x.why))];
+  shell("stage", s.name, `${where(n, note)}
+    <section><p>${esc(s.about)}</p>${why.map(w => `<p class="small warn">${esc(w)}</p>`).join("")}</section>
+    ${paramsHtml(n)}
+    <section><span class="eyebrow">runs · ${runsAt(n.id).length}</span>${runList(n.id)}</section>
+    ${costHtml(ss)}`);
+}
+const reads = n => { const ps = ST[NODE[n.parent].stage]; return `It reads the ${esc(n.reads)} of ${esc(ps.name.toLowerCase())}${ps.scorer ? `: ${esc(ps.scorer.about.toLowerCase().replace(/\.$/, ""))}` : ""}.`; };
+// A decision: its condition, then the runs grouped by the branch they took.
+function decisionPanel(n, note) {
+  const ds = visible(n.id), kids = KIDS.get(n.id) || [];
+  const by = n.branches.map(br => { const kid = kids.find(k => k.via.branch === br.id), c = count(live(ds), s => s.branch === br.id);
+    const head = br.verdict ? `${verdictIcon(br.verdict, true)}<span>${c}</span>` : `<span>${esc(br.label)} · then ${esc(nameOf(kid))} · ${c}</span>`;
+    return `<section><span class="eyebrow brh">${head}</span>${runList(n.id, s => s.branch === br.id)}</section>`; }).join("");
+  shell("decision", n.label, `${where(n, note)}<section><span class="eyebrow">the condition</span><p>${esc(n.condition)}</p><p class="small muted">${reads(n)}</p>${n.changed ? `<p class="small warn">${esc(n.changed)}</p>` : ""}</section>${by}`);
+}
+
+// --- a run at a node: when, its results, then where it went -------------------------------------------
+function candidates(n) {
+  const cands = all(n.id).filter(s => TRAJ.has(s.id) && passFilter(s) && repsOk(s, s.reps.length - 1)).sort(byRep);
+  const L = cands.length ? cands[0].reps.length - 1 : -1, many = cands.length > 1;
+  const sel = many && L >= 0 && view.reps[L] ? view.reps[L] : null;
+  return { cands, L, many, sel, shown: sel ? cands.filter(s => sel.includes(s.reps[L])) : cands };
+}
+// The iterations shown: a multiselect, where none picked means all of them.
+function toggleIter(v) {
+  const { L, cands } = candidates(NODE[view.at]); if (L < 0) return;
+  const every = cands.map(s => s.reps[L]);
+  let cur = view.reps[L] ? [...view.reps[L]] : [];
+  cur = cur.includes(v) ? cur.filter(x => x !== v) : [...cur, v].sort((a, b) => a - b);
+  view.reps = view.reps.slice(0, L); while (view.reps.length < L) view.reps.push(null);
+  view.reps[L] = cur.length && cur.length < every.length ? cur : null;
+  keepOpen = true; render(false);
+}
+function iterSelect({ cands, sel, L }) {
+  const label = !sel ? `${cands.length} iterations` : sel.map(x => `#${x}`).join(", ");
+  return `<div class="sel"><button class="sel-b" aria-haspopup="listbox" aria-expanded="false">${label}${CHEV}</button>
+    <div class="sel-l" role="listbox" aria-multiselectable="true" hidden>${cands.map(s => { const it = s.reps[L], on = !!sel?.includes(it);
+      return `<button role="option" data-iter="${it}" aria-selected="${on}"><span class="box">${on ? "✓" : ""}</span><span>#${it}${s.score ? ` · <b>${scoreText(s.score)}</b>` : ""}</span></button>`; }).join("")}</div></div>`;
+}
+// --- results, by type: one iteration as it is; several as a summary where they add up, else one at a time ---
+function patchHtml(p) { return `<pre class="patch">${esc(p).split("\n").map(l => /^(diff|index|---|\+\+\+|@@)/.test(l) ? `<span class="hd">${l}</span>` : l.startsWith("+") ? `<span class="add">${l}</span>` : l.startsWith("-") ? `<span class="del">${l}</span>` : l + "\n").join("")}</pre>`; }
+const DOES = { look: "looked", change: "changed", test: "tested", finish: "finished", say: "said" };
+const ONE = {
+  facts: f => `<dl class="kv">${Object.entries(f).map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join("")}</dl>`,
+  text: t => `<div class="said">${esc(t)}</div>`,
+  list: a => a.length ? a.map(x => `<div class="alarm">${esc(x)}</div>`).join("") : `<p class="small">None.</p>`,
+  checks: c => `<div class="checks">${c.map(x => `<div><span class="${x.pass ? "ok" : "bad"}">${x.pass ? "✓" : "✗"}</span> ${esc(x.name)}</div>`).join("")}</div>`,
+  patch: p => p.startsWith("diff") ? patchHtml(p) : `<p class="small muted">${esc(p)}</p>`,
+  steps: r => !Array.isArray(r) ? `<pre class="patch">${esc(JSON.stringify(r, null, 2))}</pre>` : `<div class="steps">${r.map(x => `<div><span class="muted">${time(x.at / 60)}</span><b>${DOES[x.do] || x.do}</b><code title="${esc(x.text)}">${esc(String(x.text ?? "").split("\n")[0])}</code></div>`).join("")}</div>`,
+};
+const stats = (xs, of = "") => xs.length === 1 || d3.min(xs) === d3.max(xs) ? `<b>${num(xs[0])}</b>${of} in every iteration` : `median <b>${num(d3.median(xs))}</b>${of} · ±${num(d3.deviation(xs))} · ${num(d3.min(xs))} to ${num(d3.max(xs))}`;
+const isNum = v => v !== "" && !isNaN(+String(v).replace(/[$,%]/g, ""));
+const ALL = {
+  facts: fs => { const keys = [...new Set(fs.flatMap(f => Object.keys(f)))];
+    return `<dl class="kv">${keys.map(k => { const vs = fs.map(f => f[k]).filter(v => v != null), same = vs.every(v => v === vs[0]);
+      return `<dt>${esc(k)}</dt><dd>${same ? esc(vs[0]) : vs.every(isNum) ? stats(vs.map(v => +String(v).replace(/[$,%]/g, ""))) : vs.map(esc).join(" · ")}</dd>`; }).join("")}</dl>`; },
+  checks: cs => { const names = [...new Set(cs.flatMap(c => c.map(x => x.name)))];
+    return `<div class="checks">${names.map(nm => { const k = cs.filter(c => c.find(x => x.name === nm)?.pass).length;
+      return `<div><span class="${k === cs.length ? "ok" : k ? "" : "bad"}">${k}/${cs.length}</span> ${esc(nm)}</div>`; }).join("")}</div>`; },
+};
+// One result: its name (click to fold it away), the iteration rotator on the same line, its description, then it.
+function block(key, name, about, body, ss) {
+  const isOpen = folded(key, true), names = ss ? ss.map(s => `#${repOf(s)}`) : null;
+  const rot = names ? `<span class="rot-h"><button data-step="-1" aria-label="Previous iteration">‹</button><span class="rot-n">${names[0]}</span><button data-step="1" aria-label="Next iteration">›</button></span>` : "";
+  return `<div class="result${names ? " rot" : ""}"${names ? ` data-names="${names.join(",")}"` : ""}><div class="line"><button class="rt" data-res="${esc(key)}" aria-expanded="${isOpen}">${CHEV}<span>${esc(name)}</span></button>${rot}</div>
+    <div class="rbody"${isOpen ? "" : " hidden"}><p class="about">${esc(about)}</p><div class="val">${body}</div></div></div>`;
+}
+const RESULTS = new Map(), WANTED = new Set();
+let fetching = null;
+function want(ss) {
+  for (const s of ss) if (!RESULTS.has(s.id) && !s.id.includes("?")) WANTED.add(s.id);
+  if (!WANTED.size || fetching) return;
+  const outputs = [...WANTED]; WANTED.clear();
+  fetching = fetch(`experiments/${encodeURIComponent(X.name)}/results`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ outputs }), signal })
+    .then(r => r.json()).then(found => { for (const id of outputs) RESULTS.set(id, found[id] || {}); })
+    .catch(() => { for (const id of outputs) RESULTS.set(id, {}); })
+    .finally(() => { fetching = null; if (!signal.aborted) render(false); });
+}
+function resultsHtml(ss, stageId) {
+  const missing = ss.filter(s => !RESULTS.has(s.id));
+  if (missing.length) { want(missing); return `<p class="small muted">Reading the results…</p>`; }
+  for (const s of ss) s.results = RESULTS.get(s.id);
+  const stage = ST[stageId], many = ss.length > 1, out = [], sc = stage.scorer, scored = ss.filter(s => s.score);
+  for (const s of ss.filter(s => s.status === "incomplete")) out.push(`<p class="small warn">${many ? `#${repOf(s)}: ` : ""}${esc(s.why || "It didn't finish.")}</p>`);
+  if (sc && scored.length) { const ofs = scored[0].score.of != null ? ` of ${scored[0].score.of}` : "";
+    out.push(block(`res:${stageId}:score`, sc.name, `${sc.about} ${sc.better === "higher" ? "Higher" : "Lower"} is better.`, `<p>${many ? stats(scored.map(s => s.score.value), ofs) : `<b>${num(scored[0].score.value)}</b>${ofs}`}</p>`)); }
+  for (const r of stage.results) {
+    const k = r.kind, f = `${r.kind}:${r.name}`, have = ss.filter(s => s.results?.[f] != null); if (!have.length || !ONE[k]) continue;
+    const key = `res:${stageId}:${f}`, at = s => s.results[f];
+    if (have.length === 1) out.push(block(key, r.name, r.about, ONE[k](at(have[0]))));
+    else if (ALL[k]) out.push(block(key, r.name, r.about, ALL[k](have.map(at))));
+    else out.push(block(key, r.name, r.about, have.map((s, i) => `<div class="rot-p"${i ? " hidden" : ""}>${ONE[k](at(s))}</div>`).join(""), have));
+  }
+  return out.join("");
+}
+// When: one result, from the run's start to reaching it; several, from the first start to the last finish.
+function whenHtml(r, ss) {
+  if (!ss.length) return "";
+  const cached = ss.filter(s => s.run !== r.id);
+  if (cached.length) return `<p class="small">Cached from an earlier run, ${pathKv(runPairs(RUN[cached[0].run]))}, made ${esc(when(cached[0].started))}.</p><dl class="kv">${madeBy(cached)}</dl>`;
+  return `<dl class="kv">${madeBy(ss)}<dt>started</dt><dd>${esc(when(d3.min(ss, s => s.started)))}</dd><dt>finished</dt><dd>${esc(when(d3.max(ss, s => s.finished)))}</dd></dl>`;
+}
+function runPanel(n) {
+  const r = RUN[view.run], c = candidates(n), { many, shown } = c;
+  let res;
+  if (n.kind === "stage") {
+    res = `<section><div class="line"><span class="eyebrow">when</span>${many ? iterSelect(c) : ""}</div>${whenHtml(r, shown)}</section>
+      <section><span class="eyebrow">results</span>${resultsHtml(shown, n.stage)}</section>`;
+  } else {
+    res = `<section><div class="line"><span class="eyebrow">the condition</span>${many ? iterSelect(c) : ""}</div><p>${esc(n.condition)}</p>
+      <div class="here">${shown.map(s => tookLine(n, s, shown.length > 1)).join("")}</div>
+      ${n.changed && shown.some(s => s.status === "outdated") ? `<p class="small warn">${esc(n.changed)}</p>` : ""}</section>`;
+  }
+  // Where it went: one button per stage or decision that came next.
+  const nexts = shown.flatMap(s => X.states.filter(k => k.parent === s.id && fits(k)));
+  const items = d3.groups(nexts, k => k.node).map(([kn, ks]) => ({ open: kn, reps: ks.length === 1 && ks[0].reps.length ? ks[0].reps : null, note: ks.every(x => x.status === "outdated") ? "stale" : "" }));
+  // A run whose decision now takes a branch it hasn't gone down yet: that branch's stage comes next, not run yet.
+  if (n.kind === "decision") for (const s of shown) { const kid = (KIDS.get(n.id) || []).find(k => k.via.branch === s.branch);
+    if (kid?.kind === "stage" && !nexts.some(k => k.parent === s.id && k.node === kid.id)) items.push({ open: kid.id, reps: s.reps.length ? s.reps : null, note: "not run yet" }); }
+  const stop = shown.find(s => s.status === "incomplete");
+  const nextHtml = items.length ? `<section class="ctas">${items.map(it => `<button class="cta${it.note ? " quiet" : ""}" data-open="${esc(it.open)}"${it.reps ? ` data-reps='${JSON.stringify(it.reps)}'` : ""}>${esc(nameOf(NODE[it.open]))}${it.note ? ` · ${it.note}` : ""} →</button>`).join("")}</section>`
+    : stop ? `<section><p class="small warn">Stopped here: ${esc(stop.why || "it didn't finish")}</p></section>` : "";
+  shell(n.kind, nameOf(n), `${where(n)}${res}${nextHtml}`);
+}
+
+// --- following a run, filtering by a value: shown on the graph, with a way back --------------------
+function overlays() {
+  const box = $("overlays"), out = [];
+  if (view.filter && !view.run) out.push(`<div class="banner dark"><span>Only runs with ${kv(view.filter.param, view.filter.value)}</span><button class="x" id="xp-x-filter" aria-label="Show every value">✕</button></div>`);
+  if (view.run) {
+    const r = RUN[view.run], narrowed = view.reps.filter(Boolean);
+    out.push(`<div class="banner dark follow"><span>Following ${pathKv(runPairs(r))}${narrowed.length ? `${SEP}<span class="rep"><span>${narrowed.map(x => x.map(i => `#${i}`).join(", ")).join(" › ")}</span><button id="xp-x-rep" aria-label="Show every iteration">✕</button></span>` : ""}</span><button class="x" id="xp-x-run" aria-label="Back to the overview">✕</button></div>`);
+  }
+  box.innerHTML = out.join("");
+  if ($("x-filter")) $("x-filter").onclick = () => setFilter(null);
+  if ($("x-run")) $("x-run").onclick = unfollow;
+  if ($("x-rep")) $("x-rep").onclick = () => { view.reps = []; render(false); };
+}
+// The address: the run, then the iterations kept at each level of iteration ("all" for every one).
+function hash() {
+  const h = view.run ? [view.run, ...view.reps.map(x => x ? x.join("x") : "all")].join("--") : "";
+  if (!shell.shown) return;
+  try { history.replaceState(null, "", `#experiments/${encodeURIComponent(X.name)}${h ? "/" + h : ""}`); } catch (e) { /* the frame may refuse */ }
+}
+function fromHash(raw) {
+  const h = decodeURIComponent(raw || ""); if (!h) return;
+  const r = X.runs.find(x => h === x.id || h.startsWith(x.id + "--")); if (!r) return;
+  follow(r.id, null, h.slice(r.id.length).split("--").filter(Boolean).map(x => x === "all" ? null : x.split("x").map(Number)));
+}
+
+// --- the measures: how the variants compare ---------------------------------------------------------
+const below = id => [id, ...(KIDS.get(id) || []).flatMap(k => below(k.id))];
+function measureOf(m, variant) {
+  const nodes = X.nodes.filter(n => variantOf(n) === variant);
+  if (m.decision) {
+    const ds = nodes.filter(n => n.kind === "decision" && n.label === m.decision);
+    if (!ds.length) return null;
+    const ss = live(ds.flatMap(n => all(n.id)));
+    if (!ss.length) return { none: true };
+    return { text: count(ss, s => s.branch === m.branch), ss, incomplete: nodes.some(n => all(n.id).some(s => s.status === "incomplete")) };
+  }
+  if (m.cost) {
+    // Everything after the variant's values fork by the pooled parameter, value by value and
+    // iteration by iteration (what is made once for a value counts in each of its iterations).
+    const starts = nodes.filter(n => pooled(n) && !nodes.some(o => pooled(o) && o !== n && below(o.id).includes(n.id)));
+    const under = new Set(starts.flatMap(n => below(n.id)));
+    const ss = X.states.filter(s => under.has(s.node) && cases(m.over)(s.params[m.over])), per = [];
+    if (!ss.length) return { none: true };
+    for (const [, xs] of d3.rollups(ss, xs => xs, s => s.params[m.over])) {
+      const its = [...new Set(xs.map(s => s.reps[0]).filter(x => x != null))];
+      if (!its.length) per.push(sumBy(xs, s => s.usd));
+      for (const r of its) per.push(sumBy(xs.filter(s => s.reps[0] == null || s.reps[0] === r), s => s.usd));
+    }
+    return { per, med: d3.median(per), lo: d3.min(per), hi: d3.max(per), cost: true };
+  }
+}
+function measureCell(m, v) {
+  if (!v) return `<span class="v muted">—<span class="sub">doesn't apply</span></span>`;
+  if (v.none) return `<span class="v muted">not run<span class="sub">no results yet</span></span>`;
+  if (v.cost) return `<span class="v">${cost(v.med)}<span class="sub">median, ${cost(v.lo)} to ${cost(v.hi)}</span></span>`;
+  const reps = new Set(v.ss.map(s => s.reps[0]).filter(x => x != null)).size;
+  return `<span class="v">${v.text}<span class="sub">${reps > 1 ? `over ${reps} iterations` : "one iteration"}${v.incomplete ? " · incomplete" : ""}</span></span>`;
+}
+function measures() {
+  const box = $("measures"); box.style.setProperty("--cols", VARIANTS.length);
+  box.innerHTML = `<div class="mrow head"><span>measure</span>${VARIANTS.map(v => `<span>${esc(v)}</span>`).join("")}</div>` +
+    X.measures.map(m => `<button class="mrow${view.measure === m.id ? " on" : ""}" data-measure="${m.id}"><span class="name">${esc(m.name)}<span class="sub">${m.better} is better</span></span>${VARIANTS.map(v => measureCell(m, measureOf(m, v))).join("")}</button>`).join("");
+  box.querySelectorAll("[data-measure]").forEach(b => b.onclick = () => go(() => { view.measure = b.dataset.measure; view.at = null; }));
+}
+function measurePanel(m) {
+  const vals = VARIANTS.map(v => [v, measureOf(m, v)]).filter(([, x]) => x);
+  const per = vals.map(([v, x]) => `<dt>${esc(v)}</dt><dd>${x.none ? "not run" : x.cost ? `median ${cost(x.med)}, ${cost(x.lo)} to ${cost(x.hi)}` : x.text}</dd>`).join("");
+  let grid = "";
+  if (m.decision && m.over) {
+    // Value by value: one mark per iteration, ✓ when it took the measured branch.
+    const cols = vals.filter(([, x]) => !x.none).map(([v]) => v), keys = P[m.over].values.filter(v => !P[m.over].controls.includes(v.id));
+    const cell = (v, b) => { const ss = measureOf(m, v).ss.filter(s => s.params[m.over] === b.id).sort((a, c) => (a.reps[0] ?? 0) - (c.reps[0] ?? 0));
+      if (!ss.length) return `<span class="cell"><i class="dot" style="border:1.5px solid #cdcad9"></i></span>`;
+      return `<span class="cell">${ss.map(s => `<button data-run="${esc(s.run)}" data-at="${esc(s.node)}" data-reps='${JSON.stringify(s.reps)}' aria-label="${esc(b.label)}, ${esc(v)}, #${s.reps[0]}">${verdictIcon(s.branch === m.branch ? "good" : "bad", true)}</button>`).join("")}</span>`; };
+    grid = `<section><span class="eyebrow">${esc(m.over)} by ${esc(m.over)} · one mark per iteration</span><p class="small muted">Click a mark to follow that run.</p>
+      <div class="grid" style="--cols:${cols.length}"><div class="gr head"><span>${esc(m.over)}</span>${cols.map(v => `<span>${esc(v)}</span>`).join("")}</div>${keys.map(b => `<div class="gr"><span title="${esc(b.label)}">${esc(b.label)}</span>${cols.map(v => cell(v, b)).join("")}</div>`).join("")}</div></section>`;
+  }
+  shell("measure", m.name, `<section class="first"><p>${esc(m.about)}</p><dl class="kv">${per}</dl></section>${grid}`);
+}
+
+$("question").textContent = X.question;
+tellStudio(`${X.name}: ${X.runs.length} runs, ${X.states.length} results`);
+svg.on("click", () => { if (panel.classList.contains("open")) closePanel(); });
+panel.classList.remove("open"); stack.length = 0;
+build(); fit();
+// Open on the first step, a little in from the left and level with the middle.
+{ const first = DN.find(d => !d.parent); if (first) zoom.translateTo(svg, POS[first.id].x - 140 + win.clientWidth / 2, POS[first.id].y); }
+render(false); fromHash(route);
+}
+})();
+</script>
