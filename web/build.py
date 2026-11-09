@@ -719,6 +719,35 @@ def layout(url: str, title: str, description: str, current: str, main: str, head
     )
 
 
+# The site while it is closed (`web/deploy.py HOST --coming-soon`): its home page, in the site's frame with
+# no menu, since the pages it would name are not released.
+COMING_SOON = ("nock — coming soon", f"{TAGLINE} Coming soon.")
+
+
+def coming_soon() -> str:
+    """The closed site's home page: the name, the tagline and Coming soon, the legal pages in its footer."""
+    title, description = COMING_SOON
+    main = (
+        '<div class="frame story story-b">\n'
+        '<section class="card intro wide-intro" aria-labelledby="coming-soon-title">\n'
+        '  <span class="label">nock</span>\n'
+        '  <h1 id="coming-soon-title">Coming soon</h1>\n'
+        f"  <p>{html.escape(TAGLINE)}</p>\n"
+        "</section>\n"
+        "</div>"
+    )
+    return (
+        LAYOUT.read_text()
+        .replace("{{ title }}", html.escape(title))
+        .replace("{{ description }}", html.escape(description))
+        .replace("{{ seo }}", seo_head("/") + "\n" + social_head("/", title, description))
+        .replace("{{ head }}", "")
+        .replace("{{ menu }}", "")
+        .replace("{{ main }}", main)
+        .replace("{{ github }}", GITHUB)
+    )
+
+
 def blocks() -> dict[str, str]:
     """landing/copy.html's blocks by name: the words the story pages share."""
     text = (LANDING / "copy.html").read_text()

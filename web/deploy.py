@@ -6,10 +6,11 @@ packed, copied over SSH and unpacked as `/srv/sites/nock.dev/releases/ID`; `curr
 through, is switched to it in one rename, and the five newest releases are kept. Caddy's site for nock.dev
 (`nock.dev.caddy`) is installed as `/etc/caddy/sites/nock.dev.caddy` when it changed, validated with the
 box's Caddyfile (the previous one back if Caddy refuses it), and Caddy reloaded. `--rollback` switches
-`current` back to the release before it. The steps are printed first, and nothing runs before the answer
+`current` back to the release before it. `--coming-soon` releases the closed site: the coming-soon page as the
+home page, beside the legal pages and what they load, so opening the site later is one release without it. The steps are printed first, and nothing runs before the answer
 is yes. Standard library only.
 
-    python3 web/deploy.py HOST [--rollback]
+    python3 web/deploy.py HOST [--coming-soon | --rollback]
 """
 
 from __future__ import annotations
@@ -23,7 +24,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
-from build import build
+from build import build, coming_soon
 from publish import DOMAIN, problems
 
 HERE = Path(__file__).resolve().parent
@@ -31,6 +32,8 @@ SITES = "/srv/sites"
 CADDY_SITES = "/etc/caddy/sites"
 CADDY_SITE = HERE / "nock.dev.caddy"
 KEEP = 5
+# What the closed site keeps: its page, the legal pages and the files they load.
+OPEN_WHILE_CLOSED = ("index.html", "style.css", "fonts", "og.jpg", "privacy", "terms")
 
 
 @dataclass(frozen=True)
@@ -54,6 +57,19 @@ def stage(directory: Path) -> None:
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(HERE / relative, target)
     build(directory)
+
+
+def close(directory: Path) -> None:
+    """Turn the staged site into the closed one, in place: the coming-soon page at `/`, the legal pages kept,
+    everything else (the other pages, the crawler files listing them) removed."""
+    for entry in directory.iterdir():
+        if entry.name in OPEN_WHILE_CLOSED:
+            continue
+        if entry.is_dir() and not entry.is_symlink():
+            shutil.rmtree(entry)
+        else:
+            entry.unlink()
+    (directory / "index.html").write_text(coming_soon())
 
 
 def plan(host: str, release: str, build_directory: Path) -> list[Step]:
@@ -171,6 +187,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--rollback", action="store_true", help="switch back to the release before the current one"
     )
+    parser.add_argument(
+        "--coming-soon",
+        action="store_true",
+        help="release the closed site: the coming-soon page and the legal pages only",
+    )
     arguments = parser.parse_args(argv)
     host: str = arguments.host
     if problem := destination_problem(host):
@@ -200,6 +221,11 @@ def main(argv: list[str] | None = None) -> int:
         if found := problems(staged):
             print("deploy: the site is not releasable: " + "; ".join(found), file=sys.stderr)
             return 1
+        if arguments.coming_soon:
+            close(staged)
+            print(
+                f"- close it: the coming-soon page at /, only {', '.join(OPEN_WHILE_CLOSED[1:])} beside it"
+            )
         steps, what = plan(host, release, build_directory), f"Release {release} to {host}?"
     for step in steps:
         print(f"- {step.what}: {shlex.join(step.command)[:200]}")

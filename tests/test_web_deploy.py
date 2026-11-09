@@ -1,11 +1,12 @@
 """nock.dev's release to Logika's box (`web/deploy.py`): the site staged from the committed tree, the plan
-in order, and the box's side of a release and a rollback run for real on a temporary directory standing in
+in order, the closed site (`--coming-soon`), and the box's side of a release and a rollback run for real on a temporary directory standing in
 for /srv/sites and /etc/caddy/sites, with `caddy` and `systemctl` recording what they were asked."""
 
 from __future__ import annotations
 
 import importlib.util
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -154,6 +155,31 @@ def test_the_release_is_staged_from_the_committed_tree_and_switched_last(tmp_pat
     switch = steps[-1].command
     assert switch[:2] == ["ssh", "ops@box-1"] and "/srv/sites/nock.dev" in switch[2]
     assert "/etc/caddy/sites/nock.dev.caddy" in switch[2]
+
+
+def test_a_closed_site_is_the_coming_soon_page_and_the_legal_pages(tmp_path: Path) -> None:
+    staged = tmp_path / "release" / "20261105T120000Z-abc"
+    DEPLOY.stage(staged)
+    terms = (staged / "terms" / "index.html").read_text()
+    DEPLOY.close(staged)
+    assert sorted(entry.name for entry in staged.iterdir()) == sorted(DEPLOY.OPEN_WHILE_CLOSED)
+    assert (staged / "terms" / "index.html").read_text() == terms
+    assert (staged / "privacy" / "index.html").is_file() and (
+        staged / "fonts" / "OFL.txt"
+    ).is_file()
+    home = (staged / "index.html").read_text()
+    assert "<title>nock — coming soon</title>" in home
+    assert '<h1 id="coming-soon-title">Coming soon</h1>' in home
+    assert "<p>A self-improving toolbox for coding agents.</p>" in home
+    assert '<meta property="og:title" content="nock — coming soon">' in home
+    assert '<meta property="og:url" content="https://nock.dev/">' in home
+    links = re.findall(r'href="(/[^"]*)"', home)
+    assert {link for link in links if not link.startswith(("/fonts/", "/style.css"))} == {
+        "/",
+        "/privacy/",
+        "/terms/",
+    }
+    assert not re.search(r"<script(?! type=\"application/ld\+json\")[^>]*\ssrc=", home)
 
 
 def test_the_box_is_always_named() -> None:
