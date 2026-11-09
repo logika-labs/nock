@@ -79,37 +79,49 @@ def test_every_link_between_pages_lands_and_old_anchors_are_sent_on(tmp_path: Pa
     assert moved["the-projects-environment"] == "/docs/tool/#the-projects-environment"
 
 
-def test_each_layout_is_its_own_set_of_story_pages_with_the_demo(tmp_path: Path) -> None:
+def test_the_story_pages_are_one_layout_with_the_demo_on_a_tabbed_stage(tmp_path: Path) -> None:
     pages = built(tmp_path)
     demo = (WEB / "site" / "demo.js").read_text()
     scenes = set(re.findall(r"^    (\w+): \{\n      label:", demo, re.M))
     assert scenes == {"reflection", "review", "logika"}
-    for layout, prefix in (("a", ""), ("b", "index-b.html"), ("c", "index-c.html")):
-        home, about, start = (
-            pages[f"{path}{prefix}"] for path in ("/", "/about/", "/getting-started/")
-        )
-        for text in (home, about, start):
-            assert f'data-layout="{layout}"' in text and "{{" not in text
-            menu = text.split('<nav class="menu"')[1].split("</nav>")[0]
-            assert f'href="/about/{prefix}"' in menu and f'href="/getting-started/{prefix}"' in menu
-        named = {
-            name for value in re.findall(r'data-demo="([^"]+)"', home) for name in value.split()
-        }
-        assert named == scenes, layout
-        assert "uvx nock init" in home and 'href="https://logika.host"' in home
-        assert start.count('class="step"') == 7
+    home, about, start = (pages[path] for path in ("/", "/about/", "/getting-started/"))
+    for text in (home, about, start):
+        assert "{{" not in text and "data-layout" not in text and 'class="layouts"' not in text
+        menu = text.split('<nav class="menu"')[1].split("</nav>")[0]
+        assert 'href="/about/"' in menu and 'href="/getting-started/"' in menu
+    assert not [url for url in pages if "index-" in url]
+    assert sorted(path.name for path in (WEB / "landing").iterdir()) == [
+        "about.html",
+        "copy.html",
+        "home.html",
+        "start.html",
+    ]
+    assert "LAYOUTS" not in (WEB / "build.py").read_text()
+    named = {name for value in re.findall(r'data-demo="([^"]+)"', home) for name in value.split()}
+    assert named == scenes
+    assert 'data-tabs-for="demo-stage"' in home
+    assert "uvx nock init" in home and 'href="https://logika.host"' in home
+    assert start.count('class="step"') == 7 and "data-stepper" in start
     assert (tmp_path / "studio" / "topics.css").read_text() == (
         ROOT / "src" / "nock" / "pages" / "topics.css"
     ).read_text()
     assert 'data-demo-still="review:3"' in pages["/getting-started/"]
 
 
-def test_the_telegram_link_is_one_constant_on_every_page(tmp_path: Path) -> None:
+def test_no_page_or_source_names_a_community_channel(tmp_path: Path) -> None:
     pages = built(tmp_path)
-    source = (WEB / "build.py").read_text()
-    telegram = re.findall(r'^TELEGRAM = "([^"]+)"$', source, re.M)
-    assert len(telegram) == 1 and len(re.findall(r"t\.me/", source)) == 1
-    assert all(f'href="{telegram[0]}"' in text for text in pages.values())
+    sources = [
+        WEB / "build.py",
+        WEB / "layout.html",
+        WEB / "README.md",
+        ROOT / "README.md",
+        *(WEB / "landing").glob("*.html"),
+        *(ROOT / "src" / "nock" / "terms").rglob("*.md"),
+    ]
+    for text in [*pages.values(), *(path.read_text() for path in sources)]:
+        assert not re.search(r"telegram|t\.me/", text, re.I)
+    community = pages["/"].split('id="community"')[1].split("</section>")[0]
+    assert "coming soon" in community
 
 
 def test_the_legal_pages_show_their_summary_or_their_unchanged_full_text(
@@ -124,7 +136,9 @@ def test_the_legal_pages_show_their_summary_or_their_unchanged_full_text(
         assert "<h1" in text and title in text
         assert "{{" not in text
         assert "github.com/logika-labs/nock/blob/main//" not in text
-        assert text.index('role="switch"') < text.index("<h1") < text.index('class="plain"')
+        head = text.split('<div class="legal-head">')[1].split('<section class="plain"')[0]
+        assert head.index("<h1") < head.index('role="switch"')
+        assert text.index('class="legal-head"') < text.index('class="plain"')
         assert text.index('class="plain"') < text.index('class="full"')
         assert "nock.legal.tldr" in text.split("</head>")[0]
         full = html.unescape(re.sub(r"<[^>]+>", "", text.split('<section class="full"')[1]))
@@ -139,7 +153,96 @@ def test_the_legal_pages_show_their_summary_or_their_unchanged_full_text(
     for url in pages:
         text = pages[url]
         assert 'href="/privacy/"' in text and 'href="/terms/"' in text
-        assert not re.search(r'(?:href|src)="https://(?!github\.com/)', text.split("<body")[0]), url
+        # The canonical link names the page itself; nothing in the head loads from elsewhere.
+        head = re.sub(r'<link rel="canonical"[^>]*>', "", text.split("<body")[0])
+        assert not re.search(r'(?:href|src)="https://(?!github\.com/)', head), url
+
+
+def test_the_sitemap_lists_every_page_at_its_canonical_address_with_its_date(
+    tmp_path: Path,
+) -> None:
+    pages = built(tmp_path)
+    sitemap = (tmp_path / "sitemap.xml").read_text()
+    listed = re.findall(r"<loc>https://nock\.dev(/[^<]*)</loc>", sitemap)
+    assert sorted(listed) == sorted(pages) and len(set(listed)) == len(listed)
+    assert len(re.findall(r"<lastmod>\d{4}-\d\d-\d\d</lastmod>", sitemap)) == len(pages)
+    assert (tmp_path / "robots.txt").read_text() == (
+        "User-agent: *\nAllow: /\n\nSitemap: https://nock.dev/sitemap.xml\n"
+    )
+    for url, text in pages.items():
+        head = text.split("</head>")[0]
+        assert re.findall(r'<link rel="canonical" href="([^"]+)">', head) == [
+            f"https://nock.dev{url}"
+        ], url
+        assert "noindex" not in head, url
+
+
+def test_every_page_carries_json_ld_naming_its_maker_and_the_landing_page_nock(
+    tmp_path: Path,
+) -> None:
+    pages = built(tmp_path)
+    for url, text in pages.items():
+        found = re.findall(r'<script type="application/ld\+json">([^<]*)</script>', text)
+        data = [json.loads(each) for each in found]
+        assert data[0]["@type"] == "Organization" and data[0]["name"] == "Parallel Labs, S.L.", url
+        assert all(each["@context"] == "https://schema.org" for each in data)
+        assert [each["@type"] for each in data[1:]] == (
+            ["SoftwareApplication"] if url == "/" else []
+        ), url
+    software = json.loads(
+        re.findall(r'<script type="application/ld\+json">([^<]*)</script>', pages["/"])[1]
+    )
+    assert software["license"] == "https://opensource.org/licenses/MIT"
+    assert software["offers"]["price"] == 0 and software["isAccessibleForFree"] is True
+
+
+def test_llms_txt_links_every_page_with_a_line_and_resolves_to_built_pages(
+    tmp_path: Path,
+) -> None:
+    pages = built(tmp_path)
+    text = (tmp_path / "llms.txt").read_text()
+    lines = text.splitlines()
+    assert lines[0] == "# nock" and lines[2].startswith("> ")
+    assert [line for line in lines if line.startswith("## ")] == [
+        "## Start",
+        "## Docs: Start",
+        "## Docs: Every day",
+        "## Docs: Extending",
+        "## Docs: Reference",
+        "## Legal",
+        "## Optional",
+    ]
+    for line in (line for line in lines if line.startswith("- ")):
+        assert re.match(r"- \[[^\]]+\]\(https://[^)]+\): \S", line), line
+    links = re.findall(r"\]\((https://[^)]+)\)", text)
+    ours = [link.removeprefix("https://nock.dev") for link in links if "nock.dev" in link]
+    for path in ours:
+        assert path in pages or (tmp_path / path.lstrip("/")).is_file(), path
+    assert set(pages) - {"/docs/"} <= set(ours)
+
+
+def test_llms_full_txt_is_every_guide_and_every_term_as_markdown(tmp_path: Path) -> None:
+    built(tmp_path)
+    text = (tmp_path / "llms-full.txt").read_text()
+    docs = Docs()
+    for guide in docs.terms:
+        if guide.term.startswith("guide."):
+            title = guide.article.strip().splitlines()[0].removeprefix("# ")
+            assert f"\n# {title}\n\nSource: https://nock.dev/docs/{guide.term[6:]}/\n" in text
+    short = [
+        term
+        for term in docs.terms
+        if term.term != "guide"
+        and not term.term.startswith("guide.")
+        and len(term.article) <= 500
+        and docs.find(term.term) is term
+    ]
+    assert short
+    for term in short:
+        assert f"## nock docs {term.term}\n" in text, term.term
+    prose = re.sub(r"```.*?```|`[^`\n]*`", "", text, flags=re.S)
+    for target in re.findall(r"\]\(([^)\s]+)\)", prose):
+        assert re.match(r"https?://|mailto:", target), target
 
 
 def publish(source: Path, pages: Path, answer: str = "", *options: str) -> str:
@@ -178,8 +281,10 @@ def test_publishing_replaces_the_pages_tree_and_pushes_only_on_the_word(tmp_path
         "CNAME",
         ".nojekyll",
         "index.html",
-        "index-b.html",
-        "index-c.html",
+        "robots.txt",
+        "sitemap.xml",
+        "llms.txt",
+        "llms-full.txt",
         "style.css",
         "demo.js",
         "demo.css",

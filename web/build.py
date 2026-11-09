@@ -1,5 +1,4 @@
-"""Build nock.dev into `site/`: the landing page, About and Getting started from `landing/`, in
-each of the layouts under review; the docs from nock's guides and terms (`src/nock/terms/`, what
+"""Build nock.dev into `site/`: the landing page, About and Getting started from `landing/`; the docs from nock's guides and terms (`src/nock/terms/`, what
 `nock docs` reads too), a page per guide in four groups, each with what an agent reads on it; the
 legal pages from `legal/`, each with its plain-words summary. Every page is set in `layout.html`.
 Standard library only, and nock's own `docs` module, to read the terms as `nock docs` does.
@@ -14,14 +13,16 @@ import html
 import json
 import re
 import shutil
+import subprocess
 import sys
+from datetime import date
 from pathlib import Path
 from typing import NamedTuple
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent / "src"))
 
-from nock.docs import Docs, Term  # noqa: E402  (nock's source, beside the site)
+from nock.docs import TERMS, Docs, Term  # noqa: E402  (nock's source, beside the site)
 
 SITE = HERE / "site"
 LAYOUT = HERE / "layout.html"
@@ -30,18 +31,8 @@ STUDIO = HERE.parent / "src" / "nock" / "pages"
 GITHUB = "https://github.com/logika-labs/nock"
 REPOSITORY = GITHUB + "/blob/main/"
 LOGIKA = "https://logika.host"
-# PLACEHOLDER: the community's Telegram channel, which the owner is creating. Replace this one line.
-TELEGRAM = "https://t.me/PLACEHOLDER"
 
-# The layouts of the landing page, About and Getting started under review, each a set of those pages:
-# the first at the plain addresses, the others at index-NAME.html beside them. The docs and the legal
-# pages are one design for all. Keeping one layout is deleting the others here and in landing/.
-LAYOUTS = {
-    "a": "Stacked story: the hero, then each part with its demo, full width, in turn",
-    "b": "Tabbed stage: one large demo stage under the hero, the copy changing with its tab",
-    "c": "Split scroll: the demo sticky beside the copy, each beat of the copy advancing it",
-}
-# The pages each layout has, by where they are served, with their title, description and template.
+# The story pages, by where they are served, with their title, description and template in landing/.
 STORY = {
     "/": (
         "nock",
@@ -177,7 +168,6 @@ TLDR_KEY = "nock.legal.tldr"
 
 ICONS = {
     "github": '<svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M8 0a8 8 0 0 0-2.53 15.59c.4.07.55-.17.55-.38v-1.33c-2.23.48-2.7-1.07-2.7-1.07-.36-.92-.89-1.17-.89-1.17-.73-.5.06-.49.06-.49.8.06 1.23.83 1.23.83.71 1.23 1.87.87 2.33.67.07-.52.28-.87.5-1.07-1.78-.2-3.65-.89-3.65-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.6 7.6 0 0 1 4 0c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.28.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48v2.2c0 .21.15.46.55.38A8 8 0 0 0 8 0z"/></svg>',
-    "telegram": '<svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M14.6 1.7.9 7c-.9.4-.9.9 0 1.2l3.5 1.1 1.3 4.1c.2.5.3.6.7.6.3 0 .5-.1.6-.3l1.7-1.6 3.5 2.6c.6.4 1.1.2 1.3-.6l2.3-11c.2-1-.4-1.4-1.2-1zM5.1 9.2l7.1-4.5c.4-.2.6 0 .4.2L6.6 10.3l-.3 2.7z"/></svg>',
 }
 
 
@@ -702,62 +692,31 @@ def docs_page(page: Page, pages: list[Page], located: dict[str, str]) -> str:
 # --- the frame and the story pages ----------------------------------------------------------------
 
 
-def address(path: str, layout: str) -> str:
-    """Where `path` is served in `layout`: the first layout's at the plain address."""
-    return path if layout == next(iter(LAYOUTS)) else f"{path}index-{layout}.html"
-
-
-def menu(current: str, layout: str) -> str:
+def menu(current: str) -> str:
     items = [("Home", "/"), ("About", "/about/"), ("Get started", "/getting-started/")]
-    links = [
-        f'<a href="{address(path, layout)}"{marked(path == current)}>{name}</a>'
-        for name, path in items
-    ]
+    links = [f'<a href="{path}"{marked(path == current)}>{name}</a>' for name, path in items]
     links.append(f'<a href="/docs/"{marked(current == "/docs/")}>Docs</a>')
-    icons = (
-        f'<a class="icon" href="{GITHUB}" aria-label="nock on GitHub" title="GitHub">{ICONS["github"]}</a>'
-        f'<a class="icon" href="{TELEGRAM}" aria-label="nock on Telegram" title="Telegram">{ICONS["telegram"]}</a>'
-    )
+    icons = f'<a class="icon" href="{GITHUB}" aria-label="nock on GitHub" title="GitHub">{ICONS["github"]}</a>'
     return "\n".join(links) + f'\n<span class="icons">{icons}</span>'
 
 
-def switcher(path: str, layout: str) -> str:
-    """While more than one layout is under review: a way to the same page in the others."""
-    if len(LAYOUTS) < 2:
-        return ""
-    links = "".join(
-        f'<a href="{address(path, name)}"{marked(name == layout)} title="{html.escape(description)}">{name.upper()}</a>'
-        for name, description in LAYOUTS.items()
-    )
-    return f'<nav class="layouts" aria-label="Layouts under review"><span class="label">Layout</span>{links}</nav>'
-
-
-def layout(
-    title: str,
-    description: str,
-    current: str,
-    main: str,
-    head: str = "",
-    variant: str = "a",
-    extra: str = "",
-) -> str:
-    """A page in the site's frame: the band with the menu, the main column, the footer."""
+def layout(url: str, title: str, description: str, current: str, main: str, head: str = "") -> str:
+    """A page in the site's frame, served at `url`: the band with the menu, the main column, the
+    footer."""
     return (
         LAYOUT.read_text()
         .replace("{{ title }}", html.escape(title))
         .replace("{{ description }}", html.escape(description))
+        .replace("{{ seo }}", seo_head(url))
         .replace("{{ head }}", head)
-        .replace("{{ layout }}", variant)
-        .replace("{{ menu }}", menu(current, variant))
+        .replace("{{ menu }}", menu(current))
         .replace("{{ main }}", main)
-        .replace("{{ extra }}", extra)
-        .replace("{{ telegram }}", TELEGRAM)
         .replace("{{ github }}", GITHUB)
     )
 
 
 def blocks() -> dict[str, str]:
-    """landing/copy.html's blocks by name: the words every layout shares."""
+    """landing/copy.html's blocks by name: the words the story pages share."""
     text = (LANDING / "copy.html").read_text()
     return dict(re.findall(r"<!-- block (\S+) -->\n(.*?)\n<!-- end -->", text, re.S))
 
@@ -765,29 +724,23 @@ def blocks() -> dict[str, str]:
 PLACEHOLDER = re.compile(r"\{\{ (copy|url):(\S+) \}\}")
 
 
-def story_page(path: str, layout_name: str, copy: dict[str, str]) -> str:
-    """A layout's page: its template, the shared words and the layout's own addresses filled in."""
+def story_page(path: str, copy: dict[str, str]) -> str:
+    """A story page: its template with the shared words and the addresses filled in."""
     name = STORY[path][2]
-    filled = (LANDING / layout_name / f"{name}.html").read_text()
+    filled = (LANDING / f"{name}.html").read_text()
 
     def fill(match: re.Match[str]) -> str:
         kind, key = match.group(1), match.group(2)
         if kind == "url":
-            return address(key, layout_name)
+            return key
         if key not in copy:
-            raise SystemExit(
-                f"web/landing/{layout_name}/{name}.html names `{key}`, no block of copy.html"
-            )
+            raise SystemExit(f"web/landing/{name}.html names `{key}`, no block of copy.html")
         return copy[key]
 
     # A block may name addresses and other blocks, so fill until nothing is left.
     while PLACEHOLDER.search(filled):
         filled = PLACEHOLDER.sub(fill, filled)
-    return (
-        filled.replace("{{ telegram }}", TELEGRAM)
-        .replace("{{ github }}", GITHUB)
-        .replace("{{ logika }}", LOGIKA)
-    )
+    return filled.replace("{{ github }}", GITHUB).replace("{{ logika }}", LOGIKA)
 
 
 STORY_HEAD = (
@@ -798,8 +751,9 @@ STORY_HEAD = (
 
 
 def legal_page(name: str) -> tuple[str, str]:
-    """The page's title, and its main: the switch, the title, the summary alone while the switch is
-    on (the default), the full text alone while it is off; without script, both."""
+    """The page's title, and its main: the title with the switch at the right end of its line, the
+    summary alone while the switch is on (the default), the full text alone while it is off; without
+    script, both."""
     text = (HERE / "legal" / f"{name}.md").read_text()
     title = re.match(r"# (.+)\n", text)
     assert title, f"legal/{name}.md starts with its title"
@@ -808,8 +762,10 @@ def legal_page(name: str) -> tuple[str, str]:
     summary = Converter((HERE / "legal" / f"{name}-plain.md").read_text()).convert()
     main = f"""<div class="frame legal">
 <article class="card article">
-<div class="tldr-control" hidden><button type="button" class="switch" role="switch" id="tldr" aria-checked="true"><span></span></button><label for="tldr">TL;DR</label></div>
+<div class="legal-head">
 {heading}
+<div class="tldr-control" hidden><button type="button" class="switch" role="switch" id="tldr" aria-checked="true"><span></span></button><label for="tldr">TL;DR</label></div>
+</div>
 <section class="plain" aria-label="TL;DR">
 {summary}
 <p class="note">In short. The full text is the one that applies: turn TL;DR off to read it.</p>
@@ -840,9 +796,187 @@ toggle.addEventListener("click", () => {{
     return title.group(1), main
 
 
-def build(site: Path, terms: Path | None = None) -> list[Path]:
-    """Write every page under `site`; the pages written."""
-    docs = Docs(terms) if terms else Docs()
+# --- what crawlers and LLMs read: canonicals, JSON-LD, the sitemap, robots.txt, llms.txt --------
+
+ORIGIN = "https://nock.dev"
+COMPANY = "Parallel Labs, S.L."
+CONTACT = "support@logika.host"
+ORGANIZATION = {
+    "@context": "https://schema.org",
+    "@type": "Organization",
+    "@id": f"{ORIGIN}/#organization",
+    "name": COMPANY,
+    "url": f"{ORIGIN}/",
+    "email": CONTACT,
+    "sameAs": ["https://github.com/logika-labs", LOGIKA],
+}
+
+
+def software() -> dict[str, object]:
+    """nock as an open-source dev tool, free, MIT licensed, on PyPI."""
+    return {
+        "@context": "https://schema.org",
+        "@type": "SoftwareApplication",
+        "name": "nock",
+        "url": f"{ORIGIN}/",
+        "description": STORY["/"][1],
+        "applicationCategory": "DeveloperApplication",
+        "operatingSystem": "macOS, Linux",
+        "license": "https://opensource.org/licenses/MIT",
+        "isAccessibleForFree": True,
+        "downloadUrl": "https://pypi.org/project/nock/",
+        "installUrl": f"{ORIGIN}/getting-started/",
+        "sameAs": GITHUB,
+        "author": {"@id": ORGANIZATION["@id"]},
+        "publisher": {"@id": ORGANIZATION["@id"]},
+        "offers": {"@type": "Offer", "price": 0, "priceCurrency": "USD"},
+    }
+
+
+def structured_data(url: str) -> list[dict[str, object]]:
+    """The JSON-LD a page carries: the maker on every page, and nock itself on the landing page."""
+    return [ORGANIZATION, software()] if url == "/" else [ORGANIZATION]
+
+
+def seo_head(url: str) -> str:
+    """The page's canonical link and its JSON-LD, `<` escaped so no string closes the script."""
+    scripts = [
+        '<script type="application/ld+json">'
+        + json.dumps(data, separators=(",", ":")).replace("<", "\\u003c")
+        + "</script>"
+        for data in structured_data(url)
+    ]
+    return "\n".join([f'<link rel="canonical" href="{ORIGIN}{url}">', *scripts])
+
+
+def last_changed(sources: list[Path], today: str) -> str:
+    """The day the sources last changed in git, or `today` for sources not yet committed."""
+    found = subprocess.run(
+        ["git", "log", "-1", "--format=%cs", "--", *(str(path) for path in sources)],
+        cwd=HERE,
+        capture_output=True,
+        text=True,
+    )
+    return found.stdout.strip() or today
+
+
+def sitemap(lastmod: dict[str, str]) -> str:
+    urls = "".join(
+        f"  <url>\n    <loc>{ORIGIN}{url}</loc>\n    <lastmod>{day}</lastmod>\n  </url>\n"
+        for url, day in lastmod.items()
+    )
+    return (
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
+        f"{urls}</urlset>\n"
+    )
+
+
+def robots() -> str:
+    return f"User-agent: *\nAllow: /\n\nSitemap: {ORIGIN}/sitemap.xml\n"
+
+
+def bare(title: str) -> str:
+    return title.removesuffix(" · nock")
+
+
+def llms(pages: list[Page]) -> str:
+    """llmstxt.org: an H1, a blockquote summary, then sections of links with a line each."""
+    sections = [
+        (
+            "Start",
+            [
+                f"- [{bare(title) if path != '/' else 'What nock is'}]({ORIGIN}{path}): {description}"
+                for path, (title, description, _) in STORY.items()
+            ],
+        ),
+        *(
+            (
+                f"Docs: {name}",
+                [
+                    f"- [{page.title}]({ORIGIN}{page.url}): {page.description}"
+                    for page in pages
+                    if page.group == group
+                ],
+            )
+            for group, name in GROUPS.items()
+        ),
+        (
+            "Legal",
+            [f"- [{legal_title(name)}]({ORIGIN}/{name}/): {line}" for name, line in LEGAL.items()],
+        ),
+        (
+            "Optional",
+            [
+                f"- [Everything above in one file]({ORIGIN}/llms-full.txt): every guide and every term, as Markdown.",
+                f"- [Source]({GITHUB}): nock's repository on GitHub, MIT licensed.",
+            ],
+        ),
+    ]
+    lines = [
+        "# nock",
+        "",
+        f"> {STORY['/'][1]}",
+        "",
+        f"nock is open source under the MIT License, standard-library Python with no dependencies, "
+        f"vendored into the repository that uses it: `uvx nock init`. Made by {COMPANY} for Claude Code; "
+        f"contact {CONTACT}.",
+        "",
+    ]
+    for title, links in sections:
+        lines += [f"## {title}", "", *links, ""]
+    return "\n".join(lines)
+
+
+def absolute_links(text: str, here: str, located: dict[str, str]) -> str:
+    """A guide's Markdown links made absolute, outside its code: a heading on any page, a page of
+    the site, a file of the repository."""
+
+    def target(match: re.Match[str]) -> str:
+        label, where = match.group(1), match.group(2)
+        if where.startswith("#"):
+            where = ORIGIN + located.get(where[1:], here + where)
+        elif where.startswith("/"):
+            where = ORIGIN + where
+        elif not re.match(r"[a-z]+:", where):
+            where = REPOSITORY + where
+        return f"[{label}]({where})"
+
+    parts = re.split(r"(```.*?```|`[^`\n]*`)", text, flags=re.S)
+    return "".join(
+        part if index % 2 else re.sub(r"\[([^\]]+)\]\(([^)\s]+)\)", target, part)
+        for index, part in enumerate(parts)
+    )
+
+
+def llms_full(docs: Docs, pages: list[Page], located: dict[str, str]) -> str:
+    """The guides and the terms as Markdown in one file, from the same sources the pages are."""
+    found = guides(docs)
+    out = ["# nock", "", f"> {STORY['/'][1]}", ""]
+    for page in pages:
+        out += [f"# {page.title}", "", f"Source: {ORIGIN}{page.url}", ""]
+        if page.name == "terms":
+            out += [TERMS_PAGE[1], ""]
+            for term in short_terms(docs):
+                article = absolute_links(term.article.strip(), page.url, located)
+                out += [f"## nock docs {term.term}", "", term.description, "", article, ""]
+            continue
+        article = re.sub(r"\A# .*\n+", "", found[page.name].article.strip())
+        out += [absolute_links(article, page.url, located), ""]
+    return "\n".join(out)
+
+
+def legal_title(name: str) -> str:
+    return (HERE / "legal" / f"{name}.md").read_text().splitlines()[0].removeprefix("# ")
+
+
+def build(site: Path, terms: Path | None = None, today: str | None = None) -> list[Path]:
+    """Write every page under `site`, and what crawlers read beside them; the files written. A
+    page's sitemap date is the day its sources last changed in git, `today` (the build's day by
+    default) for sources not yet committed."""
+    terms = terms or TERMS
+    today = today or date.today().isoformat()
+    docs = Docs(terms)
     pages = docs_pages(docs)
     located: dict[str, str] = {}
     for page in pages:
@@ -851,14 +985,16 @@ def build(site: Path, terms: Path | None = None) -> list[Path]:
             located.setdefault(anchor, page.url if whole else f"{page.url}#{anchor}")
     copy = blocks()
     written: dict[str, str] = {}
-    for name in LAYOUTS:
-        for path, (title, description, _) in STORY.items():
-            served = address(path, name)
-            relative = served.lstrip("/") + ("index.html" if served.endswith("/") else "")
-            main = story_page(path, name, copy)
-            extra = switcher(path, name)
-            written[relative] = layout(title, description, path, main, STORY_HEAD, name, extra)
+    sources: dict[str, list[Path]] = {}
+    for path, (title, description, template) in STORY.items():
+        relative = path.lstrip("/") + "index.html"
+        written[relative] = layout(
+            path, title, description, path, story_page(path, copy), STORY_HEAD
+        )
+        sources[path] = [LANDING / f"{template}.html", LANDING / "copy.html"]
+    sources["/docs/"] = [terms / "guides"]
     written["docs/index.html"] = layout(
+        "/docs/",
         "Docs · nock",
         "nock's documentation, by what you are doing: start, every day, extending, and the reference.",
         "/docs/",
@@ -866,15 +1002,33 @@ def build(site: Path, terms: Path | None = None) -> list[Path]:
     )
     for page in pages:
         written[f"docs/{page.name}/index.html"] = layout(
-            f"{page.title} · nock", page.description, "/docs/", docs_page(page, pages, located)
+            page.url,
+            f"{page.title} · nock",
+            page.description,
+            "/docs/",
+            docs_page(page, pages, located),
         )
+        guide = [terms / "guides" / f"guide.{page.name}.md"] if page.name != "terms" else [terms]
+        sources[page.url] = [
+            *guide,
+            *(path for term in page.reads for path in terms.rglob(f"{term.term}.md")),
+        ]
     for name, description in LEGAL.items():
         title, main = legal_page(name)
         head = (
             f'<script>try {{ if (localStorage.getItem({json.dumps(TLDR_KEY)}) === "off") '
             'document.documentElement.dataset.tldr = "off"; } catch {}</script>'
         )
-        written[f"{name}/index.html"] = layout(f"{title} · nock", description, "", main, head)
+        written[f"{name}/index.html"] = layout(
+            f"/{name}/", f"{title} · nock", description, "", main, head
+        )
+        sources[f"/{name}/"] = [HERE / "legal" / f"{name}.md", HERE / "legal" / f"{name}-plain.md"]
+    written["robots.txt"] = robots()
+    written["sitemap.xml"] = sitemap(
+        {url: last_changed(paths, today) for url, paths in sources.items()}
+    )
+    written["llms.txt"] = llms(pages)
+    written["llms-full.txt"] = llms_full(docs, pages, located)
     paths = []
     for relative, text in written.items():
         path = site / relative

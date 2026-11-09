@@ -187,16 +187,9 @@
   .caption { flex-basis: 100%; font-size: 13.5px; }
   .demo-controls { margin-left: auto; }
 }
-@media (max-width: 860px) {
-  .story-c .stage-column .demo-stage .screen { height: 25rem; }
-}
 @media (prefers-reduced-motion: reduce) {
   .screen [data-at], .screen [style*="--d"] { animation: none !important; }
 }
 .scene-review .message.owner .context p { color: #fff; }
-@media (max-width: 860px) {
-  .story-c .stage-column { padding: 6px; border-radius: 22px; background: var(--noise), rgb(255 255 255 / .92); background-blend-mode: soft-light, normal; box-shadow: 0 10px 30px -12px rgb(60 20 120 / .35); }
-  .story-c .stage-column .demo-foot { display: none; }
-}
 @media (max-width: 860px) { .scene-logika .agent .calls { justify-content: flex-end; } }
 .scene-review .button.primary { background: #111116; color: #fff; border: 1px solid #111116; box-shadow: 2px 2px 0 0 var(--cyan), -2px -2px 0 0 var(--pink); }

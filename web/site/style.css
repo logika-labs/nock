@@ -280,7 +280,10 @@ main { display: block; padding-top: 16px; }
 
 /* --- legal pages: the tl;dr switch, the summary while it is on, the full text always ---------- */
 
-.tldr-control { display: flex; justify-content: flex-end; align-items: center; gap: 10px; margin-bottom: 18px; font: 500 13px/20px var(--mono); color: var(--muted); }
+/* The title, and the switch at the right end of its line, centred on the title's height. */
+.legal-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: 0 0 20px; }
+.legal-head h1 { margin: 0; }
+.tldr-control { display: flex; flex: none; align-items: center; gap: 10px; font: 500 13px/20px var(--mono); color: var(--muted); }
 .switch {
   position: relative; flex: none; width: 40px; height: 24px; border-radius: 999px; padding: 0;
   border: 1px solid var(--input); background: rgb(17 17 22 / .06); transition: background-color .15s;
@@ -328,7 +331,7 @@ footer a { color: var(--foreground); }
   *, *::before, *::after { transition: none !important; animation: none !important; }
 }
 
-/* === the redesign: the menu's icons, the story pages in three layouts, the docs in four groups ===== */
+/* === the redesign: the menu's icons, the story pages, the docs in four groups ===== */
 
 /* The menu: Work's pill toggles; the page you are on black on the pink-over-cyan pair. */
 .menu { flex-wrap: wrap; }
@@ -347,20 +350,8 @@ footer a { color: var(--foreground); }
 /* The footer: what it is, and the legal pages. */
 footer .links { display: inline-flex; flex-wrap: wrap; gap: 4px 16px; }
 
-/* The layouts under review: a small glass bar at the foot's left. */
-.layouts {
-  position: fixed; z-index: 30; left: 12px; bottom: 12px; display: flex; align-items: center; gap: 4px; padding: 4px 4px 4px 12px; border-radius: 999px;
-  background: var(--noise), var(--glass); background-blend-mode: soft-light, normal; backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
-  border: 1px solid #fff; box-shadow: var(--lift);
-}
-.layouts .label { margin-right: 4px; }
-.layouts a { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; color: var(--foreground); text-decoration: none; font: 700 12px/1 var(--mono); }
-.layouts a:hover { background: #fff; }
-.layouts a[aria-current="page"] { background: #111116; color: #fff; box-shadow: 2px 2px 0 0 var(--cyan), -2px -2px 0 0 var(--pink); }
-[data-layout="c"] .layouts { bottom: 76px; }
-
 /* Engraved steel: a time, a count, a step's number, as the studio's. */
-.steel, .step > .text > .label, .beat .count, .caption .count {
+.steel, .step > .text > .label, .caption .count {
   color: transparent; -webkit-background-clip: text; background-clip: text;
   background-image: linear-gradient(180deg, #b0b2bb 0%, #8a8c96 38%, #6a6c76 52%, #9597a1 70%, #c2c4cc 100%);
   filter: drop-shadow(0 1px 0 rgb(255 255 255 / .95)) drop-shadow(0 -.5px 0 rgb(17 17 22 / .28));
@@ -380,7 +371,6 @@ footer .links { display: inline-flex; flex-wrap: wrap; gap: 4px 16px; }
 .story .card p.lead { color: var(--foreground); }
 .story .note { font-size: 13px; color: var(--muted); }
 .story .install { max-width: 34rem; }
-.story .hero { padding: 40px 36px; }
 .story .community { box-shadow: 3px 3px 0 0 var(--cyan), -3px -3px 0 0 var(--pink), var(--lift); border: 1px solid rgb(17 17 22 / .14); }
 .story .community p code, .story .prose code { white-space: nowrap; }
 .prose { display: grid; gap: 12px; }
@@ -424,16 +414,7 @@ pre.code code { background: none; padding: 0; color: inherit; font: inherit; ove
 .t-meta { color: #ffb0d6; }
 .t-call { color: var(--lavender); }
 
-/* --- Layout A, the stacked story -------------------------------------------------------------- */
-
-.story-a .part { gap: 22px; padding: 32px; }
-.story-a .part .words { display: grid; gap: 12px; justify-items: start; }
-.story-a .part .demo { width: 100%; }
-.story-a #reflection { box-shadow: 3px 3px 0 0 var(--cyan), -3px -3px 0 0 var(--pink), var(--lift); border: 1px solid rgb(17 17 22 / .14); }
-.story-a.about .hero, .story-a.start .hero { padding: 32px; }
-.story-a .cta { box-shadow: 3px 3px 0 0 var(--cyan), -3px -3px 0 0 var(--pink), var(--lift); border: 1px solid rgb(17 17 22 / .14); }
-
-/* --- Layout B, the tabbed stage ------------------------------------------------------------------ */
+/* --- the tabbed stage, the stepper ------------------------------------------------------------------ */
 
 .hero-b { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 16px; }
 .hero-b .intro { padding: 36px; }
@@ -481,49 +462,6 @@ pre.code code { background: none; padding: 0; color: inherit; font: inherit; ove
 .stepping ~ .stepper-pager { display: flex; justify-content: space-between; align-items: center; gap: 12px; width: 100%; padding: 14px 18px; border-top: 1px solid var(--border); }
 .stepper-pager .button:disabled { opacity: .4; cursor: default; }
 
-/* --- Layout C, the split scroll ----------------------------------------------------------------- */
-
-.hero-c { padding: 32px 36px; }
-.hero-c .row { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; width: 100%; }
-.hero-c .row .install { flex: 1 1 18rem; margin: 0; }
-.split { display: grid; grid-template-columns: minmax(0, 4fr) minmax(0, 7fr); gap: 16px; align-items: start; }
-.split > * { min-width: 0; }
-.stage-column { position: sticky; top: 16px; }
-.beats-column { display: grid; gap: 16px; }
-.part-c { padding: 28px; }
-.beats { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 0; width: 100%; }
-.beat {
-  display: grid; gap: 6px; min-height: 34vh; align-content: center; padding: 14px 16px; border-radius: 14px; cursor: pointer;
-  border-left: 3px solid transparent; transition: background-color .2s, border-color .2s;
-}
-.beat p { color: var(--muted) !important; font-size: 16px; line-height: 1.5; transition: color .2s; }
-.beat:hover { background: var(--wash); }
-.beat.current { background: var(--wash), #fff; border-left-color: transparent; box-shadow: inset 3px 0 0 0 var(--pink), inset 0 0 0 1px var(--border); }
-.beat.current p { color: var(--foreground) !important; }
-.rail-nav { position: sticky; top: 16px; display: grid !important; gap: 2px !important; padding: 18px 20px; }
-.split:has(.rail-nav) { grid-template-columns: 15rem minmax(0, 1fr); }
-.rail-nav a { color: var(--muted); text-decoration: none; padding: 6px 10px; border-radius: 10px; font-weight: 500; width: 100%; }
-.rail-nav a:hover { background: var(--wash); color: var(--foreground); }
-.rail-nav a[aria-current] { background: #111116; color: #fff; box-shadow: 2px 2px 0 0 var(--cyan), -2px -2px 0 0 var(--pink); }
-.story-c .beats-column .prose { padding: 30px 32px; }
-.story-c.start .steps .step { min-height: 44vh; align-content: center; grid-template-columns: minmax(0, 1fr); transition: box-shadow .2s; }
-.story-c.start .split-figures .step .shot { display: none; }
-.story-c.start .step.current { box-shadow: 3px 3px 0 0 var(--cyan), -3px -3px 0 0 var(--pink), var(--lift); }
-.figures { display: grid; }
-.figures .side-figure { grid-area: 1 / 1; opacity: 0; visibility: hidden; transition: opacity .3s, visibility .3s; }
-.figures .side-figure.current { opacity: 1; visibility: visible; }
-.figures .side-figure .shot { padding: 18px; border-radius: var(--radius); background: var(--noise), var(--paper); background-blend-mode: soft-light, normal; border: 1px solid #fff; box-shadow: var(--lift); }
-.dock {
-  position: fixed; z-index: 25; left: 50%; bottom: 12px; transform: translateX(-50%); display: flex; align-items: center; gap: 12px;
-  padding: 8px 8px 8px 18px; border-radius: 999px; background: #111116; color: #fff; box-shadow: 3px 3px 0 0 var(--cyan), -3px -3px 0 0 var(--pink), 0 16px 34px -12px rgb(17 17 22 / .5);
-  max-width: calc(100vw - 24px);
-}
-.dock code { background: none; color: #fff; padding: 0; font: 500 13.5px/1 var(--mono); white-space: nowrap; }
-.dock code::before { content: "$ "; color: #8d8ba0; }
-.dock .button.primary { background: #fff; color: #111116; border-color: #fff; box-shadow: none; padding: 7px 14px; border-radius: 999px; }
-.dock .button.primary:hover { background: #fff; box-shadow: 0 0 0 3px rgb(143 233 255 / .5); }
-[data-layout="c"] footer { padding-bottom: 88px; }
-
 /* --- the docs: four groups, a page each, what the agent reads folded under ------------------- */
 
 .docs-head { display: grid; gap: 10px; }
@@ -558,19 +496,14 @@ pre.code code { background: none; padding: 0; color: inherit; font: inherit; ove
 /* --- phone width ------------------------------------------------------------------------------ */
 
 @media (max-width: 860px) {
-  .hero-b, .theatre-body, .with-aside, .split, .split:has(.rail-nav), .story-b .community.wide { grid-template-columns: minmax(0, 1fr); }
+  .hero-b, .theatre-body, .with-aside, .story-b .community.wide { grid-template-columns: minmax(0, 1fr); }
   .theatre .panels { border-right: 0; border-bottom: 1px solid var(--border); }
-  .story-b .begin.sticky, .rail-nav { position: static; }
-  .rail-nav { display: none !important; }
-  .stage-column { top: 8px; z-index: 3; }
-  .story-c .split:not(:has(.rail-nav)) { display: flex; flex-direction: column-reverse; }
-  .beat { min-height: 26vh; }
+  .story-b .begin.sticky { position: static; }
   .groups { grid-template-columns: minmax(0, 1fr); }
   .step { grid-template-columns: minmax(0, 1fr); }
-  .story-c.start .steps .step { min-height: 30vh; }
 }
 @media (max-width: 560px) {
-  .story .hero, .hero-b .intro, .hero-b .begin, .story-b .wide-intro, .hero-c, .with-aside .prose, .story-c .beats-column .prose, .part-c, .story-a .part { padding: 22px 18px; }
+  .hero-b .intro, .hero-b .begin, .story-b .wide-intro, .with-aside .prose { padding: 22px 18px; }
   .story .lead { font-size: 16px; }
   .step { padding: 20px 18px; }
   .menu { width: 100%; justify-content: space-between; }
@@ -578,9 +511,6 @@ pre.code code { background: none; padding: 0; color: inherit; font: inherit; ove
   .menu a { padding: 7px 10px; }
   .theatre .panels { padding: 20px 18px; }
   .theatre .demo { padding: 10px; }
-  .layouts { bottom: auto; top: auto; left: 8px; }
-  .dock { left: 12px; right: 12px; transform: none; justify-content: space-between; }
-  [data-layout="c"] .layouts { bottom: 72px; }
 }
 @media (max-width: 560px) {
   .menu { flex-wrap: nowrap; gap: 0; padding: 3px; }

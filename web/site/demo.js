@@ -3,8 +3,8 @@
 // steps with a caption line, played, paused, stepped and replayed. Every element of a scene says from
 // which step it shows (data-at) and until which (data-until), and which classes it takes from which
 // step (data-on="1:open 3:accepted"), so any step is drawn the same whichever way it is reached.
-// The layouts place it: a stage per scene (data-demo="review"), one stage with tabs (data-tabs), or
-// one stage the copy's beats drive as they scroll by (data-driven). With reduced motion nothing
+// The landing page places it on one stage with tabs (data-tabs-for), each scene's copy beside it,
+// and Getting started shows its steps as stills (data-demo-still). With reduced motion nothing
 // plays by itself: the steps are there to step through. Plain script, no dependencies.
 (() => {
   "use strict";
@@ -231,7 +231,6 @@ tonight; nothing changes until then.</pre></span></div></section>
       this.step = 0;
       this.playing = false;
       this.timer = 0;
-      this.listeners = [];
       root.classList.add("demo-stage");
       root.innerHTML = `<div class="demo-window">${this.names.map(name =>
         `<div class="screen" data-scene="${name}" aria-hidden="true" hidden>${SCENES[name].markup()}</div>`).join("")}</div>
@@ -284,7 +283,6 @@ tonight; nothing changes until then.</pre></span></div></section>
       this.dots.innerHTML = steps.map((_, index) =>
         `<button type="button" data-dot="${index}" aria-label="Step ${index + 1}"${index === step ? ' aria-current="step"' : ""}${index < step ? ' class="done"' : ""}></button>`).join("");
       this.root.dataset.scene = scene;
-      for (const listener of this.listeners) listener(scene, step);
     }
 
     play() {
@@ -402,31 +400,6 @@ tonight; nothing changes until then.</pre></span></div></section>
     autoplay(stage);
   }
 
-  // Beats in the copy, each a step of a scene: the one crossing the middle of the screen is shown.
-  function beats(stage) {
-    for (const list of document.querySelectorAll("[data-beats]")) {
-      const name = list.dataset.beats;
-      list.innerHTML = SCENES[name].steps.map((step, index) =>
-        `<li class="beat" data-scene="${name}" data-step="${index}"><span class="count">${index + 1}/${SCENES[name].steps.length}</span><p>${step.caption}</p></li>`).join("");
-    }
-    const all = [...document.querySelectorAll(".beat")];
-    stage.listeners.push((scene, step) => {
-      for (const beat of all) beat.classList.toggle("current", beat.dataset.scene === scene && Number(beat.dataset.step) === step);
-    });
-    const observer = new IntersectionObserver(entries => {
-      for (const entry of entries) {
-        if (!entry.isIntersecting) continue;
-        stage.pause();
-        stage.show(entry.target.dataset.scene, Number(entry.target.dataset.step));
-      }
-    }, { rootMargin: "-48% 0px -48% 0px" });
-    for (const beat of all) {
-      observer.observe(beat);
-      beat.addEventListener("click", () => { stage.pause(); stage.show(beat.dataset.scene, Number(beat.dataset.step)); });
-    }
-    stage.show(stage.scene, 0);
-  }
-
   // Getting started as a stepper: one step at a time, its number pills above.
   function stepper(root) {
     const steps = [...root.querySelectorAll(".step")];
@@ -463,53 +436,14 @@ tonight; nothing changes until then.</pre></span></div></section>
     go(0, false);
   }
 
-  // Getting started as a split scroll: the step crossing the middle shows its figure on the side.
-  function figures(root) {
-    const steps = [...root.querySelectorAll(".step")];
-    const side = document.querySelector(`[data-figures-for="${root.id}"]`);
-    if (!side) return;
-    side.innerHTML = steps.map(step => {
-      const figure = step.querySelector("figure");
-      return `<div class="side-figure" data-for="${step.id}">${figure ? figure.outerHTML : ""}</div>`;
-    }).join("");
-    for (const figure of side.querySelectorAll("[data-demo-still]")) still(figure);
-    const show = id => {
-      for (const figure of side.querySelectorAll(".side-figure")) figure.classList.toggle("current", figure.dataset.for === id);
-      for (const step of steps) step.classList.toggle("current", step.id === id);
-    };
-    const observer = new IntersectionObserver(entries => {
-      for (const entry of entries) if (entry.isIntersecting) show(entry.target.id);
-    }, { rootMargin: "-40% 0px -55% 0px" });
-    for (const step of steps) observer.observe(step);
-    root.classList.add("split-figures");
-    show(steps[0].id);
-  }
-
-  // A page's sections, the one in view marked in its rail.
-  function rail(nav) {
-    const links = [...nav.querySelectorAll('a[href^="#"]')];
-    const sections = links.map(link => document.getElementById(link.getAttribute("href").slice(1))).filter(Boolean);
-    const observer = new IntersectionObserver(entries => {
-      for (const entry of entries) {
-        if (!entry.isIntersecting) continue;
-        for (const link of links) link.toggleAttribute("aria-current", link.getAttribute("href") === `#${entry.target.id}`);
-      }
-    }, { rootMargin: "-30% 0px -60% 0px" });
-    for (const section of sections) observer.observe(section);
-  }
-
   function start() {
     for (const figure of document.querySelectorAll(".step [data-demo-still]")) still(figure);
     for (const root of document.querySelectorAll("[data-demo]")) {
       const stage = new Stage(root);
       const group = document.querySelector(`[data-tabs-for="${root.id}"]`);
       if (group) tabs(stage, group);
-      else if (root.hasAttribute("data-driven")) beats(stage);
-      else if (root.hasAttribute("data-autoplay")) autoplay(stage);
     }
     for (const root of document.querySelectorAll("[data-stepper]")) stepper(root);
-    for (const root of document.querySelectorAll("[data-figures]")) figures(root);
-    for (const nav of document.querySelectorAll("[data-rail]")) rail(nav);
   }
 
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", start);
