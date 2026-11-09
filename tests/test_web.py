@@ -177,6 +177,73 @@ def test_the_sitemap_lists_every_page_at_its_canonical_address_with_its_date(
         assert "noindex" not in head, url
 
 
+def jpeg_size(data: bytes) -> tuple[int, int]:
+    """A baseline or progressive JPEG's width and height, from its start-of-frame segment."""
+    assert data[:2] == b"\xff\xd8"
+    at = 2
+    while at < len(data):
+        marker, length = data[at + 1], int.from_bytes(data[at + 2 : at + 4])
+        if marker in (0xC0, 0xC1, 0xC2):
+            height = int.from_bytes(data[at + 5 : at + 7])
+            return int.from_bytes(data[at + 7 : at + 9]), height
+        at += 2 + length
+    raise AssertionError("no start-of-frame segment")
+
+
+def test_every_page_is_previewed_by_its_own_title_description_and_address_with_the_site_image(
+    tmp_path: Path,
+) -> None:
+    pages = built(tmp_path)
+    for url, text in pages.items():
+        head = text.split("</head>")[0]
+        meta = {
+            name: html.unescape(content)
+            for name, content in re.findall(
+                r'<meta (?:property|name)="((?:og|twitter):[^"]+)" content="([^"]*)">', head
+            )
+        }
+        title = html.unescape(re.findall(r"<title>([^<]*)</title>", head)[0])
+        description = html.unescape(
+            re.findall(r'<meta name="description" content="([^"]*)">', head)[0]
+        )
+        assert meta["og:title"] == meta["twitter:title"] == title, url
+        assert meta["og:description"] == description, url
+        assert meta["og:url"] == f"https://nock.dev{url}", url
+        assert meta["og:image"] == "https://nock.dev/og.jpg", url
+        assert (meta["og:image:width"], meta["og:image:height"]) == ("1200", "630"), url
+        assert meta["og:image:alt"] and meta["twitter:image:alt"] == meta["og:image:alt"], url
+        assert meta["twitter:card"] == "summary_large_image", url
+
+
+def test_nock_is_named_by_its_one_line_wherever_it_is_summed_up(tmp_path: Path) -> None:
+    tagline = "A self-improving toolbox for coding agents."
+    home = built(tmp_path)["/"]
+    assert f"<title>nock — {tagline}</title>" in home
+    assert f'<meta name="twitter:title" content="nock — {tagline}">' in home
+    assert f'<meta name="description" content="{tagline} ' in home
+    software = json.loads(
+        re.findall(r'<script type="application/ld\+json">([^<]*)</script>', home)[1]
+    )
+    assert software["description"] == tagline
+    summary = (tmp_path / "llms.txt").read_text().split("\n> ", 1)[1]
+    assert summary.startswith(f"{tagline} ")
+    assert (ROOT / "README.md").read_text().split("\n")[2] == tagline
+
+
+def test_the_preview_image_is_committed_at_1200_by_630_and_small() -> None:
+    image = WEB / "site" / "og.jpg"
+    assert jpeg_size(image.read_bytes()) == (1200, 630)
+    assert image.stat().st_size < 1_000_000
+
+
+def test_every_description_fits_a_search_result(tmp_path: Path) -> None:
+    for url, text in built(tmp_path).items():
+        description = html.unescape(
+            re.findall(r'<meta name="description" content="([^"]*)">', text)[0]
+        )
+        assert 0 < len(description) <= 160, (url, len(description))
+
+
 def test_every_page_carries_json_ld_naming_its_maker_and_the_landing_page_nock(
     tmp_path: Path,
 ) -> None:
