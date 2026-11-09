@@ -19,7 +19,6 @@
   <div class="tablist" role="tablist" aria-label="The parts" data-tabs-for="demo-stage">
     <button type="button" role="tab" data-tab="reflection" aria-selected="true">{{ copy:reflection-label }}</button>
     <button type="button" role="tab" data-tab="review" aria-selected="false">{{ copy:review-label }}</button>
-    <button type="button" role="tab" data-tab="logika" aria-selected="false">{{ copy:logika-label }}</button>
   </div>
   <div class="theatre-body">
     <div class="panels">
@@ -31,13 +30,23 @@
         <h2>{{ copy:review-title }}</h2>
         {{ copy:review-copy }}
       </div>
-      <div class="panel" data-panel="logika" data-panel-for="demo-stage" id="logika">
-        <h2>{{ copy:logika-title }}</h2>
-        {{ copy:logika-copy }}
-      </div>
     </div>
-    <div class="demo" id="demo-stage" data-demo="reflection review logika"></div>
+    <div class="demo" id="demo-stage" data-demo="reflection review"></div>
   </div>
+</section>
+
+<section class="card logika wide" id="logika" aria-labelledby="logika-title">
+  <div>
+    <span class="label">{{ copy:logika-label }}</span>
+    <h2 id="logika-title">{{ copy:logika-title }}</h2>
+    {{ copy:logika-copy }}
+  </div>
+  <a class="art" href="{{ logika }}" tabindex="-1" aria-hidden="true">
+    <picture>
+      <source srcset="/logika.webp" type="image/webp">
+      <img src="/logika.png" alt="" width="800" height="420" loading="lazy" decoding="async">
+    </picture>
+  </a>
 </section>
 
 <section class="card community wide" id="community" aria-labelledby="community-title">

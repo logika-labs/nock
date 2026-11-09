@@ -83,7 +83,7 @@ def test_the_story_pages_are_one_layout_with_the_demo_on_a_tabbed_stage(tmp_path
     pages = built(tmp_path)
     demo = (WEB / "site" / "demo.js").read_text()
     scenes = set(re.findall(r"^    (\w+): \{\n      label:", demo, re.M))
-    assert scenes == {"reflection", "review", "logika"}
+    assert scenes == {"reflection", "review"}
     home, about, start = (pages[path] for path in ("/", "/about/", "/getting-started/"))
     for text in (home, about, start):
         assert "{{" not in text and "data-layout" not in text and 'class="layouts"' not in text
@@ -106,6 +106,25 @@ def test_the_story_pages_are_one_layout_with_the_demo_on_a_tabbed_stage(tmp_path
         ROOT / "src" / "nock" / "pages" / "topics.css"
     ).read_text()
     assert 'data-demo-still="review:3"' in pages["/getting-started/"]
+
+
+def test_the_home_page_shows_nock_in_logika_with_its_art_beside_and_no_logika_scene(
+    tmp_path: Path,
+) -> None:
+    pages = built(tmp_path)
+    home = pages["/"]
+    section = home.split('id="logika"')[1].split("</section>")[0]
+    assert "nock in Logika" in section
+    assert "observability and analytics for coding agents" in section
+    assert "rules round" in section
+    assert 'href="https://logika.host"' in section
+    assert '<source srcset="/logika.webp" type="image/webp">' in section
+    assert re.search(r'<img src="/logika.png" alt="" width="800" height="420"', section)
+    for art in ("logika.webp", "logika.png"):
+        assert (WEB / "site" / art).is_file()
+    assert home.index('id="logika"') < home.index('id="community"')
+    assert 'data-tab="logika"' not in home and 'data-panel="logika"' not in home
+    assert "scene-logika" not in (WEB / "site" / "demo.css").read_text()
 
 
 def test_no_page_or_source_names_a_community_channel(tmp_path: Path) -> None:
