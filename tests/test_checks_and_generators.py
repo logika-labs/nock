@@ -36,7 +36,7 @@ def test_a_failing_command_is_the_code_and_a_missing_tool_is_the_machine(project
 
 def test_check_prints_nothing_when_everything_passes(project: Project) -> None:
     configure(project, '[checks.ok]\ncommand = "echo fine"\n')
-    result = nock(project.root, "check")
+    result = nock(project.root, "check", "--all")
     assert result.returncode == 0 and result.stdout == "" and result.stderr == ""
 
 
@@ -84,6 +84,38 @@ def test_a_chain_or_a_check_can_be_named(project: Project) -> None:
     assert (project.root / "order.log").read_text().split() == ["tests"]
     missing = nock(project.root, "check", "rusty")
     assert missing.returncode == 44 and "chains: rust" in missing.stderr
+
+
+AFFECTED = """
+[checks.api]
+command = "echo api >> ran.log; exit 1"
+paths = ["api/**"]
+
+[checks.web]
+command = "echo web >> ran.log"
+paths = ["web/**"]
+"""
+
+
+def test_check_runs_what_the_changes_affect_and_all_runs_every_one(project: Project) -> None:
+    with (project.root / ".gitignore").open("a") as ignore:
+        ignore.write("ran.log\n")
+    git(project.root, "add", ".gitignore")
+    configure(project, AFFECTED)
+    ran = project.root / "ran.log"
+
+    def checked(*arguments: str) -> tuple[int, list[str]]:
+        ran.unlink(missing_ok=True)
+        code = nock(project.root, "check", *arguments).returncode
+        return code, sorted(ran.read_text().split()) if ran.exists() else []
+
+    assert checked() == (0, []), "a clean main has nothing to check"
+    (project.root / "web").mkdir()
+    (project.root / "web" / "page.html").write_text("<p>hi</p>\n")
+    assert checked() == (0, ["web"])
+    assert checked("--all") == (1, ["api", "web"])
+    assert checked("api") == (1, ["api"]), "a named check runs whatever changed"
+    assert nock(project.root, "check", "--changed").returncode == 40
 
 
 def test_a_check_returns_problems_and_asks_for_fixtures(project: Project) -> None:

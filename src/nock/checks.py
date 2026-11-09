@@ -6,8 +6,9 @@ over the toolbox and the generated files. Checks that share a `chain` run
 one after another (they share a build, a lock, a cache); everything else runs
 side by side.
 
-`check --changed` runs only the checks the branch's changes can affect: the
-paths changed since it left the main branch, committed or not. A check's
+`check` runs only the checks the branch's changes can affect (`check --all`
+runs every one): the paths changed since it left the main branch, committed
+or not. A check's
 `paths` are globs (`**` any directories, `*` within one, a leading `!`
 excludes; the last that matches wins); one without any is affected by every
 change, and a change no check's `paths` or `checks.unaffected` names runs them

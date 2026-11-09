@@ -112,7 +112,8 @@ src/nock/
     address.md       Address my comments' brief: answer each waiting comment in its thread
 
   # the rest of the toolbox
-  checks.py          Checks: command checks and @check functions → one Verdict
+  checks.py          Checks: command checks and @check functions → one Verdict;
+                     those the branch's changes can affect (`check`), or all (`--all`)
   generators.py      @generator files and catalogs; drift detection
   templates.py       the template engine used by catalogs and briefs
   schema.py          JSON Schema subset validation
