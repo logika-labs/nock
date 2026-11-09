@@ -689,7 +689,8 @@ function measureOf(m, variant) {
   if (m.decision) {
     const ds = nodes.filter(n => n.kind === "decision" && n.label === m.decision);
     if (!ds.length) return null;
-    const ss = live(ds.flatMap(n => all(n.id)));
+    // A control (the clean twin) is no case: a measure counts the cases only.
+    const ss = live(ds.flatMap(n => all(n.id))).filter(s => !s.control);
     if (!ss.length) return { none: true };
     return { text: count(ss, s => s.branch === m.branch), ss, incomplete: nodes.some(n => all(n.id).some(s => s.status === "incomplete")) };
   }

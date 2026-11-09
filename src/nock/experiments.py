@@ -290,9 +290,18 @@ class Experiment:
                 "score": self.score(job.rule, metrics),
                 "metrics": metrics,
                 "launch": self.made_by.get((job.id, facts.entry or "")),
+                "control": self.control(job.parameters),
             }
             found.append(state)
         return found
+
+    def control(self, parameters: dict[str, str]) -> bool:
+        """Whether a result is a control's (the clean twin, `bug=none`): a pooled
+        parameter's value its words call a control, not a case a measure counts."""
+        return any(
+            parameters.get(name) in self.parameter_words.get(name, {}).get("controls", [])
+            for name in self.pooled
+        )
 
     def spent(self, facts: Facts, metrics: dict[str, Any]) -> float | None:
         """Its dollars: cost.json's, or the metrics' `usd` where a step reported them
@@ -352,7 +361,14 @@ class Experiment:
                         {
                             **{
                                 key: state[key]
-                                for key in ("params", "status", "why", "finished", "launch")
+                                for key in (
+                                    "params",
+                                    "status",
+                                    "why",
+                                    "finished",
+                                    "launch",
+                                    "control",
+                                )
                             },
                             "id": f"{state['id']}?{decision['label']}",
                             "node": identifier,

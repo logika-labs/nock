@@ -99,6 +99,10 @@ def test_results_runs_and_decisions_once_the_scenario_ran(project: Project, toy:
     taken = states["results/detect/arm=toolbox/bug=drop-banana/rep=2?Detected?"]
     assert taken["branch"] == "yes" and taken["parent"] == one["id"]
     assert states["results/detect/arm=toolbox/bug=none/rep=2?Detected?"]["branch"] == "no"
+    # The clean twin is a control: a measure counts the planted bugs only.
+    assert states["results/detect/arm=toolbox/bug=none/rep=2?Detected?"]["control"] is True
+    assert states["results/detect/arm=toolbox/bug=none/rep=2"]["control"] is True
+    assert taken["control"] is False and one["control"] is False
     # Runs end trajectories, their iterations together; every result belongs to one.
     assert model["runs"] and all(re.fullmatch(r"[A-Za-z0-9-]+", run["id"]) for run in model["runs"])
     assert all(state["run"] for state in model["states"])
