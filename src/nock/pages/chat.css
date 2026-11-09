@@ -38,12 +38,33 @@
 .topics .tidy-confirm .buttons { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
 .topics .tidy-confirm .button { height: 32px; padding: 0 14px; }
 
+/* A studio running older code than its pages: say so above the list. */
+.topics .restart {
+  margin: 0 0 16px; padding: 12px 16px; border-radius: 16px; font-size: 13.5px; line-height: 1.5;
+  border: 1px solid transparent;
+  background: linear-gradient(#fff, #fff) padding-box, linear-gradient(100deg, #ffcf5a, #ff9ad5) border-box;
+}
+.topics .restart[hidden] { display: none; }
+.topics .restart code { font: 12.5px var(--mono); }
+
 /* The global chat: under its button, the height of most of the screen. */
 .topics .chat.global {
   position: fixed; z-index: 28; top: var(--chat-top, 16px); right: max(16px, calc((100vw - var(--column)) / 2));
   width: min(27rem, calc(100vw - 32px)); height: min(40rem, calc(100vh - var(--chat-top, 16px) - 16px));
 }
 .topics .chat.global .chat-head { gap: 4px; padding: 0 8px; }
+/* Address my comments: after the messages, over the composer; foil, since the black is Send's. */
+.topics .chat.global .address { flex: none; display: flex; justify-content: center; padding: 10px 14px 12px; }
+.topics .address-button {
+  display: inline-flex; align-items: center; gap: 7px; height: 34px; padding: 0 16px 0 13px; border: 0; border-radius: 999px;
+  font: 600 13px/1 var(--sans); color: #1d1240; cursor: pointer;
+  background: linear-gradient(100deg, #ffb3df, #cfc2ff 50%, #a5eeff);
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / .7), -6px 6px 16px -8px rgb(255 120 200 / .75), 6px 8px 16px -8px rgb(90 220 255 / .8);
+  transition: filter .15s, transform .15s;
+}
+.topics .address-button svg { width: 16px; height: 16px; }
+.topics .address-button:hover { filter: saturate(1.25) brightness(1.03); transform: translateY(-1px); }
+.topics .address-button:focus-visible { outline: 2px solid #111116; outline-offset: 2px; }
 .topics .chat.global .chat-head .label {
   flex: 1; min-width: 0; padding: 0 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   font: 600 13px/1 var(--sans); letter-spacing: 0; text-transform: none; color: var(--foreground);

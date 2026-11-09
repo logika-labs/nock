@@ -24,7 +24,7 @@ import pytest
 from nock.hooks import HookRunner
 from nock.migration import Migration
 from nock.project import Project
-from nock.studio import PAGES, TABS, Studio
+from nock.studio import PAGES, TABS, Studio, TopicsTab
 from nock.topics import Author, Topics, owner_word
 
 from .conftest import git, nock
@@ -412,6 +412,26 @@ def test_a_topic_in_review_waits_on_the_owner_and_its_work_counts_as_stated(
     monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "s2")
     submit(project.root, {**DECISION, "title": "Orders are archived"}, "pricing")
     assert Topics(project).unstated("s2") == []
+
+
+def test_a_studio_older_than_its_code_asks_to_be_restarted(project: Project) -> None:
+    server = Studio(project, 0)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+
+        def restart() -> bool:
+            with urllib.request.urlopen(f"{server.address}topics") as response:
+                return json.loads(response.read()).get("restart", False)
+
+        assert not restart()
+        tab = server.tabs["topics"]
+        assert isinstance(tab, TopicsTab)
+        tab.started -= 1
+        assert restart()
+    finally:
+        server.shutdown()
+        server.server_close()
 
 
 def test_topics_with_a_priority_come_first_in_order_then_the_newest(

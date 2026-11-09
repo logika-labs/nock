@@ -9,7 +9,10 @@ fresh agent (`namer`) gives it a title and a summary.
 
 Tidy up is a chat too: an agent (`tidier`) reorganizes the topics through
 nock's commands, which leave its writes uncommitted (`topics.TIDIER`); when
-it ends they land as one commit, which Undo reverts.
+it ends they land as one commit, which Undo reverts. So is Address my
+comments: an agent (`addresser`) answers each comment the owner left
+waiting in a thread, making new versions and changing the code where one
+asks for it.
 
 Chats are the owner's conversations, not the project's records: they are
 kept on this machine, in `.nock/local/chats/ID.json`, never committed."""
@@ -41,10 +44,13 @@ if TYPE_CHECKING:
 BRIEFS = Path(__file__).resolve().parent / "briefs"
 CHATTER = "chatter"
 NAMER = "namer"
+ADDRESSER = "addresser"
 # The topics, as the main checkout keeps them: what Tidy up commits.
 TOPICS = ".nock/topics"
 # What the owner's first message in a Tidy up chat says.
 TIDY_REQUEST = "Tidy up Work: regroup the items, set the topics' states, drop what is stale, and put the topics in order."
+# How much of one comment the request to address them quotes; the agent reads the rest.
+QUOTED = 1_000
 # The longest naming may take, in seconds.
 NAMING_DEADLINE = 180
 # How much of a chat a namer or a new session reads, in characters: its end.
@@ -56,6 +62,30 @@ SHOWN = 160
 class Kind(StrEnum):
     CHAT = "chat"
     TIDY = "tidy"
+    ADDRESS = "address"
+
+
+# Who answers in each kind of chat.
+ROLES = {Kind.CHAT: CHATTER, Kind.TIDY: TIDIER, Kind.ADDRESS: ADDRESSER}
+
+
+def address_request(comments: list[dict[str, Any]]) -> str:
+    """The owner's message starting Address my comments: each comment with
+    its thread's ref, quoted."""
+    count = len(comments)
+    lines = [
+        f"Address my {count} comments:" if count > 1 else "Address my comment:",
+        "",
+    ]
+    for comment in comments:
+        text = " ".join(comment["text"].split()) or "(files only)"
+        if len(text) > QUOTED:
+            text = text[: QUOTED - 1] + "…"
+        about = f" ({comment['title']})" if comment["title"] else ""
+        lines.append(f"- [{comment['ref']}]{about}: {text}")
+        for path in comment["files"]:
+            lines.append(f"  - attached: {path}")
+    return "\n".join(lines)
 
 
 @dataclass
@@ -300,6 +330,24 @@ class Chats:
             self.start(chat)
         return self.shown(chat["id"])
 
+    def address(self) -> dict[str, Any]:
+        """Address my comments: a new chat whose agent answers every comment
+        the owner left waiting in a thread (one such chat at a time)."""
+        with self.lock:
+            running = [key for key in self.turns if self.load(key)["kind"] == Kind.ADDRESS]
+            if running:
+                raise ConflictError("your comments are being addressed already")
+            comments = Topics(self.project).comments()
+            if not comments:
+                raise UsageError("no comment of yours waits for an answer")
+            chat = self.create(Kind.ADDRESS)
+            chat["title"] = "Address my comments"
+            said = address_request(comments)
+            chat["messages"].append({"author": "owner", "text": said, "moment": now()})
+            self.save(chat)
+            self.start(chat)
+        return self.shown(chat["id"])
+
     def create(self, kind: str) -> dict[str, Any]:
         moment = now()
         return {
@@ -363,12 +411,15 @@ class Chats:
                 summary = (turn.result or reply["text"] or "").strip()
                 chat["tidy"] = self.gather(summary)
                 chat["summary"] = " ".join(summary.split())[:300]
+            elif chat["kind"] == Kind.ADDRESS and not chat["summary"]:
+                summary = (turn.result or reply["text"] or "").strip()
+                chat["summary"] = " ".join(summary.split())[:300]
             self.save(chat)
 
     def converse(self, chat: dict[str, Any], turn: Turn) -> Session:
         """Continue the chat's session when Claude Code still has it; else, or
         when resuming fails before a word, a new one briefed with what was said."""
-        role = TIDIER if chat["kind"] == Kind.TIDY else CHATTER
+        role = ROLES[Kind(chat["kind"])]
         said = self.heard(chat, chat["messages"][-1])
         earlier = chat["messages"][:-1]
         previous = chat.get("session")
@@ -406,6 +457,12 @@ class Chats:
         topics = listing(Topics(self.project))
         if chat["kind"] == Kind.TIDY:
             return library.render("tidy.md", topics=topics)
+        if chat["kind"] == Kind.ADDRESS:
+            return library.render(
+                "address.md",
+                message=said,
+                transcript=transcript(earlier) if earlier else "",
+            )
         context = self.project.code_path("context.md")
         return library.render(
             "chat.md",

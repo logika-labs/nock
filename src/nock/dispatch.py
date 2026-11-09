@@ -146,6 +146,32 @@ SEATS = {
         ),
         GIT_WRITING,
     ),
+    # The studio's Address my comments: answers each comment the owner left
+    # waiting in a thread — a reply, a new version of the item, a change to
+    # the project's files — through nock's commands and Claude Code's edits
+    # inside the project, and checks it with the project's own gate. It
+    # gives no verdict (the owner's), commits no code (the owner looks
+    # first) and runs nothing else.
+    "addresser": Seat(
+        (*READING, "Edit", "Write"),
+        (
+            nock("topics list"),
+            nock("topics show"),
+            nock("topics update"),
+            nock("items list"),
+            nock("items show"),
+            nock("items update"),
+            nock("docs"),
+            nock("check"),
+            nock("test"),
+            "Edit(./**)",
+            "Write(./**)",
+            *GIT_READING,
+            "Bash(git diff:*)",
+            "Bash(git status:*)",
+        ),
+        GIT_WRITING,
+    ),
 }
 
 

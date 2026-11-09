@@ -70,3 +70,17 @@ title holds every chat (title, summary, last time) to continue any of them.
 Chats are the owner's conversations, not the project's records: they are
 kept on the machine, in `.nock/local/chats/`, never committed. It has the
 same composer as every chat: files, the recorder.
+
+**Address my comments** shows over the composer while comments of the
+owner's wait in threads for an agent's answer ("Address my comment", or
+"Address my 3 comments"). It starts a chat whose first message lists each
+one, its thread's ref and its words, for an agent (the addresser seat) that
+answers each in its own thread as an agent working the threads would: a
+reply, a new version of the item, a change to the project's files checked
+with the project's gate. It gives no verdict and commits no code: the
+replies and versions are recorded by nock, the code changes are left for
+the owner to look at. Its words stream in as any chat's, and its last
+message is the summary; the button goes once nothing waits.
+
+A studio left running across an update of nock serves the new pages with
+the old code; the Work tab then says to restart it.

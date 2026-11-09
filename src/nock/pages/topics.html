@@ -15,6 +15,7 @@
     <div class="sift" id="topics-sift" role="toolbar" aria-label="Filters and Tidy up"></div>
     <div class="answer" id="topics-answer" aria-live="polite" hidden></div>
   </div>
+  <p class="restart" id="topics-restart" role="status" hidden><strong>nock was updated since this studio started.</strong> Stop <code>nock studio</code> and start it again: until then parts of the page may not work.</p>
   <main id="topics-main"></main>
   <div id="topics-modal"></div>
   <div class="tip" id="topics-tip" role="tooltip" hidden></div>
@@ -392,10 +393,19 @@
     rejected: ["Rejected", "the owner rejected it: the agent reworks it as a new version"],
     dropped: ["Dropped", "the owner rejected it with nothing to rework: closed"],
   };
+  // "Accepted on Nov 23, 2026 at 14:05", in local time.
+  function decidedOn(word, moment) {
+    const when = moment ? new Date(moment) : null;
+    if (!when || Number.isNaN(when.getTime())) return word;
+    const day = when.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+    const hour = when.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+    return `${word} on ${day} at ${hour}`;
+  }
   function verdictMark(item) {
     const [word, means] = VERDICTS[item.verdict] || [];
     if (!word) return "";
-    return `<span class="verdict-mark ${item.verdict}" aria-label="${word}" role="img" ${tipped(word, means, "", item.decided?.moment)}>${ICONS[item.verdict]}</span>`;
+    const said = decidedOn(word, item.decided?.moment);
+    return `<span class="verdict-mark ${item.verdict}" aria-label="${escape(said)}" role="img" ${tipped(said, means)}>${ICONS[item.verdict]}</span>`;
   }
   // A decision is done unless it says otherwise: only a todo one shows its status, a chip under its corner.
   const todoPill = `<span class="todo-pill" aria-label="To do" ${tipped("To do", "decided, but the work it calls for is still to do")}>Todo</span>`;
@@ -659,7 +669,9 @@
   // --- drawing: the viewer, a picture or a text over the list -------------------------------------
 
   // Compare is for versions: an item with options shows one version's options side by side instead.
-  const comparable = item => item.versions.length > 1 && !item.options;
+  // A file that is only a link to download (`binary`) has nothing to show side by side.
+  const comparable = item => item.versions.length > 1 && !item.options && !last(item).decision
+    && last(item).files.length > 0 && last(item).files[0].type !== "binary";
   function chosen(item) {
     const numbers = item.versions.map(version => version.version);
     if (!state.compare || !comparable(item)) return [numbers.includes(state.single) ? state.single : numbers[numbers.length - 1]];
@@ -700,8 +712,7 @@
     if (!file) return `<div class="pane"><p class="missing">Nothing in version ${version.version}.</p></div>`;
     const address = fileUrl(item, version, file.name);
     if (file.type === "image") {
-      const [box, picture] = zoomStyles(index);
-      return `<div class="pane"><button type="button" class="shot${box ? " zoomed" : ""}" data-shot="${index}" style="${box}" aria-label="${box ? "Zoom out" : "Zoom in"}"><img data-key="${address}" src="${address}" style="${picture}" alt="${escape(file.name)}, version ${version.version}"></button></div>`;
+      return `<div class="pane"><button type="button" class="shot${state.zoom ? " zoomed" : ""}" data-shot="${index}" aria-label="${state.zoom ? "Zoom out" : "Zoom in"}"><img data-key="${address}" src="${address}" style="${zoomStyle(index)}" alt="${escape(file.name)}, version ${version.version}"></button></div>`;
     }
     if (file.type === "video") {
       // Captions on by default: a recording explains each step in its own words.
@@ -737,7 +748,7 @@
     const comparing = numbers.length === 2;
     const several = !comparing && panes.length > 1;
     const kind = kindOf(item);
-    const compare = `<button type="button" class="toggle" data-compare aria-pressed="${comparing}" ${comparable(item) ? "" : "disabled"} title="${item.options ? "Compare is for versions: options show side by side" : item.versions.length < 2 ? "One version: nothing to compare" : "Compare two versions"}"><span class="switch" aria-hidden="true"><span></span></span>Compare</button>`;
+    const compare = comparable(item) ? `<button type="button" class="toggle" data-compare aria-pressed="${comparing}" title="Compare two versions"><span class="switch" aria-hidden="true"><span></span></span>Compare</button>` : "";
     const first = panes[panes.length - 1].file;
     // Compared, each version's select stands over the side it chooses.
     const sides = ["left", "right"];
@@ -746,12 +757,15 @@
     let content, heads = "";
     if (comparing && panes.every(entry => entry.file?.type === "text")) {
       const pair = panes.map(entry => fileUrl(item, entry.version, entry.file.name)).join(" ");
-      heads = `<div class="heads" data-key="heads">${sides.map((side, index) => picker(item, side, numbers[index])).join("")}</div>`;
+      heads = `<div class="heads" data-key="heads">${sides.map((side, index) => `<div class="head">${picker(item, side, numbers[index])}${index === 0 && first ? pathButton(first, 0) : ""}</div>`).join("")}</div>`;
       content = `<div class="panes" data-key="pair:${escape(pair)}" data-own data-pair="${escape(pair)}"><p class="missing">…</p></div>`;
     } else {
       // Keyed apart from a diff, so a diff filled once is not taken for this.
       content = `<div class="panes${panes.length > 1 ? " several" : ""}" data-key="panes" style="--panes:${panes.length}">${panes.map((entry, index) =>
-        `<div class="column${several && entry.file && item.preferred?.version === entry.version.version && item.preferred?.name === entry.file.name ? " preferred" : ""}">${comparing ? picker(item, sides[index], numbers[index]) : ""}${item.options && entry.file ? `<div class="pane-wrap">${pane(item, entry.version, entry.file, index)}${star(item, entry.version, entry.file)}</div>` : pane(item, entry.version, entry.file, index)}${several && entry.file ? optionBar(item, entry.version, entry.file, index) : ""}</div>`).join("")}</div>`;
+        `<div class="column${several && entry.file && item.preferred?.version === entry.version.version && item.preferred?.name === entry.file.name ? " preferred" : ""}">${comparing
+          // Compared, each side's select (and the left one's path) on a line over it, at its left edge.
+          ? `<div class="stack${entry.file?.type === "image" ? " fit" : ""}"><div class="head">${picker(item, sides[index], numbers[index])}${index === 0 && entry.file ? pathButton(entry.file, 0) : ""}</div>${pane(item, entry.version, entry.file, index)}</div>`
+          : item.options && entry.file ? `<div class="pane-wrap">${pane(item, entry.version, entry.file, index)}${star(item, entry.version, entry.file)}</div>` : pane(item, entry.version, entry.file, index)}${several && entry.file ? optionBar(item, entry.version, entry.file, index) : ""}</div>`).join("")}</div>`;
     }
     const actions = awaitsOwner(item) || item.verdict !== "open" ? `<div class="actions"><span class="hint" data-problem="${escape(item.ref)}"></span><div class="buttons">${verdictButtons(item.ref, item.verdict)}</div></div>` : "";
     const fits = kind === "image" || kind === "video" ? "image" : kind === "text" && !comparing && !several ? "text" : "wide";
@@ -771,8 +785,7 @@
       <article class="sheet open viewer image" data-hue="${hue(picture.topic)}" role="dialog" aria-modal="true" aria-label="${escape(picture.name)}">
         <div class="ribbon"><h2>${escape(picture.name)}</h2><span class="side"><a class="path" href="${escape(picture.address)}" download="${escape(picture.name)}">Download</a></span><button type="button" class="close" data-lightbox-close aria-label="Close (Esc)" title="Close (Esc)">×</button></div>
         <div class="main"><div class="content"><div class="panes" data-key="panes"><div class="column">${(() => {
-          const [box, shown] = zoomStyles("p");
-          return `<div class="pane"><button type="button" class="shot${box ? " zoomed" : ""}" data-shot="p" style="${box}" aria-label="${box ? "Zoom out" : "Zoom in"}"><img data-key="${escape(picture.address)}" src="${escape(picture.address)}" style="${shown}" alt="${escape(picture.name)}"></button></div>`;
+          return `<div class="pane"><button type="button" class="shot${state.zoom ? " zoomed" : ""}" data-shot="p" aria-label="${state.zoom ? "Zoom out" : "Zoom in"}"><img data-key="${escape(picture.address)}" src="${escape(picture.address)}" style="${zoomStyle("p")}" alt="${escape(picture.name)}"></button></div>`;
         })()}</div></div></div></div>
       </article></div>` : "";
     studio.morph($("topics-lightbox"), markup);
@@ -795,36 +808,43 @@
     bubble.style.left = `${Math.max(8, Math.min(anchor.left - 10, innerWidth - bubble.offsetWidth - 8))}px`;
   }
 
-  // --- zoom: a picture magnified in place, to its natural size, the part shown following the cursor --
+  // --- zoom: a picture magnified over all the viewer's room, the part shown following the cursor ----
 
-  // Each picture shown zooms with the others, to the same point, so two versions compare in detail.
-  // A picture shown about as large as it is zooms to twice its size instead.
+  // Zoomed, a picture's frame takes all the room the viewer has (compared, each its half), and the
+  // picture shows at its natural size, or larger when that leaves the frame unfilled; the part
+  // shown follows the cursor. Each picture shown zooms with the others, to the same point, so two
+  // versions compare in detail.
   const clamp = value => Math.min(1, Math.max(0, value));
   // Where the pictures that zoom together are: an enlarged attachment's, else the viewer's.
   const zoomed = () => state.picture ? "#topics-lightbox" : "#topics-modal";
-  const shift = box => `translate(${(-(box.wide - box.width) * state.zoom.x).toFixed(1)}px, ${(-(box.tall - box.height) * state.zoom.y).toFixed(1)}px)`;
-  function zoomStyles(index) {
-    const box = state.zoom?.boxes[index];
-    if (!box) return ["", ""];
-    return [`width:${box.width}px;height:${box.height}px`, `width:${box.wide}px;height:${box.tall}px;transform:${shift(box)}`];
+  const offset = (inner, outer, at) => (inner > outer ? -(inner - outer) * at : (outer - inner) / 2).toFixed(1);
+  const shift = box => `translate(${offset(box.wide, box.width, state.zoom.x)}px, ${offset(box.tall, box.height, state.zoom.y)}px)`;
+  // Until its frame is measured, a zoomed picture is hidden: drawn, measured and drawn again at once.
+  function zoomStyle(index) {
+    if (!state.zoom) return "";
+    const box = state.zoom.boxes?.[index];
+    if (!box) return "visibility:hidden";
+    return `width:${box.wide}px;height:${box.tall}px;transform:${shift(box)}${box.crisp ? ";image-rendering:pixelated" : ""}`;
   }
   function zoomIn(shot, event) {
-    const boxes = {};
-    for (const each of document.querySelectorAll(`${zoomed()} .shot`)) {
-      const picture = each.querySelector("img");
-      const { width, height } = picture.getBoundingClientRect();
-      if (!picture.naturalWidth || !width) continue;
-      const ratio = picture.naturalWidth / width;
-      const scale = ratio < 1.25 ? 2 : ratio;
-      boxes[each.dataset.shot] = { width, height, wide: width * scale, tall: height * scale };
-    }
     const rect = shot.getBoundingClientRect();
     const keyed = event.detail === 0;
-    state.zoom = { boxes, x: keyed ? .5 : clamp((event.clientX - rect.left) / rect.width), y: keyed ? .5 : clamp((event.clientY - rect.top) / rect.height) };
+    state.zoom = { boxes: null, x: keyed ? .5 : clamp((event.clientX - rect.left) / rect.width), y: keyed ? .5 : clamp((event.clientY - rect.top) / rect.height) };
+  }
+  function measureZoom() {
+    const boxes = {};
+    for (const each of document.querySelectorAll(`${zoomed()} .shot.zoomed`)) {
+      const picture = each.querySelector("img");
+      const width = each.clientWidth, height = each.clientHeight;
+      if (!picture.naturalWidth || !width || !height) continue;
+      const scale = Math.max(1, width / picture.naturalWidth, height / picture.naturalHeight);
+      boxes[each.dataset.shot] = { width, height, wide: picture.naturalWidth * scale, tall: picture.naturalHeight * scale, crisp: scale > 2 };
+    }
+    state.zoom.boxes = boxes;
   }
   function placeZoom() {
     for (const shot of document.querySelectorAll(`${zoomed()} .shot.zoomed`)) {
-      const box = state.zoom.boxes[shot.dataset.shot];
+      const box = state.zoom.boxes?.[shot.dataset.shot];
       if (box) shot.querySelector("img").style.transform = shift(box);
     }
   }
@@ -1052,6 +1072,7 @@
     drawList();
     drawModal();
     drawLightbox();
+    if (state.zoom && !state.zoom.boxes) { measureZoom(); drawModal(); drawLightbox(); }
     fill($("topics"));
     markWords($("topics-main"));
     markWords($("topics-modal"));
@@ -1086,6 +1107,7 @@
       state.topics = data.topics;
       state.ask = data.ask;
       state.transcription = data.transcription || null;
+      $("topics-restart").hidden = !data.restart;
       if (said().length) find(false);
       draw();
     } catch {
@@ -1481,8 +1503,9 @@
   root.addEventListener("pointerdown", event => {
     const shot = event.target.closest(".shot.zoomed");
     state.dragged = false;
-    if (!shot || event.pointerType === "mouse") return;
-    state.drag = { x: event.clientX, y: event.clientY, moved: 0, box: state.zoom.boxes[shot.dataset.shot] };
+    const box = state.zoom?.boxes?.[shot?.dataset.shot];
+    if (!shot || !box || event.pointerType === "mouse") return;
+    state.drag = { x: event.clientX, y: event.clientY, moved: 0, box };
     try { shot.setPointerCapture(event.pointerId); } catch { /* a pointer already gone */ }
   });
   root.addEventListener("pointermove", event => {
@@ -1660,6 +1683,20 @@
     const undo = done.commit && !done.reverted ? '<button type="button" class="button primary" data-global="undo">Undo</button>' : "";
     return `<div class="tidy-foot" data-key="foot"><span>${said}</span>${undo}</div>`;
   }
+  // The owner's comments waiting for an agent's answer (the threads where they wrote last), which
+  // Address my comments sends an agent to answer.
+  const REPLY = '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M8 5 3.5 9.5 8 14M3.5 9.5H11c3 0 5.5 2.3 5.5 5.5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  function waitingComments() {
+    return state.topics.reduce((sum, topic) => sum + (topic.chat?.pending ? 1 : 0)
+      + topic.items.filter(item => item.chat?.pending).length, 0);
+  }
+  function addressButton(chat) {
+    const count = waitingComments();
+    const addressing = talk.list?.some(row => row.kind === "address" && row.running) || (chat?.kind === "address" && chat.running);
+    if (!count || addressing || chat?.running) return "";
+    const label = count === 1 ? "Address my comment" : `Address my ${count} comments`;
+    return `<div class="address" data-key="address"><button type="button" class="address-button" data-global="address" title="Send an agent to answer each comment waiting in its thread: replies, new versions, changes to the code">${REPLY}<span>${escape(label)}</span></button></div>`;
+  }
   function globalList() {
     const rows = (talk.list || []).map(row => `<button type="button" class="chat-row${row.id === talk.id ? " current" : ""}" data-global="pick" data-id="${escape(row.id)}" data-key="row:${escape(row.id)}">
         <span class="title">${row.kind === "tidy" ? `<span class="broom" aria-label="Tidy up">${BROOM}</span>` : ""}${escape(row.title)}${row.running ? ' <span class="spinner" aria-hidden="true"></span>' : ""}</span>
@@ -1682,7 +1719,7 @@
     else if (!chat && talk.id) body = '<div class="messages" data-log="global"><p class="nothing">…</p></div>';
     else body = `<div class="messages" data-log="global">${chat ? globalMessages(chat) : '<p class="nothing" data-key="hello">Ask the agent anything about the project: it reads the topics, the code and its history, and answers here.</p>'}</div>`;
     const foot = talk.listing ? "" : chat?.kind === "tidy" ? tidyFoot(chat)
-      : composer(GLOBAL, !!chat?.running, { data: "global-stop", label: "Stop the answer" });
+      : addressButton(chat) + composer(GLOBAL, !!chat?.running, { data: "global-stop", label: "Stop the answer" });
     const drops = !talk.listing && chat?.kind !== "tidy" && !chat?.running;
     return `<aside class="chat global${talk.pinned ? " pinned" : ""}${state.dropping === GLOBAL ? " dropping" : ""}" data-key="chat:global"${drops ? ` data-drop="${GLOBAL}"` : ""} aria-label="Chat with the agent">${head}${body}${foot}
       <div class="drop-veil" aria-hidden="true"><span>Drop to attach</span></div></aside>`;
@@ -1770,6 +1807,15 @@
       drawGlobal(); talk.raw = ""; loadGlobal();
       return;
     }
+    if (what === "address") {
+      let started;
+      try { started = await post("chat/address", {}); } catch (error) { studio.toast(error.message); return; }
+      if (talk.id && talk.id !== started.id) post("chat/leave", { id: talk.id }).catch(() => {});
+      talk.id = started.id; talk.chat = started; talk.listing = false; talk.list = null; talk.follow = true;
+      store("nock.chat.current", talk.id);
+      drawGlobal(); talk.raw = ""; loadGlobal();
+      return;
+    }
     if (what === "stop" && talk.id) { post("chat/stop", { id: talk.id }).catch(error => studio.toast(error.message)); return; }
     if (what === "undo" && talk.id) {
       try { talk.chat = await post("chat/undo", { id: talk.id }); studio.toast("Tidy up undone."); } catch (error) { studio.toast(error.message); }
@@ -1799,12 +1845,12 @@
     if (state.tidying) { state.tidying = false; draw(); return; }
     if (talk.open && event.target.closest?.("#topics-global")) openGlobal(false);
   });
-  // A Tidy up that ends changes Work: the list is read again.
+  // A Tidy up or an Address my comments that ends changes Work: the list is read again.
   let tidied = null;
   setInterval(() => {
     const running = !!talk.chat?.running;
-    if (tidied && !running && state.shown) { state.seen = ""; load(); }
-    tidied = talk.chat?.kind === "tidy" && running ? talk.chat.id : null;
+    if (tidied && !running) { state.seen = ""; load(); }
+    tidied = ["tidy", "address"].includes(talk.chat?.kind) && running ? talk.chat.id : null;
   }, 1000);
   drawGlobal();
   if (talk.open) loadGlobal();

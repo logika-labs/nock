@@ -51,15 +51,18 @@ Reading files in the directory it runs in needs no rule.
 | sharer | Read, Grep, Glob, Bash | `git log` |
 | chatter (the studio's chat) | Read, Grep, Glob, Bash | `.nock/nock topics list`, `topics show`, `items list`, `items show`, `docs`; `git log`, `git show` |
 | namer (names a chat) | none | nothing |
+| addresser (Address my comments) | Read, Grep, Glob, Bash, Edit, Write | `.nock/nock topics list`, `topics show`, `topics update`, `items list`, `items show`, `items update`, `docs`, `check`, `test`; editing and writing files inside the project; `git log`, `git show`, `git diff`, `git status` |
 | tidier (Tidy up) | Read, Grep, Glob, Bash | `.nock/nock topics list`, `topics show`, `topics create`, `topics update`, `topics delete`, `items list`, `items show`, `items update`, `items judge` (dropping only), `docs`; `git log`, `git show` |
 
 `git log` and `git show` are allowed without `--output` (or any
 abbreviation of it git accepts, down to `--ou`), which a deny rule refuses:
 it would write their output to a file.
 
-None can edit a file, reach the network or run any other command; the
-tidier changes Work only through nock's commands, the owner having pressed
-Tidy up. What
+None but the addresser can edit a file, and none can reach the network or
+run any other command; the tidier changes Work only through nock's
+commands, the owner having pressed Tidy up, and the addresser edits only
+inside the project, the owner having pressed Address my comments: it gives
+no verdict and commits nothing. What
 Claude Code refused comes back with the session: in the consultation's
 record and its failure, in the asker's log, in the vetted summary's
 record and the share's failure, and in the run's log.

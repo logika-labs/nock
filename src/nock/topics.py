@@ -545,6 +545,38 @@ class Topics:
             "active": self.activity(topic, items),
         }
 
+    def comments(self) -> list[dict[str, Any]]:
+        """The owner's comments waiting for an agent's answer: each thread
+        whose last word is theirs and no verdict answered it (`pending`), as
+        its ref (a topic's name, an item's `topic/slug`), title (an item's), the
+        comment's text and the paths of the files it carries; in the
+        owner's order of topics."""
+        found = []
+        for name in [row["name"] for row in in_order([self.row(name) for name in self.names()])]:
+            topic = self.topic(name)
+            if pending(topic["thread"]):
+                said = talk(topic["thread"])[-1]
+                found.append(
+                    {
+                        "ref": name,
+                        "title": "",
+                        "text": said["text"],
+                        "files": self.attached(said, name),
+                    }
+                )
+            for item in self.items(name):
+                if pending(item["thread"], item.get("decided")):
+                    said = talk(item["thread"])[-1]
+                    found.append(
+                        {
+                            "ref": item["ref"],
+                            "title": item["title"],
+                            "text": said["text"],
+                            "files": self.attached(said, name, item["slug"]),
+                        }
+                    )
+        return found
+
     def awaiting(self) -> dict[str, list[str]]:
         """What waits on an agent: the threads where the owner wrote last, and
         the items they rejected, not yet reworked."""

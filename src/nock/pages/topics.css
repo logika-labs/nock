@@ -576,9 +576,15 @@
 .topics .viewer.image .content { border: 0; border-radius: 0; background: none; padding: 7px; }
 /* Compared, each version's select stands over its side. */
 .topics .viewer .heads { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0; }
-.topics .viewer .heads .select { justify-self: start; }
-.topics .viewer .column > .select { justify-self: start; }
-.topics .viewer.image .column > .select { justify-self: center; }
+/* Compared, a side's select (the left one's with the file's path beside it) on one line over it,
+   at the left edge of the picture or text it chooses. */
+.topics .viewer .head { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.topics .viewer .head .path-anchor { min-width: 0; }
+.topics .viewer .head .path { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; overflow-wrap: normal; }
+.topics .viewer .stack { display: grid; gap: 8px; min-width: 0; align-content: start; }
+.topics .viewer .stack.fit { justify-self: center; width: fit-content; max-width: 100%; }
+.topics .viewer .stack.fit .pane { place-items: start; }
+.topics .viewer .stack.fit:has(.shot.zoomed) { justify-self: stretch; width: auto; }
 .topics .viewer .actions { padding-top: 2px; }
 
 /* A file's path: plain, no underline; a click tells where it comes from in a floating bubble. */
@@ -616,7 +622,10 @@
   font-weight: 700; color: transparent; -webkit-background-clip: text; background-clip: text;
   background-image: linear-gradient(115deg, #1fb8e6, #7b5cff 50%, #f0479f);
 }
-.topics .select-button:disabled { cursor: default; padding-right: 12px; }
+.topics .select .label { font: inherit; letter-spacing: inherit; text-transform: none; }
+/* One version, nothing to choose: its label alone, in the middle of its pill. */
+.topics .select-button:disabled { cursor: default; padding: 0 12px; justify-content: center; }
+.topics .select-button:disabled .label { min-width: 0; text-align: center; }
 .topics .select-button:not(:disabled):hover, .topics .select-button[aria-expanded="true"] {
   box-shadow: -5px -4px 16px -6px rgb(255 120 200 / .9), 5px 6px 16px -6px rgb(90 220 255 / .9);
 }
@@ -681,8 +690,17 @@
   position: relative; display: block; box-sizing: content-box; padding: 0; border: 1px solid var(--border); border-radius: 8px; overflow: hidden;
   background: none; cursor: zoom-in; max-width: 100%;
 }
-.topics .shot.zoomed { cursor: zoom-out; touch-action: none; }
-.topics .shot.zoomed img, .topics .viewer.image .shot.zoomed img { max-width: none; max-height: none; border-radius: 0; box-shadow: none; transform-origin: 0 0; will-change: transform; }
+.topics .shot.zoomed {
+  cursor: zoom-out; touch-action: none; box-sizing: border-box; width: 100%; height: calc(100vh - 250px);
+  background: repeating-conic-gradient(#ece8f6 0 25%, #fff 0 50%) 0 0 / 16px 16px;
+}
+.topics .viewer.comparing .shot.zoomed { height: calc(100vh - 286px); }
+/* On a phone the two sides stack: each zoomed frame takes half the height, both in sight. */
+@media (max-width: 760px) { .topics .viewer.comparing .shot.zoomed { height: calc((100vh - 330px) / 2); } }
+.topics .pane:has(> .shot.zoomed) { place-items: stretch; }
+/* Zoomed, a picture's viewer takes all the width it may. */
+.topics .sheet.viewer.image:has(.shot.zoomed) { width: min(100%, 92rem); }
+.topics .shot.zoomed img, .topics .viewer.image .shot.zoomed img, .topics .viewer.image.comparing .shot.zoomed img { max-width: none; max-height: none; border-radius: 0; box-shadow: none; transform-origin: 0 0; will-change: transform; }
 .topics .pane img { max-width: 100%; display: block; background: repeating-conic-gradient(#ece8f6 0 25%, #fff 0 50%) 0 0 / 16px 16px; }
 .topics .viewer.image .pane img { max-height: calc(100vh - 250px); width: auto; }
 .topics .viewer.image.comparing .pane img { max-height: calc(100vh - 286px); }

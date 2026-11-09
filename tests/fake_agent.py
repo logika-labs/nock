@@ -150,6 +150,8 @@ def main() -> int:
         return 0
     if os.environ.get("NOCK_ROLE") == "tidier":
         return tidy(session, prompt)
+    if os.environ.get("NOCK_ROLE") == "addresser":
+        return address(session, prompt)
     if os.environ.get("NOCK_ROLE") == "evaluated":
         write_transcript(session, prompt)
         if "Write" in ALLOWED:
@@ -254,6 +256,22 @@ def tidy(session: str, prompt: str) -> int:
         result = run(".nock/nock", *command)
         print(json.dumps({"type": "system", "message": result.stdout + result.stderr}), flush=True)
     summary = os.environ.get("FAKE_TIDY_SUMMARY") or "Moved one item\n\n- orders: first"
+    say(summary)
+    finish(summary)
+    return 0
+
+
+def address(session: str, prompt: str) -> int:
+    """Answer the owner's comments through nock (FAKE_ADDRESS: the commands)."""
+    assert "# Address my comments" in prompt and "<message>" in prompt
+    write_transcript(session, prompt)
+    say("Reading each thread first.")
+    for command in json.loads(os.environ.get("FAKE_ADDRESS") or "[]"):
+        tool = {"type": "tool_use", "name": "Bash", "input": {"command": " ".join(command)}}
+        print(json.dumps({"type": "assistant", "message": {"content": [tool]}}), flush=True)
+        result = run(".nock/nock", *command)
+        assert result.returncode == 0, result.stdout + result.stderr
+    summary = "Answered every comment."
     say(summary)
     finish(summary)
     return 0

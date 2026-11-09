@@ -12,7 +12,7 @@ from pathlib import Path
 import pytest
 
 from nock.asking import ROLE as ASKER
-from nock.chats import CHATTER, NAMER
+from nock.chats import ADDRESSER, CHATTER, NAMER
 from nock.consult import ROLE as CONSULTANT
 from nock.dispatch import ARGUMENT_LIMIT, BYPASS, SEATS, Dispatcher
 from nock.project import Project
@@ -69,6 +69,23 @@ EXPECTED = {
         "Bash(git log:*)",
         "Bash(git show:*)",
     ],
+    ADDRESSER: [
+        "Bash(.nock/nock topics list:*)",
+        "Bash(.nock/nock topics show:*)",
+        "Bash(.nock/nock topics update:*)",
+        "Bash(.nock/nock items list:*)",
+        "Bash(.nock/nock items show:*)",
+        "Bash(.nock/nock items update:*)",
+        "Bash(.nock/nock docs:*)",
+        "Bash(.nock/nock check:*)",
+        "Bash(.nock/nock test:*)",
+        "Edit(./**)",
+        "Write(./**)",
+        "Bash(git log:*)",
+        "Bash(git show:*)",
+        "Bash(git diff:*)",
+        "Bash(git status:*)",
+    ],
 }
 WRITING_GIT = ["--disallowedTools", "Bash(git * --ou*)"]
 DENIED = {
@@ -78,9 +95,10 @@ DENIED = {
     CHATTER: WRITING_GIT,
     NAMER: [],
     TIDIER: WRITING_GIT,
+    ADDRESSER: WRITING_GIT,
 }
-# The namer has no tools at all, so no rules either.
-TOOLS: dict[str, str] = {NAMER: ""}
+# The namer has no tools at all, so no rules either; the addresser edits.
+TOOLS: dict[str, str] = {NAMER: "", ADDRESSER: "Read,Grep,Glob,Bash,Edit,Write"}
 
 
 def seat_flags(role: str, allowed: list[str]) -> list[str]:
@@ -118,7 +136,8 @@ def test_each_seat_gets_exactly_its_tools_and_rules(
     monkeypatch.setenv("FAKE_ARGUMENTS", str(arguments))
     brief = (
         "NOTHING TO SHARE: <question> <intent> When each of the project's topics and items matters:"
-        " nock's studio # The conversation # Tidy up Work # Their message <message>\nhi\n</message>"
+        " nock's studio # The conversation # Tidy up Work # Address my comments"
+        " # Their message <message>\nhi\n</message>"
     )
     session = Dispatcher(project).launch(role, brief, project.root)
     assert session.exit_code == 0 and session.denied == []
