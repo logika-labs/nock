@@ -74,7 +74,7 @@ class Check:
     description: str
     source: str
     paths: tuple[str, ...] = ()
-    """The paths whose change can affect it (`check --changed`); none is any."""
+    """The paths whose change can affect it, by which `check` chooses; none is any."""
 
 
 @dataclass
@@ -190,7 +190,7 @@ def check(
     returns its problems — strings, or `nock.Problem`s — and nothing when
     there are none. Raising `nock.PreconditionError` says the machine, not the
     code, is wrong. `paths` are the globs whose change can affect it, for
-    `check --changed` (`paths` in its `[checks.NAME]` overrides them)."""
+    `check` without `--all` (`paths` in its `[checks.NAME]` overrides them)."""
 
     def decorate(target: Callable[..., Any]) -> Callable[..., Any]:
         PENDING.checks.append(

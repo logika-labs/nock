@@ -68,7 +68,7 @@ DEFAULTS: dict[str, Any] = {
         # How many check suites may run at once on this machine.
         "concurrency": 2,
         # Globs of paths no check depends on (prose, records), so that
-        # `check --changed` does not run everything when only they change.
+        # `check` does not run everything when only they change.
         "unaffected": [],
     },
     "reflect": {

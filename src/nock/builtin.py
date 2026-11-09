@@ -86,18 +86,16 @@ def check_command(
     names: list[str] | None = None,
     *,
     fix: Annotated[bool, Option(help="Run each command check's `fix` first.")] = False,
-    changed: Annotated[
+    all: Annotated[
         bool,
-        Option(
-            help="Only the checks the branch's changes (since the main branch, committed or not) can affect."
-        ),
+        Option(help="Every check, not only those the branch's changes can affect: the full gate."),
     ] = False,
 ) -> None:
-    """Run the checks — all of them, or those named; prints nothing when all pass.
-    Exit 1: the code is wrong. 42 (or 54/55): the machine is. `--changed` runs
-    only those the changes since the main branch can affect, by each check's
-    `paths`."""
-    verdict = Checks(project).run(names or None, fix=fix, changed=changed)
+    """Run the checks the branch's changes (since the main branch, committed or
+    not) can affect, by each check's `paths`; `--all` runs every one, and
+    names run exactly those. Prints nothing when all pass. Exit 1: the code is
+    wrong. 42 (or 54/55): the machine is."""
+    verdict = Checks(project).run(names or None, fix=fix, changed=not all and not names)
     if verdict.exit_code == ExitCode.SUCCESS:
         return
     problems = verdict.problems()

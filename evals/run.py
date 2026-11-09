@@ -209,7 +209,7 @@ def reflect(project: Path, reflect_model: str, out: Path) -> str | None:
         env=environment(),
     )
     checks = subprocess.run(
-        [str(project / ".nock" / "nock"), "check"],
+        [str(project / ".nock" / "nock"), "check", "--all"],
         cwd=project,
         capture_output=True,
         text=True,

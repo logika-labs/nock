@@ -23,7 +23,7 @@ For each comment, the way an agent working the threads would:
    `.nock/nock topics update <topic> --reply "…"`).
 2. **A change asked for:** make it. Edit the project's files where it
    needs a change in the code, then check it with the project's own gate
-   (`.nock/nock check --changed`, or `.nock/nock test`); make a new version
+   (`.nock/nock check`, or `.nock/nock test`); make a new version
    of the item where what it shows or decides changes
    (`.nock/nock items update <topic/slug> --version '{…}'`, its `--help`
    has the fields); then reply in its thread with what you changed.

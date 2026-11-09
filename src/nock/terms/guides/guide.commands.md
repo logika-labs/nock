@@ -11,7 +11,7 @@ description: Every nock command, and the exit codes that tell an agent what to d
 | command | does |
 |---|---|
 | `nock` | the toolbox: the project's tools first, then nock's |
-| `nock check [NAME…] [--fix]` | run the checks (all, or the checks and chains named), side by side; prints nothing when all pass |
+| `nock check [NAME…] [--all] [--fix]` | run the checks the branch's changes can affect (`--all` every one, or exactly the checks and chains named), side by side; prints nothing when all pass |
 | `nock run -- COMMAND` | run anything supervised and condensed (Claude Code asks, as for the command itself) |
 | `nock docs [TERM…]` | nock's documentation for agents, a short article per term: with no term, the terms |
 | `nock calls`, `stats`, `sessions`, `query SQL` | the telemetry |
