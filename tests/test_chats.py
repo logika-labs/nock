@@ -17,11 +17,12 @@ from typing import Any
 
 import pytest
 
+from nock.chats import address_request
 from nock.dispatch import SEATS, Dispatcher
 from nock.project import Project
 from nock.sessions import find_transcript
 from nock.studio import Studio
-from nock.topics import Topics
+from nock.topics import Author, Topics
 
 from .conftest import git
 from .test_topics import run, submit
@@ -292,6 +293,61 @@ def test_a_tidy_up_that_changes_nothing_commits_nothing(
     assert post(page, "undo", {"id": shown["id"]})[0] == 400
 
 
+def test_address_my_comments_sends_the_waiting_comments_and_each_gets_its_answer(
+    project: Project, page: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    log = tmp_path / "asked.jsonl"
+    monkeypatch.setenv("FAKE_LOG", str(log))
+    ref = submit(project.root)
+    other = submit(project.root, {"title": "Refunds are capped", "decision": {"answer": "Yes."}})
+    submit(project.root, {"title": "Billing is monthly", "decision": {"answer": "Yes."}}, "billing")
+    assert post(page, "address", {}) == (400, {"error": "no comment of yours waits for an answer"})
+    topics = Topics(project)
+    topics.reply(ref, "Why not **Postgres**?", Author.OWNER)
+    topics.reply("billing", "Monthly, or yearly too?", Author.OWNER)
+    topics.reply(other, "Fine as it is.", Author.AGENT)
+
+    def waiting() -> int:
+        with urllib.request.urlopen(f"{page}topics") as response:
+            listed = json.loads(response.read())["topics"]
+        return sum(
+            bool(topic["chat"]["pending"])
+            + sum(bool(item["chat"]["pending"]) for item in topic["items"])
+            for topic in listed
+        )
+
+    # What the page counts for its button: the two comments waiting.
+    assert waiting() == 2
+    monkeypatch.setenv(
+        "FAKE_ADDRESS",
+        json.dumps(
+            [
+                ["items", "update", ref, "--reply", "One file is enough at today's load."],
+                ["topics", "update", "billing", "--reply", "Monthly only, for now."],
+            ]
+        ),
+    )
+    status, started = post(page, "address", {})
+    assert status == 200 and started["kind"] == "address"
+    assert started["title"] == "Address my comments"
+    request = started["messages"][0]["text"]
+    assert request.startswith("Address my 2 comments:")
+    assert f"[{ref}] (Orders live in SQLite): Why not **Postgres**?" in request
+    assert "- [billing]: Monthly, or yearly too?" in request
+    assert other not in request
+    shown = answered(page, started["id"])
+    assert shown["messages"][-1]["text"].endswith("Answered every comment.")
+    assert shown["summary"] == "Answered every comment."
+    first = asked(log)[-1]
+    assert first["role"] == "addresser" and f"[{ref}]" in first["prompt"]
+    assert waiting() == 0
+    assert topics.item(ref)["thread"][-1]["author"] == "agent"
+    assert post(page, "address", {})[0] == 400
+    assert "Address my comment:" in address_request(
+        [{"ref": "a", "title": "A", "text": "x", "files": []}]
+    )
+
+
 def test_the_chat_reads_as_the_ask_does_and_tidy_up_writes_only_through_nock(
     project: Project,
 ) -> None:
@@ -306,6 +362,11 @@ def test_the_chat_reads_as_the_ask_does_and_tidy_up_writes_only_through_nock(
     )
     namer = dispatcher.command("namer")
     assert namer[namer.index("--tools") + 1] == "" and "--allowedTools" not in namer
+    # Address my comments writes inside the project and through nock, never a verdict nor a commit.
+    addresser = SEATS["addresser"]
+    assert {"Edit", "Write"} <= set(addresser.tools)
+    assert {"Edit(./**)", "Write(./**)"} <= set(addresser.allowed)
+    assert not any("judge" in rule or "commit" in rule for rule in addresser.allowed)
 
 
 def test_a_topic_s_priority_orders_the_list_and_zero_takes_it_away(project: Project) -> None:

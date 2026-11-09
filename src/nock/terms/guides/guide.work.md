@@ -15,14 +15,15 @@ first — each a row: its name, what it holds ("4
 decisions · 6 images · 3 texts") and its verdicts ("3 open · 12 accepted · 2 dropped"),
 its time ("21m", "3h", "2d", on a small grey pill) with its state's foil mark
 beside it (active a slowly turning spinner, planned a ring, done a full circle
-with a tick, abandoned one with a cross), its status line in grey right after
+with a tick, abandoned one with a cross; a topic in review shows none, since
+waiting on the owner needs no mark), its status line in grey right after
 its name, and its description. A
 topic opens in place, its items in sections, each with its count and a caret
 that folds it: decisions as bubbles that open in place on the answer (its
 whole width; Markdown's single line breaks flow together, a blank line parts
 paragraphs), the alternatives, the files it concerns and Drop, Reject and Accept;
 a decision is done unless a yellow-to-orange TODO chip under its time says otherwise; a
-white tick or cross on a green or red circle, or a muted cross, before its time once accepted, rejected or dropped; an open
+white tick or cross on a green or red gradient circle, or a muted cross, before its time once accepted, rejected or dropped (hovered, "Accepted on Nov 23, 2026 at 14:05", in local time); an open
 decision is framed in the foil's cyan and pink (`?decisions=rail` or `lift`
 on the page's address shows two other looks); pictures as one line of
 thumbnails, each with a ribbon of its title, time and verdict along its foot,
@@ -37,18 +38,23 @@ a text opens in a viewer over the list, its title and time on a white
 ribbon — a text in a column about 40% of the screen, a picture's viewer
 shrunk to the picture, each picture framed in a grey hairline: a version
 picked (a white pill on a foil edge, "v3", its list giving each
-version's time), or Compare (off at first) for two side by side, the
-newest and the one before, each side's select over it (a text's as
+version's time; with one version, the label alone in the middle of its
+pill), or Compare (off at first, and absent where there is nothing to
+compare: one version, options, a file only to download) for two side by
+side, the newest and the one before, each side's select on one line over
+it at its left edge, the file's path beside the left one (a text's as
 a line diff in nock's colours, the changed words marked, a long unchanged run
 folded into one row a click unfolds); an item's options side
 by side instead, each with its star, Compare off; a Markdown file
 rendered (nested lists, ruled tables, code blocks black and highlighted),
 its frontmatter the tinted top band of its page as keys and values, code and data
 highlighted, plain text as it is; a click on the file's path says where it
-comes from, in a bubble; a click on a picture zooms it in place to its
-natural size (twice its size when it is shown about that large already), the
-part shown following the cursor — every picture side by side zooms with it, to
-the same point, so two versions compare in detail; a click or Esc leaves the
+comes from, in a bubble; a click on a picture zooms it over all the room the
+viewer has (compared, each side its half; on a phone, stacked, each half the
+height) at its natural size, or larger where that would leave the room
+unfilled, the part shown following the cursor — every picture side by side
+zooms and pans with it, to the same point, so two versions compare in
+detail; a click or Esc leaves the
 zoom; on a touch screen a tap zooms, a drag pans. ← and → step through the
 topic's pictures and texts, Esc closes. A video, a PDF, a page (an HTML page
 runs no script there) open there too.
@@ -73,12 +79,13 @@ what agents submit without drawing again what did not change.
 ## Filters
 
 Under the bar, **filters**, one at a time and combined with the search, each
-with its count: All; **Needs me** (open items, and chats the agent answered
+with its count: All; **Needs me** (topics in review, open items, and chats the agent answered
 since the owner looked); **Waiting on agent** (the owner wrote last, or
 rejected an item still to rework); **Todo** (todo decisions); **Active**
 (topics under way). Done and abandoned topics stay hidden until **Done &
 dropped** shows them. The choice is kept per browser. **Tidy up** is at the
-end of that line (see [Tidy up](#tidy-up)).
+right end of that line (see [Tidy up](#tidy-up)); on a phone the chips
+scroll sideways beside it.
 
 ## Settings
 

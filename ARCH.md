@@ -65,8 +65,10 @@ src/nock/
   asking.py          Asker: the studio's Ask, a fresh agent answering through `topics answer`
   chats.py           Chats: the studio's chat with a headless agent (a session per chat,
                      streamed, resumed or re-briefed with its transcript, named on leaving),
-                     and Tidy up (its writes as one commit, Undo a revert); `.nock/local/chats/`
-  studio.py          the owner's page (`nock studio`): a local server, a Tab per tab, the chat's routes
+                     Tidy up (its writes as one commit, Undo a revert) and Address my
+                     comments; `.nock/local/chats/`
+  studio.py          the owner's page (`nock studio`): a local server, a Tab per tab, the chat's
+                     routes; `code_moment`, so a studio older than its code asks for a restart
   transcription.py   Transcription: the studio's recorder, a recording forwarded to the
                      Whisper server `studio.transcribe_url` names and made text
   pages/             studio.html, the shell (band with the title and the menu, routing by
@@ -107,6 +109,7 @@ src/nock/
     chat.md          the studio's chat agent's brief, with its first message
     name.md          the brief of the agent that names a chat the owner leaves
     tidy.md          Tidy up's brief: regroup, set states, drop what is stale, prioritize
+    address.md       Address my comments' brief: answer each waiting comment in its thread
 
   # the rest of the toolbox
   checks.py          Checks: command checks and @check functions → one Verdict
@@ -138,7 +141,7 @@ src/nock/
 tests/               real git repositories and processes; no mocks
   conftest.py        a fresh repository with nock installed, per test; the `nock()` runner
   fake_agent.py      the scripted stand-in for the dispatched agents (consultant, asker, sharer,
-                     the studio's chatter, namer and tidier, an evaluation step's agent)
+                     the studio's chatter, namer, tidier and addresser, an evaluation step's agent)
   toy/               the toy Snakefile test_eval.py runs: a word list, a planted bug (a fork), a
                      detector (a checkpoint), a fix when found, a score joining the arms
 scripts/release.py   cut a release: checks, asks, then tags vVERSION and pushes it (standard library)
@@ -394,7 +397,8 @@ else and hands it to `hooks.run`, which:
      a session nock dispatches gets `NOCK_PARENT_SESSION` instead;
    - **Stop**, besides refusing a turn with a round left open, refuses once
      a session (the `stated` table) the end of a turn when the session, or
-     a subagent of it, did its own work in a planned or active topic (opened
+     a subagent of it, did its own work in a planned or active topic (review,
+     like done and abandoned, says where it stands: `FINISHED`) (opened
      it, or submitted, versioned or answered an item there: the `wrote`
      table, so a migration's rewrites and the owner's verdicts never count)
      and never set its state or status (`Topics.unstated`);
@@ -448,7 +452,7 @@ main branch at once; it skips the commit, and says so, when the main
 checkout is mid-merge or mid-rebase. A ref is `topic/slug`; `resolve` also
 takes an alias (a migrated decision's number, `170`, `D170`, `topic/170`).
 
-A topic's `state` (`State`: planned, active, done, abandoned) and `status`
+A topic's `state` (`State`: planned, active, review, done, abandoned) and `status`
 change through `update_topic` → `set_standing`, which keeps them in
 `topic.json` and appends a status entry (`kind: "status"`, the state and
 status, the writer) to its thread; `talk` leaves status entries out wherever
@@ -576,7 +580,11 @@ the `namer` (no tools) for a title and summary. Tidy up is a chat whose
 agent is the `tidier`: `Topics.commit` commits nothing for that role, and
 when it ends `Chats.gather` commits `.nock/topics` once; Undo is `git
 revert` of that commit, aborted when it conflicts. `items judge` refuses the
-tidier anything but a drop (`"rework": false`). A topic's `priority` orders the list
+tidier anything but a drop (`"rework": false`). Address my comments is a chat
+whose agent is the `addresser` (Edit and Write inside the project, nock's
+reply and version commands, the project's check and test): `Topics.comments`
+lists the threads where the owner's comment waits (`pending`), quoted in the
+chat's first message (`chats.address_request`). A topic's `priority` orders the list
 (`topics.in_order`) in the studio and in `topics list`.
 
 ### The evaluation explorer
@@ -627,7 +635,7 @@ tools and allow rules, which a step must state.
 `dispatch.Dispatcher.launch` runs `claude -p --output-format stream-json
 --session-id …` (`agent.command`, `agent.model`) for the sessions no human
 sits in: the consultant, the asker, the sharer, and the studio's chatter,
-namer and tidier. (A reflection
+namer, tidier and addresser. (A reflection
 round's parts are the lead's own subagents, not dispatched: the types in
 `briefs/KIND/agents/`, which `nock init` installs in `.claude/agents/`, each
 with only the tools its part needs.) It:

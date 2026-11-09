@@ -65,6 +65,13 @@ SHELL = PAGES / "studio.html"
 LOOK = PAGES / "studio.css"
 
 
+def code_moment() -> int:
+    """When nock's code last changed on disk. The pages are read at each
+    request but the code only at start, so a studio left running across an
+    update serves new pages to old routes: the page says to restart it."""
+    return max(path.stat().st_mtime_ns for path in PACKAGE.glob("*.py"))
+
+
 class Tab:
     """One tab: what it answers on `GET /NAME/ROUTE` and `POST /NAME/ROUTE`
     (JSON both ways; a nock `Error` is the HTTP error)."""
@@ -415,6 +422,7 @@ class TopicsTab(Tab):
         self.seen = Seen(project)
         self.uploads = Uploads(project)
         self.texts: dict[Path, tuple[int, str]] = {}
+        self.started = code_moment()
 
     def fragment(self) -> str:
         look = (PAGES / "topics.css").read_text() + (PAGES / "chat.css").read_text()
@@ -426,6 +434,7 @@ class TopicsTab(Tab):
             return {
                 "topics": self.everything(),
                 "ask": self.asking.state(),
+                **({"restart": True} if code_moment() != self.started else {}),
                 "transcription": {
                     "enabled": transcription.enabled,
                     **({} if transcription.enabled else {"hint": HINT}),
@@ -623,7 +632,8 @@ class ChatRoutes(Tab):
     chat in a line, the latest first; `GET /chat/ID` one, with the answer
     being written; `POST /chat/send` the owner's message (a new chat without
     `id`), `/stop` stops the answer, `/leave` names the chat the owner
-    leaves for a new one, `/tidy` starts Tidy up, `/undo` reverts its commit;
+    leaves for a new one, `/tidy` starts Tidy up, `/undo` reverts its commit,
+    `/address` starts Address my comments;
     `GET /chat/file/ID/PATH` a file a message carries. Files go up as in
     every chat (`topics/upload`), and are kept beside the chat."""
 
@@ -654,6 +664,8 @@ class ChatRoutes(Tab):
             return shown
         if route == "tidy":
             return self.chats.tidy()
+        if route == "address":
+            return self.chats.address()
         actions = {"stop": self.chats.stop, "leave": self.chats.leave, "undo": self.chats.undo}
         if route in actions:
             validate(body, schema_of(Which))

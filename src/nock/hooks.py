@@ -295,6 +295,7 @@ class HookRunner:
         return [
             f"nock: you worked in topic(s) {listed} and never set where they stand. Before you"
             f' stop: `.nock/nock topics update {names[0]} \'{{"status": "…"}}\'` — or'
+            ' `{"state": "review"}` when it is built and only the owner\'s verdicts remain,'
             ' `{"state": "done"}` (or "abandoned") when the work is finished.'
         ]
 
