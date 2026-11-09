@@ -1,4 +1,4 @@
-<div class="frame experiments" id="experiments">
+<div class="frame experiment" id="experiment">
   <div class="xp-picker" id="xp-picker" role="group" aria-label="Scenario" hidden></div>
   <p class="glass xp-note" id="xp-note" hidden></p>
   <div class="xp-main" id="xp-main" hidden>
@@ -17,19 +17,19 @@
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
 <script>
-// The Experiments tab (its look is pages/experiments.css): `GET experiments/NAME` is a scenario as an
+// The Experiment tab (its look is pages/experiment.css): `GET experiment/NAME` is a scenario as an
 // experiment (nock.experiments), drawn here with D3 — its steps forking by parameter, repeat and
 // decision on a black field, a panel for a step, a decision, a run or a measure — and `POST
-// experiments/NAME/results` the results of the outputs a panel shows, fetched when it shows them.
+// experiment/NAME/results` the results of the outputs a panel shows, fetched when it shows them.
 (() => {
 const $ = id => document.getElementById("xp-" + id);
 const shell = { name: null, route: "", shown: false, controller: null, names: [] };
 function load(name, route) {
-  return fetch(`experiments/${encodeURIComponent(name)}`).then(r => r.json()).then(X => {
+  return fetch(`experiment/${encodeURIComponent(name)}`).then(r => r.json()).then(X => {
     if (X.error || X.deriving || X.problem) {
       $("main").hidden = true; $("note").hidden = false;
       $("note").textContent = X.error || X.problem || "Reading the workflow… this takes as long as a dry run, once.";
-      studio.summary("experiments", `${name}: ${X.problem ? "can't read it" : "reading the workflow…"}`);
+      studio.summary("experiment", `${name}: ${X.problem ? "can't read it" : "reading the workflow…"}`);
       if (X.deriving) setTimeout(() => shell.shown && shell.name === name && load(name, route), 3000);
       return;
     }
@@ -42,15 +42,15 @@ function pick() {
   const box = $("picker");
   box.hidden = shell.names.length < 2;
   box.innerHTML = shell.names.map(n => `<button type="button" class="chip" aria-pressed="${n === shell.name}" data-name="${n}">${n}</button>`).join("");
-  box.querySelectorAll("[data-name]").forEach(b => b.onclick = () => { location.hash = `experiments/${b.dataset.name}`; });
+  box.querySelectorAll("[data-name]").forEach(b => b.onclick = () => { location.hash = `experiment/${b.dataset.name}`; });
 }
-studio.register("experiments", {
+studio.register("experiment", {
   show(route) {
     shell.shown = true;
     const [name, ...rest] = (route || "").split("/");
-    fetch("experiments").then(r => r.json()).then(data => {
+    fetch("experiment").then(r => r.json()).then(data => {
       shell.names = data.scenarios || [];
-      if (!shell.names.length) { $("main").hidden = true; $("note").hidden = false; $("note").textContent = "No scenarios yet: nock eval init NAME makes one."; studio.summary("experiments", "No scenarios yet"); return; }
+      if (!shell.names.length) { $("main").hidden = true; $("note").hidden = false; $("note").textContent = "No scenarios yet: nock eval init NAME makes one."; studio.summary("experiment", "No scenarios yet"); return; }
       const chosen = shell.names.includes(name) ? name : shell.name && shell.names.includes(shell.name) ? shell.name : shell.names[0];
       const again = chosen === shell.name && shell.loaded;
       shell.name = chosen; shell.loaded = true; pick();
@@ -60,7 +60,7 @@ studio.register("experiments", {
   hide() { shell.shown = false; },
 });
 function boot(X, route, signal) {
-const tellStudio = text => studio.summary("experiments", text);
+const tellStudio = text => studio.summary("experiment", text);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
 const time = m => m == null ? "" : m < 1 ? `${Math.round(m * 60)}s` : m < 90 ? `${m < 10 ? m.toFixed(1) : Math.round(m)}min` : `${(m / 60).toFixed(1)}h`;
@@ -605,7 +605,7 @@ function want(ss) {
   for (const s of ss) if (!RESULTS.has(s.id) && !s.id.includes("?")) WANTED.add(s.id);
   if (!WANTED.size || fetching) return;
   const outputs = [...WANTED]; WANTED.clear();
-  fetching = fetch(`experiments/${encodeURIComponent(X.name)}/results`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ outputs }), signal })
+  fetching = fetch(`experiment/${encodeURIComponent(X.name)}/results`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ outputs }), signal })
     .then(r => r.json()).then(found => { for (const id of outputs) RESULTS.set(id, found[id] || {}); })
     .catch(() => { for (const id of outputs) RESULTS.set(id, {}); })
     .finally(() => { fetching = null; if (!signal.aborted) render(false); });
@@ -674,7 +674,7 @@ function overlays() {
 function hash() {
   const h = view.run ? [view.run, ...view.reps.map(x => x ? x.join("x") : "all")].join("--") : "";
   if (!shell.shown) return;
-  try { history.replaceState(null, "", `#experiments/${encodeURIComponent(X.name)}${h ? "/" + h : ""}`); } catch (e) { /* the frame may refuse */ }
+  try { history.replaceState(null, "", `#experiment/${encodeURIComponent(X.name)}${h ? "/" + h : ""}`); } catch (e) { /* the frame may refuse */ }
 }
 function fromHash(raw) {
   const h = decodeURIComponent(raw || ""); if (!h) return;

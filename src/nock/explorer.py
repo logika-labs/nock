@@ -1,8 +1,6 @@
-"""The studio's evaluation explorer: a scenario as a graph — its rules as
-columns left to right, each column's jobs folded into groups by the parameter
-that forks the runs (a row per value), a group splitting on demand by the
-parameters that fork inside it — with each job's status read live from the
-files, what a change would rerun, and the scenario's comparisons in counts.
+"""What the Experiment tab is drawn from (`nock.experiments`): a scenario's
+jobs, as Snakemake describes them, with each job's status read live from the
+files.
 
 Snakemake describes the jobs once (`GRAPH`: every job, its parameters, inputs,
 the jobs before it and its cache entry), which takes as long as a dry run; the
@@ -12,24 +10,21 @@ done) and derived again in the background when that changes. Statuses come
 from the results, the cache and Snakemake's own state — its lock, its
 incomplete markers and the log of the run going on — so a page polls them
 cheaply while a run goes. Nothing here runs a step or writes outside
-`.nock/local/`. How a scenario is worded (titles, what a rule means, parameter
-labels, the key numbers, highlights and declared comparisons) is the optional
+`.nock/local/`. How a scenario is worded (its question, titles, what a rule
+means and what its outputs hold, parameter labels, decisions) is the optional
 `evals/NAME/studio.json`; without it, a rule means the comment above it in the
 Snakefile."""
 
 from __future__ import annotations
 
-import ast
 import base64
 import hashlib
 import json
 import os
 import re
-import statistics
 import subprocess
 import threading
 import time
-from collections.abc import Iterable
 from dataclasses import asdict, dataclass, field
 from enum import StrEnum
 from functools import cached_property
@@ -37,7 +32,7 @@ from pathlib import Path
 from typing import Any, NotRequired, TypedDict
 
 from nock.commands import schema_of
-from nock.errors import NotFoundError, PreconditionError, UsageError
+from nock.errors import PreconditionError, UsageError
 from nock.evaluation import CACHE, PROFILE, RESULTS, SNAKEMAKE, Scenario, uv
 from nock.schema import validate
 from nock.steps import COST, ERROR, METRICS
@@ -49,8 +44,6 @@ FINGERPRINT_EVERY = 15.0
 """Seconds between checks of whether the description still holds."""
 STATUS_EVERY = 2.0
 """Seconds a reading of the statuses serves every request."""
-FILE_BYTES = 200_000
-"""How much of a file the page shows: its end, for a log."""
 # Runs in uv's interpreter with Snakemake: loads the workflow as `--list-untracked`
 # would, builds the DAG of every target rule, and prints every job instead.
 GRAPH = r"""
@@ -127,15 +120,6 @@ class Status(StrEnum):
     MISSING = "missing"
 
 
-STATUS_WORDS = {
-    Status.DONE: "done",
-    Status.RUNNING: "running",
-    Status.FAILED: "failed",
-    Status.STALE: "stale",
-    Status.MISSING: "not yet run",
-}
-
-
 # --- the words a scenario may give ---------------------------------------------------
 
 
@@ -190,18 +174,13 @@ class ScoreWords(TypedDict):
 
 class RuleWords(TypedDict):
     title: NotRequired[str]
-    """The column's title: `Observation`."""
+    """The step's title: `Observation`."""
     means: NotRequired[str]
     """What one of its outputs is, in a sentence; the comment above the rule by default."""
-    metrics: NotRequired[list[str]]
-    """The numbers a group shows, first the key one; the first two of metrics.json by default."""
-    highlights: NotRequired[list[str]]
-    """Sentences about one output, `{name}` filled from its metrics, cost and parameters;
-    a sentence naming something the output lacks is left out."""
     results: NotRequired[list[ResultWords]]
-    """What one of its outputs holds, for the Experiments tab; its metrics and diff.patch by default."""
+    """What one of its outputs holds; its metrics and diff.patch by default."""
     score: NotRequired[ScoreWords]
-    """The metric that scores one of its outputs, for the Experiments tab."""
+    """The metric that scores one of its outputs."""
 
 
 class ParameterWords(TypedDict):
@@ -212,27 +191,12 @@ class ParameterWords(TypedDict):
     about: NotRequired[str]
     """What it is, in a sentence."""
     pooled: NotRequired[bool]
-    """Added up rather than compared, like a bug in a bank: the Experiments tab's variants
+    """Added up rather than compared, like a bug in a bank: the experiment's variants
     are the values of the parameters that are not."""
     repeat: NotRequired[bool]
     """It repeats a step (`rep` by default)."""
     controls: NotRequired[list[str]]
     """Its values that are a control, not a case: `["none"]` for no bug."""
-
-
-class Analysis(TypedDict):
-    step: str
-    """The rule whose current outputs are counted."""
-    by: str
-    """The parameter whose values are set side by side."""
-    metric: str
-    """A key of metrics.json: counted true (or above zero) out of the outputs that have it."""
-    name: NotRequired[str]
-    """The question, in words."""
-    where: NotRequired[dict[str, str]]
-    """Only the outputs with these parameter values."""
-    baseline: NotRequired[str]
-    """The value of `by` the others are set against; the first by default."""
 
 
 class Words(TypedDict):
@@ -242,42 +206,10 @@ class Words(TypedDict):
     parameters: NotRequired[dict[str, ParameterWords]]
     metrics: NotRequired[dict[str, str]]
     """Labels of metrics.json's keys."""
-    lanes: NotRequired[str]
-    """The parameter whose values are the graph's rows; the earliest that forks by default."""
-    analyses: NotRequired[list[Analysis]]
-    """The comparisons the scenario was run to answer, written down first."""
     question: NotRequired[str]
-    """What the experiment asks, for the Experiments tab."""
+    """What the experiment asks."""
     decisions: NotRequired[list[Decision]]
-    """Code over a step's metrics that picks a branch, for the Experiments tab."""
-
-
-class Selection(TypedDict):
-    """A group (a rule and parameter values) or one run (`run`, its output) chosen on the page."""
-
-    rule: str
-    filter: NotRequired[dict[str, str | None]]
-    run: NotRequired[str]
-
-
-class Change(TypedDict):
-    """What if this changed: a parameter's value (`value`), one of the inputs a step's
-    params carry (`input`, such as a version), or a file the steps read (`code`)."""
-
-    kind: str
-    name: str
-    value: NotRequired[str]
-
-
-class View(TypedDict):
-    """What the page shows: which target's jobs, rows by which parameter, what is
-    selected (left to right), which groups are split, and a change to weigh."""
-
-    target: NotRequired[str]
-    lanes: NotRequired[str]
-    path: NotRequired[list[Selection]]
-    expanded: NotRequired[list[str]]
-    change: NotRequired[Change]
+    """Code over a step's metrics that picks a branch."""
 
 
 # --- the description of the jobs --------------------------------------------------------
@@ -378,18 +310,6 @@ class Graph:
     # --- shape -------------------------------------------------------------------------
 
     @cached_property
-    def children(self) -> dict[str, list[str]]:
-        found: dict[str, list[str]] = {}
-        for job in self.jobs.values():
-            for before in job.after:
-                found.setdefault(before, []).append(job.id)
-        return found
-
-    def targets(self) -> list[str]:
-        """The rules that only name what to make (`all`, a request's rule): the targets."""
-        return sorted({job.rule for job in self.jobs.values() if job.target})
-
-    @cached_property
     def rules(self) -> list[str]:
         """The rules with outputs, in the order they run: by the longest chain before them."""
         depends: dict[str, set[str]] = {}
@@ -416,72 +336,6 @@ class Graph:
             visit(rule, frozenset())
         first_seen = {rule: index for index, rule in enumerate(depends)}
         return sorted(depends, key=lambda rule: (depth[rule], first_seen[rule]))
-
-    def ancestors(self, ids: Iterable[str]) -> set[str]:
-        found: set[str] = set()
-        todo = list(ids)
-        while todo:
-            at = todo.pop()
-            for before in self.jobs[at].after if at in self.jobs else []:
-                if before not in found:
-                    found.add(before)
-                    todo.append(before)
-        return found
-
-    def descendants(self, ids: Iterable[str], children: dict[str, list[str]]) -> set[str]:
-        found: set[str] = set()
-        todo = list(ids)
-        while todo:
-            for after in children.get(todo.pop(), []):
-                if after not in found:
-                    found.add(after)
-                    todo.append(after)
-        return found
-
-    def scope(self, targets: list[str]) -> set[str]:
-        """The jobs a run of `targets` (target rules or outputs) makes."""
-        roots = [
-            job.id
-            for job in self.jobs.values()
-            if (job.target and job.rule in targets) or job.id in targets
-        ]
-        return {
-            job_id
-            for job_id in self.ancestors(roots) | set(roots)
-            if job_id in self.jobs and not self.jobs[job_id].target
-        }
-
-    def varying(self, ids: Iterable[str]) -> list[str]:
-        """The parameters that take more than one value (or are missing from some) among
-        `ids`, in the order they first appear, rule by rule."""
-        rules = {rule: index for index, rule in enumerate(self.rules)}
-        chosen = [self.jobs[job_id] for job_id in ids]
-        chosen.sort(key=lambda job: rules.get(job.rule, 0))
-        order: list[str] = []
-        values: dict[str, set[str]] = {}
-        # Per rule, how many of its jobs have the parameter: a parameter some of a
-        # rule's jobs lack forks there (a planner only for one setup); one a whole
-        # rule lacks does not.
-        having: dict[tuple[str, str], int] = {}
-        sizes: dict[str, int] = {}
-        # Where each first appears: its rule, then its furthest place in a path, so a
-        # parameter only some paths carry keeps its place among the others.
-        first: dict[str, tuple[int, int]] = {}
-        for job in chosen:
-            sizes[job.rule] = sizes.get(job.rule, 0) + 1
-            rank = rules.get(job.rule, 0)
-            for place, (name, value) in enumerate(job.parameters.items()):
-                if name not in values:
-                    order.append(name)
-                    values[name] = set()
-                    first[name] = (rank, place)
-                elif first[name][0] == rank:
-                    first[name] = (rank, max(first[name][1], place))
-                values[name].add(value)
-                having[job.rule, name] = having.get((job.rule, name), 0) + 1
-        partly = {name for (rule, name), count in having.items() if count < sizes[rule]}
-        order.sort(key=lambda name: first[name])
-        return [name for name in order if len(values[name]) > 1 or name in partly]
 
 
 # --- what Snakemake is doing ---------------------------------------------------------------
@@ -518,7 +372,6 @@ JOB_START = re.compile(r"^(?:local)?(?:rule|checkpoint) ([\w-]+):$")
 JOB_FIELD = re.compile(r"^    (output|jobid): (.*)$")
 FINISHED = re.compile(r"^Finished job(?:id:)? (\d+)")
 ERROR_IN = re.compile(r"^Error in rule ([\w-]+):$")
-PROGRESS = re.compile(r"^(\d+) of (\d+) steps \((.*)\) done$")
 
 
 @dataclass
@@ -526,15 +379,8 @@ class Activity:
     """A Snakemake run going on in the scenario, from its lock and its log."""
 
     active: bool = False
-    log: str | None = None
-    command: str = ""
-    targets: list[str] = field(default_factory=list)
-    done: int = 0
-    total: int = 0
-    started_at: str | None = None
     running: dict[str, str] = field(default_factory=dict)
     """Output → when its job started, by the log."""
-    failed: set[str] = field(default_factory=set)
     incomplete: set[str] = field(default_factory=set)
 
 
@@ -576,30 +422,13 @@ class Monitor:
             self.offset += end
             for line in text[:end].decode(errors="replace").splitlines():
                 self.line(line)
-        activity = Activity(
-            active=active,
-            log=str(log) if log else None,
-            command=self.parsed.command,
-            targets=self.parsed.targets,
-            done=self.parsed.done,
-            total=self.parsed.total,
-            started_at=self.parsed.started_at,
-            running=dict(self.parsed.running) if active else {},
-            failed=set(self.parsed.failed),
-        )
+        activity = Activity(active=active, running=dict(self.parsed.running) if active else {})
         if active and (self.state / "incomplete").is_dir():
             activity.incomplete = set(recorded(self.state / "incomplete"))
         return activity
 
     def line(self, line: str) -> None:
         parsed = self.parsed
-        if line.startswith("  Command: "):
-            parsed.command = line.removeprefix("  Command: ").strip()
-            parsed.targets = command_targets(parsed.command)
-            return
-        if line.startswith("  Date: ") and parsed.started_at is None:
-            parsed.started_at = line.removeprefix("  Date: ").strip()
-            return
         stamp = STAMP.match(line)
         if stamp:
             self.stamp = stamp.group(1)
@@ -620,7 +449,6 @@ class Monitor:
             if "output" in self.pending and "jobid" in self.pending:
                 output, number = self.pending["output"], self.pending["jobid"]
                 if self.erring:
-                    parsed.failed.add(output)
                     parsed.running.pop(output, None)
                 else:
                     self.jobs[number] = output
@@ -632,42 +460,6 @@ class Monitor:
             output = self.jobs.get(finished.group(1))
             if output:
                 parsed.running.pop(output, None)
-            return
-        progress = PROGRESS.match(line)
-        if progress:
-            parsed.done, parsed.total = int(progress.group(1)), int(progress.group(2))
-
-
-def command_targets(command: str) -> list[str]:
-    """The targets a Snakemake command line names: its words that are no option or an option's value."""
-    words = command.split()
-    takes_value = {
-        "--profile",
-        "--cores",
-        "-c",
-        "--jobs",
-        "-j",
-        "--snakefile",
-        "-s",
-        "--directory",
-        "-d",
-    }
-    found: list[str] = []
-    index = next((i + 1 for i, word in enumerate(words) if word.endswith("snakemake")), 0)
-    while index < len(words):
-        word = words[index]
-        if word in takes_value:
-            index += 2
-            continue
-        if word in ("--resources", "--set-resources", "--config", "--forcerun", "-R"):
-            index += 1
-            while index < len(words) and not words[index].startswith("-"):
-                index += 1
-            continue
-        if not word.startswith("-"):
-            found.append(word)
-        index += 1
-    return found
 
 
 # --- one output's facts --------------------------------------------------------------------
@@ -800,56 +592,6 @@ def comments(snakefile: str) -> dict[str, str]:
     return found
 
 
-def plural(count: int, one: str, many: str | None = None) -> str:
-    return f"{count} {one if count == 1 else many or one + 's'}"
-
-
-def money(value: float | None) -> str:
-    if value is None:
-        return "—"
-    if value == 0:
-        return "$0"
-    return f"${value:,.0f}" if value >= 100 else f"${value:,.2f}"
-
-
-def duration(seconds: float | None) -> str:
-    if seconds is None:
-        return "—"
-    if seconds < 90:
-        return f"{seconds:.0f} s"
-    if seconds < 90 * 60:
-        return f"{seconds / 60:.0f} min"
-    return f"{seconds / 3600:.1f} h"
-
-
-def number(value: Any) -> str:
-    if isinstance(value, bool):
-        return "yes" if value else "no"
-    if isinstance(value, float):
-        return f"{value:,.0f}" if abs(value) >= 100 else f"{value:.3g}"
-    if isinstance(value, int):
-        return f"{value:,}"
-    if value is None:
-        return "—"
-    if isinstance(value, (list, dict)):
-        return f"{len(value)} items" if value else "none"
-    return str(value)
-
-
-def median(values: Iterable[float | None]) -> float | None:
-    found = [value for value in values if value is not None]
-    return statistics.median(found) if found else None
-
-
-def truthy(value: Any) -> bool | None:
-    """A metric as counted: true or above zero; None when it is no number."""
-    if isinstance(value, bool):
-        return value
-    if isinstance(value, (int, float)):
-        return value > 0
-    return None
-
-
 class Wording:
     """The scenario's words: its studio.json, the Snakefile's comments, and plain defaults."""
 
@@ -901,35 +643,13 @@ class Wording:
     def metric(self, name: str) -> str:
         return self.words.get("metrics", {}).get(name) or name.replace("_", " ")
 
-    def key_metrics(self, rule: str, seen: list[str]) -> list[str]:
-        declared = self.rule(rule).get("metrics")
-        if declared:
-            return list(declared)
-        # What it spent is said beside every output already.
-        return [key for key in seen if not SPENDING.match(key)][:2]
-
 
 # --- the explorer --------------------------------------------------------------------------
 
 
-@dataclass
-class Unit:
-    """A group of jobs of one rule shown as one box: a value of the rows' parameter,
-    then, when split, of the parameters that fork inside it; one job is a run."""
-
-    rule: str
-    filter: dict[str, str | None]
-    jobs: list[str]
-    depth: int = 0
-
-    @property
-    def id(self) -> str:
-        return self.rule + "|" + json.dumps(self.filter, sort_keys=True)
-
-
 class Explorer:
-    """One scenario's explorer: the description kept and refreshed in the background,
-    the statuses read on demand, and the views the page asks for."""
+    """One scenario's description, kept and refreshed in the background, and its
+    statuses read on demand."""
 
     def __init__(self, scenario: Scenario, store: Path) -> None:
         self.scenario = scenario
@@ -1096,936 +816,3 @@ class Explorer:
             }
             self.reading, self.read_at = (activity, facts), time.monotonic()
             return self.reading
-
-    # --- views ----------------------------------------------------------------------------
-
-    def summary(self) -> dict[str, Any]:
-        """The scenario in a line: its jobs by status, and the run going on."""
-        graph = self.current()
-        if graph is None:
-            return {
-                "name": self.scenario.name,
-                "deriving": self.refreshing or self.problem is None,
-                "problem": self.problem,
-            }
-        _, facts = self.read(graph)
-        counts = {status.value: 0 for status in Status}
-        for item in facts.values():
-            counts[item.status.value] += 1
-        return {
-            "name": self.scenario.name,
-            "steps": len(facts),
-            "counts": counts,
-            "refreshing": self.refreshing,
-            "problem": self.problem,
-        }
-
-    def explore(self, view: View) -> dict[str, Any]:
-        graph = self.current()
-        if graph is None:
-            return {
-                "name": self.scenario.name,
-                "deriving": self.problem is None,
-                "problem": self.problem,
-            }
-        activity, facts = self.read(graph)
-        return Exploration(self.scenario, graph, facts, activity, view).page() | {
-            "refreshing": self.refreshing,
-            "problem": self.problem,
-            "derived_at": graph.derived_at,
-            "derived_in": graph.seconds,
-        }
-
-    def detail(self, output: str) -> dict[str, Any]:
-        graph = self.current()
-        if graph is None or output not in graph.jobs:
-            raise NotFoundError(f"no job makes {output}")
-        activity, facts = self.read(graph)
-        return Exploration(self.scenario, graph, facts, activity, {}).detail(output)
-
-    def file_text(self, output: str, name: str) -> dict[str, Any]:
-        """One file of an output, its end when long; only a file inside a job's output."""
-        graph = self.current()
-        if graph is None or output not in graph.jobs:
-            raise NotFoundError(f"no job makes {output}")
-        if not name or name.startswith("/") or ".." in Path(name).parts:
-            raise UsageError("a file is named by its path inside the output")
-        path = self.scenario.directory / output / name
-        if not path.is_file():
-            raise NotFoundError(f"{output} has no file {name}")
-        size = path.stat().st_size
-        with path.open("rb") as handle:
-            if size > FILE_BYTES:
-                handle.seek(size - FILE_BYTES)
-            data = handle.read()
-        return {
-            "output": output,
-            "name": name,
-            "bytes": size,
-            "truncated": size > FILE_BYTES,
-            "text": data.decode(errors="replace"),
-        }
-
-
-class Exploration:
-    """One reading of a scenario as the page sees it: the target's jobs, narrowed by the
-    selections, folded into units per column, with a change weighed."""
-
-    def __init__(
-        self,
-        scenario: Scenario,
-        graph: Graph,
-        facts: dict[str, Facts],
-        activity: Activity,
-        view: View,
-    ) -> None:
-        self.scenario = scenario
-        self.graph = graph
-        self.facts = facts
-        self.activity = activity
-        self.view = view
-        self.words = Wording(scenario)
-        self.children = graph.children
-        self.columns = graph.rules
-        self.targets = graph.targets()
-        self.target = self.choose_target()
-        self.jobs = (
-            graph.scope([self.target])
-            if self.target
-            else {job.id for job in graph.jobs.values() if not job.target}
-        )
-        self.varying = graph.varying(self.jobs)
-        self.lanes = self.choose_lanes()
-        self.medians = self.rule_medians()
-
-    # --- choices --------------------------------------------------------------------
-
-    def choose_target(self) -> str | None:
-        asked = self.view.get("target")
-        if asked in self.targets:
-            return asked
-        if self.activity.active:
-            for target in self.activity.targets:
-                if target in self.targets:
-                    return target
-        return "all" if "all" in self.targets else (self.targets[0] if self.targets else None)
-
-    def choose_lanes(self) -> str | None:
-        asked = self.view.get("lanes")
-        if asked == "":
-            return None
-        if asked in self.varying:
-            return asked
-        declared = self.words.words.get("lanes")
-        if declared in self.varying:
-            return declared
-        return self.varying[0] if self.varying else None
-
-    def rule_medians(self) -> dict[str, tuple[float | None, float | None]]:
-        """Each rule's median cost and time over its outputs computed, for estimates."""
-        spent: dict[str, list[Facts]] = {}
-        for job_id, item in self.facts.items():
-            if item.status in (Status.DONE, Status.STALE) and item.usd is not None:
-                spent.setdefault(self.graph.jobs[job_id].rule, []).append(item)
-        return {
-            rule: (median(item.usd for item in items), median(item.seconds for item in items))
-            for rule, items in spent.items()
-        }
-
-    # --- narrowing ------------------------------------------------------------------
-
-    def matches(self, job_id: str, selection: Selection) -> bool:
-        job = self.graph.jobs[job_id]
-        if job.rule != selection["rule"]:
-            return False
-        if "run" in selection:
-            return job_id == selection["run"]
-        return all(
-            job.parameters.get(name) == value for name, value in selection.get("filter", {}).items()
-        )
-
-    def narrowed(self) -> tuple[dict[str, set[str]], list[dict[str, Any]], set[str], set[str]]:
-        """Each column's jobs once every selection narrowed the columns to its right to
-        its descendants; the breadcrumb; what is selected; and the lineage before it."""
-        scope = {rule: set() for rule in self.columns}
-        for job_id in self.jobs:
-            scope.setdefault(self.graph.jobs[job_id].rule, set()).add(job_id)
-        index = {rule: position for position, rule in enumerate(self.columns)}
-        path = sorted(
-            (item for item in self.view.get("path", []) if item.get("rule") in index),
-            key=lambda item: index[item["rule"]],
-        )
-        crumbs: list[dict[str, Any]] = []
-        selected: set[str] = set()
-        lineage: set[str] = set()
-        for selection in path:
-            rule = selection["rule"]
-            chosen = {job_id for job_id in scope[rule] if self.matches(job_id, selection)}
-            if not chosen:
-                break
-            crumbs.append(
-                {
-                    "selection": selection,
-                    "label": self.selection_words(selection),
-                    "count": len(chosen),
-                }
-            )
-            selected = chosen
-            lineage |= self.graph.ancestors(chosen)
-            after = self.graph.descendants(chosen, self.children)
-            for later in self.columns[index[rule] + 1 :]:
-                scope[later] &= after
-        return scope, crumbs, selected, lineage & self.jobs
-
-    def selection_words(self, selection: Selection) -> str:
-        title = self.words.title(selection["rule"])
-        if "run" in selection:
-            parameters = self.graph.jobs[selection["run"]].parameters
-            own = [name for name in self.varying if name in parameters]
-            return (
-                f"{title} · "
-                + " · ".join(self.words.value(name, parameters[name]) for name in own[-2:])
-                if own
-                else title
-            )
-        values = [
-            self.words.value(name, value) for name, value in selection.get("filter", {}).items()
-        ]
-        return " · ".join([title, *values]) if values else f"{title} · all"
-
-    # --- units ----------------------------------------------------------------------
-
-    def units(self, rule: str, ids: set[str]) -> list[Unit]:
-        """The column's units: one per value of the rows' parameter, each split, when the
-        page expanded it, by the next parameter that forks inside it."""
-        expanded = set(self.view.get("expanded", []))
-        order = [name for name in self.varying if name != self.lanes]
-        found: list[Unit] = []
-
-        def split(unit: Unit) -> None:
-            found.append(unit)
-            if unit.id not in expanded or len(unit.jobs) < 2:
-                return
-            inside = self.graph.varying(unit.jobs)
-            name = next(
-                (item for item in order if item in inside and item not in unit.filter), None
-            )
-            if name is None:
-                for job_id in sorted(unit.jobs, key=self.order):
-                    found.append(
-                        Unit(rule, {**unit.filter, "#run": job_id}, [job_id], unit.depth + 1)
-                    )
-                return
-            for value, members in self.by(unit.jobs, name):
-                split(Unit(rule, {**unit.filter, name: value}, members, unit.depth + 1))
-
-        if not ids:
-            return found
-        members = sorted(ids, key=self.order)
-        lanes = self.lanes
-        if lanes is None or all(lanes not in self.graph.jobs[job].parameters for job in members):
-            split(Unit(rule, {}, members))
-        else:
-            for value, group in self.by(members, lanes):
-                split(Unit(rule, {lanes: value}, group))
-        return found
-
-    def order(self, job_id: str) -> tuple[Any, ...]:
-        parameters = self.graph.jobs[job_id].parameters
-        return tuple(natural(parameters.get(name)) for name in self.varying)
-
-    def by(self, ids: list[str], name: str) -> list[tuple[str | None, list[str]]]:
-        groups: dict[str | None, list[str]] = {}
-        for job_id in ids:
-            groups.setdefault(self.graph.jobs[job_id].parameters.get(name), []).append(job_id)
-        return sorted(groups.items(), key=lambda item: natural(item[0]))
-
-    # --- the page -----------------------------------------------------------------------
-
-    def page(self) -> dict[str, Any]:
-        scope, crumbs, selected, lineage = self.narrowed()
-        change = self.view.get("change")
-        affected = self.affected(change) if change else set()
-        columns = []
-        placed: dict[str, str] = {}
-        for rule in self.columns:
-            ids = scope.get(rule, set())
-            if not ids and not any(self.graph.jobs[job].rule == rule for job in self.jobs):
-                continue
-            units = self.units(rule, ids)
-            shown = []
-            for unit in units:
-                for job_id in unit.jobs:
-                    placed[job_id] = unit.id
-                shown.append(self.unit_json(unit, selected, lineage, affected))
-            columns.append(
-                {
-                    "rule": rule,
-                    "title": self.words.title(rule),
-                    "means": self.words.means(rule),
-                    "count": len(ids),
-                    "of": sum(1 for job in self.jobs if self.graph.jobs[job].rule == rule),
-                    "counts": self.counts(ids),
-                    "forks": [
-                        {"name": name, "label": self.words.parameter(name)}
-                        for name in self.graph.varying(ids)
-                    ]
-                    if len(ids) > 1
-                    else [],
-                    "units": shown,
-                }
-            )
-        edges: dict[tuple[str, str], list[int]] = {}
-        for job_id, unit in placed.items():
-            job = self.graph.jobs[job_id]
-            for position, before in enumerate(job.after):
-                source = placed.get(before)
-                if source is None or source == unit:
-                    continue
-                main = before == job.first or (job.first is None and position == 0)
-                counted = edges.setdefault((source, unit), [0, 0])
-                counted[0 if main else 1] += 1
-        return {
-            "name": self.scenario.name,
-            "targets": [
-                {"name": target, "steps": len(self.graph.scope([target]))}
-                for target in self.targets
-            ],
-            "target": self.target,
-            "lanes": self.lanes,
-            "forks": [{"name": name, "label": self.words.parameter(name)} for name in self.varying],
-            "constant": self.constant(),
-            "crumbs": crumbs,
-            "columns": columns,
-            "edges": [
-                {"from": source, "to": unit, "main": counts[0], "other": counts[1]}
-                for (source, unit), counts in edges.items()
-            ],
-            "counts": self.counts(self.jobs),
-            "changes": self.change_options(),
-            "change": self.change_json(change, affected) if change else None,
-            "analyses": self.analyses(),
-            "signature": self.signature(),
-        }
-
-    def signature(self) -> str:
-        """Changes when any status does: the page re-renders only then."""
-        digest = hashlib.sha256()
-        for job_id in sorted(self.jobs):
-            digest.update(f"{job_id}:{self.facts[job_id].status}\n".encode())
-        return digest.hexdigest()[:16]
-
-    def constant(self) -> list[dict[str, str]]:
-        """The parameters every job that has them shares: said once, not on every box."""
-        values: dict[str, set[str]] = {}
-        for job_id in self.jobs:
-            for name, value in self.graph.jobs[job_id].parameters.items():
-                values.setdefault(name, set()).add(value)
-        return [
-            {
-                "name": name,
-                "label": self.words.parameter(name),
-                "value": self.words.value(name, next(iter(found))),
-            }
-            for name, found in values.items()
-            if len(found) == 1 and name not in self.varying
-        ]
-
-    def counts(self, ids: Iterable[str]) -> dict[str, int]:
-        counts = {status.value: 0 for status in Status}
-        for job_id in ids:
-            counts[self.facts[job_id].status.value] += 1
-        return counts
-
-    def unit_json(
-        self, unit: Unit, selected: set[str], lineage: set[str], affected: set[str]
-    ) -> dict[str, Any]:
-        run = unit.filter.get("#run")
-        members = unit.jobs
-        counts = self.counts(members)
-        own = {name: value for name, value in unit.filter.items() if name != "#run"}
-        last = list(own.items())[-1] if own else None
-        if run is not None:
-            label = self.run_label(run, own)
-        elif last is not None and unit.depth:
-            label = f"{self.words.parameter(last[0])} {self.words.value(*last)}"
-        elif last is not None:
-            label = self.words.value(*last)
-        else:
-            label = "every run" if len(members) > 1 else self.run_label(members[0], own)
-        inside = self.graph.varying(members) if len(members) > 1 else []
-        splits = [
-            name
-            for name in self.varying
-            if name in inside and name != self.lanes and name not in own
-        ]
-        found: dict[str, Any] = {
-            "id": unit.id,
-            "rule": unit.rule,
-            "filter": own,
-            "run": run or (members[0] if len(members) == 1 else None),
-            "depth": unit.depth,
-            "label": label,
-            "count": len(members),
-            "counts": counts,
-            "status": self.status_of(counts),
-            "selected": bool(members) and all(job in selected for job in members),
-            "lineage": any(job in lineage for job in members),
-            "splits": {"name": splits[0], "label": self.words.parameter(splits[0])}
-            if splits
-            else None,
-            "expanded": unit.id in set(self.view.get("expanded", [])) and len(members) > 1,
-            "numbers": self.numbers(unit.rule, members),
-        }
-        if affected:
-            found["affected"] = sum(1 for job in members if job in affected)
-        found["card"] = self.card(unit, label)
-        return found
-
-    def run_label(self, job_id: str, own: dict[str, str | None]) -> str:
-        parameters = self.graph.jobs[job_id].parameters
-        rest = [
-            name
-            for name in self.varying
-            if name in parameters and name not in own and name != self.lanes
-        ]
-        if not rest:
-            return "the one run"
-        return " · ".join(
-            f"{self.words.parameter(name)} {self.words.value(name, parameters[name])}"
-            for name in rest[-2:]
-        )
-
-    def status_of(self, counts: dict[str, int]) -> str:
-        for status in (Status.RUNNING, Status.FAILED, Status.STALE, Status.MISSING):
-            if counts[status.value]:
-                return status.value
-        return Status.DONE.value
-
-    def numbers(self, rule: str, members: list[str]) -> dict[str, Any]:
-        done = [
-            self.facts[job]
-            for job in members
-            if self.facts[job].status in (Status.DONE, Status.STALE)
-        ]
-        seen: list[str] = []
-        for item in done:
-            for key, value in item.metrics.items():
-                if key not in seen and truthy(value) is not None:
-                    seen.append(key)
-        keys = self.words.key_metrics(rule, seen)
-        return {
-            "usd": median(item.usd for item in done),
-            "seconds": median(item.seconds for item in done),
-            "total_usd": sum(item.usd or 0 for item in done),
-            "metrics": [self.metric_summary(key, done) for key in keys],
-        }
-
-    def metric_summary(self, key: str, done: list[Facts]) -> dict[str, Any]:
-        values = [item.metrics[key] for item in done if key in item.metrics]
-        counted = [truthy(value) for value in values]
-        whether = [value for value in counted if value is not None]
-        label = self.words.metric(key)
-        if not values:
-            return {"name": key, "label": label, "text": "—"}
-        if all(isinstance(value, bool) for value in values):
-            return {
-                "name": key,
-                "label": label,
-                "x": sum(whether),
-                "y": len(whether),
-                "text": f"{sum(whether)}/{len(whether)}",
-            }
-        numbers = [
-            float(value)
-            for value in values
-            if isinstance(value, (int, float)) and not isinstance(value, bool)
-        ]
-        if numbers and len(numbers) == len(values):
-            if len(numbers) == 1:
-                return {"name": key, "label": label, "text": number(values[0])}
-            return {
-                "name": key,
-                "label": label,
-                "x": sum(whether),
-                "y": len(whether),
-                "text": f"{sum(whether)}/{len(whether)} above 0, median {number(statistics.median(numbers))}",
-                "short": f"{sum(whether)}/{len(whether)}>0",
-            }
-        if len(values) == 1:
-            return {"name": key, "label": label, "text": number(values[0])}
-        return {"name": key, "label": label, "text": f"{len(values)} values"}
-
-    def card(self, unit: Unit, label: str) -> dict[str, Any]:
-        """What hovering a unit shows: a title, what it means, its parameters in words,
-        its statuses and its numbers."""
-        members = unit.jobs
-        rule = unit.rule
-        if len(members) == 1:
-            return self.run_card(members[0])
-        values: dict[str, set[str | None]] = {}
-        for job_id in members:
-            parameters = self.graph.jobs[job_id].parameters
-            for name in self.varying:
-                values.setdefault(name, set()).add(parameters.get(name))
-        shared = [
-            {
-                "label": self.words.parameter(name),
-                "value": self.words.value(name, next(iter(found))),
-            }
-            for name, found in values.items()
-            if len(found) == 1 and next(iter(found)) is not None
-        ]
-        forked = [
-            {
-                "label": self.words.parameter(name),
-                "value": f"{len(found)} values: "
-                + ", ".join(
-                    self.words.value(name, value) for value in sorted(found, key=natural)[:6]
-                )
-                + ("…" if len(found) > 6 else ""),
-            }
-            for name, found in values.items()
-            if len(found) > 1
-        ]
-        counts = self.counts(members)
-        status = ", ".join(
-            f"{counts[status.value]} {STATUS_WORDS[status]}"
-            for status in Status
-            if counts[status.value]
-        )
-        numbers = self.numbers(rule, members)
-        highlights = []
-        done = counts[Status.DONE.value] + counts[Status.STALE.value]
-        if done:
-            highlights.append(
-                f"{done} of {plural(len(members), 'run')} done: median {money(numbers['usd'])} and "
-                f"{duration(numbers['seconds'])} each, {money(numbers['total_usd'])} in all."
-            )
-        for metric in numbers["metrics"]:
-            if metric["text"] != "—":
-                highlights.append(f"{metric['label'].capitalize()}: {metric['text']}.")
-        failures = sorted(
-            {
-                self.facts[job].error or ""
-                for job in members
-                if self.facts[job].status is Status.FAILED
-            }
-            - {""}
-        )
-        if failures:
-            highlights.append(
-                f"Failed with: {'; '.join(line(item, 140) for item in failures[:3])}."
-            )
-        return {
-            "title": " · ".join([self.words.title(rule), label]),
-            "means": self.words.means(rule),
-            "parameters": shared + forked,
-            "status": status,
-            "state": self.status_of(counts),
-            "highlights": highlights,
-        }
-
-    def title(self, job_id: str) -> str:
-        job = self.graph.jobs[job_id]
-        own = [name for name in self.varying if name in job.parameters]
-        words = [self.words.value(name, job.parameters[name]) for name in own]
-        return " · ".join([self.words.title(job.rule), *words[-4:]])
-
-    def run_card(self, job_id: str) -> dict[str, Any]:
-        job = self.graph.jobs[job_id]
-        facts = self.facts[job_id]
-        status = STATUS_WORDS[facts.status]
-        why = ""
-        if facts.status is Status.STALE:
-            why = self.why_stale(job)
-            status += f": {why}"
-        elif facts.status is Status.DONE and facts.where == "cache":
-            status += ", in the cache: the next run restores it here"
-        elif facts.status is Status.RUNNING and facts.since:
-            status += f" since {facts.since}"
-        elif facts.status is Status.FAILED and facts.error:
-            status += f": {line(facts.error, 200)}"
-        return {
-            "title": self.title(job_id),
-            "means": self.words.means(job.rule),
-            "parameters": [
-                {"label": self.words.parameter(name), "value": self.words.value(name, value)}
-                for name, value in job.parameters.items()
-                if name in self.varying
-            ],
-            "status": status,
-            "state": facts.status.value,
-            "highlights": self.highlights(job, facts),
-            "output": job_id,
-        }
-
-    def highlights(self, job: Job, facts: Facts) -> list[str]:
-        if facts.status in (Status.MISSING, Status.RUNNING):
-            estimate = self.estimate(job)
-            return (
-                [f"Expected to cost about {money(estimate[0])} and take {duration(estimate[1])}."]
-                if estimate[0] is not None or estimate[1] is not None
-                else []
-            )
-        said = []
-        spent = f"It cost {money(facts.usd)} in {duration(facts.seconds)}"
-        if facts.tokens:
-            spent += f", {facts.tokens:,} tokens"
-        said.append(spent + ".")
-        declared = self.words.rule(job.rule).get("highlights")
-        values = {
-            **{key: number(value) for key, value in facts.metrics.items()},
-            **{name: self.words.value(name, value) for name, value in job.parameters.items()},
-            "usd": money(facts.usd),
-            "seconds": duration(facts.seconds),
-        }
-        if declared:
-            for template in declared:
-                try:
-                    said.append(template.format_map(values))
-                except (KeyError, ValueError, IndexError):
-                    continue
-        else:
-            for key, value in list(facts.metrics.items())[:8]:
-                said.append(f"{self.words.metric(key).capitalize()}: {number(value)}.")
-        if facts.error:
-            said.append(f"Error: {line(facts.error, 300)}")
-        return said
-
-    def why_stale(self, job: Job) -> str:
-        """What changed since the output was made: its params against those Snakemake
-        recorded then, else an earlier step's output, else its code or input files."""
-        changed = self.changed_params(job)
-        if changed:
-            return "; ".join(changed[:4]) + (
-                f" and {len(changed) - 4} more" if len(changed) > 4 else ""
-            )
-        stale_before = [
-            before
-            for before in job.after
-            if before in self.facts and self.facts[before].status is Status.STALE
-        ]
-        if stale_before:
-            return f"made from an earlier step that is stale ({self.title(stale_before[0])})"
-        return "its step's code, or a file it reads, changed"
-
-    def changed_params(self, job: Job) -> list[str]:
-        record = record_path(self.scenario.directory / ".snakemake" / "metadata", job.id)
-        metadata = read_json(record)
-        old_params = metadata.get("params")
-        if not isinstance(old_params, list) or not job.names:
-            return []
-        before: dict[str, Any] = {}
-        for name, text in zip(job.names, old_params, strict=False):
-            if name == "keyed":
-                continue
-            try:
-                value = ast.literal_eval(text)
-            except (ValueError, SyntaxError):
-                continue
-            flatten(value, name, before)
-        changed = []
-        for key in sorted(set(before) | set(job.params)):
-            old, new = before.get(key), job.params.get(key)
-            if old != new and not (
-                isinstance(old, (int, float))
-                and isinstance(new, (int, float))
-                and float(old) == float(new)
-            ):
-                changed.append(f"{key} changed ({line(str(old), 24)} → {line(str(new), 24)})")
-        return changed
-
-    def detail(self, job_id: str) -> dict[str, Any]:
-        """One run, for its card: everything the hover says, and its files."""
-        card = self.run_card(job_id)
-        job = self.graph.jobs[job_id]
-        directory = self.scenario.directory / job_id
-        if not directory.is_dir() and job.entry and (self.scenario.cache / job.entry).is_dir():
-            directory = self.scenario.cache / job.entry
-        files = []
-        if directory.is_dir():
-            for child in sorted(directory.iterdir()):
-                if child.name.startswith("."):
-                    continue
-                try:
-                    size = child.stat().st_size if child.is_file() else None
-                except OSError:
-                    size = None
-                files.append({"name": child.name, "bytes": size, "directory": child.is_dir()})
-        inputs = [
-            {"label": key, "value": line(str(value), 80)}
-            for key, value in job.params.items()
-            if not (isinstance(value, str) and value.startswith(f"{RESULTS}/"))
-        ]
-        return card | {
-            "files": files,
-            "readable": directory == self.scenario.directory / job_id,
-            "inputs": inputs[:40],
-            "before": [
-                {"id": before, "title": self.title(before)}
-                for before in job.after
-                if before in self.facts
-            ],
-            "path": [{"rule": job.rule, "run": job_id}],
-        }
-
-    # --- what if ------------------------------------------------------------------------
-
-    def change_options(self) -> dict[str, list[dict[str, Any]]]:
-        """What the page offers to change: each forking parameter's values, each input
-        the steps' params carry (versions first), each file the steps read."""
-        values = []
-        for name in self.varying:
-            found = sorted(
-                {self.graph.jobs[job].parameters.get(name) for job in self.jobs} - {None},
-                key=natural,
-            )
-            values += [
-                {
-                    "kind": "value",
-                    "name": name,
-                    "value": value,
-                    "label": f"{self.words.parameter(name)} = {self.words.value(name, value)}",
-                }
-                for value in found
-            ]
-        keys: dict[str, set[str]] = {}
-        for job_id in self.jobs:
-            job = self.graph.jobs[job_id]
-            for key, value in job.params.items():
-                if isinstance(value, str) and value.startswith(f"{RESULTS}/"):
-                    continue
-                if key in job.parameters:
-                    continue
-                keys.setdefault(key, set()).add(job.rule)
-        inputs = [
-            {
-                "kind": "input",
-                "name": key,
-                "label": f"{key} ({', '.join(self.words.title(rule) for rule in sorted(rules, key=self.columns.index))})",
-            }
-            for key, rules in sorted(
-                keys.items(), key=lambda item: ("version" not in item[0], item[0])
-            )
-        ]
-        code: dict[str, set[str]] = {}
-        for job_id in self.jobs:
-            job = self.graph.jobs[job_id]
-            for path in [*([job.script] if job.script else []), *job.sources]:
-                code.setdefault(path, set()).add(job.rule)
-        files = [
-            {
-                "kind": "code",
-                "name": path,
-                "label": f"{path} ({', '.join(self.words.title(rule) for rule in sorted(rules, key=self.columns.index))})",
-            }
-            for path, rules in sorted(code.items())
-        ]
-        return {"values": values, "inputs": inputs, "code": files}
-
-    def affected(self, change: Change) -> set[str]:
-        """The jobs a change reruns: those it touches, and everything made from them."""
-        kind, name = change["kind"], change["name"]
-        if kind not in ("value", "input", "code"):
-            raise UsageError(f"a change is a `value`, an `input` or `code`, not `{kind}`")
-
-        def touches(job: Job) -> bool:
-            if kind == "value":
-                return job.parameters.get(name) == change.get("value")
-            if kind == "input":
-                return name in job.params
-            return job.script == name or name in job.sources
-
-        touched = {job_id for job_id in self.jobs if touches(self.graph.jobs[job_id])}
-        return (touched | self.graph.descendants(touched, self.children)) & self.jobs
-
-    def estimate(self, job: Job) -> tuple[float | None, float | None]:
-        usd, seconds = self.medians.get(job.rule, (None, None))
-        return (usd if usd is not None else job.estimate_usd, seconds)
-
-    def change_json(self, change: Change, affected: set[str]) -> dict[str, Any]:
-        done = [
-            job
-            for job in affected
-            if self.facts[job].status in (Status.DONE, Status.STALE, Status.FAILED)
-        ]
-        usd = 0.0
-        seconds = 0.0
-        unknown: set[str] = set()
-        for job_id in affected:
-            cost, time_taken = self.estimate(self.graph.jobs[job_id])
-            if cost is None:
-                unknown.add(self.graph.jobs[job_id].rule)
-            usd += cost or 0
-            seconds += time_taken or 0
-        by_rule: dict[str, int] = {}
-        for job_id in affected:
-            rule = self.graph.jobs[job_id].rule
-            by_rule[rule] = by_rule.get(rule, 0) + 1
-        if change["kind"] == "value":
-            what = f"{self.words.parameter(change['name'])} = {self.words.value(change['name'], change.get('value'))}"
-        else:
-            what = change["name"]
-        return {
-            "change": change,
-            "words": f"Changing {what} reruns {plural(len(affected), 'step')}"
-            + (f", {len(done)} of them done now" if done else "")
-            + f": about {money(usd)} and {duration(seconds)} of compute"
-            + (f" (no estimate for {', '.join(sorted(unknown))})" if unknown else "")
-            + ".",
-            "count": len(affected),
-            "done": len(done),
-            "usd": usd,
-            "seconds": seconds,
-            "rules": [
-                {"rule": rule, "title": self.words.title(rule), "count": by_rule[rule]}
-                for rule in self.columns
-                if rule in by_rule
-            ],
-        }
-
-    # --- the comparisons ------------------------------------------------------------------
-
-    def analyses(self) -> list[dict[str, Any]]:
-        """The scenario's declared comparisons, counted; without any, a suggestion per rule
-        whose numbers count: its first such metric by the rows' parameter."""
-        declared = self.words.words.get("analyses")
-        if declared:
-            return [self.analysis(item, suggested=False) for item in declared]
-        found = []
-        if self.lanes is None:
-            return found
-        for rule in self.columns:
-            done = [
-                self.facts[job]
-                for job in self.jobs
-                if self.graph.jobs[job].rule == rule
-                and self.facts[job].status is Status.DONE
-                and self.lanes in self.graph.jobs[job].parameters
-            ]
-            if not done:
-                continue
-            seen: list[str] = []
-            for item in done:
-                for key, value in item.metrics.items():
-                    if key not in seen and truthy(value) is not None:
-                        seen.append(key)
-            # A yes-or-no count reads best as x/y: those first.
-            flags = [
-                key
-                for key in seen
-                if all(isinstance(item.metrics.get(key, False), bool) for item in done)
-            ]
-            keys = [
-                key
-                for key in self.words.key_metrics(rule, list(dict.fromkeys(flags + seen)))
-                if key in seen
-            ]
-            for key in keys[:1]:
-                found.append(
-                    self.analysis({"step": rule, "by": self.lanes, "metric": key}, suggested=True)
-                )
-        return found
-
-    def analysis(self, item: Analysis, suggested: bool) -> dict[str, Any]:
-        step, by, metric = item["step"], item["by"], item["metric"]
-        where = item.get("where", {})
-        rows: dict[str | None, dict[str, Any]] = {}
-        for job_id in self.jobs:
-            job = self.graph.jobs[job_id]
-            if job.rule != step or any(
-                job.parameters.get(key) != value for key, value in where.items()
-            ):
-                continue
-            value = job.parameters.get(by)
-            row = rows.setdefault(
-                value, {"x": 0, "y": 0, "total": 0.0, "failed": 0, "pending": 0, "runs": 0}
-            )
-            row["runs"] += 1
-            facts = self.facts[job_id]
-            if facts.status is Status.FAILED:
-                row["failed"] += 1
-            elif facts.status is not Status.DONE:
-                row["pending"] += 1
-            elif metric in facts.metrics:
-                counted = truthy(facts.metrics[metric])
-                if counted is not None:
-                    row["y"] += 1
-                    row["x"] += int(counted)
-                    raw = facts.metrics[metric]
-                    row["total"] += float(raw)
-        ordered = sorted(rows, key=natural)
-        baseline = item.get("baseline")
-        first = baseline if baseline in rows else (ordered[0] if ordered else None)
-        label = self.words.metric(metric)
-        table = [
-            {
-                "value": value,
-                "label": self.words.value(by, value),
-                "x": rows[value]["x"],
-                "y": rows[value]["y"],
-                "total": rows[value]["total"],
-                "failed": rows[value]["failed"],
-                "pending": rows[value]["pending"],
-                "baseline": value == first,
-                "path": [{"rule": step, "filter": {**where, by: value}}],
-            }
-            for value in ordered
-        ]
-        others = [row for row in table if not row["baseline"]]
-        base = next((row for row in table if row["baseline"]), None)
-        sentence = ""
-        if base is not None and others:
-            sentence = (
-                f"{label.capitalize()}: "
-                + "; ".join(f"{row['label']} {row['x']}/{row['y']}" for row in others)
-                + f", against {base['label']} {base['x']}/{base['y']}."
-            )
-        elif base is not None:
-            sentence = f"{label.capitalize()}: {base['label']} {base['x']}/{base['y']}."
-        pending = sum(row["pending"] for row in table)
-        if pending:
-            sentence += f" {plural(pending, 'run')} not done yet."
-        return {
-            "name": item.get("name")
-            or f"{label.capitalize()} by {self.words.parameter(by)}, in {self.words.title(step)}",
-            "suggested": suggested,
-            "step": step,
-            "by": by,
-            "by_label": self.words.parameter(by),
-            "metric": metric,
-            "metric_label": label,
-            "where": [
-                {"label": self.words.parameter(key), "value": self.words.value(key, value)}
-                for key, value in where.items()
-            ],
-            "sentence": sentence,
-            "rows": table,
-        }
-
-
-def flatten(value: Any, prefix: str, into: dict[str, Any]) -> None:
-    """A params value as GRAPH flattens it: `node.versions.cli`."""
-    if isinstance(value, dict) and value:
-        for key, item in value.items():
-            flatten(item, f"{prefix}.{key}" if prefix else str(key), into)
-    elif isinstance(value, (str, int, float, bool)) or value is None:
-        into[prefix] = value
-    else:
-        into[prefix] = json.dumps(value, default=str)[:200]
-
-
-def natural(value: str | None) -> tuple[int, float, str]:
-    """Numbers in their order, before words in theirs; the missing last."""
-    if value is None:
-        return (2, 0.0, "")
-    try:
-        return (0, float(value), "")
-    except ValueError:
-        return (1, 0.0, value)
-
-
-def line(text: str, limit: int) -> str:
-    one = " ".join(text.split())
-    return one if len(one) <= limit else one[: limit - 1] + "…"

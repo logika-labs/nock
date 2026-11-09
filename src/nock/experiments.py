@@ -1,4 +1,4 @@
-"""The studio's Experiments tab: a scenario as an experiment — its steps forking
+"""The studio's Experiment tab: a scenario as an experiment — its steps forking
 by parameter, by repeat and by decision, the results each set of values made
 and the runs they belong to, and the measures that compare the variants —
 derived from the explorer's description of the jobs and the files they made,

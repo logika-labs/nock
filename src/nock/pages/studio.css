@@ -106,7 +106,7 @@
 
 /* --- type: labels and counts in the mono ------------------------------------------------------- */
 
-:root .label, :root .chip, :root .reviews [role="tab"], :root .evals th, :root .sort button {
+:root .label, :root .chip, :root .reviews [role="tab"], :root .sort button {
   font-family: var(--mono); letter-spacing: .04em;
 }
 :root .chip, :root .reviews [role="tab"] { font-size: 12px; font-weight: 500; }
@@ -146,15 +146,15 @@
 
 /* --- chips: quiet; a faint tint on hover, a soft lavender one when chosen --------------------- */
 
-:root .chip, :root .evals .chip {
+:root .chip {
   background: rgb(255 255 255 / .9); border-color: rgb(17 17 22 / .18); color: var(--foreground);
   transition: background-color .15s, border-color .15s, color .15s;
 }
-:root .chip:not(:disabled):hover, :root .evals .chip:hover { background: rgb(185 166 255 / .12); border-color: rgb(17 17 22 / .3); }
-:root .chip[aria-pressed="true"], :root .evals .chip[aria-pressed="true"] {
+:root .chip:not(:disabled):hover { background: rgb(185 166 255 / .12); border-color: rgb(17 17 22 / .3); }
+:root .chip[aria-pressed="true"] {
   background: rgb(185 166 255 / .26); border-color: rgb(75 47 208 / .55); color: #2a1d78;
 }
-:root .chip[aria-pressed="true"]:hover, :root .evals .chip[aria-pressed="true"]:hover { background: rgb(185 166 255 / .34); }
+:root .chip[aria-pressed="true"]:hover { background: rgb(185 166 255 / .34); }
 :root .chip[aria-pressed="true"] .count { color: inherit; }
 
 /* --- other buttons: a soft shadow in a mellow tint of their own on hover ---------------------- */
@@ -163,19 +163,16 @@
 :root .button.ghost,
 :root .menu a:not([aria-current]),
 :root .notice button[data-share="false"],
-:root .gear,
-:root .evals [data-dry] {
+:root .gear {
   --tint: rgb(255 184 150 / .6);
   transition: box-shadow .18s ease, border-color .18s, background-color .18s;
 }
 :root .menu a:not([aria-current]), :root .gear { --tint: rgb(130 225 190 / .55); }
-:root .evals [data-dry] { --tint: rgb(150 215 255 / .6); }
 :root .button.secondary:not(:disabled):hover,
 :root .button.ghost:not(:disabled):hover,
 :root .menu a:not([aria-current]):hover,
 :root .notice button[data-share="false"]:hover,
-:root .gear:hover, :root .gear[aria-expanded="true"],
-:root .evals [data-dry]:hover {
+:root .gear:hover, :root .gear[aria-expanded="true"] {
   background-color: #fff; border-color: rgb(17 17 22 / .3);
   box-shadow: 0 8px 18px -6px var(--tint), 0 2px 6px -2px var(--tint);
 }
@@ -188,7 +185,7 @@
 
 /* Focus: a black ring with a white gap, visible on glass, foil and black alike. */
 :root .chip:focus-visible, :root .sort button:focus-visible, :root .button:focus-visible, :root .menu a:focus-visible,
-:root .reviews [role="tab"]:focus-visible, :root .evals .chip:focus-visible,
+:root .reviews [role="tab"]:focus-visible,
 :root .reference:focus-visible, :root .notice button:focus-visible, :root .notice summary:focus-visible {
   outline: 2px solid #111116; outline-offset: 3px;
 }
@@ -196,7 +193,7 @@
 
 /* --- cards: near-opaque grainy white, so a long list scrolls without blurring each card -------- */
 
-:root .sheet, :root .evals .card {
+:root .sheet {
   border-radius: var(--radius); border: 1px solid rgb(255 255 255 / .95);
   background: var(--noise), rgb(255 255 255 / .95); background-blend-mode: soft-light, normal;
   box-shadow: 0 6px 24px rgb(60 20 120 / .1);
@@ -211,13 +208,8 @@
 :root .sheet.open .section li::marker { color: #111116; }
 :root .sheet.open textarea:focus-visible { border-bottom: 2px solid #111116; }
 
-:root .panel.agent, :root .evals pre, :root .context code, :root .context pre, :root .links code { background: #f1eefa; }
+:root .panel.agent, :root .context code, :root .context pre, :root .links code { background: #f1eefa; }
 :root .empty { background: var(--glass); border-radius: var(--radius); }
-
-/* --- evals, in the same system ---------------------------------------------------------------- */
-
-:root .evals input, :root .evals select { border-radius: 10px; padding: 6px 10px; }
-:root .evals input:focus-visible, :root .evals select:focus-visible { outline: 2px solid #111116; outline-offset: 2px; }
 
 @keyframes field { from { transform: translate(-4%, -3%) rotate(0deg); } to { transform: translate(4%, 3%) rotate(8deg); } }
 /* Drifting in space: out along (x, y) and a little turned, back by another way. */

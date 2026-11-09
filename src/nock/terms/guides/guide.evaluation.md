@@ -117,35 +117,7 @@ next run anywhere restores them.
 
 ## In the studio
 
-**The studio's Evaluations tab** (`#evals` or `#evaluations`) draws a scenario as a graph: its rules as columns
-left to right, a row per value of the parameter that forks the runs, each
-group with its runs done, running, failed, stale and not yet run, their
-median cost and key numbers, and wires to what was made from it. Hover a
-group or a run for what it means, its parameters in words, why it is stale,
-its highlights and its files; click it to narrow every column to its right
-to what was made from it (the breadcrumb widens back); split a group by the
-next parameter that forks inside it. "What if I change" picks a parameter's
-value, an input the steps' params carry (a version) or a file, and lights
-what would rerun, with a count and an estimate. While a run goes, the page
-follows it every few seconds. The comparisons view counts the declared
-comparisons as x of y. Snakemake's description of the jobs is kept in
-`.nock/local/evals/` and derived again only when the scenario changes, so the
-tab opens in a second. An optional `evals/NAME/studio.json` words it:
-
-```json
-{
-  "rules": {"detect": {"title": "Detection", "means": "…", "metrics": ["detected"],
-                       "highlights": ["Detected the bug: {detected}, with {alarms} alarms."]}},
-  "parameters": {"bug": {"label": "Planted bug", "values": {"none": "no bug"}}},
-  "lanes": "bug",
-  "analyses": [{"name": "Does the toolbox find it?", "step": "detect", "by": "arm",
-                "metric": "detected", "where": {"bug": "drop-banana"}, "baseline": "control"}]
-}
-```
-
-Without it a rule means the comment above it in the Snakefile.
-
-**The studio's Experiments tab** (`#experiments`) draws the same scenario as an
+**The studio's Experiment tab** (`#experiment`) draws a scenario as an
 experiment: its steps as a tree forking by parameter and by repeat, black boxes
 on a grid, a line per value or per pooled set of values, with each step's time
 and cost. Click a step for what it means, its parameters (the ones that vary
@@ -155,13 +127,17 @@ results, then follow it: its trajectory lights up, each step shows its results
 and where it went, an iteration select narrows it, and the address keeps it.
 Click a repeat's line to split it into its iterations. The table above counts
 each measure per variant as total and per-iteration median: `26/36 (13/18
-±2.8)`. Its words are in the same `studio.json`:
+±2.8)`. Snakemake's description of the jobs is kept in `.nock/local/evals/`
+and derived again only when the scenario changes, so the tab opens in a
+second. An optional `evals/NAME/studio.json` words it:
 
 ```json
 {
   "question": "Does the toolbox find the planted bug?",
-  "parameters": {"bug": {"about": "…", "pooled": true, "controls": ["none"]}},
-  "rules": {"detect": {"results": [{"name": "alarms", "kind": "list", "file": "alarms.txt"},
+  "parameters": {"bug": {"label": "Planted bug", "about": "…", "pooled": true,
+                         "values": {"none": "no bug"}, "controls": ["none"]}},
+  "rules": {"detect": {"title": "Detection", "means": "…",
+                       "results": [{"name": "alarms", "kind": "list", "file": "alarms.txt"},
                                    {"name": "stories", "kind": "checks", "metrics": "stories."}],
                        "score": {"metric": "alarms", "better": "higher"}}},
   "decisions": [{"after": "detect", "label": "Detected?", "metric": "detected",
@@ -174,8 +150,8 @@ each measure per variant as total and per-iteration median: `26/36 (13/18
 A decision reads one metric of a step's outputs and takes the first branch it
 fits; a branch with a verdict ends the trajectory, and each decision with a
 good branch is a row of the table, with the cost per pooled value. Changing a
-decision changes nothing on disk: it is read again on the next look. The tab also
-weighs a dry run with targets and a budget, nothing run. `nock docs eval` has the
+decision changes nothing on disk: it is read again on the next look. Without
+`studio.json` a rule means the comment above it in the Snakefile. `nock docs eval` has the
 rest, with the practice that keeps an evaluation honest: fix the inputs,
 keep the answers from what is scored, measure the outcome, run enough
 repetitions, write the comparison down first.

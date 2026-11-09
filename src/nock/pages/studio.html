@@ -72,8 +72,7 @@ button:not(:disabled), label[for] { cursor: pointer; }
   -webkit-mask: var(--icon) center / contain no-repeat; mask: var(--icon) center / contain no-repeat;
 }
 .menu a[data-tab-link="topics"] { --icon: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><path d='M2 2h12v3H2zM2 6.5h12v3H2zM2 11h8v3H2z'/></svg>"); }
-.menu a[data-tab-link="evals"] { --icon: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><path d='M1 13h3V8H1zM6.5 13h3V3h-3zM12 13h3V6h-3z'/></svg>"); }
-.menu a[data-tab-link="experiments"] { --icon: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><path d='M2 8h3M11 4h3M11 12h3M5 8c3 0 3-4 6-4M5 8c3 0 3 4 6 4' fill='none' stroke='black' stroke-width='1.8' stroke-linecap='round'/><rect x='1' y='6' width='3.5' height='4' rx='1'/></svg>"); }
+.menu a[data-tab-link="experiment"] { --icon: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><path d='M2 8h3M11 4h3M11 12h3M5 8c3 0 3-4 6-4M5 8c3 0 3 4 6 4' fill='none' stroke='black' stroke-width='1.8' stroke-linecap='round'/><rect x='1' y='6' width='3.5' height='4' rx='1'/></svg>"); }
 .top { display: flex; flex: none; align-items: center; gap: 8px; }
 .menu a:focus-visible, .notice button:focus-visible, .gear:focus-visible, .switch:focus-visible, .popover summary:focus-visible {
   outline: 2px solid var(--ring); outline-offset: 3px;
@@ -286,7 +285,7 @@ const studio = {
     row.classList.toggle("more-after", row.scrollLeft + row.clientWidth < row.scrollWidth - 2);
   },
   // Other names an address may use for a tab.
-  aliases: { evaluations: "evals", decisions: "topics", review: "topics", work: "topics" },
+  aliases: { evals: "experiment", evaluations: "experiment", experiments: "experiment", decisions: "topics", review: "topics", work: "topics" },
   route() {
     const hash = decodeURIComponent(location.hash.slice(1));
     const [said, ...rest] = hash.split("/");

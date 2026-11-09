@@ -8,10 +8,6 @@ from __future__ import annotations
 
 import json
 import shutil
-import threading
-import urllib.error
-import urllib.request
-from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
@@ -19,7 +15,6 @@ import pytest
 
 from nock.evaluation import RUNS
 from nock.project import Project
-from nock.studio import Studio
 
 from .conftest import git, nock
 
@@ -434,68 +429,3 @@ def test_a_step_dispatches_an_agent_as_nock_does_with_the_allowlist_it_gives(
     assert arguments[arguments.index("--permission-mode") + 1] == "dontAsk"
     assert arguments[arguments.index("--tools") + 1] == "Read,Grep,Glob,Bash"
     assert "Write" in arguments[arguments.index("--allowedTools") :]
-
-
-@pytest.fixture
-def page(project: Project) -> Iterator[str]:
-    server = Studio(project, 0)
-    thread = threading.Thread(target=server.serve_forever, daemon=True)
-    thread.start()
-    yield server.address
-    server.shutdown()
-    server.server_close()
-
-
-def post(address: str, body: dict[str, Any]) -> Any:
-    request = urllib.request.Request(
-        address,
-        data=json.dumps(body).encode(),
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
-    try:
-        with urllib.request.urlopen(request) as response:
-            return json.loads(response.read())
-    except urllib.error.HTTPError as error:
-        raise AssertionError(error.read().decode()) from error
-
-
-def test_the_studio_explores_the_graph_and_weighs_a_run_without_running_it(
-    project: Project, toy: Path, page: str
-) -> None:
-    call(project.root, "run")
-    explored: dict[str, Any] = {}
-    # The studio reads the workflow in the background: the page polls until it has.
-    for _ in range(1200):
-        explored = post(f"{page}evals/toy/explore", {})
-        rules = [item["rule"] for item in explored.get("columns", [])]
-        if "fix" in rules and explored["counts"]["done"] == OUTPUTS:
-            break
-        threading.Event().wait(0.1)
-    assert [item["rule"] for item in explored["columns"]] == [
-        "build",
-        "plant",
-        "detect",
-        "fix",
-        "score",
-    ]
-    with urllib.request.urlopen(f"{page}evals") as response:
-        [summary] = json.loads(response.read())["scenarios"]
-    assert summary["steps"] == OUTPUTS and summary["counts"]["done"] == OUTPUTS, summary
-    leaf = "results/detect/arm=toolbox/bug=none/rep=3"
-    run = post(f"{page}evals/toy/run", {"output": leaf})
-    assert run["state"] == "done" and "metrics.json" in [item["name"] for item in run["files"]]
-    text = post(f"{page}evals/toy/file", {"output": leaf, "name": "metrics.json"})
-    assert json.loads(text["text"]) == {"detected": False, "alarms": 1}
-
-    detect = toy / "steps/detect.py"
-    detect.write_text(detect.read_text() + "\n# a draft\n")
-    weighed = post(f"{page}evals/toy/dry", {"budget": 0.5})
-    assert weighed["summary"]["to_compute"] >= 12 and "passes the budget" in weighed["refused"]
-    entries = [entry for entry in (toy / "cache").iterdir() if not entry.name.startswith(".")]
-    assert len(entries) == OUTPUTS, "a dry run computes nothing"
-
-    asked = {"by": "arm", "metric": "detected", "step": "detect"}
-    detect.write_text(detect.read_text().replace("\n# a draft\n", ""))
-    compared = post(f"{page}evals/toy/compare", asked)
-    assert {row["arm"] for row in compared} == {"control", "toolbox"}

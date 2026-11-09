@@ -75,7 +75,7 @@ src/nock/
   pages/             studio.html, the shell (band with the title and the menu, routing by
                      `#NAME/ROUTE`); studio.css, its look, put in the shell;
                      NAME.html, each tab's fragment (markup, style, a script registering it);
-                     topics.css and evals.css, the two tabs' own looks, put before their fragments;
+                     topics.css and experiment.css, the two tabs' own looks, put before their fragments;
                      chat.css, Work's filters and Tidy up and the global chat, with topics.css
   status.py          Standing: a round due, the open items by topic, what waits on agents in
                      Topics, an unshared summary
@@ -125,11 +125,11 @@ src/nock/
                      graph, materialised outputs and their states, the check), Run (the dry
                      pass, estimates, budget, refusals; then Snakemake), Evaluations (init, prune)
   results.py         Results: DuckDB through uv over the result files, tables loaded per call
-  explorer.py        the studio's Evaluations tab: Graph (every job, as Snakemake describes it, kept
-                     in .nock/local/evals/ under a fingerprint), Monitor (a run's lock, log and
-                     incomplete markers), Reader (each output's facts), Exploration (columns,
-                     rows, groups, narrowing, what a change reruns, comparisons in counts)
-  experiments.py     the studio's Experiments tab: Experiment (a scenario as a tree of steps forking
+  explorer.py        what the studio's Experiment tab is drawn from: Graph (every job, as Snakemake
+                     describes it, kept in .nock/local/evals/ under a fingerprint), Monitor (a
+                     run's lock, log and incomplete markers), Reader (each output's facts),
+                     Wording (studio.json), Explorer (the description kept, statuses read live)
+  experiments.py     the studio's Experiment tab: Experiment (a scenario as a tree of steps forking
                      by parameter and repeat, declared decisions under the steps they read, runs,
                      measures, results read on demand), over the explorer's Graph and facts
   steps.py           Step, what a rule's script wraps itself in: metrics, cost, error, state
@@ -561,9 +561,7 @@ environment variable the configuration names; refused while no URL is set,
 which the page shows as a faded recorder saying how to set one), and the Ask (`studio.Asking`: one `nock topics ask` process at a
 time, cancelled by stopping it; `asking.Asker` dispatches the asker seat,
 which answers through `nock topics answer`, held to naming items that
-exist), and `EvalsTab`
-(below), which also answers `POST /evals/NAME/dry` (a `Run`'s dry pass,
-nothing run) and `POST /evals/NAME/compare`, and `ExperimentsTab` (below).
+exist), and `ExperimentTab` (below).
 
 The global chat is no tab: `studio.ChatRoutes` answers `/chat/…` for
 `chats.Chats`, and the topics tab's fragment draws it in `#topics-global`,
@@ -592,9 +590,9 @@ lists the threads where the owner's comment waits (`pending`), quoted in the
 chat's first message (`chats.address_request`). A topic's `priority` orders the list
 (`topics.in_order`) in the studio and in `topics list`.
 
-### The evaluation explorer
+### The Experiment tab
 
-`EvalsTab` keeps an `explorer.Explorer` per scenario. Deriving the jobs is
+`ExperimentTab` keeps an `explorer.Explorer` per scenario. Deriving the jobs is
 what costs (a dry run's time, half a minute on a scenario of 900 steps), so it
 happens once: `GRAPH`, a script in uv's Snakemake, loads the workflow as
 `--list-untracked` would with every target rule as a target, and prints each
@@ -616,26 +614,10 @@ the cache under the job's entry is done (the next run restores it); while
 with an incomplete marker (Snakemake's records are url-safe base64 of the
 path, cut into directory names), is running. The `Monitor` reads the log
 incrementally; the `Reader` re-reads an output only when its directory or the
-job's entry changed. Why an output is stale compares its params with those
-Snakemake recorded in `.snakemake/metadata/` when it was made.
+job's entry changed.
 
-An `Exploration` is one view: the target's jobs (the run going on's, by
-default), columns in the order rules run, rows by the earliest parameter that
-forks the runs (a parameter some of a rule's jobs lack forks too; one a whole
-rule lacks does not), a group split on request by the next forking parameter
-down to runs; a selection narrows every column to its right to its
-descendants, and marks its lineage to the left; a change — a parameter's
-value, an input the params carry, a script or input file — reruns what it
-touches and everything made from it, estimated by each rule's median cost
-and time. Comparisons are `studio.json`'s `analyses`, counted as x of y, or
-one suggested per rule. Wires join groups through each job's main input; a
-wire that leaps a column, or joins another input, shows on hover.
-
-### The Experiments tab
-
-`ExperimentsTab` builds an `experiments.Experiment` from the same `Explorer`
-(its kept `Graph` and the facts read live), so it costs no second description.
-A job's parent is the job before it sharing the most of its parameter values,
+An `experiments.Experiment` is built from the kept `Graph` and the facts read
+live. A job's parent is the job before it sharing the most of its parameter values,
 one with a value it lacks (the clean run a bug's run is read against) passed
 over, the later rule on a tie; a node is its rule under its parent's node,
 split by the values it adds to its trajectory that are neither `pooled` nor the
@@ -648,11 +630,12 @@ rule they read and a result per output, the first branch its metric takes
 trajectory, and a decision with a good branch is a measure, beside the cost per
 pooled value. A run is the outputs ending a trajectory with the same values but
 the repeat's; each result belongs to the earliest run it is part of. Results
-are read only when the page shows them (`POST /experiments/NAME/results`): a
+are read only when the page shows them (`POST /experiment/NAME/results`): a
 rule's `results` words name a file and how to show it, or a prefix of its
 metrics shown as checks; without them, its metrics and `diff.patch`. The page
 draws with D3 from cdnjs (as it loads its fonts from Google), its address
-`#experiments/NAME/RUN--ITERATIONS`.
+`#experiment/NAME/RUN--ITERATIONS` (`#evals`, `#evaluations` and
+`#experiments` open it too).
 
 ### Dispatch
 

@@ -383,7 +383,7 @@
   const titled = text => escape(text).replace(/`([^`]+)`/g, "<code>$1</code>");
   // A verdict as a mark: a tick or a cross on a foil circle, a muted cross for dropped (closed,
   // nothing to rework); nothing while it is open.
-  // A mark's hover card (`#topics-tip`, the evaluations' card), in plain words: what it is and
+  // A mark's hover card (`#topics-tip`), in plain words: what it is and
   // when ("Accepted on Nov 8, 2026 at 17:57"), what follows from it, and the line that set it.
   const tipped = (said, means = "", line = "") =>
     `data-tip="${escape(said)}"${means ? ` data-tip-means="${escape(means)}"` : ""}${line ? ` data-tip-line="${escape(line)}"` : ""}`;

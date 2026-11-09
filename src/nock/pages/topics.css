@@ -220,7 +220,7 @@
   content: ""; position: absolute; top: -2px; left: 24px; right: 24px; height: 2px; border-radius: 2px; background: linear-gradient(90deg, var(--pink), var(--cyan));
 }
 
-/* A mark's hover card, as the evaluations' card: its name, what it means, the line and the moment
+/* A mark's hover card: its name, what it means, the line and the moment
    that set it. */
 .topics .tip {
   position: fixed; z-index: 40; width: max-content; max-width: min(20rem, calc(100vw - 24px)); pointer-events: none;

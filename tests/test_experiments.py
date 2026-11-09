@@ -1,4 +1,4 @@
-"""The studio's Experiments tab over the toy scenario (`tests/toy`): the steps as
+"""The studio's Experiment tab over the toy scenario (`tests/toy`): the steps as
 a tree forking by parameter (the pooled bug, the arm) and by repeat, a declared
 decision under the step it reads, the results each set of values made, the runs
 they belong to, the measures, and an output's results as its rule's words say."""
@@ -17,7 +17,7 @@ from nock.evaluation import Evaluations
 from nock.experiments import Experiment
 from nock.explorer import Explorer
 from nock.project import Project
-from nock.studio import ExperimentsTab, Studio
+from nock.studio import ExperimentTab, Studio
 
 from .test_eval import call
 
@@ -31,7 +31,7 @@ def experiment(project: Project) -> Experiment:
 
 
 def worded(toy: Path) -> None:
-    """The toy's studio.json, with what the Experiments tab reads."""
+    """The toy's studio.json, with what the Experiment tab reads."""
     path = toy / "studio.json"
     words: dict[str, Any] = json.loads(path.read_text())
     words["question"] = "Does the toolbox find the planted bug?"
@@ -119,7 +119,7 @@ def test_results_runs_and_decisions_once_the_scenario_ran(project: Project, toy:
 def test_the_tab_answers_a_scenario_and_its_results(project: Project, toy: Path) -> None:
     worded(toy)
     call(project.root, "run")
-    tab = ExperimentsTab(project)
+    tab = ExperimentTab(project)
     assert tab.get("") == {"scenarios": ["toy"]}
     tab.explorer("toy").current(wait=True)
     model = tab.get("toy")
@@ -128,27 +128,24 @@ def test_the_tab_answers_a_scenario_and_its_results(project: Project, toy: Path)
     assert output in tab.post("toy/results", {"outputs": [output]})
 
 
-def test_a_scenario_worded_with_a_question_and_decisions_opens_on_both_tabs(
+def test_a_scenario_worded_with_a_question_and_decisions_opens_on_the_experiment_tab(
     project: Project, toy: Path
 ) -> None:
-    """Both tabs read `studio.json` through one schema, which a scenario's
-    `question` and `decisions` pass: neither says "invalid record"."""
+    """The tab reads `studio.json` through its schema, which a scenario's
+    `question` and `decisions` pass: it does not say "invalid record"."""
     worded(toy)
     server = Studio(project, 0)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     try:
 
-        def fetch(path: str, body: Any = None) -> Any:
-            data = None if body is None else json.dumps(body).encode()
-            with urllib.request.urlopen(f"{server.address}{path}", data, timeout=60) as response:
+        def fetch(path: str) -> Any:
+            with urllib.request.urlopen(f"{server.address}{path}", timeout=60) as response:
                 return json.loads(response.read())
 
-        assert fetch("evals")["scenarios"][0]["name"] == "toy"
-        explored = fetch("evals/toy/explore", {})
-        assert "problem" not in explored or not explored["problem"]
+        assert fetch("experiment") == {"scenarios": ["toy"]}
         for _ in range(600):
-            drawn = fetch("experiments/toy")
+            drawn = fetch("experiment/toy")
             if "nodes" in drawn or drawn.get("problem"):
                 break
             time.sleep(0.1)
