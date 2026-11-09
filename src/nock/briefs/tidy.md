@@ -29,7 +29,8 @@ what is there. Read first:
    "description": …}'`) and move its items there.
 2. **Set where each topic stands,** from what is actually there:
    `.nock/nock topics update <topic> '{"state": "done", "status": "…"}'`
-   — planned, active, done (its work finished, nothing open) or abandoned.
+   — planned, active, review (its work built, only the owner's verdicts
+   open), done (its work finished, nothing open) or abandoned.
    A done or abandoned topic takes no new items: move items before closing it.
 3. **Drop what matters less.** An open item superseded by a newer one, or
    stale (what it decides was changed since, what it shows is gone, an
@@ -41,7 +42,7 @@ what is there. Read first:
    rework, are the owner's alone, and nock refuses them from you. Leave
    alone what the owner is still discussing (the owner wrote last in its
    thread) and anything you are unsure of.
-4. **Prioritize.** Give every planned or active topic its place in the
+4. **Prioritize.** Give every planned, active or review topic its place in the
    owner's order, 1 first, by what needs the owner soonest and matters
    most, with a one-line reason in its status:
    `.nock/nock topics update <topic> '{"priority": 1, "status": "first:

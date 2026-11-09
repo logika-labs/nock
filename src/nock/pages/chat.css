@@ -4,16 +4,18 @@
    to the right half of the screen. */
 
 /* The filters: one at a time, as chips with their counts; done and dropped topics on their own
-   toggle; Tidy up at the end of the line. */
-.topics .sift { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 14px; }
-.topics .sift .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+   toggle, which wrap among themselves; Tidy up at the right end of their first row. On a phone
+   the chips scroll sideways in one row. */
+.topics .sift { display: flex; align-items: flex-start; gap: 8px; margin-top: 14px; }
+.topics .sift .chips { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.topics .sift .chip { flex: none; white-space: nowrap; }
 .topics .sift .chip[data-sift="me"] { --tone: #b5267a; }
 .topics .sift .chip[data-sift="agent"] { --tone: #0b7f9c; }
 .topics .sift .chip[data-sift="todo"] { --tone: #a35f00; }
 .topics .sift .chip[data-sift="active"] { --tone: #4b3bd6; }
 .topics .sift .chip.closed { border-style: dashed; }
 .topics .sift .chip.closed[aria-pressed="true"] { border-style: solid; }
-.topics .tidy-anchor { position: relative; margin-left: auto; display: inline-grid; }
+.topics .tidy-anchor { flex: none; position: relative; display: inline-grid; }
 /* Its confirm floats over the topics under the bar. */
 .topics .controls:has(.tidy-confirm) { position: relative; z-index: 30; }
 .topics .tidy {
@@ -26,7 +28,7 @@
 .topics .tidy:hover, .topics .tidy[aria-expanded="true"] { background: linear-gradient(#f7f4ff, #f7f4ff) padding-box, linear-gradient(100deg, #ff9ad5, #c3b2ff, #8fe9ff) border-box; }
 .topics .tidy:focus-visible { outline: 2px solid #111116; outline-offset: 2px; }
 .topics .tidy-confirm {
-  position: absolute; z-index: 25; right: 0; top: calc(100% + 8px); width: min(24rem, calc(100vw - 32px));
+  position: absolute; z-index: 25; right: 0; top: calc(100% + 8px); width: min(24rem, calc(100vw - 48px));
   display: grid; gap: 8px; padding: 14px 16px; border-radius: 16px; background: #fff; border: 1px solid var(--border);
   box-shadow: 0 0 0 1px rgb(17 17 22 / .04), -12px 16px 36px -14px rgb(255 120 200 / .55), 12px 20px 40px -14px rgb(90 220 255 / .6);
   font-size: 13.5px; line-height: 1.5;
@@ -39,7 +41,7 @@
 /* The global chat: under its button, the height of most of the screen. */
 .topics .chat.global {
   position: fixed; z-index: 28; top: var(--chat-top, 16px); right: max(16px, calc((100vw - var(--column)) / 2));
-  width: min(27rem, calc(100vw - 32px)); height: min(40rem, calc(100vh - 96px));
+  width: min(27rem, calc(100vw - 32px)); height: min(40rem, calc(100vh - var(--chat-top, 16px) - 16px));
 }
 .topics .chat.global .chat-head { gap: 4px; padding: 0 8px; }
 .topics .chat.global .chat-head .label {
@@ -91,7 +93,9 @@
 .topics .tidy-foot code { font: 12px var(--mono); color: var(--foreground); }
 .topics .tidy-foot .button { height: 30px; padding: 0 14px; }
 
-/* Pinned: docked to the right half, the full height, the studio keeping the left. */
+/* Pinned: docked to the right half, the full height, the studio keeping the left; narrower, there
+   is no half to dock to, so no pin. */
+@media (max-width: 899px) { .topics .head-button[data-global="pin"] { display: none; } }
 @media (min-width: 900px) {
   .topics .chat.global.pinned { top: 0; right: 0; bottom: 0; width: 50vw; height: auto; border-radius: 0; border-width: 0 0 0 1px; }
   .topics .chat.global.pinned .composer, .topics .chat.global.pinned .tidy-foot { border-radius: 0; }
@@ -99,5 +103,9 @@
 @media (max-width: 760px) {
   .topics .chat.global { top: auto; left: 8px; right: 8px; bottom: 8px; width: auto; height: min(36rem, 80vh); }
   .topics .head-button.new span { display: none; }
-  .topics .tidy-anchor { margin-left: 0; }
+  .topics .sift .chips {
+    flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; overscroll-behavior-x: contain;
+    margin: -4px 0; padding: 4px 0; mask-image: linear-gradient(90deg, #000 calc(100% - 20px), transparent);
+  }
+  .topics .sift .chips::-webkit-scrollbar { display: none; }
 }

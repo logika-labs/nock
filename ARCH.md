@@ -394,7 +394,8 @@ else and hands it to `hooks.run`, which:
      a session nock dispatches gets `NOCK_PARENT_SESSION` instead;
    - **Stop**, besides refusing a turn with a round left open, refuses once
      a session (the `stated` table) the end of a turn when the session, or
-     a subagent of it, did its own work in a planned or active topic (opened
+     a subagent of it, did its own work in a planned or active topic (review,
+     like done and abandoned, says where it stands: `FINISHED`) (opened
      it, or submitted, versioned or answered an item there: the `wrote`
      table, so a migration's rewrites and the owner's verdicts never count)
      and never set its state or status (`Topics.unstated`);
@@ -448,7 +449,7 @@ main branch at once; it skips the commit, and says so, when the main
 checkout is mid-merge or mid-rebase. A ref is `topic/slug`; `resolve` also
 takes an alias (a migrated decision's number, `170`, `D170`, `topic/170`).
 
-A topic's `state` (`State`: planned, active, done, abandoned) and `status`
+A topic's `state` (`State`: planned, active, review, done, abandoned) and `status`
 change through `update_topic` → `set_standing`, which keeps them in
 `topic.json` and appends a status entry (`kind: "status"`, the state and
 status, the writer) to its thread; `talk` leaves status entries out wherever

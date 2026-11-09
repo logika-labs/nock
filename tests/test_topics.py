@@ -388,6 +388,45 @@ def test_a_session_that_never_said_where_its_topic_stands_is_asked_once(
     assert Topics(project).unstated("s1") == []
 
 
+def test_a_topic_in_review_waits_on_the_owner_and_its_work_counts_as_stated(
+    project: Project, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "s1")
+    ref = submit(project.root)
+    stop = {"session_id": "s1", "stop_hook_active": False}
+    asked = HookRunner(project, stop).handle("Stop")
+    assert asked is not None and '"review"' in asked["reason"]
+    reviewed = run(project.root, "topics", "update", "orders", '{"state": "review"}')
+    assert reviewed == {"name": "orders", "state": "review"}
+    assert Topics(project).unstated("s1") == []
+    later = submit(project.root, {**DECISION, "title": "Orders are kept a year"})
+    assert later.startswith("orders/")
+    judge(project.root, ref, "rejected", "Not SQLite.")
+    open_topic(project.root, {"name": "pricing", "description": "Seats.", "state": "review"})
+    listed = run(project.root, "topics", "list", "--state", "review", "--full")["rows"]
+    assert sorted(row["name"] for row in listed) == ["orders", "pricing"]
+    closed = nock(
+        project.root, "topics", "create", json.dumps({**TOPIC, "name": "x", "state": "done"})
+    )
+    assert closed.returncode == 40 and "review" in closed.stderr
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "s2")
+    submit(project.root, {**DECISION, "title": "Orders are archived"}, "pricing")
+    assert Topics(project).unstated("s2") == []
+
+
+def test_topics_with_a_priority_come_first_in_order_then_the_newest(
+    project: Project, page: str
+) -> None:
+    for name in ("ledger", "pricing", "orders", "billing", "emails"):
+        submit(project.root, topic=name)
+    for name, priority in (("ledger", 3), ("pricing", 1), ("billing", 2)):
+        run(project.root, "topics", "update", name, json.dumps({"priority": priority}))
+    with urllib.request.urlopen(f"{page}topics") as response:
+        shown = [topic["name"] for topic in json.loads(response.read())["topics"]]
+    listed = [row["name"] for row in run(project.root, "topics", "list", "--full")["rows"]]
+    assert shown == listed == ["pricing", "billing", "ledger", "emails", "orders"]
+
+
 def test_only_an_agents_own_work_in_a_topic_asks_for_its_status(
     project: Project, monkeypatch: pytest.MonkeyPatch
 ) -> None:

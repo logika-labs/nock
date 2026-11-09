@@ -312,7 +312,7 @@ def topics_list(
     query: Annotated[str | None, Option(help="Plain words, ranked by how well they match.")] = None,
     state: Annotated[
         State | None,
-        Option(help="Only the topics in this state: planned, active, done, abandoned."),
+        Option(help="Only the topics in this state: planned, active, review, done, abandoned."),
     ] = None,
     full: Annotated[bool, Option(help="The whole list, without the summary.")] = False,
 ) -> dict[str, Any]:
@@ -338,7 +338,7 @@ def topics_list(
 @command(name="create", group="topics")
 def topics_create(project: Project, topic: TopicDraft) -> dict[str, Any]:
     """Open a topic for a piece of work: a name and why it exists, as part of
-    what work; its `state` active (the default) or planned, and its `status`,
+    what work; its `state` active (the default), planned or review, and its `status`,
     where the work is in a line. Look for an existing one first (`topics list
     --query …`): what you are doing may already have its topic, and a done
     one that comes back is revived, not made again."""
@@ -364,9 +364,10 @@ def topics_update(
         Option(help="Bring a done or abandoned topic back, active, saying why (markdown)."),
     ] = None,
 ) -> dict[str, Any]:
-    """Keep a topic's progress current — its `state` (planned, active, done,
-    abandoned) and its `status`, where the work is in a line:
-    `{"status": "waiting for the gate on main"}`, `{"state": "done"}` — each
+    """Keep a topic's progress current — its `state` (planned, active, review
+    once it is built and only the owner's verdicts remain, done, abandoned)
+    and its `status`, where the work is in a line:
+    `{"status": "waiting for the gate on main"}`, `{"state": "review"}` — each
     change kept in its thread; change its name or description; answer in its
     thread; or revive it when it was done or abandoned and the work comes
     back: active again, the note saying why it is back and reading as its

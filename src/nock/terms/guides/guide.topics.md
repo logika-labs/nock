@@ -72,25 +72,29 @@ to say goes in the thread, when asked.
 ## Where the work stands
 
 A topic's progress is its own: a **state** — planned, active (a new topic's),
-done or abandoned — and a **status**, a free line on where the work is, which
+review (built: only the owner's verdicts remain), done or abandoned — and a **status**, a free line on where the work is, which
 the agent sets as it works. Each change is a status entry in the topic's
 thread, with its moment and who wrote it, so the history stays; the current
 state and status sit in `topic.json`. A topic from before states (not yet migrated) reads as
 the migration will set it: done once every item in it is decided, otherwise
-active. Work an orchestrating agent dispatches
+active (the migration never sets review: open items alone do not say the
+work is built). Work an orchestrating agent dispatches
 is tracked so too, on the topic it serves.
 
 ```sh
 $ .nock/nock topics update charge-sweep '{"state": "active", "status": "requeueing dead charges"}'
 $ .nock/nock topics update charge-sweep '{"status": "waiting for the gate on main"}'
+$ .nock/nock topics update charge-sweep '{"state": "review", "status": "built; 3 decisions to judge"}'
 $ .nock/nock topics update charge-sweep '{"state": "done"}'
 ```
 
 A change of state without a status clears the status. The primer asks every
 agent to set its topic active with a status when it starts, update the status
-at milestones and set it done or abandoned when it finishes; a session that
+at milestones, set it review when it has finished and only the owner's
+verdicts remain, and done or abandoned when the work is over; a session that
 did its own work in a topic (opened it, or submitted, versioned or answered an
-item there; not a migration, not a verdict) and never set where it stands is
+item there; not a migration, not a verdict), never set where it stands and
+did not leave it in review, done or abandoned is
 stopped once, at the end of its turn, and asked to (`reminders = false` turns
 that off).
 

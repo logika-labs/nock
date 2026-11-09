@@ -15,7 +15,8 @@ first — each a row: its name, what it holds ("4
 decisions · 6 images · 3 texts") and its verdicts ("3 open · 12 accepted · 2 dropped"),
 its time ("21m", "3h", "2d", on a small grey pill) with its state's foil mark
 beside it (active a slowly turning spinner, planned a ring, done a full circle
-with a tick, abandoned one with a cross), its status line in grey right after
+with a tick, abandoned one with a cross; a topic in review shows none, since
+waiting on the owner needs no mark), its status line in grey right after
 its name, and its description. A
 topic opens in place, its items in sections, each with its count and a caret
 that folds it: decisions as bubbles that open in place on the answer (its
@@ -73,12 +74,13 @@ what agents submit without drawing again what did not change.
 ## Filters
 
 Under the bar, **filters**, one at a time and combined with the search, each
-with its count: All; **Needs me** (open items, and chats the agent answered
+with its count: All; **Needs me** (topics in review, open items, and chats the agent answered
 since the owner looked); **Waiting on agent** (the owner wrote last, or
 rejected an item still to rework); **Todo** (todo decisions); **Active**
 (topics under way). Done and abandoned topics stay hidden until **Done &
 dropped** shows them. The choice is kept per browser. **Tidy up** is at the
-end of that line (see [Tidy up](#tidy-up)).
+right end of that line (see [Tidy up](#tidy-up)); on a phone the chips
+scroll sideways beside it.
 
 ## Settings
 

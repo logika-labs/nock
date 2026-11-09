@@ -400,7 +400,8 @@
   // A decision is done unless it says otherwise: only a todo one shows its status, a chip under its corner.
   const todoPill = `<span class="todo-pill" aria-label="To do" ${tipped("To do", "decided, but the work it calls for is still to do")}>Todo</span>`;
   // Where a topic's work stands, beside its time: active a turning foil spinner, planned a foil
-  // ring, done and abandoned a full foil circle with a tick or a cross.
+  // ring, done and abandoned a full foil circle with a tick or a cross. A topic in review (built,
+  // only the owner's verdicts remain) shows none: waiting on the owner needs no mark.
   const STATES = {
     active: ["Active", "an agent is working on it"],
     planned: ["Planned", "the work is set out, not started"],
@@ -408,6 +409,7 @@
     abandoned: ["Abandoned", "the work was stopped before it was finished"],
   };
   function stateMark(topic) {
+    if (topic.state === "review") return "";
     const known = STATES[topic.state] ? topic.state : "active";
     const [word, means] = STATES[known];
     const icon = known === "done" ? ICONS.accepted : known === "abandoned" ? ICONS.rejected : "";
@@ -1547,15 +1549,15 @@
 
   // --- the filters beside the bar, and Tidy up --------------------------------------------------------
 
-  // One filter at a time, with the search: what needs the owner (open items, threads the agent
+  // One filter at a time, with the search: what needs the owner (topics in review, open items, threads the agent
   // answered since they looked), what waits on an agent (the owner wrote last, or rejected an item
   // still to rework), todo decisions, active topics. Done and abandoned topics, and dropped items, show
   // only when asked.
   // Kept per browser.
   const SIFTS = {
     all: { label: "All" },
-    me: { label: "Needs me", title: "Open items, and chats the agent answered since you looked",
-      topic: topic => topic.chat?.unseen > 0, item: item => item.verdict === "open" || item.chat?.unseen > 0 },
+    me: { label: "Needs me", title: "Topics in review, open items, and chats the agent answered since you looked",
+      topic: topic => topic.state === "review" || topic.chat?.unseen > 0, item: item => item.verdict === "open" || item.chat?.unseen > 0 },
     agent: { label: "Waiting on agent", title: "You wrote last, or rejected it and the rework is due",
       topic: topic => topic.chat?.pending, item: item => item.chat?.pending || item.verdict === "rejected" },
     todo: { label: "Todo", title: "Decisions still to carry out", item: item => last(item).decision?.status === "todo" },
@@ -1596,7 +1598,7 @@
         <p>You watch it in the chat. Everything lands as one commit, which Undo there reverts.</p>
         <div class="buttons"><button type="button" class="button secondary" data-sift="tidy-cancel">Cancel</button><button type="button" class="button primary" data-sift="tidy-go">Tidy up</button></div></div>` : "";
     const tidy = `<span class="tidy-anchor" data-key="tidy"><button type="button" class="tidy" data-sift="tidy" aria-expanded="${state.tidying}" title="Send an agent to tidy Work: regroup, close, drop and order the topics">${BROOM}<span>Tidy up</span></button>${confirm}</span>`;
-    studio.morph($("topics-sift"), `<div class="chips" role="group" aria-label="Filter" data-key="sifts">${chips}</div>${closed}${tidy}`);
+    studio.morph($("topics-sift"), `<div class="chips" role="group" aria-label="Filter" data-key="sifts">${chips}${closed}</div>${tidy}`);
   }
   function siftAction(button) {
     const what = button.dataset.sift;

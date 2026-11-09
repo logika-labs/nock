@@ -17,7 +17,7 @@ whichever worktree writes it, so the owner sees it at once. The files the
 owner attaches to a message are kept beside its thread, in the topic's or the
 item's `attachments/MOMENT/`, the message naming each (`attachments`).
 
-A topic's progress is its own: a `state` (planned, active, done, abandoned)
+A topic's progress is its own: a `state` (planned, active, review, done, abandoned)
 and a `status`, a line its agent keeps current as it works; each change is a
 status entry in its thread, so the history stays. A done or abandoned topic
 takes no new items; when its work comes back it is revived, set active again
@@ -94,6 +94,9 @@ class State(StrEnum):
 
     PLANNED = "planned"
     ACTIVE = "active"
+    REVIEW = "review"
+    """Built: only the owner's verdicts remain. It takes new items like an
+    active one (a rework is a new version)."""
     DONE = "done"
     """Finished: it takes no new items until it is revived."""
     ABANDONED = "abandoned"
@@ -102,6 +105,8 @@ class State(StrEnum):
 
 # The states in which a topic takes no new items.
 CLOSED = (State.DONE, State.ABANDONED)
+# The states in which an agent's work in a topic is finished, as the stop hook counts it.
+FINISHED = (State.REVIEW, *CLOSED)
 # A thread's entry recording a change of the topic's state or status.
 STATUS = "status"
 # The studio's Tidy up: its writes are not committed one by one; the studio
@@ -192,7 +197,8 @@ class TopicDraft(TypedDict):
     description: str
     """Why it exists, as part of what work, in a sentence or two."""
     state: NotRequired[State]
-    """planned, or active (the default): work under way."""
+    """planned, active (the default): work under way, or review: built,
+    only the owner's verdicts remain."""
     status: NotRequired[str]
     """Where the work is, in a line: "eval running, about 2 h"."""
 
@@ -201,7 +207,8 @@ class TopicChange(TypedDict):
     name: NotRequired[str]
     description: NotRequired[str]
     state: NotRequired[State]
-    """planned, active, done (finished) or abandoned; a change of state
+    """planned, active, review (built, only the owner's verdicts remain),
+    done (finished) or abandoned; a change of state
     without a `status` clears the status."""
     status: NotRequired[str]
     """Where the work is, in a line, kept current at each milestone:
@@ -682,7 +689,9 @@ class Topics:
             )
         state = State(draft.get("state") or State.ACTIVE)
         if state in CLOSED:
-            raise UsageError("a topic opens planned or active: its work is still to do")
+            raise UsageError(
+                "a topic opens planned, active or review: done and abandoned are for finished work"
+            )
         with self.project.lock("topics"):
             if (self.directory / name / TOPIC_FILE).is_file():
                 again = (
@@ -827,7 +836,7 @@ class Topics:
             if name not in worked:
                 continue
             topic = self.topic(name)
-            if self.standing(topic) in CLOSED:
+            if self.standing(topic) in FINISHED:
                 continue
             if any(entry.get("kind") == STATUS and by(entry, mine) for entry in topic["thread"]):
                 continue
