@@ -1,4 +1,4 @@
-/* The demo's stage and its three scenes (demo.js). The Work scene wears the studio's own sheet,
+/* The demo's stage and its scenes (demo.js). The Work scene wears the studio's own sheet,
    /studio/topics.css, copied in by build.py; what the studio's page adds around it (its sheets'
    glass, its white ticks and crosses) is here, so the scene looks as the studio does. */
 
@@ -148,39 +148,13 @@
 .scene-review .topic-body { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
 .scene-review .topic-body .section.decision { grid-column: 1 / -1; }
 
-/* --- Logika: the change, the map and its rule, production, the issue, the fix ----------------- */
-
-.scene-logika { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; height: 100%; }
-.scene-logika > * { min-width: 0; min-height: 0; display: grid; align-content: start; gap: 12px; }
-.scene-logika .left { align-content: stretch; }
-.scene-logika .code-card pre.code { font-size: 11.5px; line-height: 1.75; }
-.scene-logika .agent .calls { justify-content: flex-start; }
-.scene-logika .map pre.code { font-size: 10.5px; padding: 10px 12px; border-radius: 10px; }
-.scene-logika .map .risk { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
-.scene-logika .map .open-pill { animation: demo-in .45s ease .2s both, demo-strike .4s ease 2.1s forwards; }
-@keyframes demo-strike { to { opacity: .35; text-decoration: line-through; } }
-.scene-logika .events { list-style: none; margin: 0; padding: 0; display: grid; gap: 5px; font: 11.5px/1.4 var(--mono); }
-.scene-logika .events li { display: flex; flex-wrap: wrap; gap: 4px 12px; padding: 6px 10px; border-radius: 10px; background: #f3f0fa; }
-.scene-logika .events li.broken { color: #fff; background: linear-gradient(135deg, #ff7a96, #c8233f); font-weight: 600; }
-.scene-logika .issue { box-shadow: 3px 3px 0 0 var(--cyan), -3px -3px 0 0 var(--pink), 0 12px 30px rgb(60 20 120 / .16); border: 1px solid rgb(17 17 22 / .14); }
-.scene-logika .issue .mail-head { display: flex; align-items: center; gap: 8px; }
-.scene-logika .issue .from { display: inline-flex; align-items: center; gap: 6px; font: 600 12px/1 var(--mono); }
-.scene-logika .issue .from::before { content: ""; width: 16px; height: 16px; border-radius: 5px; background: linear-gradient(135deg, var(--pink), var(--cyan)); }
-.scene-logika .issue .mail-head time { margin-left: auto; }
-.scene-logika .issue .subject { font: 600 13px/1.4 var(--mono); overflow-wrap: anywhere; }
-.scene-logika .issue .reply { display: grid; gap: 2px; padding: 8px 10px; border-radius: 10px; background: var(--wash), #fff; border: 1px solid var(--border); font-size: 13px; }
-.scene-logika .issue .more { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; }
-.scene-logika .issue .more::after { content: none; }
-.scene-logika .issue .more svg { width: 13px; height: 13px; }
-
 /* --- narrow stages: B's and C's on a phone, A's at any width under 40rem ---------------------- */
 
 @media (max-width: 860px) {
   .demo-stage .screen { height: 34rem; padding: 10px; }
-  .scene-reflection, .scene-logika { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
+  .scene-reflection { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
   .scene-reflection .side { order: -1; }
   .scene-reflection .numbers dd { font-size: 16px; }
-  .scene-logika .right { order: -1; }
   .scene-review .topic-body { grid-template-columns: minmax(0, 1fr); }
   .scene-review .section.text { display: none; }
   .demo-foot { flex-wrap: wrap; }
@@ -191,5 +165,4 @@
   .screen [data-at], .screen [style*="--d"] { animation: none !important; }
 }
 .scene-review .message.owner .context p { color: #fff; }
-@media (max-width: 860px) { .scene-logika .agent .calls { justify-content: flex-end; } }
 .scene-review .button.primary { background: #111116; color: #fff; border: 1px solid #111116; box-shadow: 2px 2px 0 0 var(--cyan), -2px -2px 0 0 var(--pink); }

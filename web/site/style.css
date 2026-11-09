@@ -185,7 +185,6 @@ main { display: block; padding-top: 16px; }
 #reflection { --one: var(--yellow); --two: var(--cyan); }
 #review { --one: var(--lavender); --two: var(--pink); }
 #evaluation { --one: var(--mint); --two: var(--lavender); }
-#logika { --one: var(--peach); --two: var(--cyan); }
 .home .part { box-shadow: 3px 3px 0 0 var(--one), -3px -3px 0 0 var(--two), var(--lift); border: 1px solid rgb(17 17 22 / .14); }
 .install {
   display: flex; align-items: center; gap: 12px; width: 100%; margin-top: 4px; padding: 8px 8px 8px 16px; border-radius: 14px;
@@ -436,6 +435,10 @@ pre.code code { background: none; padding: 0; color: inherit; font: inherit; ove
 .theatre .demo { padding: 18px; background: var(--wash); }
 .story-b .community.wide { grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); gap: 24px; justify-items: stretch; align-items: start; }
 .story-b .community.wide > div { display: grid; gap: 12px; justify-items: start; }
+.story-b .logika.wide { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 28px; justify-items: stretch; align-items: center; }
+.story-b .logika.wide > div { display: grid; gap: 12px; justify-items: start; }
+.story-b .logika .art { display: block; border-radius: 14px; overflow: hidden; border: 1px solid rgb(17 17 22 / .14); box-shadow: 3px 3px 0 0 var(--peach), -3px -3px 0 0 var(--cyan); }
+.story-b .logika .art img { display: block; width: 100%; height: auto; }
 .story-b .wide-intro { padding: 32px 36px; }
 .with-aside { display: grid; grid-template-columns: minmax(0, 1fr) 19rem; gap: 16px; align-items: start; }
 .with-aside > * { min-width: 0; }
@@ -496,7 +499,8 @@ pre.code code { background: none; padding: 0; color: inherit; font: inherit; ove
 /* --- phone width ------------------------------------------------------------------------------ */
 
 @media (max-width: 860px) {
-  .hero-b, .theatre-body, .with-aside, .story-b .community.wide { grid-template-columns: minmax(0, 1fr); }
+  .hero-b, .theatre-body, .with-aside, .story-b .community.wide, .story-b .logika.wide { grid-template-columns: minmax(0, 1fr); }
+  .story-b .logika .art { order: -1; }
   .theatre .panels { border-right: 0; border-bottom: 1px solid var(--border); }
   .story-b .begin.sticky { position: static; }
   .groups { grid-template-columns: minmax(0, 1fr); }

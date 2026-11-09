@@ -1,4 +1,4 @@
-// nock.dev's demo, coded rather than recorded so it stays current: three scenes in the studio's own
+// nock.dev's demo, coded rather than recorded so it stays current: its scenes in the studio's own
 // visual language (the Work scene in its very classes, with its stylesheet), each a short script of
 // steps with a caption line, played, paused, stepped and replayed. Every element of a scene says from
 // which step it shows (data-at) and until which (data-until), and which classes it takes from which
@@ -144,78 +144,6 @@ tonight; nothing changes until then.</pre></span></div></section>
             </div>
           </div>
         </article>
-      </div>`,
-    },
-    logika: {
-      label: "Logika",
-      steps: [
-        { caption: "A change lands: webhooks retry when a delivery fails.", hold: 4200 },
-        { caption: "The logika round reads the evidence map and gives the retry risk its rule.", hold: 5000 },
-        { caption: "Production breaks it: a delivery that failed for good is retried.", hold: 4200 },
-        { caption: "Within five minutes an issue, with its evidence, wakes your agent.", hold: 4600 },
-        { caption: "The fix lands the way your repository delivers anything, and the report joins the thread.", hold: 5200 },
-      ],
-      markup: () => `<div class="scene-logika">
-        <div class="left">
-          <div class="terminal-card code-card" data-until="3">
-            <div class="bar"><span class="who">src/webhooks/deliver.py</span><span class="tag">the change</span></div>
-<pre class="code"><code><span class="t-keyword">for</span> attempt <span class="t-keyword">in</span> <span class="t-call">range</span>(<span class="t-number">1</span>, hook.attempts_max + <span class="t-number">1</span>):
-    <span class="t-keyword">with</span> <span class="t-call">span</span>(<span class="t-string">"webhook.attempt"</span>, attempt=attempt) <span class="t-keyword">as</span> event:
-        response = <span class="t-call">post</span>(hook.url, payload)
-<span class="add">+       retryable = response.status &gt;= <span class="t-number">500</span></span>
-<span class="add">+       event.<span class="t-call">set</span>(retryable=retryable,</span>
-<span class="add">+                 will_retry=attempt &lt; hook.attempts_max)</span>
-        <span class="t-keyword">if</span> response.ok: <span class="t-keyword">return</span></code></pre>
-          </div>
-          <div class="terminal-card agent" data-at="3">
-            <div class="bar"><span class="who">claude · woken by Logika</span><span class="tag">your machine</span></div>
-            <ol class="calls">
-              ${call("Bash", "logika claim", "", 0.2)}
-              <li class="output" style="--d:.7s"><pre>#214 webhook.attempt: NOT will_retry OR retryable
-  37 events · status 410 · retryable false · will_retry true</pre></li>
-              ${call("Edit", "src/webhooks/deliver.py", "", 1.4)}
-              <li class="diff" data-at="4" style="--d:.1s"><pre><span class="del">-  will_retry=attempt &lt; hook.attempts_max)</span>
-<span class="add">+  will_retry=retryable and attempt &lt; hook.attempts_max)</span></pre></li>
-              ${call("Bash", "git commit -m \"Webhooks stop retrying a delivery that failed for good\"", "", 0.8, 'data-at="4"')}
-              ${call("Bash", "logika resolve '{\"root_cause\": \"…\", \"items\": […]}'", "", 1.5, 'data-at="4"')}
-            </ol>
-          </div>
-        </div>
-        <div class="right">
-          <div class="sheet commit" data-until="1">
-            <span class="label">git log</span>
-            <p><strong>Webhooks retry a failed delivery</strong></p>
-            <p class="gate"><span class="pill guard-pill">the gate passed</span> <time>2m</time></p>
-          </div>
-          <div class="sheet map" data-at="1" data-until="2">
-            <span class="label">logika map src/webhooks</span>
-            <p class="line"><code>deliver</code> logs <code>webhook.attempt</code></p>
-            <p class="risk"><code>webhooks.retry</code> by <code>attempt</code>, <code>will_retry</code> <span class="pill open-pill" style="--d:.2s">no rule yet</span></p>
-<pre class="code" style="--d:1.2s"><code><span class="t-comment">// logika.json</span>
-{<span class="t-key">"name"</span>: <span class="t-string">"attempt"</span>,
- <span class="t-key">"params"</span>: [<span class="t-string">"attempt"</span>, <span class="t-string">"retryable"</span>, <span class="t-string">"will_retry"</span>],
- <span class="t-key">"risks"</span>: {<span class="t-key">"webhooks.retry"</span>: [<span class="t-string">"attempt"</span>, <span class="t-string">"will_retry"</span>]},
-<span class="add"> <span class="t-key">"validate"</span>: <span class="t-string">"NOT will_retry OR retryable"</span></span>}</code></pre>
-            <p class="guarded" style="--d:2.2s"><span class="pill guard-pill">guarded by validate</span></p>
-          </div>
-          <div class="sheet production" data-at="2" data-until="4">
-            <span class="label">production · webhook.attempt</span>
-            <ol class="events">
-              <li style="--d:.1s"><span>attempt 1</span><span>status 410</span><span>will_retry true</span></li>
-              <li style="--d:.5s"><span>attempt 2</span><span>status 410</span><span>will_retry true</span></li>
-              <li style="--d:.9s"><span>attempt 3</span><span>status 410</span><span>will_retry true</span></li>
-              <li class="broken" style="--d:1.3s"><span>breaks</span><span>NOT will_retry OR retryable</span></li>
-            </ol>
-          </div>
-          <div class="sheet issue" data-at="3">
-            <div class="mail-head"><span class="from">Logika</span><time>4m</time></div>
-            <strong class="subject">webhook.attempt: NOT will_retry OR retryable</strong>
-            <p class="evidence">37 events in production since 14:02: a delivery answered 410 Gone, retried as if it would succeed.</p>
-            <p class="woke" style="--d:.6s"><span class="pill guard-pill">your agent took it</span></p>
-            <div class="reply" data-at="4" style="--d:1.9s"><strong>Re: fixed</strong><p>Retries stop on a permanent failure; the rule holds on replay.</p></div>
-            <a class="more" href="https://logika.host" data-at="4" style="--d:2.4s">See Logika ${ICON.out}</a>
-          </div>
-        </div>
       </div>`,
     },
   };
