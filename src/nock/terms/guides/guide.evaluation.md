@@ -143,7 +143,38 @@ tab opens in a second. An optional `evals/NAME/studio.json` words it:
 }
 ```
 
-Without it a rule means the comment above it in the Snakefile. The tab also
+Without it a rule means the comment above it in the Snakefile.
+
+**The studio's Experiments tab** (`#experiments`) draws the same scenario as an
+experiment: its steps as a tree forking by parameter and by repeat, black boxes
+on a grid, a line per value or per pooled set of values, with each step's time
+and cost. Click a step for what it means, its parameters (the ones that vary
+open to their values, a value narrows to its runs), its runs nested by what
+tells them apart, and its time and cost; expand a run for when it ran and its
+results, then follow it: its trajectory lights up, each step shows its results
+and where it went, an iteration select narrows it, and the address keeps it.
+Click a repeat's line to split it into its iterations. The table above counts
+each measure per variant as total and per-iteration median: `26/36 (13/18
+±2.8)`. Its words are in the same `studio.json`:
+
+```json
+{
+  "question": "Does the toolbox find the planted bug?",
+  "parameters": {"bug": {"about": "…", "pooled": true, "controls": ["none"]}},
+  "rules": {"detect": {"results": [{"name": "alarms", "kind": "list", "file": "alarms.txt"},
+                                   {"name": "stories", "kind": "checks", "metrics": "stories."}],
+                       "score": {"metric": "alarms", "better": "higher"}}},
+  "decisions": [{"after": "detect", "label": "Detected?", "metric": "detected",
+                 "measure": "Bugs detected",
+                 "branches": [{"id": "yes", "equals": true, "verdict": "good"},
+                              {"id": "no", "verdict": "bad"}]}]
+}
+```
+
+A decision reads one metric of a step's outputs and takes the first branch it
+fits; a branch with a verdict ends the trajectory, and each decision with a
+good branch is a row of the table, with the cost per pooled value. Changing a
+decision changes nothing on disk: it is read again on the next look. The tab also
 weighs a dry run with targets and a budget, nothing run. `nock docs eval` has the
 rest, with the practice that keeps an evaluation honest: fix the inputs,
 keep the answers from what is scored, measure the outcome, run enough

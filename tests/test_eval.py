@@ -17,6 +17,7 @@ from typing import Any
 
 import pytest
 
+from nock.evaluation import RUNS
 from nock.project import Project
 from nock.studio import Studio
 
@@ -202,7 +203,9 @@ def test_a_cache_outside_git_holds_the_outputs_and_takes_outputs_imported_into_i
     first = call(project.root, "run")
     assert first["computed"] == OUTPUTS and "commit" not in first["next"]
     assert first["tokens"] == 1200
-    assert len([entry for entry in (outside / "toy").iterdir()]) == OUTPUTS
+    # Every output's entry, beside the dotted log of runs.
+    entries = [entry for entry in (outside / "toy").iterdir() if not entry.name.startswith(".")]
+    assert len(entries) == OUTPUTS and (outside / "toy" / RUNS).is_file()
     assert [entry.name for entry in (toy / "cache").iterdir()] == [".gitkeep"]
     assert query(
         project.root, "SELECT sum(tokens) AS tokens FROM outputs WHERE rule = 'detect'"
@@ -489,7 +492,8 @@ def test_the_studio_explores_the_graph_and_weighs_a_run_without_running_it(
     detect.write_text(detect.read_text() + "\n# a draft\n")
     weighed = post(f"{page}evals/toy/dry", {"budget": 0.5})
     assert weighed["summary"]["to_compute"] >= 12 and "passes the budget" in weighed["refused"]
-    assert len(list((toy / "cache").iterdir())) == OUTPUTS + 1, "a dry run computes nothing"
+    entries = [entry for entry in (toy / "cache").iterdir() if not entry.name.startswith(".")]
+    assert len(entries) == OUTPUTS, "a dry run computes nothing"
 
     asked = {"by": "arm", "metric": "detected", "step": "detect"}
     detect.write_text(detect.read_text().replace("\n# a draft\n", ""))

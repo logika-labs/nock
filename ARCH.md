@@ -127,6 +127,9 @@ src/nock/
                      in .nock/local/evals/ under a fingerprint), Monitor (a run's lock, log and
                      incomplete markers), Reader (each output's facts), Exploration (columns,
                      rows, groups, narrowing, what a change reruns, comparisons in counts)
+  experiments.py     the studio's Experiments tab: Experiment (a scenario as a tree of steps forking
+                     by parameter and repeat, declared decisions under the steps they read, runs,
+                     measures, results read on demand), over the explorer's Graph and facts
   steps.py           Step, what a rule's script wraps itself in: metrics, cost, error, state
   comparison.py      Comparison: a rule's outputs by one parameter, bootstrap intervals, pairing
 
@@ -542,7 +545,7 @@ listed in `TABS`, and a fragment whose script calls
 `studio.register(NAME, {show(route), hide()})`; the studio gives it
 `studio.summary` (the counts under the title) and `studio.toast`. Fragments
 share the page's scripts and styles, so a tab keeps its script in a closure
-and its style under its own class. Two tabs: `TopicsTab`, which serves every
+and its style under its own class. Three tabs: `TopicsTab`, which serves every
 topic with its items and where each chat stands (`topics.chat_state`:
 pending, unseen since `studio.Seen`'s last look, kept in
 `.nock/local/studio/seen.json`), a version's files as they are, the owner's
@@ -558,7 +561,7 @@ time, cancelled by stopping it; `asking.Asker` dispatches the asker seat,
 which answers through `nock topics answer`, held to naming items that
 exist), and `EvalsTab`
 (below), which also answers `POST /evals/NAME/dry` (a `Run`'s dry pass,
-nothing run) and `POST /evals/NAME/compare`.
+nothing run) and `POST /evals/NAME/compare`, and `ExperimentsTab` (below).
 
 The global chat is no tab: `studio.ChatRoutes` answers `/chat/…` for
 `chats.Chats`, and the topics tab's fragment draws it in `#topics-global`,
@@ -625,6 +628,29 @@ touches and everything made from it, estimated by each rule's median cost
 and time. Comparisons are `studio.json`'s `analyses`, counted as x of y, or
 one suggested per rule. Wires join groups through each job's main input; a
 wire that leaps a column, or joins another input, shows on hover.
+
+### The Experiments tab
+
+`ExperimentsTab` builds an `experiments.Experiment` from the same `Explorer`
+(its kept `Graph` and the facts read live), so it costs no second description.
+A job's parent is the job before it sharing the most of its parameter values,
+one with a value it lacks (the clean run a bug's run is read against) passed
+over, the later rule on a tie; a node is its rule under its parent's node,
+split by the values it adds to its trajectory that are neither `pooled` nor the
+`repeat` parameter (`rep` by default), both of which ride on the line into it.
+A result is an output done, stale (`outdated`), failed or running; its times
+are its `cost.json`'s time less its seconds, its dollars `cost.json`'s or its
+metrics' `usd`. `decisions` in `studio.json` add a node under each node of the
+rule they read and a result per output, the first branch its metric takes
+(`equals`, `above`, or none for the rest); a branch with a `verdict` ends the
+trajectory, and a decision with a good branch is a measure, beside the cost per
+pooled value. A run is the outputs ending a trajectory with the same values but
+the repeat's; each result belongs to the earliest run it is part of. Results
+are read only when the page shows them (`POST /experiments/NAME/results`): a
+rule's `results` words name a file and how to show it, or a prefix of its
+metrics shown as checks; without them, its metrics and `diff.patch`. The page
+draws with D3 from cdnjs (as it loads its fonts from Google), its address
+`#experiments/NAME/RUN--ITERATIONS`.
 
 ### Dispatch
 
