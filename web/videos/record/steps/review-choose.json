@@ -1,0 +1,5 @@
+[
+ {"name": "review-options", "hash": "#topics/charge-sweep", "actions": [["click", ".options-card"], ["wait", "1000"]], "boxes": {"star": ".star-toggle >> nth=5"}},
+ {"name": "review-starred", "hash": "#topics/charge-sweep", "actions": [["click", ".options-card"], ["wait", "1000"], ["click", ".star-toggle >> nth=5"], ["wait", "1000"]], "boxes": {"star": ".star-toggle[aria-pressed=true] >> nth=-1"}},
+ {"name": "review-compare", "hash": "#topics/charge-sweep", "actions": [["click", ".preview"], ["wait", "1000"], ["click", "[data-compare]"], ["wait", "1200"]], "boxes": {"compare": "[data-compare]"}}
+]

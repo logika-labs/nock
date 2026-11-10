@@ -1,0 +1,23 @@
+/* The site's faces and tokens (web/site/style.css), so the videos look like nock.dev. */
+@font-face { font-family: "Geist"; font-weight: 100 900; src: url("../../site/fonts/geist-latin-wght-normal.woff2") format("woff2"); }
+@font-face { font-family: "Unbounded"; font-weight: 200 900; src: url("../../site/fonts/unbounded-latin-wght-normal.woff2") format("woff2"); }
+@font-face { font-family: "IBM Plex Mono"; font-weight: 400; src: url("../../site/fonts/ibm-plex-mono-latin-400-normal.woff2") format("woff2"); }
+@font-face { font-family: "IBM Plex Mono"; font-weight: 500; src: url("../../site/fonts/ibm-plex-mono-latin-500-normal.woff2") format("woff2"); }
+@font-face { font-family: "IBM Plex Mono"; font-weight: 600; src: url("../../site/fonts/ibm-plex-mono-latin-600-normal.woff2") format("woff2"); }
+
+:root {
+  --foreground: #111116;
+  --muted: #474756;
+  --terminal: #15131d;
+  --pink: #ff9ad5;
+  --cyan: #8fe9ff;
+  --yellow: #ffe27a;
+  --lavender: #b9a6ff;
+  --mint: #b8f5d0;
+  --peach: #ffc4a3;
+  --sans: "Geist", ui-sans-serif, system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, monospace;
+  --display: "Unbounded", "Geist", sans-serif;
+}
+
+body { margin: 0; font-family: var(--sans); color: var(--foreground); -webkit-font-smoothing: antialiased; }

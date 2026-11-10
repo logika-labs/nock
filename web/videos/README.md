@@ -1,0 +1,69 @@
+# nock.dev's videos
+
+Two minutes on the landing page, each from one of the owner's scripts beside this file:
+`reflection.md` ("Your agents build the tools they need") and `review.md` ("You decide, when it
+suits you"). Captions only, burned in and also served as WebVTT; no voiceover.
+
+Nothing is faked that claims to be a real interface. The terminal is real Claude Code sessions in a
+sample repository, recorded with [VHS](https://github.com/charmbracelet/vhs); the studio is the real
+`nock studio` on that repository, driven by Playwright and taken as 2x stills. Remotion composes them
+on the site's look: the field, the cards, the captions, the end card. A scene the script asks for that
+cannot be filmed as one take (three sessions side by side) is composed from separate real recordings,
+sped up, with the speed on each card.
+
+| Path | Is |
+|---|---|
+| `src/` | the compositions (`reflection.tsx`, `review.tsx`, `parts.tsx`) and `captions.json`, each beat's time and words, which the videos burn in and `scripts/finish.mjs` writes as WebVTT |
+| `record/session.py` | records one Claude Code session: tmux runs `claude` in the sample repository, VHS attaches and records, the script types the prompts and waits for each turn to end (the repository's Stop hook marks it) |
+| `record/shots.py`, `record/steps/` | the studio's stills: each step opens a page, clicks and types as the owner would, and saves the viewport and the boxes of what it names |
+| `record/prepare.py` | `public/data/NAME.json`, what a composition shows: its recordings and their lengths, its stills and where to look in them, and for the reflection video the sample's own telemetry and the tool its round wrote |
+| `scripts/finish.mjs` | renders, then writes `../site/videos/NAME.{mp4,webm,jpg,vtt}`, each video under 10 MB |
+
+`public/` (the recordings, stills and data) and `out/` (the masters) are made, not committed. The
+results in `web/site/videos/` are committed: they are what the site serves.
+
+## Making them again
+
+Remotion is free for individuals and companies of up to three people; past that it needs a company
+licence (Logika's `marketing-videos` topic has the decision).
+
+1. **The sample repository**, `~/demo/tally`: a small billing package (charges, refunds, invoices,
+   the nightly sweep) with about a hundred pytest tests and `web/` (a charges page, three badge
+   variants, `web/shoot.py`), with nock initialised from this checkout
+   (`uv run --project PATH/TO/nock nock init`), `.nock/config.toml` with `permissions.confirm = "allow"`,
+   `share = false` and `[checks.test] command = "pytest -q"`, a `.venv` with pytest and playwright,
+   and a gitignored `.claude/settings.local.json` that allows Bash, Edit and Write and adds a Stop
+   hook, `date +%s >> "$HOME/demo/marks/stop"`, which `record/session.py` waits on. Commits are by a
+   made-up author (`git config user.name`), so no real name shows.
+2. **The reflection video's sessions**: commit a small break, record a session that finds it, reset;
+   five times, each with its own break (refunds `>` for `>=`, rounding half up, an invoice line
+   counted at least once, the sweep's cool-off `>`, ...): `s1` at 1680x860, `s2`–`s4` at 1120x1400 for
+   the side-by-side, prompts asking which test fails and why, from pytest's output with tail and grep,
+   without changing code. Then `/nock-reflect` (`round`, `"until_files":
+   [".nock/reflections/DATE/record.json"]`, so the recording waits for the round's background parts),
+   then a break and a plain "which test fails, and why?" (`s5`), which the round's new `failures`
+   answers. Each spec is `{"repository", "width", "height", "font_size": 20, "framerate", "prompts"}`:
+   `python3 record/session.py SPEC.json public/clips/NAME.mp4`.
+3. **The review video**: `v1`, "The nightly sweep requeues charges that are still retrying. Fix it.
+   I'm away until tomorrow, so make the calls yourself; put your work under a topic named
+   charge-sweep."; then the items the topic fills with (`.nock/nock items create`: the retry email as
+   text, the charges page shot, the Retry now video, the three badges as options; the email's second
+   version); then the studio (`.nock/nock studio '{"port": 8790}'`, never the owner's on 8765) and
+   `uv run --no-project --with playwright python record/shots.py http://127.0.0.1:8790/
+   record/steps/FILE.json` for each steps file in the order the video tells it: list and open (on a
+   clone of the repository at the commit with only the decision), the three fills (clones at each
+   item's commit, since the studio reads what is committed), choose, comment, comment2, addressing
+   (Address my comments runs the real addresser), reply (the owner picks the addresser's option 1
+   and addresses again; the addresser may not run the shot's recipe, so its v2 is made by running the
+   recipe and `items update --version`), answers, verdicts, done (after
+   `.nock/nock topics update charge-sweep '{"state": "done"}'`). Last, `v7`: "Customers say some
+   charges sit in retrying for days. Change the sweep so it requeues a charge that has been retrying
+   for more than a day.", which consults nock and meets the accepted decision.
+4. **The later round's cards**: three decision items in a `toolbox` topic (a new `coverage`, `seed`
+   retired, `failures --since main`), each with what it expects by the next round, then
+   `record/steps/round-cards.json`. A real round writes its changes to its report and `record.json`,
+   not to Work; the script asks for them in Work, so these are staged.
+5. `python3 record/prepare.py reflection ~/demo/tally`, `python3 record/prepare.py review ~/demo/tally`,
+   `pnpm install`, `pnpm finish`; then `python3 web/build.py` at the repository's root.
+
+`pnpm studio` previews a composition; `pnpm still reflection out/f.png --frame=N` checks one frame.

@@ -14,3 +14,6 @@ web/site/llms-full.txt
 web/pages/
 server/build/
 web/build/
+# The videos' renders: made by web/videos (`pnpm finish`), kept out of git until the owner says where they live.
+web/site/videos/*.mp4
+web/site/videos/*.webm

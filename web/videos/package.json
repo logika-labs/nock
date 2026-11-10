@@ -1,0 +1,26 @@
+{
+  "name": "nock-videos",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "studio": "remotion studio",
+    "still": "remotion still",
+    "render": "remotion render",
+    "shots": "node record/shots.mjs",
+    "finish": "node scripts/finish.mjs",
+    "typecheck": "tsc --noEmit -p ."
+  },
+  "dependencies": {
+    "@remotion/cli": "4.0.537",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
+    "remotion": "4.0.537"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.63.0",
+    "@types/node": "^26.1.1",
+    "@types/react": "^19.2.17",
+    "typescript": "^5.9.3"
+  }
+}

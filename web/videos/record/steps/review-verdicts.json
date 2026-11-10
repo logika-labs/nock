@@ -1,0 +1,6 @@
+[
+ {"name": "review-accept-before", "hash": "#topics/charge-sweep", "actions": [["click", ".item-bubble.decision .title"], ["wait", "900"]], "boxes": {"accept": ".item-bubble.decision [data-verdict-choice=accepted]"}},
+ {"name": "review-accepted", "hash": "#topics/charge-sweep", "actions": [["click", ".item-bubble.decision .title"], ["wait", "900"], ["click", ".item-bubble.decision [data-verdict-choice=accepted]"], ["wait", "1500"]], "boxes": {"mark": ".item-bubble.decision .verdict-mark"}},
+ {"name": "review-reject-before", "hash": "#topics/charge-sweep", "actions": [["click", ".options-card"], ["wait", "1000"]], "boxes": {"reject": "#topics-modal [data-verdict-choice=rejected]"}},
+ {"name": "review-rejected", "hash": "#topics/charge-sweep", "actions": [["click", ".options-card"], ["wait", "1000"], ["click", "#topics-modal [data-verdict-choice=rejected]"], ["wait", "1200"], ["key", "Escape"], ["wait", "800"]], "boxes": {"card": ".options-card"}}
+]

@@ -300,7 +300,10 @@ tonight; nothing changes until then.</pre></span></div></section>
         button.tabIndex = chosen ? 0 : -1;
         if (chosen && focus) button.focus();
       }
-      for (const panel of panels) panel.hidden = panel.dataset.panel !== name;
+      for (const panel of panels) {
+        panel.hidden = panel.dataset.panel !== name;
+        if (panel.hidden) for (const video of panel.querySelectorAll("video")) video.pause();
+      }
       stage.show(name, 0);
     };
     group.addEventListener("click", event => {
@@ -319,6 +322,8 @@ tonight; nothing changes until then.</pre></span></div></section>
       choose(buttons[(index + move + buttons.length) % buttons.length].dataset.tab, true);
     });
     stage.root.addEventListener("click", () => { held = true; }, { capture: true });
+    // A tab's film playing holds the tabs where they are, so it is never hidden mid-play.
+    for (const panel of panels) panel.addEventListener("play", () => { held = true; }, { capture: true });
     stage.ended = scene => {
       if (held) return;
       const next = buttons[(buttons.findIndex(button => button.dataset.tab === scene) + 1) % buttons.length];

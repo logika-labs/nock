@@ -1,0 +1,29 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:06.000
+Every session, your agent starts from zero.
+
+2
+00:00:06.000 --> 00:00:14.000
+It repeats the same work, figuring out how to do it from scratch every time.
+
+3
+00:00:14.000 --> 00:00:22.000
+So nock records, on your machine, what every session did…
+
+4
+00:00:22.000 --> 00:00:36.000
+…and every once in a while, you send your agent to reflect on this history and write the tools it was missing.
+
+5
+00:00:36.000 --> 00:00:44.000
+The next sessions use it, so five calls become one…
+
+6
+00:00:44.000 --> 00:00:56.000
+…and future reflection rounds keep calibrating the toolbox: adding what's missing, retiring what's unused, sharpening what's there.
+
+7
+00:00:56.000 --> 00:01:00.000
+Agents that get better at your project, every week.

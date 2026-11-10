@@ -1,0 +1,4 @@
+[
+ {"name": "review-commented", "hash": "#topics/charge-sweep", "actions": [["click", "[data-view='charge-sweep/the-charges-page-with-charges-retrying']"], ["wait", "1000"], ["click", "[role=dialog] .chat-toggle, .viewer .chat-toggle"], ["wait", "800"], ["click", "textarea[data-draft^='reply:charge-sweep/the-charges-page']"], ["type", "The retrying rows should say when the next try is, like the badge I starred."], ["key", "Enter"], ["wait", "1500"]], "boxes": {"box": "textarea[data-draft^='reply:charge-sweep/the-charges-page']"}},
+ {"name": "review-address", "hash": "#topics/charge-sweep", "actions": [["click", "#chat-button"], ["wait", "1200"]], "boxes": {"address": "[data-global=address]"}}
+]

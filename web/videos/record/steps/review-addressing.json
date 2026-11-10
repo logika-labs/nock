@@ -1,0 +1,1 @@
+[{"name": "review-addressing", "hash": "#topics/charge-sweep", "actions": [["click", "#chat-button"], ["wait", "1000"], ["click", "[data-global=address]"], ["wait", "9000"]], "boxes": {}}]
