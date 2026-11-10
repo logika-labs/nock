@@ -151,7 +151,8 @@ SEATS = {
     # the project's files — through nock's commands and Claude Code's edits
     # inside the project, and checks it with the project's own gate. It
     # gives no verdict (the owner's), commits no code (the owner looks
-    # first) and runs nothing else.
+    # first) and runs nothing else but an item's own recipe, which makes a
+    # derived file again (`items remake`, its alone: never a recipe it wrote).
     "addresser": Seat(
         (*READING, "Edit", "Write"),
         (
@@ -161,6 +162,7 @@ SEATS = {
             nock("items list"),
             nock("items show"),
             nock("items update"),
+            nock("items remake"),
             nock("docs"),
             nock("check"),
             nock("test"),

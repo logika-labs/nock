@@ -7,6 +7,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import sys
 import threading
 from datetime import UTC, datetime, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -209,6 +210,21 @@ RECORD = {
 }
 
 
+def test_a_command_that_ran_and_failed_is_not_nock_refusing(project: Project) -> None:
+    python = sys.executable
+    assert nock(project.root, "run", "--", python, "-c", "exit(1)").returncode == 1
+    # pytest's own usage error, or any code a wrapped command exits with, is its answer.
+    assert nock(project.root, "run", "--", python, "-c", "exit(42)").returncode == 42
+    assert nock(project.root, "calls", "--bogus").returncode == 40
+    assert finish(project, RECORD).returncode == 42
+    reflection = Reflection(project)
+    metrics = reflection.metrics(reflection.window())
+    assert (metrics["nock_failed"], metrics["nock_refused"], metrics["nock_broke"]) == (2, 2, 0)
+    stats = {row["tool"]: row for row in json.loads(nock(project.root, "stats", "--json").stdout)}
+    assert (stats["run"]["failed"], stats["run"]["refused"]) == (2, 0)
+    assert (stats["calls"]["failed"], stats["calls"]["refused"]) == (0, 1)
+
+
 def test_a_round_finishes_with_its_report_its_summary_and_its_numbers(project: Project) -> None:
     for _ in range(2):
         nock(project.root, "calls", "--limit", "1")
@@ -247,6 +263,26 @@ def test_a_round_finishes_with_its_report_its_summary_and_its_numbers(project: P
     assert "# The last round" in process and "expected calls stays under 1k" in process
     nock_material = (project.root / again["material"]["nock"]).read_text()
     assert f"| {started['round']} | this window |" in nock_material
+
+
+def test_a_second_start_picks_up_the_open_round_and_rewrites_nothing(
+    project: Project, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "s1")
+    first = json.loads(nock(project.root, "reflect", "--json").stdout)
+    process = project.root / first["material"]["process"]
+    process.write_text("the material as the first start wrote it\n")
+    kept = project.local / "reflections" / first["round"] / "round.json"
+    begun = json.loads(kept.read_text())
+    for _ in range(3):
+        nock(project.root, "calls", "--limit", "1")
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "s2")
+    second = json.loads(nock(project.root, "reflect", "--json").stdout)
+    assert second["round"] == first["round"] and second["material"] == first["material"]
+    assert f"the round {first['round']}, started {begun['started']}" in second["picked_up"]
+    assert process.read_text() == "the material as the first start wrote it\n"
+    again = json.loads(kept.read_text())
+    assert again["metrics"] == begun["metrics"] and again["sessions"] == ["s1", "s2"]
 
 
 def test_a_summary_is_vetted_and_shared_only_when_sent(
@@ -373,6 +409,39 @@ def test_a_session_cannot_end_its_turn_with_the_round_it_started_open(
     (project.root / ".nock" / "topics" / "map.md").write_text("# The map\n")
     assert finish(project, RECORD).returncode == 0
     assert stop("s1") is None
+
+
+def test_the_stop_waits_with_a_round_s_lead_while_its_parts_run_in_the_background(
+    project: Project, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "s1")
+    assert nock(project.root, "reflect").returncode == 0
+    path = project.root / "s1.jsonl"
+
+    def launched(agent: str) -> dict[str, object]:
+        text = f"Async agent launched successfully.\nagentId: {agent} (internal ID)\n"
+        result = {
+            "type": "tool_result",
+            "tool_use_id": agent,
+            "content": [{"type": "text", "text": text}],
+        }
+        return {"type": "user", "message": {"role": "user", "content": [result]}}
+
+    def notified(agent: str) -> dict[str, object]:
+        text = f"<task-notification>\n<task-id>{agent}</task-id>\n<status>completed</status>\n"
+        return {"type": "user", "message": {"role": "user", "content": text}}
+
+    def stop(*records: dict[str, object]) -> dict[str, object] | None:
+        path.write_text("".join(json.dumps(record) + "\n" for record in records))
+        payload = {"session_id": "s1", "transcript_path": str(path), "stop_hook_active": False}
+        return HookRunner(project, payload).handle("Stop")
+
+    parts = [launched(agent) for agent in ("toolbox", "map", "nock")]
+    assert stop(*parts) is None
+    assert stop(*parts, notified("map"), notified("nock")) is None
+    refused = stop(*parts, notified("map"), notified("nock"), notified("toolbox"))
+    assert refused is not None and refused["decision"] == "block"
+    assert "is under way and not finished" in str(refused["reason"])
 
 
 def test_reflect_starts_the_default_kind_and_names_the_others(project: Project) -> None:

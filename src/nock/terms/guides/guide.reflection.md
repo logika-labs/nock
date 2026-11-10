@@ -93,7 +93,9 @@ first, the session start says so, to the agent and to you. The round is the
 other:
 
 1. **`nock reflect`** starts it, named by its date, and writes what its parts
-   will read into `.nock/local/reflections/DATE/`.
+   will read into `.nock/local/reflections/DATE/`. Run again while the round
+   is open, it picks that round up and rewrites nothing; a round started
+   after one finished the same day is `DATE-2`.
 2. **Three subagents** run at once:
    - **the toolbox** reads the work and the telemetry: what you asked for,
      where the code is going, each tool's calls and failures, the commands
@@ -118,7 +120,8 @@ other:
 
 A session that started a round can't end its turn while the round is open:
 nock refuses the stop once, naming what is still missing, and lets the next
-stop through.
+stop through. A turn that ends only to wait on the round's parts, running in
+the background, isn't refused: nock asks once they are back.
 
 The toolbox part starts from the big picture, not just the numbers. A command
 that would save three calls a week on a path the project is leaving isn't worth

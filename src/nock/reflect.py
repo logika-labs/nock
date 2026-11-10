@@ -23,6 +23,7 @@ import statistics
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from enum import StrEnum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, NotRequired, TypedDict
 
@@ -56,6 +57,36 @@ ROUND_CHECKS = ("nock-tools", "nock-generators", "nock-map", "nock-share")
 QUICK_CHECKS = ("nock-map", "nock-share")
 ROUND_FILE = "round.json"
 RECORD_FILE = "record.json"
+# The window's calls, each marked `wrapped` when its exit code is the one a
+# command it supervised (`nock run -- pytest`, a tool's `sh`) exited with — not
+# one nock gave it for a run it could not start or killed, which has a note.
+CALLS = """
+SELECT calls.*, EXISTS (
+    SELECT 1 FROM runs WHERE runs.call = calls.id AND runs.exit_code = calls.exit_code
+    AND NOT (runs.exit_code BETWEEN 40 AND 59 AND runs.note IS NOT NULL)
+) AS wrapped FROM calls WHERE started > ? ORDER BY id
+"""
+
+
+class Ending(StrEnum):
+    """How a nock call ended, by the exit-code taxonomy: the tool ran and its
+    answer was no (exit 1, or a supervised command's own failing code) is not
+    nock refusing the call (40s: called wrong, a precondition, policy), nor
+    nock breaking (50s)."""
+
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+    REFUSED = "refused"
+    BROKE = "broke"
+
+    @classmethod
+    def of(cls, call: dict[str, Any]) -> Ending:
+        code = call["exit_code"] or 0
+        if code == 0:
+            return cls.SUCCEEDED
+        if call.get("wrapped") or not 40 <= code < 126:
+            return cls.FAILED
+        return cls.REFUSED if code < 50 else cls.BROKE
 
 
 class Change(TypedDict):
@@ -332,36 +363,52 @@ class Round:
         return {}
 
     def start(self) -> dict[str, Any]:
-        """Start a round — or pick up the one started and not finished — and
-        write what it reads."""
+        """Start a round — or pick up the one started and not finished, its
+        material and start left as they were written, so a second start
+        overwrites nothing; another round the same day is `DATE-2`."""
         problem = self.unavailable()
         if problem:
             raise PreconditionError(problem)
-        name = self.rounds.current() or self.rounds.new_name()
-        scratch = self.rounds.scratch / name
+        name = self.rounds.current()
+        scratch = self.rounds.scratch / (name or self.rounds.new_name())
+        kept = scratch / ROUND_FILE
+        session = self.project.current_session()
+        if name is not None and kept.is_file():
+            started = read_json(kept)
+            if session and session not in started.get("sessions", []):
+                write_json(kept, {**started, "sessions": [*started.get("sessions", []), session]})
+            material = started.get("material") or {
+                path.stem: str(path) for path in sorted(scratch.glob("*.md"))
+            }
+            return {
+                **self.started(scratch.name, started["since"], material),
+                "picked_up": f"the round {scratch.name}, started {started['started']} and not "
+                "finished; its material stands as written then",
+            }
+        name = scratch.name
         scratch.mkdir(parents=True, exist_ok=True)
         begun = self.begin(name, scratch)
-        kept = scratch / ROUND_FILE
-        sessions = read_json(kept).get("sessions", []) if kept.is_file() else []
-        session = self.project.current_session()
-        if session and session not in sessions:
-            sessions.append(session)
         write_json(
             kept,
             {
                 "round": name,
                 "since": begun["since"],
                 "started": now(),
-                "sessions": sessions,
+                "sessions": [session] if session else [],
+                "material": begun["material"],
                 **begun["kept"],
             },
         )
         (self.rounds.directory / name).mkdir(parents=True, exist_ok=True)
+        return self.started(name, begun["since"], begun["material"])
+
+    def started(self, name: str, since: str | None, material: dict[str, str]) -> dict[str, Any]:
+        """What `nock reflect` answers of a round under way."""
         return {
             "round": name,
-            "since": begun["since"],
+            "since": since,
             # On the main checkout, wherever the round runs.
-            "material": begun["material"],
+            "material": material,
             "write": [
                 str((self.rounds.directory / name / file).relative_to(self.project.here))
                 for file in self.files
@@ -533,8 +580,8 @@ class Reflection(Round):
         events = window.rows(self.project, "events", "rowid")
         prompts = window.rows(self.project, "prompts", "rowid")
         cost, unpriced = window.spend()
-        calls = self.project.store.rows("SELECT exit_code FROM calls WHERE started > ?", (since,))
-        codes = Counter(row["exit_code"] for row in calls)
+        calls = self.project.store.rows(CALLS, (since,))
+        endings = Counter(Ending.of(row) for row in calls)
         topics = Topics(self.project)
         every = topics.every()
         submitted = [item for item in every if item["created"]["moment"] > since]
@@ -566,9 +613,9 @@ class Reflection(Round):
             "unpriced_sessions": unpriced,
             "commits": commits,
             "nock_calls": len(calls),
-            "nock_said_no": codes.get(1, 0),
-            "nock_called_wrong": sum(n for code, n in codes.items() if code and 40 <= code < 50),
-            "nock_broke": sum(n for code, n in codes.items() if code and code >= 50),
+            "nock_failed": endings[Ending.FAILED],
+            "nock_refused": endings[Ending.REFUSED],
+            "nock_broke": endings[Ending.BROKE],
             "consultations": sum(
                 1
                 for row in self.project.store.rows(
@@ -616,7 +663,7 @@ def feedback(project: Project, since: str | None) -> list[str]:
 def tool_rows(project: Project, since: str | None) -> list[dict[str, Any]]:
     """Per command over the window: calls, failures by kind, sessions, duration,
     how much it printed, how often it was capped or cached."""
-    rows = project.store.rows("SELECT * FROM calls WHERE started > ? ORDER BY id", (since or "",))
+    rows = project.store.rows(CALLS, (since or "",))
     known = {tool.command.path: tool for tool in project.registry.tools}
     grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for row in rows:
@@ -628,6 +675,7 @@ def tool_rows(project: Project, since: str | None) -> list[dict[str, Any]]:
         durations = [row["duration"] for row in calls if row["duration"] is not None]
         printed = [row["output_bytes"] or 0 for row in calls]
         codes = Counter(row["exit_code"] for row in calls)
+        endings = Counter(Ending.of(row) for row in calls)
         result.append(
             {
                 "tool": path,
@@ -636,13 +684,9 @@ def tool_rows(project: Project, since: str | None) -> list[dict[str, Any]]:
                 "calls": len(calls),
                 "sessions": len({row["session"] for row in calls if row["session"]}),
                 "failures": sum(count for code, count in codes.items() if code not in (0, None)),
-                "said_no": codes.get(1, 0),
-                "usage_errors": sum(
-                    count for code, count in codes.items() if code and 40 <= code < 50
-                ),
-                "machine_errors": sum(
-                    count for code, count in codes.items() if code and code >= 50
-                ),
+                "failed": endings[Ending.FAILED],
+                "refused": endings[Ending.REFUSED],
+                "broke": endings[Ending.BROKE],
                 "median_seconds": round(statistics.median(durations), 2) if durations else None,
                 "max_seconds": round(max(durations), 2) if durations else None,
                 "mean_bytes": round(sum(printed) / len(printed)) if printed else None,
@@ -667,9 +711,7 @@ class Material:
         self.since = window.since or ""
         self.events = window.rows(project, "events", "session, moment")
         self.prompts = window.rows(project, "prompts", "moment")
-        self.calls = project.store.rows(
-            "SELECT * FROM calls WHERE started > ? ORDER BY id", (self.since,)
-        )
+        self.calls = project.store.rows(CALLS, (self.since,))
 
     def render(self) -> str:
         sections = [
@@ -791,11 +833,12 @@ class Material:
         lines = [
             "# The toolbox",
             "",
-            "Per command over the window (nock's own only when used). said_no is exit 1, "
-            "usage_errors 40s (called wrong), machine_errors 50s (broke); capped is how often it "
-            "printed less than it had.",
+            "Per command over the window (nock's own only when used). failed: it ran and its "
+            "answer was no (exit 1, or the code of a command it ran, as `run -- pytest` passes "
+            "pytest's on), never nock refusing; refused: nock refused the call (40s: called wrong, "
+            "a precondition, policy); broke: 50s; capped is how often it printed less than it had.",
             "",
-            "tool,source,calls,sessions,said_no,usage_errors,machine_errors,median_seconds,max_seconds,mean_bytes,capped,cached,last_used",
+            "tool,source,calls,sessions,failed,refused,broke,median_seconds,max_seconds,mean_bytes,capped,cached,last_used",
         ]
         shown = [row for row in rows if row["calls"] or row["source"] != "nock"]
         for row in sorted(shown, key=lambda row: (row["source"] == "nock", -row["calls"])):
@@ -807,9 +850,9 @@ class Material:
                         row["source"],
                         row["calls"],
                         row["sessions"],
-                        row["said_no"],
-                        row["usage_errors"],
-                        row["machine_errors"],
+                        row["failed"],
+                        row["refused"],
+                        row["broke"],
                         row["median_seconds"],
                         row["max_seconds"],
                         row["mean_bytes"],
@@ -844,12 +887,12 @@ class Material:
         wrong: Counter[tuple[str, str]] = Counter()
         crashed: Counter[tuple[str, str]] = Counter()
         for row in self.calls:
-            code = row["exit_code"] or 0
+            ending = Ending.of(row)
             if row["tool"] not in known:
                 unknown[row["tool"]] += 1
-            elif 40 <= code < 50 and row["error"]:
+            elif ending == Ending.REFUSED and row["error"]:
                 wrong[(row["tool"], row["error"][:160])] += 1
-            elif code >= 50 and row["error"]:
+            elif ending == Ending.BROKE and row["error"]:
                 crashed[(row["tool"], row["error"][:160])] += 1
         if not (unknown or wrong or crashed):
             return ""
@@ -1102,8 +1145,10 @@ session that began before it; `headless_sessions`, the `claude -p` runs nock
 did not dispatch, kept out of everything else; tokens, in all and by kind, of
 the sessions; `api_cost`, what they would cost at API prices (a subscription
 does not pay per token), over the priced ones, and `unpriced_sessions`; commits. `nock_*`: calls
-to nock, and how many said no (exit 1), were called wrong (40s) or broke
-(50s); `consultations` answered. `topics`: how many there are. `items_*`:
+to nock, and how many `failed` (the tool ran and its answer was no: exit 1, or
+the failing code of a command it ran, such as pytest's under `run` — never
+nock refusing), were `refused` by nock (40s: called wrong, a precondition,
+policy) or `broke` (50s); `consultations` answered. `topics`: how many there are. `items_*`:
 submitted in the window (and how many hold a decision), decided by the owner
 in it (accepted, rejected), and every one still open. `tools`: the project's
 own commands, how many were used, and how often. `map_*`: the map's length
