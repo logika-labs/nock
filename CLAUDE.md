@@ -7,7 +7,7 @@ telemetry of every call and session (`store.py`, `telemetry.py`,
 items holding decisions, project files and derived files, with the owner's
 verdicts and the threads (`topics.py`, moved in from an earlier nock's
 decisions and review by `migration.py`; the owner's page in `studio.py`, its
-Ask in `asking.py`), consultation (`consult.py`), and
+Ask in `asking.py`, telling the owner it is their turn in `notify.py`), consultation (`consult.py`), and
 reflection rounds that turn it all into better tools, a map of the
 topics and an account of how nock is doing (`reflect.py`, `share.py`,
 the `/nock-reflect` skill in `briefs/nock-reflect/`; in a Logika project, the

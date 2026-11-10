@@ -155,6 +155,10 @@ body:has(#restart:not([hidden])) #toast { bottom: calc(84px + env(safe-area-inse
 .toast.restart button:disabled { color: rgb(255 255 255 / .45); text-decoration: none; cursor: default; }
 .toast.restart button:focus-visible { outline: 2px solid #fff; outline-offset: 2px; border-radius: 2px; }
 
+/* A topic that is the owner's turn again, while the page is in front of them: a link to it. */
+.toast.cue a { color: #8fe9ff; font-weight: 600; text-underline-offset: 3px; }
+body:has(#cue:not([hidden])) #restart { bottom: calc(84px + env(safe-area-inset-bottom, 0px)); }
+
 /* A tab away that holds something shown on every tab: nothing of it shows or takes room but that. */
 [data-tab-panel][data-away] { height: 0; overflow: hidden; visibility: hidden; }
 [data-tab-panel][data-away] [data-everywhere] { visibility: visible; }
@@ -421,6 +425,7 @@ function morphElement(element, next) {
 <!-- nock:panels -->
 </div>
 <div class="toast" id="toast" role="status"></div>
+<div class="toast restart cue shown" id="cue" role="status" hidden><a href="#topics"></a> <button type="button" aria-label="Dismiss">Dismiss</button></div>
 <div class="toast restart shown" id="restart" role="status" hidden><span>nock was updated since this studio started.</span> <button type="button">Restart</button><span class="busy"></span></div>
 <script>
 // The owner's answer to whether nock shares its usage report: asked under the title until
@@ -507,6 +512,65 @@ const restart = {
 restart.toast.querySelector("button").addEventListener("click", () => restart.go());
 restart.check();
 setInterval(() => { if (!document.hidden) restart.check(); }, 5000);
+// When a topic is the owner's turn again (nock.notify), the page polls for it, saying how it is
+// watched: in front of the owner it shows a cue; away, with the browser's notifications allowed, a
+// notification whose click brings the topic up; away without them, nock tells the desktop instead.
+// The browser is asked for permission only from the control in the settings, never on load.
+const alerts = {
+  control: document.getElementById("alerts"),
+  cue: document.getElementById("cue"),
+  latest: null,
+  supported: "Notification" in window,
+  seen() {
+    if (!document.hidden && document.hasFocus()) return "focused";
+    return this.supported && Notification.permission === "granted" ? "notifying" : "unwatched";
+  },
+  draw() {
+    if (!this.control?.hasAttribute("data-enabled")) return;
+    const permission = this.supported ? Notification.permission : "unsupported";
+    document.getElementById("alerts-state").textContent = { granted: "On", denied: "Blocked", unsupported: "Unavailable" }[permission] ?? "Off";
+    document.getElementById("alerts-allow").hidden = permission !== "default";
+  },
+  async allow() {
+    if (!this.supported) return;
+    await Notification.requestPermission();
+    this.draw();
+    studio.toast(Notification.permission === "granted" ? "This browser tells you when a topic is your turn" : "The browser will not show nock's notifications");
+  },
+  show(told) {
+    if (this.seen() === "focused") {
+      const link = this.cue.querySelector("a");
+      link.textContent = told.text;
+      link.setAttribute("href", told.address);
+      this.cue.hidden = false;
+      clearTimeout(this.timer);
+      this.timer = setTimeout(() => { this.cue.hidden = true; }, 15000);
+      return;
+    }
+    if (told.shown !== "studio" || !this.supported || Notification.permission !== "granted") return;
+    const shown = new Notification("nock", { body: told.text, tag: `nock-${told.topic}` });
+    shown.onclick = () => { focus(); location.hash = told.address; shown.close(); };
+  },
+  async poll() {
+    if (!this.control?.hasAttribute("data-enabled")) return;
+    let answer;
+    try {
+      const after = this.latest === null ? "" : `after=${this.latest}&`;
+      answer = await (await fetch(`/notifications?${after}seen=${this.seen()}`)).json();
+    } catch { return; }
+    if (this.latest !== null) for (const told of answer.notifications) this.show(told);
+    this.latest = answer.latest;
+  },
+};
+document.getElementById("alerts-allow")?.addEventListener("click", () => alerts.allow());
+alerts.cue.querySelector("a").addEventListener("click", () => { alerts.cue.hidden = true; });
+alerts.cue.querySelector("button").addEventListener("click", () => { alerts.cue.hidden = true; });
+alerts.draw();
+alerts.poll();
+// Hidden, it still polls: an away page is where a browser notification comes from.
+setInterval(() => alerts.poll(), 5000);
+for (const kind of ["focus", "blur"]) addEventListener(kind, () => alerts.poll());
+document.addEventListener("visibilitychange", () => alerts.poll());
 // The studio keeps each tab's place itself; the browser restoring one as well would jump. A link
 // within the studio changes the address without the browser's own jump to the fragment (to the
 // top, as no element is named so), and Back and Forward still step through what was opened.

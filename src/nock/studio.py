@@ -10,7 +10,8 @@ its routes on the server (`/NAME/…`); its page is the fragment
 `pages/NAME.html` (markup, style and a script that registers it with the
 studio, `pages/studio.html`, whose look is `pages/studio.css`). While nobody has answered whether nock shares
 its usage report, the page asks under the title; the settings in the menu
-change the answer later; `POST /usage` records either."""
+change the answer later; `POST /usage` records either. The page polls
+`/notifications` to tell the owner when a topic is their turn (`nock.notify`)."""
 
 from __future__ import annotations
 
@@ -41,6 +42,7 @@ from nock.errors import ConflictError, Error, NotFoundError, PreconditionError, 
 from nock.evaluation import Evaluations
 from nock.experiments import Experiment
 from nock.explorer import Explorer, Wording
+from nock.notify import Notifications, Watching
 from nock.project import Project
 from nock.schema import validate
 from nock.topics import (
@@ -712,6 +714,8 @@ class Studio(ThreadingHTTPServer):
         # Tells one run of the studio from the next, which a restart keeps in the same process.
         self.instance = secrets.token_hex(8)
         self.restarting = False
+        self.notifications = Notifications(project)
+        self.notifications.started(self.address)
 
     def standing(self) -> dict[str, Any]:
         """`GET /restart`: whether the code changed since the studio started,
@@ -734,6 +738,19 @@ class Studio(ThreadingHTTPServer):
         self.restarting = True
         # Not from the handler's own thread: shutdown waits for the serving loop.
         threading.Thread(target=self.shutdown, daemon=True).start()
+
+    def notified(self, query: str) -> dict[str, Any]:
+        """`GET /notifications?after=ID&seen=SEEN`: the page's poll, saying how
+        it is watched (`Watching`, which decides whether a notification goes to it
+        or to the desktop), answered with what was notified after ID."""
+        asked = urllib.parse.parse_qs(query)
+        try:
+            seen = Watching(asked.get("seen", [""])[0])
+        except ValueError:
+            seen = Watching.UNWATCHED
+        self.notifications.watched(seen)
+        after = asked.get("after", [""])[0]
+        return self.notifications.since(int(after) if after.isdigit() else None)
 
     def question(self) -> str:
         """Under the title while nobody has answered: a slim line asking, with
@@ -772,9 +789,30 @@ class Studio(ThreadingHTTPServer):
             '          <p class="hint">Weekly at most, counts and categories only: never code,'
             " paths, names or what items say.</p>\n"
             f"          <details><summary>What it holds</summary><p>{html.escape(QUESTION)}</p></details>\n"
+            f"{self.alerts()}"
             f"{self.transcription()}"
             "        </div>\n"
             "      </div>"
+        )
+
+    def alerts(self) -> str:
+        """Whether this browser shows nock's notifications while the page is
+        away: the browser is asked only when the owner turns them on here."""
+        if not self.notifications.enabled:
+            return (
+                '          <div class="fields" id="alerts"><div class="setting"><span>Notifications</span>'
+                ' <span class="state">Off</span></div>\n'
+                '            <p class="hint"><code>notifications = false</code> in nock\'s config.</p></div>\n'
+            )
+        return (
+            '          <div class="fields" id="alerts" data-enabled>'
+            '<div class="setting"><span id="alerts-label">Notifications in this browser</span>'
+            ' <span class="state" id="alerts-state">Off</span></div>\n'
+            '            <p class="hint">When a topic is your turn again: here while the studio is'
+            " in front of you, from the browser while it is away, on the desktop when no page is"
+            " open.</p>\n"
+            '            <button type="button" class="save" id="alerts-allow">Turn on</button>\n'
+            "          </div>\n"
         )
 
     def transcription(self) -> str:
@@ -863,6 +901,8 @@ class Studio(ThreadingHTTPServer):
             pass
         finally:
             self.server_close()
+            if not self.restarting:
+                self.notifications.path.unlink(missing_ok=True)
         if self.restarting:
             print("nock: restarting the studio", flush=True)
             os.environ[RESTARTED] = "1"
@@ -872,6 +912,7 @@ class Studio(ThreadingHTTPServer):
 class Handler(BaseHTTPRequestHandler):
     """`GET /` the page; `GET /restart` whether the code changed since it
     started and what is running, `POST /restart` starts it again in place;
+    `GET /notifications` the page's poll for what to tell the owner;
     `POST /usage` the owner's answer on sharing, `/settings`
     the recorder's server; `/NAME/ROUTE`
     goes to the tab named, `/chat/ROUTE` to the chat."""
@@ -887,6 +928,10 @@ class Handler(BaseHTTPRequestHandler):
             return
         if self.path == "/restart":
             self.send_json(HTTPStatus.OK, self.studio.standing())
+            return
+        address = urllib.parse.urlsplit(self.path)
+        if address.path == "/notifications":
+            self.send_json(HTTPStatus.OK, self.studio.notified(address.query))
             return
         self.answer(lambda tab, route: tab.get(route))
 

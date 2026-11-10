@@ -40,6 +40,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, NotRequired, TypedDict
 
 from nock.errors import ConflictError, NotFoundError, PolicyError, UsageError
+from nock.notify import Notifications, Reason
 from nock.render import Problem
 from nock.utils import now, read_json, write_json
 
@@ -787,6 +788,8 @@ class Topics:
             topic = self.topic(name)
             touched = [self.directory / name]
             said = []
+            was = self.standing(topic)
+            owner_last = owner_wrote_last(topic["thread"])
             if "description" in change:
                 if not change["description"].strip():
                     raise UsageError("`description` is empty")
@@ -843,12 +846,24 @@ class Topics:
                 said.append(f"renamed from {name}")
             self.save_topic(topic)
             line = f": {topic['status']}" if standing and topic.get("status") else ""
-            return topic, self.commit(
+            commit = self.commit(
                 touched, f"Topic {topic['name']}, {', '.join(said or ['updated'])}{line}"
             )
+        if author is Author.AGENT:
+            if was is not State.REVIEW and self.standing(topic) is State.REVIEW:
+                self.owners_turn(topic["name"], Reason.REVIEW)
+            elif reply is not None and owner_last:
+                self.owners_turn(topic["name"], Reason.ANSWERED)
+        return topic, commit
 
     def writer(self) -> dict[str, str | None]:
         return self.project.writer()
+
+    def owners_turn(self, name: str, reason: Reason) -> None:
+        """Tell the owner it is their turn in this topic (`nock.notify`);
+        never for Tidy up, which the owner started and watches."""
+        if self.project.current_role() != TIDIER:
+            Notifications(self.project).tell(name, reason, self.items(name))
 
     def set_standing(
         self, topic: dict[str, Any], change: dict[str, Any], revived: str | None
@@ -977,6 +992,8 @@ class Topics:
             item = self.item(ref)
             said = []
             touched = [self.directory / item["topic"] / item["slug"]]
+            rejected = item["verdict"] == Verdict.REJECTED
+            owner_last = owner_wrote_last(item["thread"])
             if moving is not None:
                 said.append(self.move(item, moving))
             topic = item["topic"]
@@ -1022,10 +1039,16 @@ class Topics:
                 if author == Author.AGENT:
                     self.worked(topic, said_now)
             path = self.save_item(topic, item)
-            return self.with_ref(topic, item), self.commit(
+            commit = self.commit(
                 [*touched, path.parent, self.large / topic / item["slug"]],
                 f"Item {topic}/{item['slug']}, {', '.join(said)}: {item['title']}",
             )
+        if author is Author.AGENT:
+            if reply is not None and owner_last:
+                self.owners_turn(topic, Reason.ANSWERED)
+            elif version is not None and rejected:
+                self.owners_turn(topic, Reason.REWORKED)
+        return self.with_ref(topic, item), commit
 
     def move(self, item: dict[str, Any], target: str) -> str:
         """Re-file an item in another topic, whatever its verdict: its folders
@@ -1471,6 +1494,11 @@ class Topics:
 def by(stamp: dict[str, Any], sessions: set[str]) -> bool:
     """Whether one of these sessions wrote it, itself or through a subagent."""
     return stamp.get("session") in sessions or stamp.get("parent") in sessions
+
+
+def owner_wrote_last(thread: list[dict[str, Any]]) -> bool:
+    said = talk(thread)
+    return bool(said) and said[-1]["author"] == Author.OWNER
 
 
 def pending(thread: list[dict[str, Any]], decided: dict[str, Any] | None = None) -> bool:

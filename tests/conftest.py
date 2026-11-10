@@ -29,7 +29,7 @@ def git(directory: Path, *arguments: str) -> str:
 
 @pytest.fixture(autouse=True)
 def isolated(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
-    """No Claude Code session, nock seat or git identity leaks in from outside."""
+    """No Claude Code session, nock seat, git identity or display leaks in from outside."""
     for name in list(os.environ):
         if name.startswith(("CLAUDE", "NOCK_", "GIT_")):
             monkeypatch.delenv(name)
@@ -39,6 +39,8 @@ def isolated(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     monkeypatch.setenv("GIT_COMMITTER_NAME", "Test")
     monkeypatch.setenv("GIT_COMMITTER_EMAIL", "test@example.com")
     monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(tmp_path / "gitconfig"))
+    # No display: a test never shows the owner a desktop notification.
+    monkeypatch.setenv("CI", "1")
     yield
 
 
