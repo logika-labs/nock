@@ -1,6 +1,6 @@
 ---
 term: guide.commands
-aliases: [guide.cli, guide.reference]
+aliases: [guide.reference, guide.exit-codes]
 description: Every nock command, and the exit codes that tell an agent what to do next
 ---
 

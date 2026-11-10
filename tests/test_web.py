@@ -35,36 +35,77 @@ def ids(text: str) -> set[str]:
     return set(re.findall(r'id="([^"]+)"', text))
 
 
-def test_every_guide_is_a_docs_page_with_what_an_agent_reads_and_every_term_is_listed(
+ESSAYS = ["why", "reflection", "cli", "review", "evaluation", "logika", "setup"]
+
+
+def test_the_docs_are_one_list_of_essays_each_with_its_art_and_a_reference_page_last(
     tmp_path: Path,
 ) -> None:
     pages = built(tmp_path)
     docs = Docs()
-    guides = [term for term in docs.terms if term.term.startswith("guide.")]
-    for guide in guides:
-        title = guide.article.splitlines()[0].removeprefix("# ")
-        page = pages[f"/docs/{guide.term.removeprefix('guide.')}/"]
+    guides = {
+        term.term.removeprefix("guide."): term
+        for term in docs.terms
+        if term.term.startswith("guide.")
+    }
+    assert set(guides) == {*ESSAYS, "commands"}
+    index = pages["/docs/"]
+    listed = re.findall(r'<a class="essay-entry" href="([^"]+)">', index)
+    assert listed == [f"/docs/{name}/" for name in ESSAYS] + ["/docs/terms/"]
+    assert "tabs" not in index and 'class="group' not in index
+    for position, name in enumerate(ESSAYS):
+        title = guides[name].article.splitlines()[0].removeprefix("# ")
+        page = pages[f"/docs/{name}/"]
         shown = html.unescape(page).replace("’", "'")
-        assert re.search(rf'<h1 id="[^"]+">{re.escape(title)}</h1>', shown), guide.term
-        article = page.split('<article class="card article">')[1]
+        assert re.search(rf'<h1 id="[^"]+">{re.escape(title)}</h1>', shown), name
+        assert f'src="/art/{name}-480.webp"' in index and html.escape(title) in index
+        article = page.split('<article class="card article essay with-art">')[1]
+        assert article.lstrip().startswith(f'<figure class="essay-art"><img src="/art/{name}.webp"')
+        head = article.split('<div class="essay-head">')[1].split("</div>")[0]
+        assert head.index('<a class="back" href="/docs/"') < head.index("<h1")
+        assert "On this page" not in page and 'class="contents"' not in page
+        assert 'class="pages"' not in page and "What your agent reads" not in page
         assert "**" not in re.sub(r"<pre>.*?</pre>|<code>.*?</code>", "", article, flags=re.S)
-    homes = [url for url in pages if url.startswith("/docs/") and url != "/docs/"]
-    assert len(homes) == len(guides) + 1
-    topics = pages["/docs/topics/"]
-    assert "What your agent reads" in topics and "nock docs topics.items" in topics
-    contents = topics.split('<nav class="contents"')[1].split("</nav>")[0]
-    assert re.findall(r'href="#([^"]+)"', contents)[:2] == ["topics", "items"]
-    listed = pages["/docs/terms/"]
+        following = re.findall(
+            r'<nav class="essay-next"[^>]*><a class="button primary" href="([^"]+)">Next: ([^<]+)</a>',
+            page,
+        )
+        if position + 1 < len(ESSAYS):
+            after = ESSAYS[position + 1]
+            assert following == [
+                (f"/docs/{after}/", html.escape(guides[after].article.splitlines()[0][2:]))
+            ]
+        else:
+            assert following == []
+        for art in (f"{name}.webp", f"{name}-480.webp", f"{name}.jpg"):
+            assert (WEB / "site" / "art" / art).is_file(), art
+    assert (
+        len([url for url in pages if url.startswith("/docs/") and url != "/docs/"])
+        == len(ESSAYS) + 1
+    )
+    reference = pages["/docs/terms/"]
+    assert "essay-art" not in reference and "essay-next" not in reference
+    assert '<h2 id="commands-and-exit-codes">' in reference
     for term in docs.terms:
         if term.term == "guide" or term.term.startswith("guide.") or len(term.article) > 500:
             continue
-        assert f"<code>nock docs {term.term}</code>" in listed, term.term
-    assert 'class="t-keyword">def</span>' in pages["/docs/tool/"]
-    for group in ("start", "every-day", "extending", "reference"):
-        assert f'id="{group}"' in pages["/docs/"]
+        assert f"<code>nock docs {term.term}</code>" in reference, term.term
+    assert 'class="t-keyword">def</span>' in pages["/docs/cli/"]
 
 
-def test_every_link_between_pages_lands_and_old_anchors_are_sent_on(tmp_path: Path) -> None:
+def test_the_art_is_web_sized_and_small() -> None:
+    for name in ESSAYS:
+        wide, small, preview = (
+            WEB / "site" / "art" / file
+            for file in (f"{name}.webp", f"{name}-480.webp", f"{name}.jpg")
+        )
+        assert jpeg_size(preview.read_bytes()) == (1200, 630)
+        assert wide.read_bytes()[:4] == b"RIFF" and wide.read_bytes()[8:12] == b"WEBP"
+        assert wide.stat().st_size < 500_000 and small.stat().st_size < 80_000
+        assert preview.stat().st_size < 300_000
+
+
+def test_every_link_between_pages_lands_and_old_addresses_are_sent_on(tmp_path: Path) -> None:
     pages = built(tmp_path)
     for url, text in pages.items():
         for href in re.findall(r'href="([^"]+)"', text):
@@ -75,11 +116,43 @@ def test_every_link_between_pages_lands_and_old_anchors_are_sent_on(tmp_path: Pa
                 assert path in pages, (url, href)
                 assert not anchor or anchor in ids(pages[path]), (url, href)
     moved = json.loads(re.search(r"const moved = (\{.*?\});", pages["/docs/"]).group(1))
-    assert moved["a-tool"] == "/docs/tool/"
-    assert moved["the-map"] == "/docs/consult/#the-map"
-    assert moved["getting-started"] == "/docs/install/"
-    assert moved["what-agents-see"] == "/docs/session/"
-    assert moved["the-projects-environment"] == "/docs/tool/#the-projects-environment"
+    assert moved["a-tool"] == "/docs/cli/#a-tool"
+    assert moved["the-map"] == "/docs/review/#the-map-and-consulting"
+    assert moved["getting-started"] == "/docs/setup/#install"
+    assert moved["what-agents-see"] == "/docs/reflection/#the-first-session"
+    assert moved["the-projects-environment"] == "/docs/cli/#the-projects-environment"
+    for target in moved.values():
+        path, _, anchor = target.partition("#")
+        assert path in pages and (not anchor or anchor in ids(pages[path])), target
+    sent = built(tmp_path, moved=True)
+    old = {
+        "install",
+        "session",
+        "work",
+        "chat",
+        "tidy",
+        "topics",
+        "consult",
+        "tool",
+        "check",
+        "commands",
+        "settings",
+        "telemetry",
+        "permissions",
+        "sharing",
+        "developing",
+    }
+    assert set(sent) == {f"/docs/{name}/" for name in old} | {"/about/"}
+    for url, text in sent.items():
+        if url == "/about/":
+            continue
+        target = re.findall(r'<meta http-equiv="refresh" content="0; url=([^"]+)">', text)[0]
+        path, _, anchor = target.partition("#")
+        assert path in pages and anchor in ids(pages[path]), (url, target)
+        assert 'name="robots" content="noindex"' in text
+    assert "/docs/review/#topics" in sent["/docs/topics/"]
+    sitemap = (tmp_path / "sitemap.xml").read_text()
+    assert not any(f"https://nock.dev{url}<" in sitemap for url in sent)
 
 
 def test_the_story_pages_are_one_layout_with_the_demo_on_a_tabbed_stage(tmp_path: Path) -> None:
@@ -115,11 +188,11 @@ def test_the_story_pages_are_one_layout_with_the_demo_on_a_tabbed_stage(tmp_path
 def test_a_page_that_is_gone_sends_its_visitor_on_and_is_not_listed(tmp_path: Path) -> None:
     pages = built(tmp_path)
     moved = built(tmp_path, moved=True)
-    assert list(moved) == ["/about/"]
+    assert "/about/" in moved
     about = moved["/about/"]
-    assert '<meta http-equiv="refresh" content="0; url=/docs/">' in about
+    assert '<meta http-equiv="refresh" content="0; url=/docs/why/">' in about
     assert '<meta name="robots" content="noindex">' in about
-    assert '<link rel="canonical" href="https://nock.dev/docs/">' in about
+    assert '<link rel="canonical" href="https://nock.dev/docs/why/">' in about
     assert "/about/" not in (tmp_path / "sitemap.xml").read_text()
     assert "/about/" not in (tmp_path / "llms.txt").read_text()
     assert not [url for url, text in pages.items() if 'href="/about/"' in text]
@@ -245,7 +318,11 @@ def test_every_page_is_previewed_by_its_own_title_description_and_address_with_t
         assert meta["og:title"] == meta["twitter:title"] == title, url
         assert meta["og:description"] == description, url
         assert meta["og:url"] == f"https://nock.dev{url}", url
-        assert meta["og:image"] == "https://nock.dev/og.jpg", url
+        essay = re.fullmatch(r"/docs/([a-z]+)/", url)
+        if essay and essay.group(1) in ESSAYS:
+            assert meta["og:image"] == f"https://nock.dev/art/{essay.group(1)}.jpg", url
+        else:
+            assert meta["og:image"] == "https://nock.dev/og.jpg", url
         assert (meta["og:image:width"], meta["og:image:height"]) == ("1200", "630"), url
         assert meta["og:image:alt"] and meta["twitter:image:alt"] == meta["og:image:alt"], url
         assert meta["twitter:card"] == "summary_large_image", url
@@ -308,10 +385,7 @@ def test_llms_txt_links_every_page_with_a_line_and_resolves_to_built_pages(
     assert lines[0] == "# nock" and lines[2].startswith("> ")
     assert [line for line in lines if line.startswith("## ")] == [
         "## Start",
-        "## Docs: Start",
-        "## Docs: Every day",
-        "## Docs: Extending",
-        "## Docs: Reference",
+        "## Docs",
         "## Legal",
         "## Optional",
     ]
@@ -331,7 +405,10 @@ def test_llms_full_txt_is_every_guide_and_every_term_as_markdown(tmp_path: Path)
     for guide in docs.terms:
         if guide.term.startswith("guide."):
             title = guide.article.strip().splitlines()[0].removeprefix("# ")
-            assert f"\n# {title}\n\nSource: https://nock.dev/docs/{guide.term[6:]}/\n" in text
+            if guide.term[6:] in ESSAYS:
+                assert f"\n# {title}\n\nSource: https://nock.dev/docs/{guide.term[6:]}/\n" in text
+            else:
+                assert f"\n## {title}\n" in text.split("Source: https://nock.dev/docs/terms/")[1]
     short = [
         term
         for term in docs.terms
@@ -342,7 +419,7 @@ def test_llms_full_txt_is_every_guide_and_every_term_as_markdown(tmp_path: Path)
     ]
     assert short
     for term in short:
-        assert f"## nock docs {term.term}\n" in text, term.term
+        assert f"### nock docs {term.term}\n" in text, term.term
     prose = re.sub(r"```.*?```|`[^`\n]*`", "", text, flags=re.S)
     for target in re.findall(r"\]\(([^)\s]+)\)", prose):
         assert re.match(r"https?://|mailto:", target), target

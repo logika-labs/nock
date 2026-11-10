@@ -1,99 +1,103 @@
 ---
 term: guide.why
-aliases: []
-description: Why nock: agents repeat themselves, prose goes stale; the fix is code, and its three principles
+aliases: [guide.about, guide.origin]
+description: Why nock exists: the usual problems of AI engineering, the queue it grew into, and an experiment
 ---
 
-# What changes for you
+# Why nock
 
-After `nock init` and a commit, your agents work as before, and four things change:
+As I started working with AI engineering, I started experiencing the usual
+problems: agents struggling with specific tasks, making decisions on their
+own and over-engineering, being unable to keep on top of the volume, and so
+on.
 
-- **Every session is recorded,** on your machine: what you asked, each tool call, what
-  failed, what it cost (see [Telemetry](#telemetry)).
-- **Agents put their work before you** in topics: the choices they made, the files they
-  changed, what they made to show it. They never wait on you; you review in the studio's
-  Work tab when it suits you (see [Reviewing in Work](#reviewing-in-work)).
-- **Every week or so, a reflection round** reads the record and improves the toolbox: tools
-  for the work that keeps costing turns, repairs, retirements (see [Reflection
-  rounds](#reflection-rounds)).
-- **The toolbox grows,** `.nock/nock` lists it at every session's start, and your tests and
-  linters become the gate it must pass (see [Install](#install)).
+nock was born out of necessity this way: as a CLI framework and a reflection
+round that makes it easy for agents to periodically reflect on their work
+and add more agent-friendly commands for themselves in the future.
 
-## Why
+## Code, not prose
 
-Agents repeat themselves:
+The usual fix for an agent that keeps stumbling is prose: a skill, a note, one
+more rule in CLAUDE.md. I wrote a lot of those, and they have two problems.
+They go stale without anyone noticing: when the code moves on, a paragraph
+that no longer fits still reads as true. And they are read differently every
+time: an agent can follow one, skip it, or half-apply it, and nobody can tell
+which.
 
-- they run the same five shell commands to find out why a test fails;
-- they write the same throwaway script to query the database;
-- they pipe the same noisy output through `tail`;
-- they trip over the mistake the human has already corrected twice.
-
-Every repeat costs turns and tokens, and every session starts again from
-nothing.
-
-The usual fix is prose: skills, notes, rules in CLAUDE.md. Prose has two
-problems:
-
-- **It goes stale without anyone noticing.** When the code moves on, a
-  paragraph that no longer fits the project still reads as true.
-- **It is read differently every time.** An agent can follow it, skip it, or
-  half-apply it, and nobody can tell which.
-
-nock's fix is code. A command that no longer fits the project **breaks**:
-it exits non-zero, a check fails, and the failure is recorded. So the toolbox
-can be kept honest by measuring it. That is also the rule nock lives by:
+A command is different. When it no longer fits the project, it breaks: it
+exits non-zero, a check fails, and the failure is recorded. So a toolbox can be
+kept honest by measuring it, and that became the rule nock lives by:
 
 > **A check beats a hook beats prose.**
 >
 > A rule that a check enforces cannot be ignored. A behavior that a hook
 > triggers cannot be forgotten. Prose is the last resort.
 
-## Three principles
+So nock records every session on your machine, and every so often an agent
+reads that record and changes the toolbox: a command for the chore that keeps
+costing turns, a fix for the one that misbehaves, the retirement of the one
+nobody calls. How that works is in [Agents that build their own
+tools](#agents-that-build-their-own-tools), and what makes a command easy for an
+agent to use is in [A CLI agents can use](#a-cli-agents-can-use).
 
-1. **An agent-friendly CLI.** Every byte a command prints is read by a model
-   and paid for, so:
-   - a command prints what the next decision needs, in the cheapest format
-     that reads accurately;
-   - success is often silence: a passing check prints nothing, and its exit
-     code says so;
-   - the exit code says what to do next: change the request, fix the code, or
-     fix the machine;
-   - a mistake gets an answer, not just a refusal: "did you mean", the
-     expected shape of the input, a path to the full log.
-2. **Every run recorded.** Every call to nock is recorded locally: its
-   arguments, duration and exit code, and how much the agent had to read. So
-   is every Claude Code session: what the human asked, each tool call the
-   agent made (nock or not), what failed, and what it cost. You cannot
-   improve what you have not measured, and agents do not remember.
-3. **Reflection.** Every so often, an agent reads that record and improves
-   the toolbox:
-   - it builds tools for the work that keeps costing turns and tokens;
-   - it repairs and retunes the tools that misbehave;
-   - it retires the tools nobody uses.
+## A queue instead of a task manager
 
-   It starts from the big picture, not just the numbers: what the human has
-   been asking for, and where the code is going. It writes down what it
-   expects each change to do, and the next round holds it to that. What it
-   builds is live on the next call.
+To keep track of work, I created a central queue into which the agent could
+submit its decisions: first in the form of potentially blocking questions.
+But then I found that it's better to let it work, submit decisions for me to
+review, and discuss them with it on demand, and to use the established corpus
+for a special "consult" procedure, whereby the agent, as it makes decisions,
+makes sure it's aligned with decisions that were already made.
 
-## A framework, not a library
+I wanted to avoid a complex task management system, so I realized it's
+simplest to group these decisions by topics, which I can manipulate in bulk,
+search through, see progress on and so on.
 
-A tool's author writes only what the tool does. nock owns everything around
-it, the way a web framework owns HTTP or pytest owns setup and teardown:
+Then I also realized that other generated artifacts I'd like to review by
+hand, like skills, microcopy, and things like UI interfaces or emails that can
+be rendered into images or interactive videos, should also be submitted for me
+to review in the same queue, with convenient ways for me to leave a comment
+on further work, compare different versions, choose amongst several options
+and so on.
 
-- parsing the arguments and checking the input;
-- rendering the output, and capping it;
-- exit codes and error reports;
-- running processes under supervision;
-- caching;
-- telemetry;
-- help text.
+That queue is the studio's Work tab, and the whole of it is in [Review on your
+time](#review-on-your-time).
 
-That matters most when an agent writes tools for itself. It has to get only
-the business logic right, and everything else comes out the same in every
-tool.
+## Choosing between agents
 
-nock is standard-library Python 3.12 and has no dependencies. It is vendored
-into the project, so it is the project's own code: an agent can read it, and
-fix it if it must. Tools that need the project's own packages run on the
-project's interpreter instead (see [The project's environment](#the-projects-environment)).
+The more agents I ran, the more my questions turned into comparisons. Is the
+new skill better than the old one? Does this model catch more bugs, or just
+cost more? Before, the hard part of a project was people: programmers with
+different preferences, agendas and egos. Now I can dispatch several agents to
+explore different options, and the hard part becomes tracing what they did
+and judging it, to choose the best way forward.
+
+Agents' work takes time, costs money and isn't deterministic, so I built the
+kind of tool I needed myself: an experiment drawn as a graph of stages, every
+stage cached, so I pay only for what changed, and every run there to open up
+and look at. It's how I measure how well Logika instruments code and catches
+bugs, and it's in [Evaluations](#evaluations).
+
+## An experiment
+
+I developed nock while developing [Logika](https://logika.host), to handle the
+scope of that project and its complexity. Logika's agents keep their own
+toolbox and submit their work to me in topics, and in a Logika project nock
+runs a second kind of reflection round, which writes the rules that catch bugs
+before they happen ([nock in Logika](#nock-in-logika)).
+
+I'm generally curious about the future of programming and AI engineering, so
+nock is meant as an experiment. What would open source look like in the age of
+AI? It's no longer just code that's worth sharing, but what agents learn while
+working with it. How do we share insights into programming with AI, and grow a
+community around them?
+
+nock starts small there. A reflection round ends with a summary of what it
+learned, written so that nobody could tell which project it came from, and
+asks you whether to send it to nock's makers. When nock lacks something, your
+agent offers to tell us, in your words, with `nock report`. Nothing leaves your
+machine without your yes ([What nock shares](#what-nock-shares)). Everything
+else is in your repository: nock is vendored into it as plain,
+dependency-free Python, so your agents can read it, and fix it if they must.
+
+If you want to try it, [Setting up](#setting-up) takes a few minutes.
