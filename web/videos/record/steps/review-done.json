@@ -1,0 +1,3 @@
+[
+ {"name": "review-settled", "hash": "#topics/charge-sweep", "actions": [["click", ".item-bubble.decision ~ * [data-verdict-choice=accepted][data-judge='topic:charge-sweep'], [data-judge='topic:charge-sweep'][data-verdict-choice=accepted]"], ["wait", "1500"], ["top", "0"]], "boxes": {}}
+]

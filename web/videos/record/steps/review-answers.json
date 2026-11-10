@@ -1,0 +1,5 @@
+[
+ {"name": "review-answer", "hash": "#topics/charge-sweep", "actions": [["click", ".item-bubble.decision .chat-toggle"], ["wait", "1200"]], "boxes": {}},
+ {"name": "review-v2", "hash": "#topics/charge-sweep", "actions": [["click", "[data-view='charge-sweep/the-charges-page-with-charges-retrying']"], ["wait", "1000"], ["click", "[data-compare]"], ["wait", "1200"]], "boxes": {}},
+ {"name": "review-v2-chat", "hash": "#topics/charge-sweep", "actions": [["click", "[data-view='charge-sweep/the-charges-page-with-charges-retrying']"], ["wait", "1000"], ["click", "[role=dialog] .chat-toggle, .viewer .chat-toggle"], ["wait", "1200"]], "boxes": {}}
+]

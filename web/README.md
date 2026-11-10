@@ -9,8 +9,11 @@ layout.html        every page's frame: the band and its menu, the main column, t
 landing/           the landing page and Getting started: their templates (home.html,
                    start.html) and copy.html, the words they share, a block each
 legal/             privacy.md and terms.md, each with its plain-words summary (NAME-plain.md)
+videos/            the landing page's two videos: the owner's scripts, and the Remotion package, VHS and
+                   Playwright recorders that make them from real sessions and the real studio (its README)
 site/              style.css, demo.js and demo.css (the demo), fonts/, logika.webp and .png
-                   (Logika's art, beside "nock in Logika"), og.jpg (the link preview, the
+                   (Logika's art, beside "nock in Logika"), videos/ (each video's poster and captions;
+                   the MP4 and WebM are made by videos/ and not committed), og.jpg (the link preview, the
                    owner's art cropped to 1200x630), art/ (each essay's art: NAME.webp, 1600
                    wide, at its top; NAME-480.webp on the list; NAME.jpg, its 1200x630 link
                    preview); the pages, robots.txt, sitemap.xml and

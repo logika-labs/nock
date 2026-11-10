@@ -1,0 +1,65 @@
+[
+ {
+  "name": "round-add",
+  "hash": "#topics/toolbox",
+  "actions": [
+   [
+    "click",
+    ".item-bubble[data-key='toolbox/new-nock-nock-coverage-one-call'] .title"
+   ],
+   [
+    "wait",
+    "900"
+   ],
+   [
+    "scroll",
+    ".item-bubble[data-key='toolbox/new-nock-nock-coverage-one-call']"
+   ]
+  ],
+  "boxes": {
+   "item": ".item-bubble[data-key='toolbox/new-nock-nock-coverage-one-call']"
+  }
+ },
+ {
+  "name": "round-retire",
+  "hash": "#topics/toolbox",
+  "actions": [
+   [
+    "click",
+    ".item-bubble[data-key='toolbox/retired-nock-nock-seed'] .title"
+   ],
+   [
+    "wait",
+    "900"
+   ],
+   [
+    "scroll",
+    ".item-bubble[data-key='toolbox/retired-nock-nock-seed']"
+   ]
+  ],
+  "boxes": {
+   "item": ".item-bubble[data-key='toolbox/retired-nock-nock-seed']"
+  }
+ },
+ {
+  "name": "round-flag",
+  "hash": "#topics/toolbox",
+  "actions": [
+   [
+    "click",
+    ".item-bubble[data-key='toolbox/sharpened-failures-since-main'] .title"
+   ],
+   [
+    "wait",
+    "900"
+   ],
+   [
+    "scroll",
+    ".item-bubble[data-key='toolbox/sharpened-failures-since-main']"
+   ]
+  ],
+  "boxes": {
+   "item": ".item-bubble[data-key='toolbox/sharpened-failures-since-main']"
+  }
+ }
+]

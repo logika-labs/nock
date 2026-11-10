@@ -1,0 +1,4 @@
+# Made from what is committed: the recordings and shots (record/), the renders (out/).
+node_modules/
+public/
+out/

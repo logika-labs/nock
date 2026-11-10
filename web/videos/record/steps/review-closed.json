@@ -1,0 +1,1 @@
+[{"name": "review-done", "hash": "#work", "actions": [["click", "[data-sift=closed]"], ["wait", "1200"]], "boxes": {"topic": "article.topic[data-key='topic:charge-sweep']"}}]

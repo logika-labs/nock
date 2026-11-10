@@ -1,0 +1,4 @@
+[
+ {"name": "review-ask", "hash": "#topics/charge-sweep", "actions": [["click", ".item-bubble.decision .chat-toggle"], ["wait", "800"], ["click", "textarea[data-draft^='reply:charge-sweep/the-sweep']"], ["type", "Why not time a stuck retry out in the sweep, say after a day?"]], "boxes": {"box": "textarea[data-draft^='reply:charge-sweep/the-sweep']", "toggle": ".item-bubble.decision .chat-toggle"}},
+ {"name": "review-asked", "hash": "#topics/charge-sweep", "actions": [["click", ".item-bubble.decision .chat-toggle"], ["wait", "800"], ["click", "textarea[data-draft^='reply:charge-sweep/the-sweep']"], ["type", "Why not time a stuck retry out in the sweep, say after a day?"], ["key", "Enter"], ["wait", "1500"]], "boxes": {"box": "textarea[data-draft^='reply:charge-sweep/the-sweep']"}}
+]

@@ -1,0 +1,30 @@
+{
+  "fps": 30,
+  "reflection": {
+    "title": "Your agents build the tools they need",
+    "seconds": 60,
+    "beats": [
+      { "from": 0, "to": 6, "caption": "Every session, your agent starts from zero." },
+      { "from": 6, "to": 14, "caption": "It repeats the same work, figuring out how to do it from scratch every time." },
+      { "from": 14, "to": 22, "caption": "So nock records, on your machine, what every session did…" },
+      { "from": 22, "to": 36, "caption": "…and every once in a while, you send your agent to reflect on this history and write the tools it was missing." },
+      { "from": 36, "to": 44, "caption": "The next sessions use it, so five calls become one…" },
+      { "from": 44, "to": 56, "caption": "…and future reflection rounds keep calibrating the toolbox: adding what's missing, retiring what's unused, sharpening what's there." },
+      { "from": 56, "to": 60, "caption": "Agents that get better at your project, every week." }
+    ]
+  },
+  "review": {
+    "title": "You decide, when it suits you",
+    "seconds": 60,
+    "beats": [
+      { "from": 0, "to": 6, "caption": "Suppose your agent makes some calls while you're away." },
+      { "from": 6, "to": 12, "caption": "Each one lands in Work, under the topic it belongs to, for you to review." },
+      { "from": 12, "to": 20, "caption": "Not just decisions: anything you might want eyes on. Microcopy, rendered screens, interaction videos." },
+      { "from": 20, "to": 30, "caption": "Choose between options, and compare versions side by side." },
+      { "from": 30, "to": 42, "caption": "Leave comments or questions. Your agent addresses them in bulk, with new versions and its own thoughts." },
+      { "from": 42, "to": 52, "caption": "Then accept or reject the work, and it becomes part of your project's history…" },
+      { "from": 52, "to": 58, "caption": "…so future agents can consult it at any time, and stay aligned with your product vision." },
+      { "from": 58, "to": 60, "caption": "Agents never wait on you. You review when it suits you." }
+    ]
+  }
+}
