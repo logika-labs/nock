@@ -363,36 +363,52 @@ class Round:
         return {}
 
     def start(self) -> dict[str, Any]:
-        """Start a round — or pick up the one started and not finished — and
-        write what it reads."""
+        """Start a round — or pick up the one started and not finished, its
+        material and start left as they were written, so a second start
+        overwrites nothing; another round the same day is `DATE-2`."""
         problem = self.unavailable()
         if problem:
             raise PreconditionError(problem)
-        name = self.rounds.current() or self.rounds.new_name()
-        scratch = self.rounds.scratch / name
+        name = self.rounds.current()
+        scratch = self.rounds.scratch / (name or self.rounds.new_name())
+        kept = scratch / ROUND_FILE
+        session = self.project.current_session()
+        if name is not None and kept.is_file():
+            started = read_json(kept)
+            if session and session not in started.get("sessions", []):
+                write_json(kept, {**started, "sessions": [*started.get("sessions", []), session]})
+            material = started.get("material") or {
+                path.stem: str(path) for path in sorted(scratch.glob("*.md"))
+            }
+            return {
+                **self.started(scratch.name, started["since"], material),
+                "picked_up": f"the round {scratch.name}, started {started['started']} and not "
+                "finished; its material stands as written then",
+            }
+        name = scratch.name
         scratch.mkdir(parents=True, exist_ok=True)
         begun = self.begin(name, scratch)
-        kept = scratch / ROUND_FILE
-        sessions = read_json(kept).get("sessions", []) if kept.is_file() else []
-        session = self.project.current_session()
-        if session and session not in sessions:
-            sessions.append(session)
         write_json(
             kept,
             {
                 "round": name,
                 "since": begun["since"],
                 "started": now(),
-                "sessions": sessions,
+                "sessions": [session] if session else [],
+                "material": begun["material"],
                 **begun["kept"],
             },
         )
         (self.rounds.directory / name).mkdir(parents=True, exist_ok=True)
+        return self.started(name, begun["since"], begun["material"])
+
+    def started(self, name: str, since: str | None, material: dict[str, str]) -> dict[str, Any]:
+        """What `nock reflect` answers of a round under way."""
         return {
             "round": name,
-            "since": begun["since"],
+            "since": since,
             # On the main checkout, wherever the round runs.
-            "material": begun["material"],
+            "material": material,
             "write": [
                 str((self.rounds.directory / name / file).relative_to(self.project.here))
                 for file in self.files

@@ -265,6 +265,26 @@ def test_a_round_finishes_with_its_report_its_summary_and_its_numbers(project: P
     assert f"| {started['round']} | this window |" in nock_material
 
 
+def test_a_second_start_picks_up_the_open_round_and_rewrites_nothing(
+    project: Project, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "s1")
+    first = json.loads(nock(project.root, "reflect", "--json").stdout)
+    process = project.root / first["material"]["process"]
+    process.write_text("the material as the first start wrote it\n")
+    kept = project.local / "reflections" / first["round"] / "round.json"
+    begun = json.loads(kept.read_text())
+    for _ in range(3):
+        nock(project.root, "calls", "--limit", "1")
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "s2")
+    second = json.loads(nock(project.root, "reflect", "--json").stdout)
+    assert second["round"] == first["round"] and second["material"] == first["material"]
+    assert f"the round {first['round']}, started {begun['started']}" in second["picked_up"]
+    assert process.read_text() == "the material as the first start wrote it\n"
+    again = json.loads(kept.read_text())
+    assert again["metrics"] == begun["metrics"] and again["sessions"] == ["s1", "s2"]
+
+
 def test_a_summary_is_vetted_and_shared_only_when_sent(
     project: Project, monkeypatch: pytest.MonkeyPatch
 ) -> None:
