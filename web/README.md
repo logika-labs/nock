@@ -11,14 +11,16 @@ landing/           the landing page and Getting started: their templates (home.h
 legal/             privacy.md and terms.md, each with its plain-words summary (NAME-plain.md)
 site/              style.css, demo.js and demo.css (the demo), fonts/, logika.webp and .png
                    (Logika's art, beside "nock in Logika"), og.jpg (the link preview, the
-                   owner's art cropped to 1200x630); the pages, robots.txt, sitemap.xml and
+                   owner's art cropped to 1200x630), art/ (each essay's art: NAME.webp, 1600
+                   wide, at its top; NAME-480.webp on the list; NAME.jpg, its 1200x630 link
+                   preview); the pages, robots.txt, sitemap.xml and
                    the llms files are built into it (gitignored), and studio/topics.css,
                    the studio's sheet, copied in
 build.py           the pages: landing/; the docs from ../src/nock/terms/ (a page per
-                   guide, in four groups, with the terms an agent reads on it); legal/; and
+                   essay, and the reference page with every term); legal/; and
                    what crawlers read: each page's canonical link and JSON-LD, robots.txt,
                    sitemap.xml (each page dated by its sources' last commit), llms.txt and
-                   llms-full.txt (every guide and term as Markdown)
+                   llms-full.txt (every essay, the reference and every term as Markdown)
 publish.py         build, and push to GitHub Pages
 deploy.py          build, and release to Logika's box (/srv/sites/nock.dev), with nock.dev.caddy,
                    Caddy's site for it there
@@ -33,14 +35,21 @@ python3 web/build.py
 python3 -m http.server -d web/site   # then open http://localhost:8000
 ```
 
-The docs are nock's own: the guides in `src/nock/terms/guides/` (a page each, `nock docs
-guide.NAME`) and the short terms beside them (what agents read), so edit those, never `site/`.
-`PAGES` in `build.py` places each guide in a group (Start, Every day, Extending, Reference) with
-the terms folded under it as "What your agent reads"; the terms page lists every term. A guide
-placed nowhere, or a term that does not exist, fails the build. A link between guides lands on the
-right page, and an old address, `/docs/#ANCHOR`, is sent on to the page that has the heading now.
-A page that is gone (`MOVED` in `build.py`: /about/) is built as a page that only sends its visitor
-on to where its subject is now, kept out of the sitemap and of search.
+The docs are nock's own: the guides in `src/nock/terms/guides/` (`nock docs guide.NAME`) and the
+short terms beside them (what agents read), so edit those, never `site/`. The guides are a few long
+essays, `ESSAYS` in `build.py` in reading order, a page each at `/docs/NAME/` with its art across the
+top, a way back to the list beside its title and the next essay as a button at its foot; and the
+reference page, `/docs/terms/`, with the guides in `REFERENCE` (every command and exit code) and every
+term. The docs index is one list of them, each with its art, title and line. A guide placed nowhere
+fails the build. A link between guides lands on the right page; an old address, `/docs/#ANCHOR`, is
+sent on to the page that has the heading now, and an earlier page, `/docs/NAME/` (`MOVED_PAGES`), is a
+small page of its own that sends its visitor on to the heading that holds its text, never indexed; so
+is a page that is gone (`MOVED`: /about/, whose story is Why nock now), kept out of the sitemap too.
+
+Each essay's art is the owner's style, drawn through the Codex CLI with the site's art attached as the
+house style (as Logika's `banners` tool does), then cut to the three sizes above with ImageMagick:
+`magick IN -resize 1600x900^ -gravity center -extent 1600x900 -quality 60 art/NAME.webp`, the same
+at 480x270 for the list, and `-resize 1200x675^ -extent 1200x630 -quality 68` for `NAME.jpg`.
 
 **The demo** (`site/demo.js`) is coded, not recorded: a scene per part of nock,
 each a script of steps with a caption, every element saying from which step it shows (`data-at`,

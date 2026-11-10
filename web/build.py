@@ -1,5 +1,5 @@
 """Build nock.dev into `site/`: the landing page, About and Getting started from `landing/`; the docs from nock's guides and terms (`src/nock/terms/`, what
-`nock docs` reads too), a page per guide in four groups, each with what an agent reads on it; the
+`nock docs` reads too), a page per essay with its art and a reference page with every term; the
 legal pages from `legal/`, each with its plain-words summary. Every page is set in `layout.html`.
 Standard library only, and nock's own `docs` module, to read the terms as `nock docs` does.
 
@@ -50,116 +50,70 @@ STORY = {
     ),
 }
 
-# The docs: four groups, each a list of pages. A page is a guide (`nock docs guide.NAME`), served at
-# /docs/NAME/, with the terms an agent reads on the same subject folded in under it; the terms page
-# lists every term. A guide placed nowhere fails the build.
-GROUPS = {
-    "start": "Start",
-    "every-day": "Every day",
-    "extending": "Extending",
-    "reference": "Reference",
+# The docs: a few long essays, read in order, each a guide (`nock docs guide.NAME`) served at
+# /docs/NAME/ with its art in site/art/ (NAME.webp wide at the top, NAME-480.webp on the list, NAME.jpg
+# its link preview at 1200x630); then the reference page, /docs/terms/, the guides in REFERENCE and
+# every term an agent reads. A guide placed nowhere fails the build.
+ESSAYS = ("why", "reflection", "cli", "review", "evaluation", "logika", "setup")
+REFERENCE = ("commands",)
+ART = "/art/"
+ART_SIZE = (1600, 900)
+THUMBNAIL_SIZE = (480, 270)
+# Each essay's art in words, for its image and its link preview.
+ART_ALT = {
+    "why": "A large black pixel creature at the edge of an iridescent foil plain, looking out at a bright horizon, small creatures far away.",
+    "reflection": "Black pixel creatures stacking black cubes into a staircase up terraced iridescent foil hills.",
+    "cli": "Small black pixel creatures walking single file along a straight iridescent foil river to the horizon.",
+    "review": "A calm iridescent foil lake at night, a large black pixel creature resting on a floating island, small ones drifting.",
+    "evaluation": "An iridescent foil river branching again and again across a dark plain, a black pixel creature at each fork.",
+    "logika": "Two black pixel creatures at the rim of a glowing iridescent foil canyon, peering down, tiny creatures far below.",
+    "setup": "A black pixel creature placing a first black cube in a clearing of an iridescent foil meadow.",
 }
-PAGES: dict[str, tuple[str, tuple[str, ...]]] = {
-    "why": ("start", ()),
-    "install": ("start", ("setup", "checks", "checks.chains")),
-    "session": ("start", ("reminders", "run", "status")),
-    "work": ("every-day", ("studio", "topics.verdicts", "topics.search")),
-    "chat": ("every-day", ("topics.threads",)),
-    "tidy": ("every-day", ("topics.state",)),
-    "topics": (
-        "every-day",
-        (
-            "topics",
-            "topics.items",
-            "topics.decisions",
-            "topics.derived",
-            "topics.options",
-            "topics.state",
-            "topics.versions",
-            "topics.revive",
-        ),
-    ),
-    "consult": ("every-day", ("topics.map", "consult")),
-    "reflection": (
-        "every-day",
-        ("reflection", "reflection.kinds", "reflection.record", "reflection.share"),
-    ),
-    "logika": ("every-day", ("reflection.logika", "logika")),
-    "tool": (
-        "extending",
-        (
-            "tools",
-            "tools.signature",
-            "fixtures",
-            "sh",
-            "sh.stream",
-            "output",
-            "output.cap",
-            "errors",
-            "tools.confirm",
-            "tools.caching",
-            "tools.examples",
-            "tools.loading",
-            "tools.records",
-            "tools.retiring",
-            "environment",
-        ),
-    ),
-    "check": (
-        "extending",
-        (
-            "checks",
-            "checks.commands",
-            "checks.chains",
-            "checks.changed",
-            "hooks",
-            "generators",
-            "generators.catalogs",
-            "generators.templates",
-        ),
-    ),
-    "evaluation": (
-        "extending",
-        (
-            "eval",
-            "eval.flow",
-            "eval.steps",
-            "eval.scenario",
-            "eval.parameters",
-            "eval.runs",
-            "eval.query",
-            "eval.compare",
-        ),
-    ),
-    "commands": ("reference", ("exit-codes",)),
-    "settings": ("reference", ("configuration",)),
-    "terms": ("reference", ()),
-    "telemetry": (
-        "reference",
-        ("telemetry", "telemetry.sessions", "telemetry.tables", "telemetry.unrecorded"),
-    ),
-    "permissions": ("reference", ("permissions",)),
-    "sharing": ("reference", ("sharing", "report")),
-    "developing": ("reference", ()),
-}
-TERMS_PAGE = (
-    "The terms",
-    "Every `nock docs` term: the short articles your agents read, each in full.",
+REFERENCE_PAGE = (
+    "Reference",
+    "Every nock command and exit code, and every term your agents read with nock docs, each in full.",
 )
-# Headings of the one-page docs and of the README's sections before the guides, by the heading that
-# has their text now: an old address, /docs/#ANCHOR, is sent on to it.
+# The docs' earlier pages, by the heading that holds their text now: their addresses are sent on to it.
+MOVED_PAGES = {
+    "install": "install",
+    "session": "the-first-session",
+    "work": "reviewing-in-work",
+    "chat": "chatting",
+    "tidy": "tidy-up",
+    "topics": "topics",
+    "consult": "the-map-and-consulting",
+    "tool": "a-tool",
+    "check": "checks-hooks-and-generators",
+    "commands": "commands",
+    "settings": "settings",
+    "telemetry": "telemetry",
+    "permissions": "what-nocks-agents-may-do",
+    "sharing": "what-nock-shares",
+    "developing": "nock-is-its-own-first-user",
+}
+# Headings of the one-page docs, the README's sections before the guides and the guides' pages, by the
+# heading that has their text now: an old address, /docs/#ANCHOR or /docs/PAGE/#ANCHOR, is sent on to it.
 RENAMED = {
     "getting-started": "install",
-    "what-agents-see": "the-first-session",
     "reflection": "reflection-rounds",
-    "topics": "topics-and-items",
-    "reference": "commands-and-exit-codes",
-    "concepts": "what-changes-for-you",
     "evaluation": "evaluations",
+    "the-map": "the-map-and-consulting",
+    "consulting": "the-map-and-consulting",
+    "what-agents-see": "the-first-session",
+    "topics-and-items": "topics",
+    "reference": "commands",
+    "concepts": "why-nock",
+    "what-changes-for-you": "why-nock",
+    "commands-and-exit-codes": "commands",
+    "the-logika-round": "nock-in-logika",
+    "a-framework-not-a-library": "a-tool",
+    "the-projects-environment": "the-projects-environment",
+    "upgrading": "upgrading",
+    "your-tests-as-the-gate": "your-tests-as-the-gate",
 }
 # Pages that are gone, by their old address, with where they send a visitor now: a page that only
-# redirects, kept out of the sitemap and of search.
-MOVED = {"/about/": "/docs/"}
+# redirects, kept out of the sitemap and of search. About's story is the first essay's now.
+MOVED = {"/about/": "/docs/why/"}
 # Each legal page: its source in legal/ (and its plain-words summary, NAME-plain.md), its description.
 LEGAL = {
     "privacy": "What reaches nock's makers from nock.dev and from nock: the usage report, shared summaries, reports you write, and your rights.",
@@ -459,34 +413,20 @@ class Converter:
 
 
 class Page(NamedTuple):
-    """A docs page: its name (served at /docs/NAME/), its group, title, description, body, its own
-    table of contents, and the terms an agent reads on it."""
+    """A docs page: its name (served at /docs/NAME/), title, description and body; an essay has art."""
 
     name: str
-    group: str
     title: str
     description: str
     body: str
-    contents: str
-    reads: tuple[Term, ...]
+    art: bool
 
     @property
     def url(self) -> str:
         return f"/docs/{self.name}/"
 
 
-def contents_of(headings: list[tuple[int, str, str]]) -> str:
-    links = "\n".join(
-        f'<a class="level-{level}" href="#{anchor}">{text}</a>'
-        for level, anchor, text in headings
-        if level in (2, 3)
-    )
-    if not links:
-        return ""
-    return f'<nav class="contents" aria-label="On this page"><span class="label">On this page</span>\n{links}\n</nav>'
-
-
-def term_article(term: Term, level: int = 3) -> str:
+def term_article(term: Term, level: int = 4) -> str:
     """A term as an agent reads it: its `nock docs` line, its description and its article."""
     article = Converter(term.article).convert()
     return (
@@ -496,19 +436,19 @@ def term_article(term: Term, level: int = 3) -> str:
 
 
 def guides(docs: Docs) -> dict[str, Term]:
-    """The guides by name (`guide.install` is `install`), every one placed on a page."""
+    """The guides by name (`guide.why` is `why`), every one an essay or on the reference page."""
     found = {
         term.term.removeprefix("guide."): term
         for term in docs.terms
         if term.term.startswith("guide.")
     }
-    unplaced = set(found) - set(PAGES)
-    missing = set(PAGES) - set(found) - {"terms"}
+    placed = set(ESSAYS) | set(REFERENCE)
+    unplaced, missing = set(found) - placed, placed - set(found)
     if unplaced or missing:
         raise SystemExit(
             "web/build.py places the guides by name: "
             + "; ".join(
-                [f"guide.{name} is on no page (PAGES)" for name in sorted(unplaced)]
+                [f"guide.{name} is on no page (ESSAYS, REFERENCE)" for name in sorted(unplaced)]
                 + [f"guide.{name} is not a guide" for name in sorted(missing)]
             )
         )
@@ -527,49 +467,44 @@ def short_terms(docs: Docs) -> list[Term]:
     ]
 
 
-def terms_body(docs: Docs) -> tuple[str, list[tuple[int, str, str]]]:
-    """Every short term, by its root: what `nock docs` prints for each, whole."""
-    roots: dict[str, list[Term]] = {}
-    for term in short_terms(docs):
-        roots.setdefault(term.term.split(".")[0], []).append(term)
-    headings: list[tuple[int, str, str]] = [(1, "the-terms", "The terms")]
-    out = [
-        '<h1 id="the-terms">The terms</h1>',
+def demoted(article: str) -> str:
+    """A guide's Markdown with every heading one level down, to sit under the reference page's title."""
+    return re.sub(r"^(#{1,3}) ", r"#\1 ", article, flags=re.M)
+
+
+def reference_body(docs: Docs, found: dict[str, Term]) -> str:
+    """The reference guides, then every short term by its root: what `nock docs` prints for each, whole."""
+    title, _ = REFERENCE_PAGE
+    out = [f'<h1 id="{slug(title)}">{title}</h1>']
+    out += [Converter(demoted(found[name].article)).convert() for name in REFERENCE]
+    out += [
+        '<h2 id="the-terms">The terms</h2>',
         "<p>What your agents read: <code>.nock/nock docs</code> lists these terms, "
         "<code>.nock/nock docs TERM</code> prints one, and a term it doesn't know answers with the "
         "three closest. Each is at most 500 characters, so an agent reads only what its next step "
-        "needs; the guides (<code>.nock/nock docs guide</code>) are the long form, and the briefs "
+        "needs; the essays (<code>.nock/nock docs guide</code>) are the long form, and the briefs "
         "the installed skills and subagents follow are left out here.</p>",
     ]
+    roots: dict[str, list[Term]] = {}
+    for term in short_terms(docs):
+        roots.setdefault(term.term.split(".")[0], []).append(term)
     for root, terms in roots.items():
-        anchor = f"terms-{root}"
-        headings.append((2, anchor, f"<code>{html.escape(root)}</code>"))
-        out.append(f'<h2 id="{anchor}"><code>{html.escape(root)}</code></h2>')
+        out.append(f'<h3 id="terms-{root}"><code>{html.escape(root)}</code></h3>')
         out += [term_article(term) for term in terms]
-    return "\n".join(out), headings
+    return "\n".join(out)
 
 
 def docs_pages(docs: Docs) -> list[Page]:
+    """The essays in order, then the reference page."""
     found = guides(docs)
     pages = []
-    for name, (group, reads) in PAGES.items():
-        terms = []
-        for word in reads:
-            term = docs.find(word)
-            if term is None:
-                raise SystemExit(f"web/build.py: the docs page {name} reads `{word}`, not a term")
-            terms.append(term)
-        if name == "terms":
-            body, headings = terms_body(docs)
-            title, description = TERMS_PAGE
-        else:
-            converter = Converter(found[name].article)
-            body = converter.convert()
-            headings = converter.headings
-            title = re.sub(r"<[^>]+>", "", headings[0][2])
-            description = found[name].description
-        page = Page(name, group, title, description, body, contents_of(headings), tuple(terms))
-        pages.append(page)
+    for name in ESSAYS:
+        converter = Converter(found[name].article)
+        body = converter.convert()
+        title = re.sub(r"<[^>]+>", "", converter.headings[0][2])
+        pages.append(Page(name, title, found[name].description, body, True))
+    title, description = REFERENCE_PAGE
+    pages.append(Page("terms", title, description, reference_body(docs, found), False))
     return pages
 
 
@@ -590,104 +525,80 @@ def marked(current: bool) -> str:
     return ' aria-current="page"' if current else ""
 
 
-def agent_reads(page: Page) -> str:
-    """The terms an agent reads on the page's subject, folded under it."""
-    if not page.reads:
-        return ""
-    names = " ".join(f"<code>{term.term}</code>" for term in page.reads)
-    articles = "\n".join(term_article(term, 4) for term in page.reads)
-    return f"""<details class="reads">
-<summary><span class="label">What your agent reads</span><span class="names">{names}</span></summary>
-<div class="body">
-<p class="note">The same subject as <code>.nock/nock docs</code> gives it to your agents: a short article each.</p>
-{articles}
-</div>
-</details>"""
+BACK = '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M12.5 4.5 7 10l5.5 5.5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>'
 
 
-def pager(previous: Page | None, following: Page | None) -> str:
-    links = []
-    if previous:
-        title = html.escape(previous.title)
-        links.append(
-            f'<a class="previous" href="{previous.url}"><span class="label">Previous</span>{title}</a>'
-        )
-    if following:
-        title = html.escape(following.title)
-        links.append(
-            f'<a class="next" href="{following.url}"><span class="label">Next</span>{title}</a>'
-        )
-    return f'<nav class="pager" aria-label="Pages">{"".join(links)}</nav>' if links else ""
-
-
-def article(page: Page, located: dict[str, str], after: str) -> str:
-    body = relink(page.body, page.url, located)
-    heading, rest = body.split("\n", 1) if "\n" in body else (body, "")
-    return (
-        f'<article class="card article">\n{heading}\n{page.contents}\n{rest}\n{after}\n</article>'
-    )
-
-
-def groups_nav(current: str | None) -> str:
-    return "\n".join(
-        f'<a href="/docs/#{group}"{marked(group == current)}>{title}</a>'
-        for group, title in GROUPS.items()
-    )
+def art(name: str, wide: bool) -> str:
+    """An essay's picture: wide at the top of its page, small on the list."""
+    width, height = ART_SIZE if wide else THUMBNAIL_SIZE
+    file = f"{name}.webp" if wide else f"{name}-480.webp"
+    alt = html.escape(ART_ALT[name]) if wide else ""
+    loading = "" if wide else ' loading="lazy"'
+    return f'<img src="{ART}{file}" alt="{alt}" width="{width}" height="{height}"{loading}>'
 
 
 def docs_index(pages: list[Page], located: dict[str, str]) -> str:
-    """Every group, its pages with a line each; an address naming a heading of the old one-page docs
-    goes to its page."""
-    cards = []
-    for group, title in GROUPS.items():
-        entries = "\n".join(
-            f'<li><a href="{page.url}">{html.escape(page.title)}</a><p>{inline(page.description)}</p></li>'
-            for page in pages
-            if page.group == group
+    """The essays as one list, each with its art, title and line, the reference page last; an
+    address naming a heading of the earlier docs goes to the page that has it now."""
+    entries = []
+    for page in pages:
+        if page.art:
+            picture = f'<span class="thumbnail">{art(page.name, wide=False)}</span>'
+        else:
+            picture = (
+                '<span class="thumbnail reference" aria-hidden="true"><code>nock docs</code></span>'
+            )
+        entries.append(
+            f'<li><a class="essay-entry" href="{page.url}">{picture}<span class="text">'
+            f'<span class="title">{html.escape(page.title)}</span>'
+            f'<span class="line">{inline(page.description)}</span></span></a></li>'
         )
-        cards.append(
-            f'<section class="card group" id="{group}" aria-labelledby="{group}-title">'
-            f'<h2 id="{group}-title">{title}</h2><ol class="entries">\n{entries}\n</ol></section>'
-        )
-    moved = {anchor: where for anchor, where in located.items() if anchor not in GROUPS}
-    moved |= {old: located[new] for old, new in RENAMED.items() if new in located}
     return f"""<div class="frame docs">
 <div class="card docs-head">
 <h1>Docs</h1>
-<p>By what you are doing. The same text is in nock itself, <code>.nock/nock docs guide</code>, and each page folds in what your agent reads on its subject.</p>
+<p>nock from first principles, in a few long essays, best read in order. Each is in nock itself too, for your agents: <code>.nock/nock docs guide</code> lists them.</p>
 </div>
-<div class="groups">
-{"".join(cards)}
-</div>
+<ol class="essays">
+{chr(10).join(entries)}
+</ol>
 </div>
 <script>
 // The docs were one page; a link to one of its headings opens the page that has it now.
-const moved = {json.dumps(moved, sort_keys=True)};
+const moved = {json.dumps(moved(located), sort_keys=True)};
 const anchor = decodeURIComponent(location.hash.slice(1));
 if (Object.hasOwn(moved, anchor)) location.replace(moved[anchor]);
 </script>"""
 
 
+def moved(located: dict[str, str]) -> dict[str, str]:
+    """Every heading anchor, and every renamed one, by where it is now."""
+    return located | {old: located[new] for old, new in RENAMED.items() if new in located}
+
+
 def docs_page(page: Page, pages: list[Page], located: dict[str, str]) -> str:
+    """An essay: its art wide at the top, a way back to the list beside its title, and the next essay
+    at its foot as a button; the reference page likewise, without art and without a next."""
+    body = relink(page.body, page.url, located)
+    heading, rest = body.split("\n", 1) if "\n" in body else (body, "")
     index = pages.index(page)
-    previous = pages[index - 1] if index else None
-    following = pages[index + 1] if index + 1 < len(pages) else None
-    siblings = "\n".join(
-        f'<a href="{other.url}"{marked(other is page)}>{html.escape(other.title)}</a>'
-        for other in pages
-        if other.group == page.group
+    following = pages[index + 1] if page.art and index + 1 < len(pages) else None
+    if following is not None and not following.art:
+        following = None
+    figure = f'<figure class="essay-art">{art(page.name, wide=True)}</figure>\n' if page.art else ""
+    after = (
+        f'<nav class="essay-next" aria-label="Next essay"><a class="button primary" href="{following.url}">'
+        f"Next: {html.escape(following.title)}</a></nav>"
+        if following
+        else ""
     )
-    after = agent_reads(page) + pager(previous, following)
     return f"""<div class="frame docs">
-<div class="controls">
-<nav class="tabs" aria-label="Docs">
-{groups_nav(page.group)}
-</nav>
-<nav class="pages" aria-label="{GROUPS[page.group]}">
-{siblings}
-</nav>
+<article class="card article essay{" with-art" if page.art else ""}">
+{figure}<div class="essay-head"><a class="back" href="/docs/" aria-label="All docs" title="All docs">{BACK}</a>
+{heading}
 </div>
-{article(page, located, after)}
+{rest}
+{after}
+</article>
 </div>"""
 
 
@@ -702,14 +613,23 @@ def menu(current: str) -> str:
     return "\n".join(links) + f'\n<span class="icons">{icons}</span>'
 
 
-def layout(url: str, title: str, description: str, current: str, main: str, head: str = "") -> str:
+def layout(
+    url: str,
+    title: str,
+    description: str,
+    current: str,
+    main: str,
+    head: str = "",
+    image: tuple[str, str] | None = None,
+) -> str:
     """A page in the site's frame, served at `url`: the band with the menu, the main column, the
-    footer."""
+    footer; previewed by `image` when linked, the site's own by default."""
+    image = image or (OG_IMAGE, OG_IMAGE_ALT)
     return (
         LAYOUT.read_text()
         .replace("{{ title }}", html.escape(title))
         .replace("{{ description }}", html.escape(description))
-        .replace("{{ seo }}", seo_head(url) + "\n" + social_head(url, title, description))
+        .replace("{{ seo }}", seo_head(url) + "\n" + social_head(url, title, description, image))
         .replace("{{ head }}", head)
         .replace("{{ menu }}", menu(current))
         .replace("{{ main }}", main)
@@ -890,10 +810,13 @@ OG_IMAGE_ALT = (
 )
 
 
-def social_head(url: str, title: str, description: str) -> str:
+def social_head(
+    url: str, title: str, description: str, image: tuple[str, str] = (OG_IMAGE, OG_IMAGE_ALT)
+) -> str:
     """The OpenGraph and Twitter tags a shared link is previewed from: the page's own title,
-    description and canonical address, and the site's one image."""
+    description and canonical address, and its image: an essay's own art, else the site's."""
     width, height = OG_IMAGE_SIZE
+    picture, alt = image
     tags = [
         ("property", "og:type", "website"),
         ("property", "og:site_name", "nock"),
@@ -901,12 +824,12 @@ def social_head(url: str, title: str, description: str) -> str:
         ("name", "twitter:title", title),
         ("property", "og:description", description),
         ("property", "og:url", f"{ORIGIN}{url}"),
-        ("property", "og:image", f"{ORIGIN}{OG_IMAGE}"),
+        ("property", "og:image", f"{ORIGIN}{picture}"),
         ("property", "og:image:width", str(width)),
         ("property", "og:image:height", str(height)),
-        ("property", "og:image:alt", OG_IMAGE_ALT),
+        ("property", "og:image:alt", alt),
         ("name", "twitter:card", "summary_large_image"),
-        ("name", "twitter:image:alt", OG_IMAGE_ALT),
+        ("name", "twitter:image:alt", alt),
     ]
     return "\n".join(
         f'<meta {kind}="{name}" content="{html.escape(value)}">' for kind, name, value in tags
@@ -936,8 +859,9 @@ def sitemap(lastmod: dict[str, str]) -> str:
     )
 
 
-def moved_page(target: str) -> str:
-    """A page that is gone: it sends the visitor on to `target` at once, and asks not to be indexed."""
+def moved_page(target: str, located: dict[str, str]) -> str:
+    """A page that is gone: it sends the visitor on to `target` at once (or, when the address names
+    a heading that moved, to that heading), and asks not to be indexed."""
     address = html.escape(ORIGIN + target)
     return (
         '<!doctype html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n'
@@ -945,7 +869,9 @@ def moved_page(target: str) -> str:
         '<meta name="robots" content="noindex">\n'
         f'<link rel="canonical" href="{address}">\n'
         f'<meta http-equiv="refresh" content="0; url={html.escape(target)}">\n'
-        f"<script>location.replace({json.dumps(target)} + location.hash);</script>\n"
+        f"<script>\nconst moved = {json.dumps(moved(located), sort_keys=True)};\n"
+        "const anchor = decodeURIComponent(location.hash.slice(1));\n"
+        f"location.replace(Object.hasOwn(moved, anchor) ? moved[anchor] : {json.dumps(target)});\n</script>\n"
         f'</head>\n<body><p>This page has moved to <a href="{html.escape(target)}">{address}</a>.</p></body>\n</html>\n'
     )
 
@@ -968,16 +894,9 @@ def llms(pages: list[Page]) -> str:
                 for path, (title, description, _) in STORY.items()
             ],
         ),
-        *(
-            (
-                f"Docs: {name}",
-                [
-                    f"- [{page.title}]({ORIGIN}{page.url}): {page.description}"
-                    for page in pages
-                    if page.group == group
-                ],
-            )
-            for group, name in GROUPS.items()
+        (
+            "Docs",
+            [f"- [{page.title}]({ORIGIN}{page.url}): {page.description}" for page in pages],
         ),
         (
             "Legal",
@@ -986,7 +905,7 @@ def llms(pages: list[Page]) -> str:
         (
             "Optional",
             [
-                f"- [Everything above in one file]({ORIGIN}/llms-full.txt): every guide and every term, as Markdown.",
+                f"- [Everything above in one file]({ORIGIN}/llms-full.txt): every essay, the reference and every term, as Markdown.",
                 f"- [Source]({GITHUB}): nock's repository on GitHub, MIT licensed.",
             ],
         ),
@@ -1028,16 +947,21 @@ def absolute_links(text: str, here: str, located: dict[str, str]) -> str:
 
 
 def llms_full(docs: Docs, pages: list[Page], located: dict[str, str]) -> str:
-    """The guides and the terms as Markdown in one file, from the same sources the pages are."""
+    """The essays, the reference guides and the terms as Markdown in one file, from the same sources
+    the pages are."""
     found = guides(docs)
     out = ["# nock", "", f"> {STORY['/'][1]}", ""]
     for page in pages:
         out += [f"# {page.title}", "", f"Source: {ORIGIN}{page.url}", ""]
         if page.name == "terms":
-            out += [TERMS_PAGE[1], ""]
+            out += [REFERENCE_PAGE[1], ""]
+            for name in REFERENCE:
+                article = demoted(found[name].article.strip())
+                out += [absolute_links(article, page.url, located), ""]
+            out += ["## The terms", ""]
             for term in short_terms(docs):
                 article = absolute_links(term.article.strip(), page.url, located)
-                out += [f"## nock docs {term.term}", "", term.description, "", article, ""]
+                out += [f"### nock docs {term.term}", "", term.description, "", article, ""]
             continue
         article = re.sub(r"\A# .*\n+", "", found[page.name].article.strip())
         out += [absolute_links(article, page.url, located), ""]
@@ -1074,23 +998,31 @@ def build(site: Path, terms: Path | None = None, today: str | None = None) -> li
     written["docs/index.html"] = layout(
         "/docs/",
         "Docs · nock",
-        "nock's documentation, by what you are doing: start, every day, extending, and the reference.",
+        "nock from first principles, in a few long essays, and the reference: every command and term.",
         "/docs/",
         docs_index(pages, located),
     )
     for page in pages:
+        image = (f"{ART}{page.name}.jpg", ART_ALT[page.name]) if page.art else None
         written[f"docs/{page.name}/index.html"] = layout(
             page.url,
             f"{page.title} · nock",
             page.description,
             "/docs/",
             docs_page(page, pages, located),
+            image=image,
         )
-        guide = [terms / "guides" / f"guide.{page.name}.md"] if page.name != "terms" else [terms]
-        sources[page.url] = [
-            *guide,
-            *(path for term in page.reads for path in terms.rglob(f"{term.term}.md")),
-        ]
+        sources[page.url] = (
+            [terms / "guides" / f"guide.{page.name}.md", HERE / "site" / "art"]
+            if page.art
+            else [terms]
+        )
+    for old, anchor in MOVED_PAGES.items():
+        if anchor not in located:
+            raise SystemExit(f"web/build.py: /docs/{old}/ moves to #{anchor}, which no page has")
+        if old in ESSAYS or old == "terms":
+            raise SystemExit(f"web/build.py: /docs/{old}/ is a page, so it cannot move")
+        written[f"docs/{old}/index.html"] = moved_page(located[anchor], located)
     for name, description in LEGAL.items():
         title, main = legal_page(name)
         head = (
@@ -1102,7 +1034,7 @@ def build(site: Path, terms: Path | None = None, today: str | None = None) -> li
         )
         sources[f"/{name}/"] = [HERE / "legal" / f"{name}.md", HERE / "legal" / f"{name}-plain.md"]
     for old, new in MOVED.items():
-        written[old.lstrip("/") + "index.html"] = moved_page(new)
+        written[old.lstrip("/") + "index.html"] = moved_page(new, located)
     written["robots.txt"] = robots()
     written["sitemap.xml"] = sitemap(
         {url: last_changed(paths, today) for url, paths in sources.items()}

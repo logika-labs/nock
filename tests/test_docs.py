@@ -179,7 +179,7 @@ def test_every_guide_is_a_page_under_guide_with_its_title(project: Project) -> N
     its title, printed whole however long, and listed by `nock docs guide`."""
     docs = Docs()
     guides = [term for term in docs.terms if term.term.startswith("guide.")]
-    assert len(guides) == len(list((TERMS / GUIDES).glob("*.md"))) >= 10
+    assert len(guides) == len(list((TERMS / GUIDES).glob("*.md"))) >= 7
     for guide in guides:
         assert guide.article.startswith("# ") and "\n" in guide.article, guide.term
     longest = max(guides, key=lambda guide: len(guide.article))

@@ -96,8 +96,9 @@ src/nock/
                      reflection.lead and its parts reflection.toolbox, .map, .nock;
                      reflection.logika.lead and its parts .rules, .analytics;
                      topics.triage
-    guides/          the documentation for people, a page each (guide.install, guide.topics, …),
-                     nock.dev's docs built from them; at most 16,000 characters, printed whole
+    guides/          the documentation for people: a few long essays (guide.why, guide.review, …)
+                     and the reference (guide.commands), nock.dev's docs built from them; at most
+                     16,000 characters, printed whole
   briefs/
     nock-reflect/    the `/nock-reflect` skill (SKILL.md) and its three parts' subagent
                      types (agents/): each its front matter and one line pointing at
@@ -346,8 +347,8 @@ merge. What is shared is the reflection record (see below).
 one-line `description` (at most 100 characters); the article is at most 500,
 but for the briefs in `terms/briefs/` and the guides in `terms/guides/`,
 which may run to 16,000 and are printed whole (`docs.Article`, which the
-output cap passes through). A guide (`guide.topics`, a child of `guide`) is a
-page of the documentation for people: it opens with its `# ` title, and
+output cap passes through). A guide (`guide.review`, a child of `guide`) is a
+page of the documentation for people, an essay or the reference: it opens with its `# ` title, and
 nock.dev's docs are built from the guides and the terms (`web/build.py`), so
 the site, `nock docs` and the README's overview share one source. A short
 term is what an agent needs at a glance; its guide, everything.

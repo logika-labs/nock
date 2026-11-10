@@ -37,31 +37,21 @@ project, so it is the project's own code. It shares nothing without your yes.
 
 ## Docs
 
-The documentation is at [nock.dev/docs](https://nock.dev/docs/), and the same
-text is in nock itself: `.nock/nock docs` lists its terms, the short articles
-agents read, and `.nock/nock docs guide` the guides, the pages for people.
-Both are `src/nock/terms/`.
+The documentation is at [nock.dev/docs](https://nock.dev/docs/): nock from
+first principles, in a few long essays, best read in order. The same text is in
+nock itself: `.nock/nock docs guide` lists the essays, and `.nock/nock docs` the
+terms, the short articles agents read. Both are `src/nock/terms/`.
 
-- **Start:** [What changes for you](https://nock.dev/docs/why/),
-  [Install](https://nock.dev/docs/install/),
-  [The first session](https://nock.dev/docs/session/).
-- **Every day:** [Reviewing in Work](https://nock.dev/docs/work/),
-  [Chatting](https://nock.dev/docs/chat/),
-  [Tidy up](https://nock.dev/docs/tidy/),
-  [Topics and items](https://nock.dev/docs/topics/),
-  [The map and consulting](https://nock.dev/docs/consult/),
-  [Reflection rounds](https://nock.dev/docs/reflection/),
-  [The logika round](https://nock.dev/docs/logika/).
-- **Extending:** [A tool](https://nock.dev/docs/tool/),
-  [Checks, hooks and generators](https://nock.dev/docs/check/),
-  [Evaluations](https://nock.dev/docs/evaluation/).
-- **Reference:** [Commands and exit codes](https://nock.dev/docs/commands/),
-  [Settings](https://nock.dev/docs/settings/),
-  [The terms](https://nock.dev/docs/terms/),
-  [Telemetry](https://nock.dev/docs/telemetry/),
-  [What nock's agents may do](https://nock.dev/docs/permissions/),
-  [What nock shares](https://nock.dev/docs/sharing/),
-  [Developing nock](https://nock.dev/docs/developing/).
+1. [Why nock](https://nock.dev/docs/why/)
+2. [Agents that build their own tools](https://nock.dev/docs/reflection/)
+3. [A CLI agents can use](https://nock.dev/docs/cli/)
+4. [Review on your time](https://nock.dev/docs/review/)
+5. [Evaluations](https://nock.dev/docs/evaluation/)
+6. [nock in Logika](https://nock.dev/docs/logika/)
+7. [Setting up](https://nock.dev/docs/setup/)
+
+And the [reference](https://nock.dev/docs/terms/): every command, exit code and
+term.
 
 ## Developing nock
 
@@ -72,8 +62,8 @@ uv run ruff check && uv run ruff format && uv run basedpyright
 ```
 
 [ARCH.md](ARCH.md) has how the code is laid out, and `.nock/nock docs
-guide.developing` (or [the page](https://nock.dev/docs/developing/)) the gate
-and how a release goes. `web/` is nock.dev, its docs built from
+guide.cli` (or [the essay](https://nock.dev/docs/cli/#nock-is-its-own-first-user))
+the gate and how a release goes. `web/` is nock.dev, its docs built from
 `src/nock/terms/` (`web/README.md`).
 
 ## Thanks

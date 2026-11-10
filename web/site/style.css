@@ -197,30 +197,11 @@ main { display: block; padding-top: 16px; }
 }
 .actions { display: flex; flex-wrap: wrap; gap: 10px; }
 
-/* --- docs: the tabs and the tab's pages on one glass card, as the studio's controls ----------- */
+/* --- docs: the essays and the reference page, one column ---------------------------------------- */
 
 .docs { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
 .controls { padding: 0 18px 14px; display: grid; gap: 12px; }
-.tabs { display: flex; gap: 20px; border-bottom: 1px solid var(--border); overflow-x: auto; scrollbar-width: none; }
-.tabs a {
-  padding: 14px 2px 10px; border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap;
-  font: 500 12px/16px var(--mono); letter-spacing: .04em; text-transform: uppercase; color: var(--muted); text-decoration: none;
-}
-.tabs a:hover { color: var(--foreground); border-bottom-color: var(--lavender); }
-.tabs a[aria-current="page"] { color: var(--foreground); border-bottom-color: #111116; }
-.pages { display: flex; flex-wrap: wrap; gap: 6px; }
-.pages a {
-  padding: 3px 11px; border-radius: 999px; border: 1px solid rgb(17 17 22 / .18); background: rgb(255 255 255 / .9);
-  font: 500 13px/20px var(--sans); color: var(--foreground); text-decoration: none; transition: background-color .15s, border-color .15s;
-}
-.pages a:hover { background: rgb(185 166 255 / .12); border-color: rgb(17 17 22 / .3); }
-.pages a[aria-current="page"] { background: rgb(185 166 255 / .26); border-color: rgb(75 47 208 / .55); color: #2a1d78; }
 
-.entries { list-style: none; margin: 0; padding: 0; display: grid; gap: 18px; }
-.entries li { display: flex; gap: 14px; }
-.entries .number { font: 600 14px/24px var(--mono); color: var(--muted); }
-.entries a { font: 600 16px/24px var(--sans); color: var(--foreground); text-decoration-color: var(--lavender); text-decoration-thickness: 2px; }
-.entries p { color: var(--muted); }
 
 /* --- an article: a README section, Getting started, a legal page ----------------------------- */
 
@@ -261,20 +242,6 @@ main { display: block; padding-top: 16px; }
 .article th, .article td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
 .article th { background: var(--code); font: 600 11.5px/1.4 var(--mono); letter-spacing: .04em; text-transform: uppercase; }
 .article tr:last-child td { border-bottom: 0; }
-
-/* Its own table of contents, under its title. */
-.contents { display: grid; gap: 2px; margin: 0 0 24px; padding: 12px 16px; border-radius: 14px; background: var(--code); }
-.contents .label { margin-bottom: 4px; }
-.contents a { color: var(--foreground); text-decoration: none; font-size: 14px; line-height: 22px; width: fit-content; }
-.contents a:hover { text-decoration: underline; text-decoration-color: var(--lavender); text-decoration-thickness: 2px; }
-.contents .level-3 { padding-left: 16px; color: var(--muted); font-size: 13.5px; }
-
-.pager { display: flex; justify-content: space-between; gap: 12px; margin-top: 32px; padding-top: 18px; border-top: 1px solid var(--border); }
-.pager a { display: grid; gap: 2px; color: var(--foreground); text-decoration: none; font: 600 15px/22px var(--sans); }
-.pager a:hover { text-decoration: underline; text-decoration-color: var(--lavender); text-decoration-thickness: 2px; }
-.pager .next { margin-left: auto; text-align: right; }
-.pager .previous .label::before { content: "← "; }
-.pager .next .label::after { content: " →"; }
 
 /* --- legal pages: the tl;dr switch, the summary while it is on, the full text always ---------- */
 
@@ -463,29 +430,51 @@ pre.code code { background: none; padding: 0; color: inherit; font: inherit; ove
 .stepper-pager .button svg { width: 16px; height: 16px; flex: none; }
 .stepper-card .steps { overflow: hidden; }
 
-/* --- the docs: four groups, a page each, what the agent reads folded under ------------------- */
+/* --- the docs: one list of essays, each with its art; an essay with its art across its top ------ */
 
 .docs-head { display: grid; gap: 10px; }
 .docs-head h1 { font: 800 32px/1.15 var(--display); letter-spacing: -.03em; }
 .docs-head p { color: var(--muted); }
-.groups { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
-.group { display: grid; gap: 14px; align-content: start; scroll-margin-top: 16px; }
-.group h2 { font: 700 20px/1.25 var(--display); letter-spacing: -.02em; padding-top: 14px; position: relative; }
-.group h2::before { content: ""; position: absolute; top: 0; left: 0; width: 40px; height: 4px; border-radius: 2px; background: var(--holo); }
-.entries { counter-reset: entry; }
-.entries li { display: grid; gap: 2px; padding: 8px 12px; margin: 0 -12px; border-radius: 12px; transition: background-color .15s; }
-.entries li:hover { background: var(--wash); }
-.reads { margin: 32px 0 0; border-radius: 16px; border: 1px solid var(--border); background: #fff; }
-.reads summary { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 14px 18px; cursor: pointer; list-style: none; border-radius: 16px; }
-.reads summary::-webkit-details-marker { display: none; }
-.reads summary::before { content: ""; width: 8px; height: 8px; border-right: 2px solid var(--muted); border-bottom: 2px solid var(--muted); transform: rotate(-45deg); transition: transform .15s; }
-.reads[open] summary::before { transform: rotate(45deg); }
-.reads summary:hover { background: var(--wash); }
-.reads summary .label { color: var(--foreground); }
-.reads summary .names { display: flex; flex-wrap: wrap; gap: 4px; }
-.reads summary .names code { font-size: 11.5px; }
-.reads .body { padding: 4px 18px 8px; border-top: 1px solid var(--border); }
-.reads .note { font-size: 13px; color: var(--muted); margin: 12px 0 4px; }
+.essays { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+.essay-entry {
+  display: grid; grid-template-columns: 240px minmax(0, 1fr); align-items: center; gap: 24px; padding: 14px;
+  border-radius: var(--radius); border: 1px solid rgb(255 255 255 / .9); background: var(--noise), var(--paper);
+  background-blend-mode: soft-light, normal; box-shadow: var(--lift); color: var(--foreground); text-decoration: none;
+  transition: box-shadow .18s ease, transform .18s ease;
+}
+.essay-entry:hover { text-decoration: none; transform: translateY(-1px); box-shadow: var(--lift), 3px 3px 0 0 var(--cyan), -3px -3px 0 0 var(--pink); }
+.essay-entry .thumbnail { display: block; aspect-ratio: 16 / 9; border-radius: 12px; overflow: hidden; background: #111116; }
+.essay-entry .thumbnail img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.essay-entry .thumbnail.reference { display: grid; place-items: center; background: var(--holo); }
+.essay-entry .thumbnail.reference code { background: #111116; color: #fff; font-size: 14px; padding: 6px 10px; border-radius: 8px; box-shadow: 2px 2px 0 0 var(--cyan), -2px -2px 0 0 var(--pink); }
+.essay-entry .text { display: grid; gap: 6px; }
+.essay-entry .title { font: 700 21px/1.25 var(--display); letter-spacing: -.02em; }
+.essay-entry .line { color: var(--muted); }
+.essay.with-art { padding-top: 0; }
+.essay-art { margin: 0 -32px 28px; border-radius: var(--radius) var(--radius) 0 0; overflow: hidden; background: #111116; }
+.essay-art img { display: block; width: 100%; height: auto; aspect-ratio: 16 / 9; object-fit: cover; }
+.essay-head { display: flex; align-items: flex-start; gap: 12px; margin: 0 0 20px; }
+.essay-head h1 { margin: 0; }
+.back {
+  flex: none; display: grid; place-items: center; width: 40px; height: 40px; margin-top: -1px; border-radius: 12px;
+  border: 1px solid var(--input); background: rgb(255 255 255 / .9); color: var(--foreground);
+  transition: box-shadow .18s ease, border-color .18s;
+}
+.back svg { width: 20px; height: 20px; }
+.back:hover { border-color: rgb(17 17 22 / .3); box-shadow: 0 8px 18px -6px rgb(130 225 190 / .55), 0 2px 6px -2px rgb(130 225 190 / .55); }
+.essay-next { display: flex; justify-content: flex-end; margin-top: 36px; padding-top: 22px; border-top: 1px solid var(--border); }
+.essay-next .button { padding: 12px 20px; font-size: 15px; max-width: 100%; }
+.essay-next .button::after { content: " →"; white-space: pre; }
+@media (max-width: 720px) {
+  .essay-entry { grid-template-columns: minmax(0, 1fr); gap: 14px; padding: 10px 10px 16px; }
+  .essay-entry .text { padding: 0 6px; }
+  .essay-entry .title { font-size: 18px; }
+}
+@media (max-width: 560px) {
+  .essay-art { margin: 0 -18px 22px; }
+  .back { width: 34px; height: 34px; }
+  .essay-next .button { width: 100%; justify-content: center; text-align: center; }
+}
 .term { padding: 14px 0; border-bottom: 1px solid var(--border); }
 .term:last-child { border-bottom: 0; }
 .article .term h3, .article .term h4 { margin: 0 0 4px; padding: 0; font: 600 13px/20px var(--mono); text-transform: none; letter-spacing: 0; }
@@ -500,7 +489,6 @@ pre.code code { background: none; padding: 0; color: inherit; font: inherit; ove
   .hero-b, .theatre-body, .story-b .community.wide, .story-b .logika.wide { grid-template-columns: minmax(0, 1fr); }
   .story-b .logika .art { order: -1; }
   .theatre .panels { border-right: 0; border-bottom: 1px solid var(--border); }
-  .groups { grid-template-columns: minmax(0, 1fr); }
   .step { grid-template-columns: minmax(0, 1fr); }
 }
 @media (max-width: 560px) {

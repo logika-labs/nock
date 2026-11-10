@@ -5,8 +5,8 @@ A dotted term is a child of the term before its last dot, which must exist;
 an article lists its children. A term in `terms/briefs/` is a brief a skill or
 a subagent nock installs follows (`Run .nock/nock docs TERM and do what it
 says.`), so it may run long, and is printed whole. A term in `terms/guides/`
-(`guide.topics`) is a page of the documentation for people, nock.dev's docs
-built from it, and may run long too: a short term is what an agent needs at a
+(`guide.review`) is a page of the documentation for people, an essay or the
+reference, nock.dev's docs built from it, and may run long too: a short term is what an agent needs at a
 glance, a guide everything there is to know."""
 
 from __future__ import annotations
