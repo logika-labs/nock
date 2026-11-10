@@ -33,7 +33,8 @@ CADDY_SITES = "/etc/caddy/sites"
 CADDY_SITE = HERE / "nock.dev.caddy"
 KEEP = 5
 # What the closed site keeps: its page, the legal pages and the files they load.
-OPEN_WHILE_CLOSED = ("index.html", "style.css", "fonts", "og.jpg", "privacy", "terms")
+ICONS = ("favicon.svg", "favicon-32.png", "favicon-16.png", "favicon.ico", "apple-touch-icon.png")
+OPEN_WHILE_CLOSED = ("index.html", "style.css", "fonts", "og.jpg", *ICONS, "privacy", "terms")
 
 
 @dataclass(frozen=True)

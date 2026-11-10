@@ -111,6 +111,8 @@ def test_every_link_between_pages_lands_and_old_addresses_are_sent_on(tmp_path: 
         for href in re.findall(r'href="([^"]+)"', text):
             if href.startswith("#"):
                 assert href[1:] in ids(text), (url, href)
+            elif href.endswith((".svg", ".png", ".ico")):
+                assert (WEB / "site" / href.lstrip("/")).is_file(), (url, href)
             elif href.startswith("/") and not href.endswith((".css", ".woff2", ".js")):
                 path, _, anchor = href.partition("#")
                 assert path in pages, (url, href)

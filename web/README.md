@@ -11,7 +11,8 @@ landing/           the landing page and Getting started: their templates (home.h
 legal/             privacy.md and terms.md, each with its plain-words summary (NAME-plain.md)
 videos/            the landing page's two videos: the owner's scripts, and the Remotion package, VHS and
                    Playwright recorders that make them from real sessions and the real studio (its README)
-site/              style.css, demo.js and demo.css (the demo), fonts/, logika.webp and .png
+site/              style.css, demo.js and demo.css (the demo), fonts/, the icons (favicon.svg,
+                   favicon-32.png, favicon-16.png, favicon.ico, apple-touch-icon.png), logika.webp and .png
                    (Logika's art, beside "nock in Logika"), videos/ (each video's poster and captions;
                    the MP4 and WebM are made by videos/ and not committed), og.jpg (the link preview, the
                    owner's art cropped to 1200x630), art/ (each essay's art: NAME.webp, 1600
@@ -53,6 +54,15 @@ Each essay's art is the owner's style, drawn through the Codex CLI with the site
 house style (as Logika's `banners` tool does), then cut to the three sizes above with ImageMagick:
 `magick IN -resize 1600x900^ -gravity center -extent 1600x900 -quality 60 art/NAME.webp`, the same
 at 480x270 for the list, and `-resize 1200x675^ -extent 1200x630 -quality 68` for `NAME.jpg`.
+
+**The icons** are a black lowercase n with nock's pink (#ff9ad5) offset up-left and cyan (#8fe9ff)
+down-right, no tile: `favicon.svg` is the drawing, and the studio's tab wears the same SVG inline
+(`src/nock/pages/studio.html`). The PNGs are rendered from it in Chromium (an `<img>` at the size,
+screenshotted with a transparent background): `favicon-32.png` as drawn; `favicon-16.png` from the
+same n redrawn on a 16-pixel grid (stems and arch on whole pixels, the colours 1 pixel off), since
+the drawing's half-pixel edges blur at 16; `apple-touch-icon.png` (180) with the n at 80% on a white
+square of radius 7/32, since iOS puts a transparent icon on black; and
+`magick favicon-16.png favicon-32.png favicon.ico`.
 
 **The demo** (`site/demo.js`) is coded, not recorded: a scene per part of nock,
 each a script of steps with a caption, every element saying from which step it shows (`data-at`,

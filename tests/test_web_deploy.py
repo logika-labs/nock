@@ -178,7 +178,12 @@ def test_a_closed_site_is_the_coming_soon_page_and_the_legal_pages(tmp_path: Pat
         "/",
         "/privacy/",
         "/terms/",
+        "/favicon.svg",
+        "/favicon-32.png",
+        "/favicon-16.png",
+        "/apple-touch-icon.png",
     }
+    assert all((staged / icon).is_file() for icon in DEPLOY.ICONS)
     assert not re.search(r"<script(?! type=\"application/ld\+json\")[^>]*\ssrc=", home)
 
 
