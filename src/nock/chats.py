@@ -35,7 +35,7 @@ from nock.errors import ConflictError, Error, NotFoundError, UsageError
 from nock.git import GitError
 from nock.sessions import find_transcript
 from nock.templates import Library
-from nock.topics import TIDIER, Topics, attachment_name, committed, kind_of
+from nock.topics import ADDRESSER, TIDIER, Topics, attachment_name, committed, kind_of
 from nock.utils import now, read_json, write_json
 
 if TYPE_CHECKING:
@@ -44,7 +44,6 @@ if TYPE_CHECKING:
 BRIEFS = Path(__file__).resolve().parent / "briefs"
 CHATTER = "chatter"
 NAMER = "namer"
-ADDRESSER = "addresser"
 # The topics, as the main checkout keeps them: what Tidy up commits.
 TOPICS = ".nock/topics"
 # What the owner's first message in a Tidy up chat says.

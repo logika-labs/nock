@@ -112,6 +112,9 @@ STATUS = "status"
 # The studio's Tidy up: its writes are not committed one by one; the studio
 # commits them together when it ends, so one revert undoes them.
 TIDIER = "tidier"
+# The studio's Address my comments: it may make an item's derived files again
+# by their recipe (`items remake`), so a recipe in a version it wrote never runs.
+ADDRESSER = "addresser"
 
 
 class Author(StrEnum):
@@ -371,6 +374,26 @@ class Topics:
         item["topic"] = topic
         item["ref"] = f"{topic}/{slug}"
         return item
+
+    def recipes(self, ref: str) -> list[str]:
+        """The commands that make an item's derived files again: the recipes
+        of its latest version not written by Address my comments, so what
+        `items remake` runs is always a recipe the item's author wrote."""
+        item = self.item(ref)
+        authored = [version for version in item["versions"] if version.get("role") != ADDRESSER]
+        commands: list[str] = []
+        for entry in authored[-1]["files"] if authored else []:
+            command = (
+                (entry.get("recipe") or {}).get("command") if entry["kind"] == "derived" else None
+            )
+            if command and command not in commands:
+                commands.append(command)
+        if not commands:
+            raise NotFoundError(
+                f"{item['ref']} has no recipe command to make it again: follow its recipe's"
+                " instruction, if it has one (`.nock/nock items show`)"
+            )
+        return commands
 
     def folder(self, topic: str, slug: str, version: int) -> Path:
         return self.directory / topic / slug / str(version)

@@ -76,6 +76,7 @@ EXPECTED = {
         "Bash(.nock/nock items list:*)",
         "Bash(.nock/nock items show:*)",
         "Bash(.nock/nock items update:*)",
+        "Bash(.nock/nock items remake:*)",
         "Bash(.nock/nock docs:*)",
         "Bash(.nock/nock check:*)",
         "Bash(.nock/nock test:*)",

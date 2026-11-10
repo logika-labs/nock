@@ -51,6 +51,7 @@ from nock.telemetry import UNRECORDED_VARIABLE
 from nock.templates import SYNTAX
 from nock.tools import NATIVE_EVENTS, Tool, check, command
 from nock.topics import (
+    ADDRESSER,
     SHORT,
     TIDIER,
     ItemChange,
@@ -554,6 +555,29 @@ def items_show(project: Project, item: str) -> dict[str, Any]:
     decision's number."""
     topics = Topics(project)
     return topics.shown(topics.item(item))
+
+
+@command(name="remake", group="items")
+def items_remake(project: Project, sh: Shell, item: str) -> Output:
+    """Address my comments' way to make an item's derived files again by its
+    recipe: run each command of its latest version's recipes, by `sh -c` in
+    the working tree, supervised (never a recipe Address my comments wrote);
+    then submit what they made with `items update ITEM --version`. Exits
+    with the first failing command's code. Another agent runs the recipe's
+    command itself."""
+    recipes = Topics(project).recipes(item)
+    if project.current_role() != ADDRESSER:
+        raise PolicyError(
+            "only Address my comments remakes by recipe; run the recipe's command yourself: "
+            + "; ".join(f"`{recipe}`" for recipe in recipes)
+        )
+    output: Output | None = None
+    for recipe in recipes:
+        output = sh(recipe, check=False)
+        if not output.ok:
+            break
+    assert output is not None
+    return output
 
 
 @command(name="judge", group="items", confirm=True)

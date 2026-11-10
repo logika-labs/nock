@@ -26,7 +26,11 @@ For each comment, the way an agent working the threads would:
    (`.nock/nock check`, or `.nock/nock test`); make a new version
    of the item where what it shows or decides changes
    (`.nock/nock items update <topic/slug> --version '{…}'`, its `--help`
-   has the fields); then reply in its thread with what you changed.
+   has the fields); then reply in its thread with what you changed. A
+   derived file (a screenshot, a video) with a recipe command is made
+   again by `.nock/nock items remake <topic/slug>`, which runs that
+   recipe, and only it; submit what it wrote, with its recipe, as the new
+   version. A recipe that is only an instruction, follow.
 3. **Something you cannot do here, or should not decide:** say so in its
    thread, and why.
 

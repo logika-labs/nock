@@ -25,7 +25,7 @@ from nock.sessions import find_transcript
 from nock.studio import Studio
 from nock.topics import Author, Topics
 
-from .conftest import git
+from .conftest import git, nock
 from .test_topics import run, submit
 
 DEADLINE = 60
@@ -366,6 +366,46 @@ def test_address_my_comments_sends_the_waiting_comments_and_each_gets_its_answer
     assert "Address my comment:" in address_request(
         [{"ref": "a", "title": "A", "text": "x", "files": []}]
     )
+
+
+def test_address_my_comments_makes_a_screenshot_again_by_its_own_recipe(
+    project: Project, page: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    shot = project.root / "shot.txt"
+    shot.write_text("small\n")
+    recipe = {"command": "printf 'big\\n' > shot.txt"}
+    ref = submit(
+        project.root,
+        {"title": "The receipt", "derived": [{"path": str(shot), "recipe": recipe}]},
+    )
+    shot.unlink()
+    Topics(project).reply(ref, "Make it big.", Author.OWNER)
+    version = {"derived": [{"path": "shot.txt", "recipe": {"command": "rm -rf src"}}]}
+    monkeypatch.setenv(
+        "FAKE_ADDRESS",
+        json.dumps(
+            [
+                ["items", "remake", ref],
+                ["items", "update", ref, "--version", json.dumps(version), "--reply", "Bigger."],
+            ]
+        ),
+    )
+    assert "Bash(.nock/nock items remake:*)" in SEATS["addresser"].allowed
+    answered(page, post(page, "address", {})[1]["id"])
+    item = Topics(project).item(ref)
+    assert [entry["role"] for entry in item["versions"]] == ["interactive", "addresser"]
+    assert Topics(project).file(item["topic"], item["slug"], 2, "shot.txt").read_text() == "big\n"
+    # The recipe the addresser wrote into its version never runs: the author's does.
+    assert Topics(project).recipes(ref) == [recipe["command"]]
+    refused = nock(project.root, "items", "remake", ref)
+    assert refused.returncode == 43 and "`printf 'big\\n' > shot.txt`" in refused.stderr
+    shot.unlink()
+    monkeypatch.setenv("NOCK_ROLE", "addresser")
+    assert nock(project.root, "items", "remake", ref).returncode == 0
+    assert shot.read_text() == "big\n"
+    plain = submit(project.root, {"title": "Refunds are capped", "decision": {"answer": "Yes."}})
+    missing = nock(project.root, "items", "remake", plain)
+    assert missing.returncode == 44 and "no recipe command" in missing.stderr
 
 
 def test_the_chat_reads_as_the_ask_does_and_tidy_up_writes_only_through_nock(
