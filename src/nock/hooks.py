@@ -11,7 +11,8 @@ running it, if any (`callers.py`), so what it writes names its parent session;
 an edit to a file shows the items about it; and when the session ends
 its transcript is read into telemetry and, when due, the usage statistics
 are shared. A turn that would end with a round this session started still
-open is refused once, saying what the round still needs, and so, once a
+open is refused once, saying what the round still needs — unless it ends only
+to wait on the background agents it launched, the round's parts — and so, once a
 session, is one that wrote to a topic without ever setting where it stands
 (its state or status). What calls for the owner is also said to the human. With
 `reminders = false` nock says nothing unasked, and still records. The
@@ -34,7 +35,7 @@ from nock.kinds import kinds
 from nock.primer import refresh
 from nock.project import NOCK_DIRECTORY, Project
 from nock.releases import Updates
-from nock.sessions import Sessions
+from nock.sessions import Sessions, background_agents, find_transcript
 from nock.status import Standing
 from nock.tools import CONFIRM_NOTES, NATIVE_EVENTS, Event
 from nock.topics import Author, Topics
@@ -99,7 +100,7 @@ class HookRunner:
         elif event is Event.SESSION_END:
             self.session_end()
         blocks: list[str] = []
-        if event is Event.STOP:
+        if event is Event.STOP and not self.waiting():
             blocks += self.rounds_left_open()
             if self.reminding:
                 blocks += self.topics_unstated()
@@ -270,6 +271,21 @@ class HookRunner:
                 " answer a question in the thread (`--reply`), briefly, when the owner is away.",
             ]
         )
+
+    def waiting(self) -> bool:
+        """Whether the turn ends only to wait on background agents it launched
+        (a round's parts), which give the session another turn as they end:
+        nock asks for nothing then, and asks at the turn after the last."""
+        session = self.payload.get("session_id")
+        transcript = self.payload.get("transcript_path")
+        path = (
+            Path(transcript)
+            if isinstance(transcript, str)
+            else find_transcript(self.project.root, session)
+            if isinstance(session, str)
+            else None
+        )
+        return path is not None and path.is_file() and bool(background_agents(path))
 
     def rounds_left_open(self) -> list[str]:
         """Every round this session started and has not finished, with what it still needs."""

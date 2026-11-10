@@ -325,6 +325,46 @@ def result_text(content: object) -> str:
     return ""
 
 
+# A background agent launched (its Agent tool result), and its end said back
+# (the notification Claude Code queues for the session when it stops).
+LAUNCHED = re.compile(r"Async agent launched.*?agentId: ([\w-]+)", re.DOTALL)
+NOTIFIED = re.compile(
+    r"<task-notification>\s*<task-id>([\w-]+)</task-id>.*?<status>(\w+)</status>", re.DOTALL
+)
+
+
+def background_agents(path: Path) -> set[str]:
+    """The background agents the session of the transcript at `path` launched
+    and has not heard back from: while there are any, a turn ending is the
+    session waiting on them, and it gets another turn when each ends."""
+    running: set[str] = set()
+    with path.open("rb") as handle:
+        for line in handle:
+            try:
+                record = json.loads(line.decode(errors="replace"))
+            except json.JSONDecodeError:
+                continue
+            if not isinstance(record, dict) or record.get("isSidechain"):
+                continue
+            message = record.get("message")
+            content = message.get("content") if isinstance(message, dict) else None
+            said = [record.get("content")] if record.get("type") == "queue-operation" else []
+            if record.get("type") == "user" and isinstance(content, str):
+                said.append(content)
+            for block in content if isinstance(content, list) else []:
+                if not isinstance(block, dict):
+                    continue
+                if block.get("type") == "tool_result":
+                    running.update(LAUNCHED.findall(result_text(block.get("content"))))
+                elif block.get("type") == "text":
+                    said.append(block.get("text"))
+            for text in said:
+                for agent, status in NOTIFIED.findall(text if isinstance(text, str) else ""):
+                    if status != "running":
+                        running.discard(agent)
+    return running
+
+
 class Sessions:
     def __init__(self, project: Project) -> None:
         self.project = project

@@ -411,6 +411,39 @@ def test_a_session_cannot_end_its_turn_with_the_round_it_started_open(
     assert stop("s1") is None
 
 
+def test_the_stop_waits_with_a_round_s_lead_while_its_parts_run_in_the_background(
+    project: Project, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "s1")
+    assert nock(project.root, "reflect").returncode == 0
+    path = project.root / "s1.jsonl"
+
+    def launched(agent: str) -> dict[str, object]:
+        text = f"Async agent launched successfully.\nagentId: {agent} (internal ID)\n"
+        result = {
+            "type": "tool_result",
+            "tool_use_id": agent,
+            "content": [{"type": "text", "text": text}],
+        }
+        return {"type": "user", "message": {"role": "user", "content": [result]}}
+
+    def notified(agent: str) -> dict[str, object]:
+        text = f"<task-notification>\n<task-id>{agent}</task-id>\n<status>completed</status>\n"
+        return {"type": "user", "message": {"role": "user", "content": text}}
+
+    def stop(*records: dict[str, object]) -> dict[str, object] | None:
+        path.write_text("".join(json.dumps(record) + "\n" for record in records))
+        payload = {"session_id": "s1", "transcript_path": str(path), "stop_hook_active": False}
+        return HookRunner(project, payload).handle("Stop")
+
+    parts = [launched(agent) for agent in ("toolbox", "map", "nock")]
+    assert stop(*parts) is None
+    assert stop(*parts, notified("map"), notified("nock")) is None
+    refused = stop(*parts, notified("map"), notified("nock"), notified("toolbox"))
+    assert refused is not None and refused["decision"] == "block"
+    assert "is under way and not finished" in str(refused["reason"])
+
+
 def test_reflect_starts_the_default_kind_and_names_the_others(project: Project) -> None:
     unknown = nock(project.root, "reflect", "lgika")
     assert unknown.returncode == 40 and "did you mean `reflect logika`" in unknown.stderr

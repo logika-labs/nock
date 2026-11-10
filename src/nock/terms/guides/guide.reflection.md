@@ -120,7 +120,8 @@ other:
 
 A session that started a round can't end its turn while the round is open:
 nock refuses the stop once, naming what is still missing, and lets the next
-stop through.
+stop through. A turn that ends only to wait on the round's parts, running in
+the background, isn't refused: nock asks once they are back.
 
 The toolbox part starts from the big picture, not just the numbers. A command
 that would save three calls a week on a path the project is leaving isn't worth
