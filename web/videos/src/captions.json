@@ -1,5 +1,6 @@
 {
   "fps": 30,
+  "intro": 3,
   "reflection": {
     "title": "Your agents build the tools they need",
     "seconds": 60,
@@ -25,6 +26,21 @@
       { "from": 42, "to": 52, "caption": "Then accept or reject the work, and it becomes part of your project's history…" },
       { "from": 52, "to": 58, "caption": "…so future agents can consult it at any time, and stay aligned with your product vision." },
       { "from": 58, "to": 60, "caption": "Agents never wait on you. You review when it suits you." }
+    ]
+  },
+  "evaluation": {
+    "title": "Choose the best way forward, from real runs",
+    "seconds": 60,
+    "beats": [
+      { "from": 0, "to": 6, "caption": "When you program with AI, you can send several agents to explore different options at once." },
+      { "from": 6, "to": 12, "caption": "The hard part becomes tracing their work, and judging it." },
+      { "from": 12, "to": 20, "caption": "There are many parameters to tweak, and agents' work is slow, costs money, and comes out different every time." },
+      { "from": 20, "to": 28, "caption": "So nock breaks an experiment into stages, each branching on parameters: models, skills, anything." },
+      { "from": 28, "to": 35, "caption": "Each stage's results are scored against criteria, or decide what runs next." },
+      { "from": 35, "to": 44, "caption": "Every stage is cached once it runs: a memoized graph that's easy to read, and saves time and money." },
+      { "from": 44, "to": 51, "caption": "You can drill into any run to see exactly what happened…" },
+      { "from": 51, "to": 57, "caption": "…or let your agent query the trends, without inventing a methodology." },
+      { "from": 57, "to": 60, "caption": "Trace and judge your agents' work, and choose the best way forward." }
     ]
   }
 }

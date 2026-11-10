@@ -1,0 +1,27 @@
+[
+ {
+  "name": "eval-logika",
+  "hash": "#experiment/healthchecks",
+  "actions": [
+   [
+    "until",
+    "#xp-tree g.node",
+    "300000"
+   ],
+   [
+    "wait",
+    "2000"
+   ],
+   [
+    "scroll",
+    "#xp-window"
+   ]
+  ],
+  "boxes": {
+   "window": "#xp-window",
+   "instrument": "#xp-tree g.node:has-text('Instrument') >> nth=1",
+   "app": "#xp-tree g.node:has-text('The app')",
+   "instrument2": "#xp-tree g.node:has-text('Instrument') >> nth=2"
+  }
+ }
+]

@@ -1,9 +1,11 @@
 """Writes public/data/NAME.json, what a composition shows: the recordings it plays (with their lengths,
 read by ffprobe), the studio's stills, and for the reflection video the demo's own telemetry (the
-sessions before the round and the shell commands each ran) and the tool the round wrote.
+sessions before the round and the shell commands each ran) and the tool the round wrote, and for the
+evaluation video what the eval's agents answered.
 
     python3 record/prepare.py reflection DEMO
     python3 record/prepare.py review DEMO
+    python3 record/prepare.py evaluation DEMO
 """
 
 import json
@@ -162,12 +164,14 @@ def shot(
     scale: float = 1.35,
     ring: str | None = None,
     press: str | None = None,
+    begin: str | None = None,
+    begin_scale: float = 1.35,
 ) -> dict:
     found = boxes(name)
     out = {
         "shot": f"shots/{name}.png",
         "seconds": seconds,
-        "from": view(),
+        "from": view(found.get(begin), begin_scale) if begin else view(),
         "to": view(found.get(zoom), scale) if zoom else view(),
     }
     frames = round(seconds * 30)
@@ -230,8 +234,79 @@ def review(demo: Path) -> dict:
     }
 
 
+def evaluation(demo: Path) -> dict:
+    """The eval in the demo (evals/fix): three of its agents' answers to one bug, the recordings and the
+    stills, the Experiment tab's of the demo and of Logika's own evaluation (its studio on another port)."""
+    scenario = demo / "evals" / "fix"
+    bug = "tax-rounding"
+    answers = [
+        {
+            "label": f"{model} · run {rep}",
+            "text": (
+                scenario
+                / "results"
+                / "fixed"
+                / f"model={model}"
+                / f"bug={bug}"
+                / f"rep={rep}"
+                / "answer.txt"
+            )
+            .read_text()
+            .strip(),
+        }
+        for model, rep in (("haiku", 1), ("haiku", 2), ("sonnet", 1))
+    ]
+    complaint = json.loads((scenario / "parameters" / "bug" / f"{bug}.json").read_text())[
+        "complaint"
+    ]
+    return {
+        "complaint": complaint,
+        "answers": answers,
+        "fan": [shot("eval-tree", 6, zoom="fix", scale=1.3, ring="fix")],
+        "logika": [
+            shot(
+                "eval-logika",
+                8,
+                zoom="instrument",
+                scale=1.7,
+                ring="instrument",
+                begin="window",
+                begin_scale=1.3,
+            )
+        ],
+        "stages": [
+            shot("eval-whole", 5.5, zoom="score", scale=2.3, begin="app", begin_scale=2.3),
+            shot("eval-whole", 2.5, zoom="window", scale=1.3, begin="score", begin_scale=2.3),
+        ],
+        "decisions": [
+            shot(
+                "eval-whole",
+                3.5,
+                zoom="fixed",
+                scale=2.2,
+                ring="fixed",
+                begin="window",
+                begin_scale=1.3,
+            ),
+            shot("eval-measures", 3.5, zoom="measures", scale=1.3, ring="measures"),
+        ],
+        "runs": [
+            clip("e-run", "tally · nock eval run"),
+            clip("e-rerun", "tally · the scoring changed"),
+        ],
+        "drill": [
+            shot("eval-run", 2.4, press="fix"),
+            shot("eval-answer", 2.4, zoom="answer", scale=1.45, ring="answer"),
+            shot("eval-follow", 2.2, ring="following"),
+        ],
+        "ask": clip("e-ask", "claude · tally", start=14, until=57),
+    }
+
+
 def main(name: str, demo: str) -> int:
-    data = {"reflection": reflection, "review": review}[name](Path(demo).expanduser())
+    data = {"reflection": reflection, "review": review, "evaluation": evaluation}[name](
+        Path(demo).expanduser()
+    )
     (PUBLIC / "data").mkdir(parents=True, exist_ok=True)
     (PUBLIC / "data" / f"{name}.json").write_text(json.dumps(data, indent=2, ensure_ascii=False))
     return 0

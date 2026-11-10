@@ -5,6 +5,7 @@ import {
   interpolate,
   OffthreadVideo,
   Easing,
+  Sequence,
   staticFile,
   useCurrentFrame,
   useVideoConfig,
@@ -31,7 +32,8 @@ export function rise(frame: number, start = 0, length = 14): number {
 const GRAIN =
   "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='d'><feTurbulence type='fractalNoise' baseFrequency='1.1' numOctaves='2' seed='3' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 .1  0 0 0 0 .05  0 0 0 0 .2  3 0 0 0 -1.75'/></filter><filter id='l'><feTurbulence type='fractalNoise' baseFrequency='1.1' numOctaves='2' seed='8' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  3 0 0 0 -1.7'/></filter><rect width='100%' height='100%' filter='url(%23d)'/><rect width='100%' height='100%' filter='url(%23l)'/></svg>\")";
 
-/** The site's holographic field, grain over it; still, so the encoder spends its bits on what moves. */
+/** The site's holographic field with its grain over it (style.css's .backdrop); still, so the encoder spends its bits
+ * on what moves. */
 export function Field() {
   return (
     <AbsoluteFill style={{ background: "#e9e2ff", overflow: "hidden" }}>
@@ -47,54 +49,23 @@ export function Field() {
             "radial-gradient(26% 26% at 90% 85%, #ffb0d6 0%, transparent 70%)",
             "conic-gradient(from 210deg at 50% 50%, #ff9ad5, #c3b2ff, #8fe9ff, #d9ffd0, #fff2a0, #ffb0d6, #ff9ad5)",
           ].join(","),
-          filter: "saturate(1.1)",
+          filter: "saturate(1.15)",
         }}
       />
-      <AbsoluteFill style={{ background: `${GRAIN} 0 0 / 200px 200px`, opacity: 0.22 }} />
+      <AbsoluteFill style={{ background: `${GRAIN} 0 0 / 200px 200px`, opacity: 0.5 }} />
     </AbsoluteFill>
   );
 }
 
-/** nock's mascot, the site's sprite. */
-export function Mascot({ width, style }: { width: number; style?: CSSProperties }) {
-  const shape = (
-    <>
-      <rect x="3" y="0" width="7" height="1" />
-      <rect x="2" y="1" width="9" height="6" />
-      <rect x="0" y="3" width="2" height="2" />
-      <rect x="11" y="2" width="2" height="2" />
-      <rect x="3" y="7" width="1" height="2" />
-      <rect x="5" y="7" width="1" height="1" />
-      <rect x="7" y="7" width="1" height="1" />
-      <rect x="9" y="7" width="1" height="2" />
-    </>
-  );
-  return (
-    <svg viewBox="-0.3 -0.3 14 10" width={width} height={(width * 10) / 14} style={style} aria-hidden="true">
-      <defs>
-        <linearGradient id="holo" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="13" y2="9">
-          <stop offset="0" stopColor="#ff9ad5" />
-          <stop offset=".3" stopColor="#c3b2ff" />
-          <stop offset=".55" stopColor="#8fe9ff" />
-          <stop offset=".8" stopColor="#fff2a0" />
-          <stop offset="1" stopColor="#ffb0d6" />
-        </linearGradient>
-      </defs>
-      <g transform="translate(.6 .6)" fill="url(#holo)">{shape}</g>
-      <g fill="none" stroke="url(#holo)" strokeWidth=".4">{shape}</g>
-      <g fill="#0b0b0f">{shape}</g>
-      <rect x="4" y="2" width="1" height="2" fill="url(#holo)" />
-      <rect x="8" y="2" width="1" height="2" fill="url(#holo)" />
-    </svg>
-  );
-}
+/** Where a beat's picture starts: below the caption, at the top of the frame, with a margin under it. */
+export const PICTURE_TOP = 204;
 
-/** The burned-in caption: black, with the site's foil offset, at the foot of the frame. */
+/** The burned-in caption: black, with the site's foil offset, at the top of the frame. */
 export function Caption({ text, frames }: { text: string; frames: number }) {
   const frame = useCurrentFrame();
   const shown = fade(frame, frames, 8);
   return (
-    <AbsoluteFill style={{ justifyContent: "flex-end", alignItems: "center", paddingBottom: 44 }}>
+    <AbsoluteFill style={{ justifyContent: "flex-start", alignItems: "center", paddingTop: 44 }}>
       <div
         style={{
           maxWidth: 1500,
@@ -108,7 +79,7 @@ export function Caption({ text, frames }: { text: string; frames: number }) {
           textWrap: "balance",
           boxShadow: "4px 4px 0 0 var(--cyan), -4px -4px 0 0 var(--pink), 0 18px 40px -18px rgb(17 17 22 / .6)",
           opacity: shown,
-          transform: `translateY(${(1 - shown) * 12}px)`,
+          transform: `translateY(${(shown - 1) * 12}px)`,
         }}
       >
         {text}
@@ -315,27 +286,27 @@ export function Ring({ x, y, width, height, start }: { x: number; y: number; wid
   );
 }
 
-/** The last card: the wordmark and the command that installs nock. */
-export function EndCard({ frames }: { frames: number }) {
+/** The first and the last screen: the wordmark, the command that installs nock, and nock.dev. The first is there
+ * from the first frame and fades out; the last rises in. */
+export function NockCard({ frames, opening = false }: { frames: number; opening?: boolean }) {
   const frame = useCurrentFrame();
-  const shown = rise(frame, 0, 16);
+  const shown = opening ? 1 : rise(frame, 0, 16);
+  const out = opening ? fade(frame + 9, frames + 9) : 1;
   return (
-    <AbsoluteFill style={{ alignItems: "center", justifyContent: "center", gap: 44, paddingBottom: 150 }}>
-      <div
+    <AbsoluteFill style={{ alignItems: "center", justifyContent: "center", gap: 48, paddingTop: 150, opacity: out }}>
+      <span
         style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 34,
+          font: "800 196px/1 var(--display)",
+          letterSpacing: "-0.04em",
           opacity: shown,
           transform: `scale(${0.94 + shown * 0.06})`,
         }}
       >
-        <Mascot width={190} />
-        <span style={{ font: "800 168px/1 var(--display)", letterSpacing: "-0.04em" }}>nock</span>
-      </div>
+        nock
+      </span>
       <div
         style={{
-          opacity: rise(frame, 8, 14),
+          opacity: opening ? 1 : rise(frame, 8, 14),
           padding: "20px 34px",
           borderRadius: 18,
           background: "#111116",
@@ -346,7 +317,29 @@ export function EndCard({ frames }: { frames: number }) {
       >
         <span style={{ color: "#a49fbb" }}>$ </span>uvx nock init
       </div>
-      <div style={{ opacity: rise(frame, 16, 14) * fade(frame, frames + 30), font: "500 30px/1 var(--mono)", color: "var(--muted)" }}>nock.dev</div>
+      <div
+        style={{
+          opacity: opening ? 1 : rise(frame, 16, 14) * fade(frame, frames + 30),
+          font: "500 30px/1 var(--mono)",
+          color: "var(--muted)",
+        }}
+      >
+        nock.dev
+      </div>
+    </AbsoluteFill>
+  );
+}
+
+/** A video between its cards: the field, the opening card for `intro` frames, then the beats, the last of which
+ * is the closing card. */
+export function Bookends({ intro, children }: { intro: number; children: ReactNode }) {
+  return (
+    <AbsoluteFill>
+      <Field />
+      <Sequence durationInFrames={intro}>
+        <NockCard frames={intro} opening />
+      </Sequence>
+      <Sequence from={intro}>{children}</Sequence>
     </AbsoluteFill>
   );
 }
