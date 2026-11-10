@@ -7,6 +7,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import sys
 import threading
 from datetime import UTC, datetime, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -207,6 +208,21 @@ RECORD = {
         {"kind": "other", "target": "calls", "why": "used twice", "expect": "calls stays under 1k"}
     ],
 }
+
+
+def test_a_command_that_ran_and_failed_is_not_nock_refusing(project: Project) -> None:
+    python = sys.executable
+    assert nock(project.root, "run", "--", python, "-c", "exit(1)").returncode == 1
+    # pytest's own usage error, or any code a wrapped command exits with, is its answer.
+    assert nock(project.root, "run", "--", python, "-c", "exit(42)").returncode == 42
+    assert nock(project.root, "calls", "--bogus").returncode == 40
+    assert finish(project, RECORD).returncode == 42
+    reflection = Reflection(project)
+    metrics = reflection.metrics(reflection.window())
+    assert (metrics["nock_failed"], metrics["nock_refused"], metrics["nock_broke"]) == (2, 2, 0)
+    stats = {row["tool"]: row for row in json.loads(nock(project.root, "stats", "--json").stdout)}
+    assert (stats["run"]["failed"], stats["run"]["refused"]) == (2, 0)
+    assert (stats["calls"]["failed"], stats["calls"]["refused"]) == (0, 1)
 
 
 def test_a_round_finishes_with_its_report_its_summary_and_its_numbers(project: Project) -> None:
