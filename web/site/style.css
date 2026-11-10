@@ -468,7 +468,7 @@ pre.code code { background: none; padding: 0; color: inherit; font: inherit; ove
 .essay-head { display: flex; align-items: flex-start; gap: 12px; margin: 0 0 20px; }
 .essay-head h1 { margin: 0; }
 .back {
-  flex: none; display: grid; place-items: center; width: 40px; height: 40px; margin-top: -1px; border-radius: 12px;
+  flex: none; display: grid; place-items: center; width: 40px; height: 40px; margin-top: -1px; border-radius: 50%;
   border: 1px solid var(--input); background: rgb(255 255 255 / .9); color: var(--foreground);
   transition: box-shadow .18s ease, border-color .18s;
 }
