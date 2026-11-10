@@ -86,11 +86,6 @@ changes nothing, and the session says the release is out, for you to run
 `.nock/nock upgrade` and resolve. `upgrade.auto = false` leaves only the word;
 `upgrade.check = false` turns both off.
 
-A project an earlier nock set up has `.nock/decisions/` and `.nock/review/`:
-the upgrade moves them into topics once, in one commit, each decision a decision
-item that keeps its number as an alias (`items show 170` still finds it),
-verdicts and threads kept.
-
 ## Settings
 
 `.nock/config.toml` is committed. `.nock/local/config.toml` overrides it on one
