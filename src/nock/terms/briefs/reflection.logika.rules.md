@@ -62,17 +62,23 @@ most risks take:
 
 - **A verdict against its raw signal**: what came in says one thing, what
   was decided another (an exit status read as success, a discount on an
-  ineligible plan). A validate on the event that carries both.
+  ineligible plan). A validate on the event that carries both, stated
+  both ways.
 - **A key missing one of its parts**: a cache entry or a rate limit keyed
   without something its value depends on. A validate on the parts, or an
   invariant over requester and key.
 - **Once per key, broken**: one operation processed, charged or sent twice.
-  A uniqueness invariant on the operation's own id.
+  A uniqueness invariant on the operation's own id, for every `once`
+  risk: a validate on one span can't see its twin.
 - **A trigger without its follow-up**: a deadline passed and nothing fired,
   a request accepted and never processed. A rule within a time, or a path
   that requires the child.
 - **An effect claimed but not done**: "deleted" with no rows removed, "sent"
-  with no acknowledgement. A validate on the effect's own result.
+  with no acknowledgement, a record created without what it should be
+  attached to. A validate on the effect's own result, a create's
+  relations included. A rendered payload (an email, a webhook body) is an
+  effect: rule the fields its receiver acts on against the values they
+  came from; it is never "nothing to compare".
 - **Retries unbounded or miscounted**: a transient failure that ends the
   work, a permanent one retried. A validate on the attempt, or an invariant
   counting attempts per id.
@@ -83,6 +89,19 @@ most risks take:
 
 Write the condition:
 
+- both directions of a gate or decision: the outcome is the one requested
+  or derived from its inputs, unless one of the listed exceptions applies
+  (`(path = 'fired') = (due AND NOT paused)`, `stored = requested OR
+  requested IS NULL`); a one-way rule (`NOT fired OR due`) misses every
+  decision that should have gone the other way;
+- each exception on a logged condition (the input absent, a flag the user
+  set), never on the outcome being the default value, which excuses
+  exactly the dropped input: compare the requested value logged at the
+  edge with the stored value read back;
+- our policy apart from the far side's answer: the answer (an SMTP code,
+  an HTTP status) is not judged, what we decided from it (retry, mark the
+  integration failed, tell the user) is, related to the answer it came
+  from;
 - the simplest form that ties a decision to the input it read, on the one
   event that carries both; a rule that re-models the code's state machine
   collects exceptions until it is wrong;
@@ -106,7 +125,10 @@ A risk gets a reason instead of a rule only when it can't happen here (the
 ids come from a provider that never reuses them), or Logika or the types
 already guarantee it, or nothing the code could log would show it: say which,
 in a sentence, for the lead to write as the risk's value. A missing field is
-not a reason: ask for it (step 5).
+not a reason: ask for it (step 5). Nor is a property of the code itself ("the
+view always passes the right project", "the default is always set"): that is
+what the rule would check, and the bug may be there. A reason never points at
+an event the ledger doesn't declare.
 
 An event in your directory whose code has a risk its `risks` don't name (a
 retry loop, a once-only effect, a deadline): bring the risk back, with its
@@ -148,6 +170,9 @@ rules read; the lead adds it and keeps every existing event and param.
 - Leave out what only restates the traffic, with no breach it would catch,
   and expected failures (a decline is not an anomaly).
 - The last round's rules that fired on normal behaviour come first.
+- A ledger holds at most 16 invariants: spend them on paths the captures
+  exercise (count the event's rows first), `once` risks among the first; an
+  invariant over an event that never fires catches nothing.
 - The lead runs one noise check over the whole ledger at the end: a little
   noise is calibrated in production, and a missing rule never fires.
 
