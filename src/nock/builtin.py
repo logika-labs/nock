@@ -270,10 +270,12 @@ def studio(
 ) -> None:
     """Serve the owner's page, a tab for each thing to look at — the topics
     and their items, the evaluations — until stopped (port
-    8765 unless OPTIONS say otherwise)."""
+    `studio.port`, 8765, unless OPTIONS say otherwise)."""
     if Usage(project).ask(Moment.STUDIO):
         print(f"nock: {QUESTION} The page asks too; answer there.", flush=True)
-    Studio(project, options.get("port", 8765)).run(options.get("open", False))
+    Studio(project, options.get("port", project.configuration.get("studio.port"))).run(
+        options.get("open", False)
+    )
 
 
 # --- topics and items ----------------------------------------------------------------

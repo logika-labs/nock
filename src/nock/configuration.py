@@ -21,6 +21,11 @@ DEFAULTS: dict[str, Any] = {
     # the items about an edited file. False keeps nock silent unless asked
     # (telemetry is still recorded).
     "reminders": True,
+    # Whether nock tells the owner when a topic is their turn again (it moved to
+    # review, an agent answered them, an item they rejected has a new version):
+    # on the desktop, or in the studio's page while it is open. Nothing shows
+    # without a display (CI, a headless agent).
+    "notifications": True,
     "output": {
         # The most characters a call prints before the rest goes to a file. Claude
         # Code shows a failed command only ~10k characters, middle cut, no path.
@@ -89,6 +94,9 @@ DEFAULTS: dict[str, Any] = {
         "silence": 600,
     },
     "studio": {
+        # The port `nock studio` serves on, and the one a notification's link
+        # names while no studio runs.
+        "port": 8765,
         # Where the studio's recorder sends what the owner says, to have it
         # written into the chat: a Whisper server speaking OpenAI's
         # `/v1/audio/transcriptions` (OpenAI itself, whisper.cpp's server,

@@ -113,6 +113,14 @@ CREATE TABLE IF NOT EXISTS wrote (
 CREATE TABLE IF NOT EXISTS stated (
     session TEXT NOT NULL        -- a session the stop hook asked once to set its topics' status
 );
+CREATE TABLE IF NOT EXISTS notifications (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    moment TEXT NOT NULL,        -- when the owner was told it is their turn in a topic
+    topic TEXT NOT NULL,
+    reason TEXT NOT NULL,        -- review, answered or reworked
+    text TEXT NOT NULL,          -- what it said
+    shown TEXT NOT NULL          -- studio (a page watching), desktop, or nowhere (no display)
+);
 CREATE TABLE IF NOT EXISTS nudged (
     round TEXT NOT NULL          -- a round whose unshared summary, or a week's logika-round offer, a session start mentioned
 );
