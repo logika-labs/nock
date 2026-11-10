@@ -12,7 +12,6 @@ import argparse
 import html
 import json
 import re
-import shutil
 import subprocess
 import sys
 from datetime import date
@@ -27,7 +26,6 @@ from nock.docs import TERMS, Docs, Term  # noqa: E402  (nock's source, beside th
 SITE = HERE / "site"
 LAYOUT = HERE / "layout.html"
 LANDING = HERE / "landing"
-STUDIO = HERE.parent / "src" / "nock" / "pages"
 GITHUB = "https://github.com/logika-labs/nock"
 REPOSITORY = GITHUB + "/blob/main/"
 LOGIKA = "https://logika.host"
@@ -694,11 +692,7 @@ def story_page(path: str, copy: dict[str, str]) -> str:
     return filled.replace("{{ github }}", GITHUB).replace("{{ logika }}", LOGIKA)
 
 
-STORY_HEAD = (
-    '<link rel="stylesheet" href="/studio/topics.css">\n'
-    '<link rel="stylesheet" href="/demo.css">\n'
-    '<script src="/demo.js" defer></script>'
-)
+STORY_HEAD = '<script src="/story.js" defer></script>'
 
 
 def legal_page(name: str) -> tuple[str, str]:
@@ -1047,9 +1041,6 @@ def build(site: Path, terms: Path | None = None, today: str | None = None) -> li
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(text)
         paths.append(path)
-    # The demo's Work scene is drawn in the studio's own classes, so it wears the studio's own sheet.
-    (site / "studio").mkdir(parents=True, exist_ok=True)
-    shutil.copyfile(STUDIO / "topics.css", site / "studio" / "topics.css")
     return paths
 
 
