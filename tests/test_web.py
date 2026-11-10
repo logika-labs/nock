@@ -157,16 +157,15 @@ def test_every_link_between_pages_lands_and_old_addresses_are_sent_on(tmp_path: 
     assert not any(f"https://nock.dev{url}<" in sitemap for url in sent)
 
 
-def test_the_story_pages_are_one_layout_with_the_demo_on_a_tabbed_stage(tmp_path: Path) -> None:
+def test_the_story_pages_are_one_layout_with_a_minute_of_video_per_tab(tmp_path: Path) -> None:
     pages = built(tmp_path)
-    demo = (WEB / "site" / "demo.js").read_text()
-    scenes = set(re.findall(r"^    (\w+): \{\n      label:", demo, re.M))
-    assert scenes == {"reflection", "review", "evaluation"}
     home, start = (pages[path] for path in ("/", "/getting-started/"))
     for text in (home, start):
         assert "{{" not in text and "data-layout" not in text and 'class="layouts"' not in text
         menu = text.split('<nav class="menu"')[1].split("</nav>")[0]
         assert 'href="/about/"' not in menu and 'href="/getting-started/"' in menu
+        assert '<script src="/story.js" defer></script>' in text
+        assert "demo" not in text and "/studio/topics.css" not in text
     assert not [url for url in pages if "index-" in url]
     assert sorted(path.name for path in (WEB / "landing").iterdir()) == [
         "copy.html",
@@ -174,17 +173,28 @@ def test_the_story_pages_are_one_layout_with_the_demo_on_a_tabbed_stage(tmp_path
         "start.html",
     ]
     assert "LAYOUTS" not in (WEB / "build.py").read_text()
-    named = {name for value in re.findall(r'data-demo="([^"]+)"', home) for name in value.split()}
-    assert named == scenes
-    assert 'data-tabs-for="demo-stage"' in home
+    assert not (WEB / "site" / "demo.js").exists() and not (WEB / "site" / "demo.css").exists()
+    assert not (tmp_path / "studio").exists()
+    assert 'data-tabs-for="films"' in home
     tabs = re.findall(r'data-tab="(\w+)" aria-selected="(\w+)"', home)
     assert tabs == [("reflection", "true"), ("review", "false"), ("evaluation", "false")]
+    for name, _ in tabs:
+        film = home.split(
+            f'<figure class="film" data-panel="{name}" data-panel-for="films" id="{name}">'
+        )[1]
+        film = film.split("</figure>")[0]
+        assert f'poster="/videos/{name}.jpg"' in film
+        assert f'<source src="/videos/{name}.webm" type="video/webm">' in film
+        assert f'<source src="/videos/{name}.mp4" type="video/mp4">' in film
+        assert f'<track kind="captions" src="/videos/{name}.vtt"' in film
+        assert "<h2>" in film and "<p>" in film
+        for made in (f"{name}.jpg", f"{name}.vtt"):
+            assert (WEB / "site" / "videos" / made).is_file()
     assert "uvx nock init" in home and 'href="https://logika.host"' in home
     assert start.count('class="step"') == 7 and "data-stepper" in start
-    assert (tmp_path / "studio" / "topics.css").read_text() == (
-        ROOT / "src" / "nock" / "pages" / "topics.css"
-    ).read_text()
-    assert 'data-demo-still="review:3"' in pages["/getting-started/"]
+    for still in re.findall(r'<img class="still" src="/videos/([^"]+)"', start):
+        assert (WEB / "site" / "videos" / still).is_file()
+    assert start.count('class="still"') == 2
 
 
 def test_a_page_that_is_gone_sends_its_visitor_on_and_is_not_listed(tmp_path: Path) -> None:
@@ -216,7 +226,6 @@ def test_the_home_page_shows_nock_in_logika_with_its_art_beside_and_no_logika_sc
         assert (WEB / "site" / art).is_file()
     assert home.index('id="logika"') < home.index('id="community"')
     assert 'data-tab="logika"' not in home and 'data-panel="logika"' not in home
-    assert "scene-logika" not in (WEB / "site" / "demo.css").read_text()
 
 
 def test_no_page_or_source_names_a_community_channel(tmp_path: Path) -> None:
@@ -443,9 +452,7 @@ def test_publishing_replaces_the_pages_tree_and_pushes_only_on_the_word(tmp_path
     def unbuilt(directory: str, names: list[str]) -> set[str]:
         """What the build makes and the checkout gitignores."""
         if Path(directory) == WEB / "site":
-            return {
-                name for name in names if name not in ("style.css", "demo.js", "demo.css", "fonts")
-            }
+            return {name for name in names if name not in ("style.css", "story.js", "fonts")}
         return {name for name in names if name in ("pages", "__pycache__")}
 
     shutil.copytree(WEB, source / "web", ignore=unbuilt)
@@ -468,9 +475,7 @@ def test_publishing_replaces_the_pages_tree_and_pushes_only_on_the_word(tmp_path
         "llms.txt",
         "llms-full.txt",
         "style.css",
-        "demo.js",
-        "demo.css",
-        "studio",
+        "story.js",
         "about",
         "getting-started",
         "docs",

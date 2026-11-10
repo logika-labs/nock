@@ -1,5 +1,5 @@
-<!-- The landing page: a short hero, then one large stage with a tab for each part; the
-     words beside the stage change with the tab. The call to action sits in the hero and the band. -->
+<!-- The landing page: a short hero, then a tab for each part, each its minute of video with its words
+     beside it. The call to action sits in the hero and the band. -->
 <div class="frame story story-b">
 
 <section class="hero-b" aria-labelledby="hero-title">
@@ -15,34 +15,16 @@
 </section>
 
 <section class="card theatre" aria-label="What nock does">
-  <div class="tablist" role="tablist" aria-label="The parts" data-tabs-for="demo-stage">
+  <div class="tablist" role="tablist" aria-label="The parts" data-tabs-for="films">
     <button type="button" role="tab" data-tab="reflection" aria-selected="true">{{ copy:reflection-label }}</button>
     <button type="button" role="tab" data-tab="review" aria-selected="false">{{ copy:review-label }}</button>
     <button type="button" role="tab" data-tab="evaluation" aria-selected="false">{{ copy:evaluation-label }}</button>
   </div>
-  <div class="theatre-body">
-    <div class="panels">
-      <div class="panel" data-panel="reflection" data-panel-for="demo-stage" id="reflection">
+  <div class="films">
+    <figure class="film" data-panel="reflection" data-panel-for="films" id="reflection">
+      <figcaption>
         <h2>{{ copy:reflection-title }}</h2>
         {{ copy:reflection-copy }}
-      </div>
-      <div class="panel" data-panel="review" data-panel-for="demo-stage" id="review">
-        <h2>{{ copy:review-title }}</h2>
-        {{ copy:review-copy }}
-      </div>
-      <div class="panel" data-panel="evaluation" data-panel-for="demo-stage" id="evaluation">
-        <h2>{{ copy:evaluation-title }}</h2>
-        {{ copy:evaluation-copy }}
-      </div>
-    </div>
-    <div class="demo" id="demo-stage" data-demo="reflection review evaluation"></div>
-  </div>
-  <div class="films">
-    <figure class="film" data-panel="reflection" data-panel-for="demo-stage">
-      <figcaption>
-        <span class="label">The minute</span>
-        <strong>Your agents build the tools they need</strong>
-        <span class="note">Real sessions and the real studio on a sample repository, sped up. Captions, no sound.</span>
       </figcaption>
       <div class="screen">
         <video controls muted playsinline preload="none" poster="/videos/reflection.jpg" width="1920" height="1080" aria-label="Your agents build the tools they need: a minute on reflection rounds">
@@ -52,17 +34,29 @@
         </video>
       </div>
     </figure>
-    <figure class="film" data-panel="review" data-panel-for="demo-stage">
+    <figure class="film" data-panel="review" data-panel-for="films" id="review">
       <figcaption>
-        <span class="label">The minute</span>
-        <strong>You decide, when it suits you</strong>
-        <span class="note">Real sessions and the real studio on a sample repository. Captions, no sound.</span>
+        <h2>{{ copy:review-title }}</h2>
+        {{ copy:review-copy }}
       </figcaption>
       <div class="screen">
         <video controls muted playsinline preload="none" poster="/videos/review.jpg" width="1920" height="1080" aria-label="You decide, when it suits you: a minute on reviewing in the studio">
           <source src="/videos/review.webm" type="video/webm">
           <source src="/videos/review.mp4" type="video/mp4">
           <track kind="captions" src="/videos/review.vtt" srclang="en" label="English">
+        </video>
+      </div>
+    </figure>
+    <figure class="film" data-panel="evaluation" data-panel-for="films" id="evaluation">
+      <figcaption>
+        <h2>{{ copy:evaluation-title }}</h2>
+        {{ copy:evaluation-copy }}
+      </figcaption>
+      <div class="screen">
+        <video controls muted playsinline preload="none" poster="/videos/evaluation.jpg" width="1920" height="1080" aria-label="Choose the best way forward, from real runs: a minute on evaluations">
+          <source src="/videos/evaluation.webm" type="video/webm">
+          <source src="/videos/evaluation.mp4" type="video/mp4">
+          <track kind="captions" src="/videos/evaluation.vtt" srclang="en" label="English">
         </video>
       </div>
     </figure>

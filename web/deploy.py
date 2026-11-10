@@ -1,8 +1,9 @@
 """Release nock.dev to Logika's box: `python3 web/deploy.py HOST`, from a clean checkout.
 
 There is no default host: the box is always named (an SSH destination with sudo, e.g. ops@box-1). The site
-is built from the committed tree into `web/build/release/ID` (the tracked files of `site/`, then the pages),
-packed, copied over SSH and unpacked as `/srv/sites/nock.dev/releases/ID`; `current`, the link Caddy serves
+is built from the committed tree into `web/build/release/ID` (the tracked files of `site/`, then the pages, then
+the videos the pages play: rendered by `web/videos` into `site/videos/` and not committed, so a release refuses to
+go without them), packed, copied over SSH and unpacked as `/srv/sites/nock.dev/releases/ID`; `current`, the link Caddy serves
 through, is switched to it in one rename, and the five newest releases are kept. Caddy's site for nock.dev
 (`nock.dev.caddy`) is installed as `/etc/caddy/sites/nock.dev.caddy` when it changed, validated with the
 box's Caddyfile (the previous one back if Caddy refuses it), and Caddy reloaded. `--rollback` switches
@@ -16,6 +17,7 @@ is yes. Standard library only.
 from __future__ import annotations
 
 import argparse
+import re
 import shlex
 import shutil
 import subprocess
@@ -32,6 +34,9 @@ SITES = "/srv/sites"
 CADDY_SITES = "/etc/caddy/sites"
 CADDY_SITE = HERE / "nock.dev.caddy"
 KEEP = 5
+VIDEOS = HERE / "site" / "videos"
+# A video a page plays: its sources, the renders; its poster and captions are committed.
+PLAYED = re.compile(r'<source src="/videos/([^"/]+)"')
 # What the closed site keeps: its page, the legal pages and the files they load.
 ICONS = ("favicon.svg", "favicon-32.png", "favicon-16.png", "favicon.ico", "apple-touch-icon.png")
 OPEN_WHILE_CLOSED = ("index.html", "style.css", "fonts", "og.jpg", *ICONS, "privacy", "terms")
@@ -58,6 +63,22 @@ def stage(directory: Path) -> None:
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(HERE / relative, target)
     build(directory)
+
+
+def add_videos(directory: Path, videos: Path = VIDEOS) -> list[str]:
+    """Copy into the staged site every render its pages play, from `videos` (where `web/videos` makes them),
+    and return the ones missing there."""
+    played = sorted(
+        {name for page in directory.rglob("*.html") for name in PLAYED.findall(page.read_text())}
+    )
+    missing = []
+    for name in played:
+        if not (videos / name).is_file():
+            missing.append(name)
+            continue
+        (directory / "videos").mkdir(exist_ok=True)
+        shutil.copyfile(videos / name, directory / "videos" / name)
+    return missing
 
 
 def close(directory: Path) -> None:
@@ -227,6 +248,13 @@ def main(argv: list[str] | None = None) -> int:
             print(
                 f"- close it: the coming-soon page at /, only {', '.join(OPEN_WHILE_CLOSED[1:])} beside it"
             )
+        elif missing := add_videos(staged):
+            print(
+                f"deploy: the pages play videos not rendered in {VIDEOS}: {', '.join(missing)};"
+                " make them with web/videos (its README, `pnpm finish`)",
+                file=sys.stderr,
+            )
+            return 1
         steps, what = plan(host, release, build_directory), f"Release {release} to {host}?"
     for step in steps:
         print(f"- {step.what}: {shlex.join(step.command)[:200]}")

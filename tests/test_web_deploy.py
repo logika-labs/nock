@@ -135,7 +135,7 @@ def test_the_release_is_staged_from_the_committed_tree_and_switched_last(tmp_pat
     staged = tmp_path / "release" / "20261105T120000Z-abc"
     DEPLOY.stage(staged)
     assert DEPLOY.problems(staged) == []
-    assert (staged / "fonts" / "OFL.txt").is_file() and (staged / "studio" / "topics.css").is_file()
+    assert (staged / "fonts" / "OFL.txt").is_file() and (staged / "story.js").is_file()
     steps = DEPLOY.plan("ops@box-1", "20261105T120000Z-abc", tmp_path / "release")
     assert [step.what for step in steps] == [
         "pack the release",
@@ -155,6 +155,32 @@ def test_the_release_is_staged_from_the_committed_tree_and_switched_last(tmp_pat
     switch = steps[-1].command
     assert switch[:2] == ["ssh", "ops@box-1"] and "/srv/sites/nock.dev" in switch[2]
     assert "/etc/caddy/sites/nock.dev.caddy" in switch[2]
+
+
+def test_a_release_ships_the_videos_the_pages_play_and_names_the_ones_not_rendered(
+    tmp_path: Path,
+) -> None:
+    staged = tmp_path / "release" / "20261105T120000Z-abc"
+    DEPLOY.stage(staged)
+    played = sorted(
+        set(re.findall(r'<source src="/videos/([^"]+)"', (staged / "index.html").read_text()))
+    )
+    assert played == [
+        f"{name}.{kind}"
+        for name in ("evaluation", "reflection", "review")
+        for kind in ("mp4", "webm")
+    ]
+    renders = tmp_path / "renders"
+    renders.mkdir()
+    for name in played[1:]:
+        (renders / name).write_bytes(name.encode())
+    assert DEPLOY.add_videos(staged, renders) == [played[0]]
+    assert (staged / "videos" / played[1]).read_bytes() == played[1].encode()
+    (renders / played[0]).write_bytes(b"made")
+    assert DEPLOY.add_videos(staged, renders) == []
+    assert (staged / "videos" / "reflection.jpg").is_file() and (
+        staged / "videos" / "reflection.vtt"
+    ).is_file()
 
 
 def test_a_closed_site_is_the_coming_soon_page_and_the_legal_pages(tmp_path: Path) -> None:

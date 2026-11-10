@@ -355,6 +355,7 @@ footer .links { display: inline-flex; flex-wrap: wrap; gap: 4px 16px; }
 .step p { color: var(--muted); }
 .shot { margin: 0; display: grid; gap: 8px; min-width: 0; }
 .shot figcaption { font: 500 12px/1.5 var(--mono); color: var(--muted); }
+.shot .still { display: block; width: 100%; height: auto; border-radius: 14px; box-shadow: 3px 3px 0 0 var(--cyan), -3px -3px 0 0 var(--pink), var(--lift); }
 .terminal {
   display: grid; gap: 6px; padding: 14px 16px; border-radius: 14px; background: #111116; color: #ecebf3;
   font: 12.5px/1.6 var(--mono); overflow-x: auto; box-shadow: 0 14px 30px -16px rgb(17 17 22 / .5);
@@ -394,20 +395,12 @@ pre.code code { background: none; padding: 0; color: inherit; font: inherit; ove
 }
 .tablist [role="tab"][aria-selected="false"]:hover { background: rgb(255 255 255 / .9); box-shadow: 0 8px 18px -6px rgb(130 225 190 / .55), 0 2px 6px -2px rgb(130 225 190 / .55); }
 .tablist [role="tab"][aria-selected="true"] { background: #111116; color: #fff; box-shadow: 2px 2px 0 0 var(--cyan), -2px -2px 0 0 var(--pink); }
-.theatre-body { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 5fr); width: 100%; }
-.theatre-body > * { min-width: 0; }
-.theatre .panels { padding: 26px 24px; border-right: 1px solid var(--border); display: grid; align-content: start; }
-.theatre .panel { display: grid; gap: 12px; justify-items: start; }
-.theatre .panel p { color: var(--muted); }
-.theatre .demo { padding: 18px; background: var(--wash); }
-/* Each tab's minute of video, under its stage: the words where the tab's copy is, the film where its demo is. */
-.theatre .films { width: 100%; border-top: 1px solid var(--border); }
+/* Each tab's minute of video: its words beside it, the film where the eye goes. */
+.theatre .films { width: 100%; }
 .theatre .film { margin: 0; display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 5fr); }
 .theatre .film > * { min-width: 0; }
-.theatre .film figcaption { padding: 26px 24px; border-right: 1px solid var(--border); display: grid; gap: 8px; align-content: start; }
-.theatre .film strong { font: 700 17px/1.3 var(--display); letter-spacing: -.01em; }
-.theatre .film .note { color: var(--muted); font-size: 13.5px; }
-.theatre .film .screen { padding: 18px; background: var(--wash); }
+.theatre .film figcaption { padding: 26px 24px; border-right: 1px solid var(--border); display: grid; gap: 12px; align-content: start; justify-items: start; }
+.theatre .film .screen { padding: 18px; background: var(--wash); align-self: stretch; display: grid; align-content: center; }
 .theatre .film video {
   display: block; width: 100%; height: auto; aspect-ratio: 16 / 9; border-radius: 14px; background: #111116;
   box-shadow: 3px 3px 0 0 var(--cyan), -3px -3px 0 0 var(--pink), var(--lift);
@@ -498,9 +491,8 @@ pre.code code { background: none; padding: 0; color: inherit; font: inherit; ove
 /* --- phone width ------------------------------------------------------------------------------ */
 
 @media (max-width: 860px) {
-  .hero-b, .theatre-body, .story-b .community.wide, .story-b .logika.wide { grid-template-columns: minmax(0, 1fr); }
+  .hero-b, .story-b .community.wide, .story-b .logika.wide { grid-template-columns: minmax(0, 1fr); }
   .story-b .logika .art { order: -1; }
-  .theatre .panels { border-right: 0; border-bottom: 1px solid var(--border); }
   .theatre .film { grid-template-columns: minmax(0, 1fr); }
   .theatre .film figcaption { border-right: 0; border-bottom: 1px solid var(--border); }
   .step { grid-template-columns: minmax(0, 1fr); }
@@ -512,8 +504,6 @@ pre.code code { background: none; padding: 0; color: inherit; font: inherit; ove
   .menu { width: 100%; justify-content: space-between; }
   .menu .icons { margin-left: auto; }
   .menu a { padding: 7px 10px; }
-  .theatre .panels { padding: 20px 18px; }
-  .theatre .demo { padding: 10px; }
   .theatre .film figcaption { padding: 20px 18px; }
   .theatre .film .screen { padding: 10px; }
 }

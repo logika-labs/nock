@@ -1,0 +1,37 @@
+WEBVTT
+
+1
+00:00:03.000 --> 00:00:09.000
+When you program with AI, you can send several agents to explore different options at once.
+
+2
+00:00:09.000 --> 00:00:15.000
+The hard part becomes tracing their work, and judging it.
+
+3
+00:00:15.000 --> 00:00:23.000
+There are many parameters to tweak, and agents' work is slow, costs money, and comes out different every time.
+
+4
+00:00:23.000 --> 00:00:31.000
+So nock breaks an experiment into stages, each branching on parameters: models, skills, anything.
+
+5
+00:00:31.000 --> 00:00:38.000
+Each stage's results are scored against criteria, or decide what runs next.
+
+6
+00:00:38.000 --> 00:00:47.000
+Every stage is cached once it runs: a memoized graph that's easy to read, and saves time and money.
+
+7
+00:00:47.000 --> 00:00:54.000
+You can drill into any run to see exactly what happened…
+
+8
+00:00:54.000 --> 00:01:00.000
+…or let your agent query the trends, without inventing a methodology.
+
+9
+00:01:00.000 --> 00:01:03.000
+Trace and judge your agents' work, and choose the best way forward.

@@ -6,7 +6,6 @@ __pycache__/
 dist/
 .DS_Store
 web/site/**/*.html
-web/site/studio/
 web/site/robots.txt
 web/site/sitemap.xml
 web/site/llms.txt
@@ -14,6 +13,6 @@ web/site/llms-full.txt
 web/pages/
 server/build/
 web/build/
-# The videos' renders: made by web/videos (`pnpm finish`), kept out of git until the owner says where they live.
+# The videos' renders: made by web/videos (`pnpm finish`), never committed; web/deploy.py ships them from here.
 web/site/videos/*.mp4
 web/site/videos/*.webm

@@ -1,0 +1,2 @@
+{"repository": "~/demo/tally", "width": 1680, "height": 860, "font_size": 20, "framerate": 15,
+ "prompts": ["Which model did better in the fix eval, and what did each cost? Answer from its results, briefly."]}

@@ -9,17 +9,17 @@ layout.html        every page's frame: the band and its menu, the main column, t
 landing/           the landing page and Getting started: their templates (home.html,
                    start.html) and copy.html, the words they share, a block each
 legal/             privacy.md and terms.md, each with its plain-words summary (NAME-plain.md)
-videos/            the landing page's two videos: the owner's scripts, and the Remotion package, VHS and
+videos/            the landing page's three videos: their scripts, and the Remotion package, VHS and
                    Playwright recorders that make them from real sessions and the real studio (its README)
-site/              style.css, demo.js and demo.css (the demo), fonts/, the icons (favicon.svg,
-                   favicon-32.png, favicon-16.png, favicon.ico, apple-touch-icon.png), logika.webp and .png
-                   (Logika's art, beside "nock in Logika"), videos/ (each video's poster and captions;
-                   the MP4 and WebM are made by videos/ and not committed), og.jpg (the link preview, the
+site/              style.css, story.js (the landing page's tabs, Getting started's stepper), fonts/, the
+                   icons (favicon.svg, favicon-32.png, favicon-16.png, favicon.ico, apple-touch-icon.png),
+                   logika.webp and .png (Logika's art, beside "nock in Logika"), videos/ (each video's
+                   poster and captions, and Getting started's stills from the review video; the MP4 and
+                   WebM are made by videos/ and not committed), og.jpg (the link preview, the
                    owner's art cropped to 1200x630), art/ (each essay's art: NAME.webp, 1600
                    wide, at its top; NAME-480.webp on the list; NAME.jpg, its 1200x630 link
                    preview); the pages, robots.txt, sitemap.xml and
-                   the llms files are built into it (gitignored), and studio/topics.css,
-                   the studio's sheet, copied in
+                   the llms files are built into it (gitignored)
 build.py           the pages: landing/; the docs from ../src/nock/terms/ (a page per
                    essay, and the reference page with every term); legal/; and
                    what crawlers read: each page's canonical link and JSON-LD, robots.txt,
@@ -64,12 +64,10 @@ the drawing's half-pixel edges blur at 16; `apple-touch-icon.png` (180) with the
 square of radius 7/32, since iOS puts a transparent icon on black; and
 `magick favicon-16.png favicon-32.png favicon.ico`.
 
-**The demo** (`site/demo.js`) is coded, not recorded: a scene per part of nock,
-each a script of steps with a caption, every element saying from which step it shows (`data-at`,
-`data-until`) and which classes it takes (`data-on`). The landing page places it on one stage with
-a tab per scene (`data-tabs-for`) that plays in view, and Getting started shows a step of it as a
-still (`data-demo-still`); with reduced motion nothing plays by itself. A new scene is an entry
-in `SCENES`, its name in the stage's `data-demo`, and its tab and panel in `landing/home.html`.
+**What nock does** is a tab per part (`data-tabs-for`), each its minute of video with the part's words
+beside it (`landing/home.html`, the words in `copy.html`); a tab shows its film and pauses the others, and
+the address can name one (`/#evaluation`). Getting started is a stepper of seven steps, two of them with a
+still from the review video. Without script, every film and every step shows. `site/story.js` does both.
 
 The legal pages carry the TL;DR switch at the right end of the title's line. They show only their
 summary while it is on (the default) and only the full text while it is off; without script, both. Turning it off is kept in the visitor's
@@ -96,8 +94,9 @@ python3 web/deploy.py ops@box-1 --rollback   # switch back to the release before
 
 nock.dev is moving from GitHub Pages to Logika's box, beside api.nock.dev; Pages stays the
 fallback until the records point at the box (`deploy/runbooks/sites.md` in Logika's repository has
-the switch, and the DNS records it changes). A release stages `site/`'s tracked files and the
-built pages in `web/build/release/ID` (so pages left by earlier builds never ship), copies them over
+the switch, and the DNS records it changes). A release stages `site/`'s tracked files, the
+built pages and the videos they play (rendered into `site/videos/` by `videos/`, not committed; it refuses
+to go while one is missing) in `web/build/release/ID` (so pages left by earlier builds never ship), copies them over
 SSH to `/srv/sites/nock.dev/releases/ID`, and switches `current`, the link Caddy serves, in one
 rename; the five newest releases stay. It installs `nock.dev.caddy` as
 `/etc/caddy/sites/nock.dev.caddy` when it changed, which the box's Caddyfile imports, validates it

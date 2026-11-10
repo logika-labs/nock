@@ -1,6 +1,6 @@
 import { AbsoluteFill, Sequence, useCurrentFrame } from "remotion";
 import captions from "./captions.json";
-import { Caption, EndCard, Field, Pointer, Recording, Ring, rise, Still, TerminalCard, type View } from "./parts";
+import { Bookends, Caption, NockCard, PICTURE_TOP, Pointer, Recording, Ring, rise, Still, TerminalCard, type View } from "./parts";
 import type { Clip } from "./reflection";
 
 const FPS = captions.fps;
@@ -32,9 +32,9 @@ function speed(seconds: number, frames: number): string {
   return `×${Math.max(1, Math.round(seconds / (frames / FPS)))}`;
 }
 
-function Terminal({ clip, length }: { clip: Clip; length: number }) {
+export function Terminal({ clip, length }: { clip: Clip; length: number }) {
   return (
-    <AbsoluteFill style={{ alignItems: "center", paddingTop: 40 }}>
+    <AbsoluteFill style={{ alignItems: "center", paddingTop: PICTURE_TOP }}>
       <TerminalCard label={clip.label} speed={speed(clip.seconds - (clip.from ?? 0), length)} style={{ width: 1600, height: 836 }}>
         <Recording clip={clip.clip} seconds={clip.seconds - (clip.from ?? 0)} from={clip.from} frames={length} />
       </TerminalCard>
@@ -47,7 +47,7 @@ function ShotScene({ shot, length, first }: { shot: Shot; length: number; first:
   // The beat's first still fades in; the rest cut, as the page itself changes.
   const shown = first ? rise(frame, 0, 10) : 1;
   return (
-    <AbsoluteFill style={{ alignItems: "center", paddingTop: 40 }}>
+    <AbsoluteFill style={{ alignItems: "center", paddingTop: PICTURE_TOP }}>
       <div style={{ opacity: shown }}>
         <Still shot={shot.shot} frames={length} from={shot.from} to={shot.to} width={1600} height={836}>
           {shot.ring ? <Ring {...shot.ring} /> : null}
@@ -58,7 +58,7 @@ function ShotScene({ shot, length, first }: { shot: Shot; length: number; first:
   );
 }
 
-function Shots({ shots, length }: { shots: Shot[]; length: number }) {
+export function Shots({ shots, length }: { shots: Shot[]; length: number }) {
   const total = shots.reduce((sum, shot) => sum + shot.seconds, 0);
   let start = 0;
   return (
@@ -82,18 +82,17 @@ export function Review(props: ReviewProps) {
   const scene = (beat: number) => {
     if (beat === 0) return <Terminal clip={props.opening} length={frames(0)} />;
     if (beat === 6) return <Terminal clip={props.consult} length={frames(6)} />;
-    if (beat === 7) return <EndCard frames={frames(7)} />;
+    if (beat === 7) return <NockCard frames={frames(7)} />;
     return <Shots shots={props.beats[beat - 1]} length={frames(beat)} />;
   };
   return (
-    <AbsoluteFill>
-      <Field />
+    <Bookends intro={captions.intro * FPS}>
       {BEATS.map((beat, index) => (
         <Sequence key={beat.caption} from={beat.from * FPS} durationInFrames={frames(index)}>
           {scene(index)}
           <Caption text={beat.caption} frames={frames(index)} />
         </Sequence>
       ))}
-    </AbsoluteFill>
+    </Bookends>
   );
 }

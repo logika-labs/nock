@@ -1,6 +1,6 @@
 import { AbsoluteFill, interpolate, Sequence, useCurrentFrame } from "remotion";
 import captions from "./captions.json";
-import { Caption, EndCard, Field, Recording, rise, Still, TerminalCard, type View } from "./parts";
+import { Bookends, Caption, NockCard, PICTURE_TOP, Recording, rise, Still, TerminalCard, type View } from "./parts";
 
 const FPS = captions.fps;
 const BEATS = captions.reflection.beats;
@@ -35,7 +35,7 @@ function speed(seconds: number, frames: number): string {
 function Opening({ clip }: { clip: Clip }) {
   const length = frames(0);
   return (
-    <AbsoluteFill style={{ alignItems: "center", paddingTop: 40 }}>
+    <AbsoluteFill style={{ alignItems: "center", paddingTop: PICTURE_TOP }}>
       <TerminalCard label={clip.label} speed={speed(clip.seconds - (clip.from ?? 0), length)} style={{ width: 1600, height: 836 }}>
         <Recording clip={clip.clip} seconds={clip.seconds - (clip.from ?? 0)} from={clip.from} frames={length} />
       </TerminalCard>
@@ -47,7 +47,7 @@ function Repeats({ sessions }: { sessions: Clip[] }) {
   const length = frames(1);
   const frame = useCurrentFrame();
   return (
-    <AbsoluteFill style={{ flexDirection: "row", justifyContent: "center", gap: 36, paddingTop: 40 }}>
+    <AbsoluteFill style={{ flexDirection: "row", justifyContent: "center", gap: 36, paddingTop: PICTURE_TOP }}>
       {sessions.map((clip, index) => {
         const shown = rise(frame, index * 5, 12);
         return (
@@ -80,7 +80,7 @@ function Ledger({ ledger }: { ledger: ReflectionProps["ledger"] }) {
   const length = frames(2);
   const pull = interpolate(frame, [0, 40], [1.08, 1], { extrapolateRight: "clamp" });
   return (
-    <AbsoluteFill style={{ alignItems: "center", paddingTop: 40 }}>
+    <AbsoluteFill style={{ alignItems: "center", paddingTop: PICTURE_TOP }}>
       <div
         style={{
           width: 1600,
@@ -198,7 +198,7 @@ function Round({ round, tool }: { round: Clip; tool: ReflectionProps["tool"] }) 
   const length = frames(3);
   const split = Math.round(length * 0.58);
   return (
-    <AbsoluteFill style={{ alignItems: "center", paddingTop: 40 }}>
+    <AbsoluteFill style={{ alignItems: "center", paddingTop: PICTURE_TOP }}>
       <Sequence durationInFrames={split} layout="none">
         <TerminalCard label={round.label} speed={speed(round.seconds - (round.from ?? 0), split)} style={{ width: 1600, height: 836 }}>
           <Recording clip={round.clip} seconds={round.seconds - (round.from ?? 0)} from={round.from} frames={split} />
@@ -216,7 +216,7 @@ function Next({ next, counter }: { next: Clip; counter: ReflectionProps["counter
   const length = frames(4);
   const shown = rise(frame, Math.round(length * 0.45), 14);
   return (
-    <AbsoluteFill style={{ alignItems: "center", paddingTop: 40 }}>
+    <AbsoluteFill style={{ alignItems: "center", paddingTop: PICTURE_TOP }}>
       <TerminalCard label={next.label} speed={speed(next.seconds - (next.from ?? 0), length)} style={{ width: 1600, height: 836 }}>
         <Recording clip={next.clip} seconds={next.seconds - (next.from ?? 0)} from={next.from} frames={length} />
       </TerminalCard>
@@ -224,7 +224,7 @@ function Next({ next, counter }: { next: Clip; counter: ReflectionProps["counter
         style={{
           position: "absolute",
           right: 210,
-          top: 150,
+          top: PICTURE_TOP + 110,
           display: "flex",
           alignItems: "baseline",
           gap: 20,
@@ -251,7 +251,7 @@ function Cards({ cards }: { cards: Card[] }) {
   const length = frames(5);
   const each = Math.floor(length / cards.length);
   return (
-    <AbsoluteFill style={{ alignItems: "center", paddingTop: 40 }}>
+    <AbsoluteFill style={{ alignItems: "center", paddingTop: PICTURE_TOP }}>
       {cards.map((card, index) => (
         <Sequence key={card.shot} from={index * each} durationInFrames={index === cards.length - 1 ? length - index * each : each} layout="none">
           <CardStill card={card} frames={each} />
@@ -295,17 +295,16 @@ export function Reflection(props: ReflectionProps) {
     <Round key="3" round={props.round} tool={props.tool} />,
     <Next key="4" next={props.next} counter={props.counter} />,
     <Cards key="5" cards={props.cards} />,
-    <EndCard key="6" frames={frames(6)} />,
+    <NockCard key="6" frames={frames(6)} />,
   ];
   return (
-    <AbsoluteFill>
-      <Field />
+    <Bookends intro={captions.intro * FPS}>
       {scenes.map((scene, beat) => (
         <Sequence key={BEATS[beat].caption} from={at(beat)} durationInFrames={frames(beat)}>
           {scene}
           <Caption text={BEATS[beat].caption} frames={frames(beat)} />
         </Sequence>
       ))}
-    </AbsoluteFill>
+    </Bookends>
   );
 }
