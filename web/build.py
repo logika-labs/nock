@@ -43,11 +43,6 @@ STORY = {
         f"{TAGLINE} It lives in your repository, records every session, puts their work before you and writes the tools they need.",
         "home",
     ),
-    "/about/": (
-        "About · nock",
-        "What nock is, the principles it keeps, and who makes it.",
-        "about",
-    ),
     "/getting-started/": (
         "Getting started · nock",
         "From uvx nock init to your first verdict on what an agent made, step by step.",
@@ -162,6 +157,9 @@ RENAMED = {
     "concepts": "what-changes-for-you",
     "evaluation": "evaluations",
 }
+# Pages that are gone, by their old address, with where they send a visitor now: a page that only
+# redirects, kept out of the sitemap and of search.
+MOVED = {"/about/": "/docs/"}
 # Each legal page: its source in legal/ (and its plain-words summary, NAME-plain.md), its description.
 LEGAL = {
     "privacy": "What reaches nock's makers from nock.dev and from nock: the usage report, shared summaries, reports you write, and your rights.",
@@ -697,7 +695,7 @@ def docs_page(page: Page, pages: list[Page], located: dict[str, str]) -> str:
 
 
 def menu(current: str) -> str:
-    items = [("Home", "/"), ("About", "/about/"), ("Get started", "/getting-started/")]
+    items = [("Home", "/"), ("Get started", "/getting-started/")]
     links = [f'<a href="{path}"{marked(path == current)}>{name}</a>' for name, path in items]
     links.append(f'<a href="/docs/"{marked(current == "/docs/")}>Docs</a>')
     icons = f'<a class="icon" href="{GITHUB}" aria-label="nock on GitHub" title="GitHub">{ICONS["github"]}</a>'
@@ -938,6 +936,20 @@ def sitemap(lastmod: dict[str, str]) -> str:
     )
 
 
+def moved_page(target: str) -> str:
+    """A page that is gone: it sends the visitor on to `target` at once, and asks not to be indexed."""
+    address = html.escape(ORIGIN + target)
+    return (
+        '<!doctype html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n'
+        f"<title>Moved · nock</title>\n"
+        '<meta name="robots" content="noindex">\n'
+        f'<link rel="canonical" href="{address}">\n'
+        f'<meta http-equiv="refresh" content="0; url={html.escape(target)}">\n'
+        f"<script>location.replace({json.dumps(target)} + location.hash);</script>\n"
+        f'</head>\n<body><p>This page has moved to <a href="{html.escape(target)}">{address}</a>.</p></body>\n</html>\n'
+    )
+
+
 def robots() -> str:
     return f"User-agent: *\nAllow: /\n\nSitemap: {ORIGIN}/sitemap.xml\n"
 
@@ -1089,6 +1101,8 @@ def build(site: Path, terms: Path | None = None, today: str | None = None) -> li
             f"/{name}/", f"{title} · nock", description, "", main, head
         )
         sources[f"/{name}/"] = [HERE / "legal" / f"{name}.md", HERE / "legal" / f"{name}-plain.md"]
+    for old, new in MOVED.items():
+        written[old.lstrip("/") + "index.html"] = moved_page(new)
     written["robots.txt"] = robots()
     written["sitemap.xml"] = sitemap(
         {url: last_changed(paths, today) for url, paths in sources.items()}
