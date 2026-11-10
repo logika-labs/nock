@@ -3,8 +3,10 @@ held to its rules, and the briefs pointing only at terms that exist."""
 
 from __future__ import annotations
 
+import fnmatch
 import json
 import re
+import sqlite3
 from pathlib import Path
 
 import pytest
@@ -22,6 +24,7 @@ from nock.docs import (
     TermError,
 )
 from nock.project import Project
+from nock.store import SCHEMA
 
 from .conftest import nock
 
@@ -45,6 +48,28 @@ FRAMEWORK = (
     "logika",
 )
 POINTER = re.compile(r"nock docs((?: --full)?(?: [a-z0-9.-]+)+)")
+
+
+def test_the_telemetry_tables_term_names_only_real_columns() -> None:
+    connection = sqlite3.connect(":memory:")
+    connection.executescript(SCHEMA)
+    columns = {
+        table: {row[1] for row in connection.execute(f"PRAGMA table_info({table})")}
+        for (table,) in connection.execute("SELECT name FROM sqlite_master WHERE type = 'table'")
+    }
+    term = Docs().find("telemetry.tables")
+    assert term is not None
+    article = term.article
+    named = 0
+    for sentence in article.split(". "):
+        before, _, after = sentence.partition(":")
+        tables = re.findall(r"`([a-z_]+)`", before)
+        assert tables and set(tables) <= set(columns), sentence
+        for column in re.findall(r"`([a-z_*]+)`", after):
+            assert len(tables) == 1, sentence
+            assert fnmatch.filter(columns[tables[0]], column), f"{tables[0]} has no {column}"
+            named += 1
+    assert named > 20
 
 
 def write_term(directory: Path, term: str, front: str, article: str = "An article.") -> None:
