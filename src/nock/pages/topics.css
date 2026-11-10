@@ -64,14 +64,10 @@
 .topics .mini .title { font: 600 14px/20px var(--sans); overflow-wrap: anywhere; }
 .topics .mini .ref { font: 500 11px/16px var(--mono); color: var(--muted); overflow-wrap: anywhere; }
 
-/* A time: no pill, the text itself engraved in brushed steel: a steel gradient clipped to the glyphs,
-   a dark edge above and a light one below, as if cut into the glass. */
+/* A time: small mono in the light gray every timestamp takes (`--time`). */
 .topics time, .topics .when {
   display: inline-flex; align-items: center; height: 20px; white-space: nowrap;
-  font: 600 11px/1 var(--mono); font-variant-numeric: tabular-nums; letter-spacing: .04em;
-  color: transparent; -webkit-background-clip: text; background-clip: text;
-  background-image: linear-gradient(180deg, #b0b2bb 0%, #8a8c96 38%, #6a6c76 52%, #9597a1 70%, #c2c4cc 100%);
-  filter: drop-shadow(0 1px 0 rgb(255 255 255 / .95)) drop-shadow(0 -.5px 0 rgb(17 17 22 / .28));
+  font: 600 11px/1 var(--mono); font-variant-numeric: tabular-nums; letter-spacing: .04em; color: var(--time);
 }
 .topics .corner { display: flex; align-items: center; gap: 8px; justify-self: end; align-self: start; }
 
@@ -112,8 +108,10 @@
 }
 @keyframes topic-spin { to { transform: rotate(1turn); } }
 .topics .topic-head .about { grid-column: 1 / -1; margin: 6px 0 0; color: var(--muted); font-size: 14px; line-height: 1.5; max-width: 70ch; }
-.topics .topic-body { display: grid; gap: 22px; padding: 4px 18px 18px; min-width: 0; }
-.topics .section { display: grid; gap: 10px; min-width: 0; }
+/* A section's title is twice as far from what is above it (the topic's head, the section before)
+   as from its own items: --above between sections, --below under each title. */
+.topics .topic-body { --above: 24px; --below: 8px; display: grid; gap: var(--above); padding: var(--above) 18px 18px; min-width: 0; }
+.topics .section { display: grid; gap: var(--below); min-width: 0; }
 .topics .section > h3 { margin: 0; color: var(--foreground); }
 .topics .section > h3 .count { color: var(--muted); }
 /* A section folds by its caret. */
@@ -172,17 +170,13 @@
 /* The chat icon's glyph sits inside its button: the mark keeps as far from the time as the time from the glyph. */
 .topics .corner .verdict-mark { margin-right: 7px; }
 .topics .verdict-mark svg { width: 13px; height: 13px; }
-/* Accepted and rejected: a black tick or cross on a foil circle, told apart by the glyph and the
-   foil's side: accepted the cool one (cyan into lavender, lit from the top left), rejected the warm
-   one (yellow into pink, lit from the bottom right). */
-.topics .verdict-mark.accepted, .topics .verdict-mark.rejected {
-  color: #111116; box-shadow: inset 0 1px 0 rgb(255 255 255 / .6), inset 0 0 0 1px rgb(17 17 22 / .07);
-}
-.topics .verdict-mark.accepted { background: linear-gradient(135deg, #7ff0ff, #9dc4ff 50%, #c3a6ff); }
-.topics .verdict-mark.rejected { background: linear-gradient(315deg, #ffe46b, #ffa6c9 55%, #ff7cc4); }
+/* Accepted and rejected: the open ring's foil, filled, a white tick or cross on it: told apart by
+   the glyph. */
+.topics .verdict-mark.accepted, .topics .verdict-mark.rejected { color: #fff; background: var(--foil-ring); }
+.topics .verdict-mark.accepted svg, .topics .verdict-mark.rejected svg { filter: drop-shadow(0 0 1px rgb(17 17 22 / .45)); }
 /* Open: a dashed ring in the foil, waiting for its verdict. */
 .topics .verdict-mark.open {
-  background: conic-gradient(from 210deg, #2fcdf5, #8f6bff, #ff5cb8, #ffc93d, #2fcdf5);
+  background: var(--foil-ring);
   -webkit-mask: radial-gradient(circle, transparent 8.5px, #000 9px), repeating-conic-gradient(#000 0 20deg, transparent 20deg 30deg);
   -webkit-mask-composite: source-in;
   mask: radial-gradient(circle, transparent 8.5px, #000 9px) intersect, repeating-conic-gradient(#000 0 20deg, transparent 20deg 30deg);
@@ -234,10 +228,11 @@
 .topics .tip .line { font-weight: 500; overflow-wrap: anywhere; }
 .topics [data-tip] { cursor: help; }
 
-/* The chat toggle: a bubble icon; a glowing foil dot when the agent said something not yet seen; its
+/* The chat toggle: a bubble icon, round, black when open; a dot in the verdict marks' foil, no glow,
+   when the agent said something not yet seen; its
    outline a slowly swirling foil, no glow, while the owner's message waits for the agent's answer. */
 .topics .chat-toggle {
-  position: relative; z-index: 2; display: grid; place-items: center; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 8px;
+  position: relative; z-index: 2; display: grid; place-items: center; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 50%;
   background: none; color: var(--muted);
 }
 .topics .chat-toggle svg { width: 18px; height: 18px; }
@@ -245,8 +240,7 @@
 .topics .chat-toggle[aria-pressed="true"] { color: #fff; background: #111116; }
 .topics .chat-toggle .mark {
   display: none; position: absolute; top: 2px; right: 2px; width: 9px; height: 9px; border-radius: 50%;
-  background: linear-gradient(135deg, #4fd8ff, #a58bff 50%, #ff6ec4);
-  box-shadow: 0 0 0 1.5px #fff, 0 0 6px 1px rgb(90 220 255 / .8), 0 0 11px 2px rgb(255 120 200 / .6);
+  background: var(--foil-ring); box-shadow: 0 0 0 1.5px #fff;
 }
 .topics .chat-toggle.unseen .mark { display: block; }
 @property --swirl { syntax: "<angle>"; inherits: false; initial-value: 0deg; }
@@ -294,9 +288,8 @@
 .topics .message.waiting { opacity: .75; }
 .topics .message .note { font: 500 10px/14px var(--mono); letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
 .topics .message.owner .note { color: rgb(255 255 255 / .7); }
-.topics .message .when { justify-self: end; height: auto; padding: 0; background: none; box-shadow: none; filter: none; font: 500 10px/14px var(--mono); color: var(--muted); }
-.topics .message .when time { height: auto; padding: 0; background: none; box-shadow: none; filter: none; font-size: 10px; line-height: 14px; color: inherit; }
-.topics .message.owner .when, .topics .message.owner time { color: rgb(255 255 255 / .65); }
+.topics .message .when { justify-self: end; height: auto; font: 500 10px/14px var(--mono); }
+.topics .message .when time { height: auto; font-size: 10px; line-height: 14px; }
 /* The composer: the files waiting to go, then the field between the attach button and the
    recorder, the send button last. */
 .topics .composer { display: grid; gap: 6px; min-width: 0; padding: 8px 8px 8px 6px; border-top: 1px solid var(--border); background: #fff; border-radius: 0 0 17px 17px; }
@@ -423,7 +416,7 @@
 .topics .strip {
   display: flex; align-items: flex-start; gap: 12px; overflow-x: auto; overscroll-behavior-x: contain; scroll-snap-type: x proximity;
   /* Room inside the scroller for a hovered card's shadow, which it would clip otherwise. */
-  padding: 10px 12px 24px; margin: -10px -12px -16px; scroll-padding-inline: 12px; scrollbar-width: thin;
+  padding: 10px 12px 24px; margin: -10px -12px -24px; scroll-padding-inline: 12px; scrollbar-width: thin;
 }
 .topics .strip > * { scroll-snap-align: start; flex: none; }
 .topics .thumb {
@@ -586,7 +579,11 @@
 .topics .viewer .main > * { flex: none; }
 .topics .viewer .main > .content { flex: 1 1 auto; }
 .topics .viewer .line { display: flex; align-items: center; gap: 10px 14px; min-width: 0; }
-.topics .viewer .versions { flex-wrap: wrap; padding-right: 2px; }
+/* One line, whatever the path: the path, at the left, gives way and ends in an ellipsis. */
+.topics .viewer .versions { flex-wrap: nowrap; padding-right: 2px; }
+.topics .viewer .versions > .path-anchor { flex: 0 1 auto; min-width: 0; }
+.topics .viewer .versions .path { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; overflow-wrap: normal; }
+.topics .viewer .pickers, .topics .viewer .end { flex: none; }
 .topics .viewer .pickers { display: flex; align-items: center; gap: 8px; }
 .topics .viewer .end { display: flex; align-items: center; gap: 14px; margin-left: auto; }
 .topics .viewer .content { min-height: 0; overflow: auto; border: 1px solid var(--border); border-radius: 14px; background: #fff; }
@@ -594,11 +591,8 @@
 .topics .viewer.image .content { border: 0; border-radius: 0; background: none; padding: 7px; }
 /* Compared, each version's select stands over its side. */
 .topics .viewer .heads { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0; }
-/* Compared, a side's select (the left one's with the file's path beside it) on one line over it,
-   at the left edge of the picture or text it chooses. */
+/* Compared, a side's select on one line over it, at the left edge of the picture or text it chooses. */
 .topics .viewer .head { display: flex; align-items: center; gap: 10px; min-width: 0; }
-.topics .viewer .head .path-anchor { min-width: 0; }
-.topics .viewer .head .path { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; overflow-wrap: normal; }
 .topics .viewer .stack { display: grid; gap: 8px; min-width: 0; align-content: start; }
 .topics .viewer .stack.fit { justify-self: center; width: fit-content; max-width: 100%; }
 .topics .viewer .stack.fit .pane { place-items: start; }
@@ -820,7 +814,7 @@
   .topics .chat-head { padding-right: 16px; }
   .topics .bar { gap: 10px; }
   .topics .topic-head { padding: 14px; }
-  .topics .topic-body { padding: 4px 14px 14px; }
+  .topics .topic-body { padding: var(--above) 14px 14px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .topics .spinner { animation-duration: 2.4s; }

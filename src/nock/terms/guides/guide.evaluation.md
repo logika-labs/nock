@@ -117,7 +117,9 @@ next run anywhere restores them.
 
 ## In the studio
 
-**The studio's Experiment tab** (`#experiment`) draws a scenario as an
+**The studio's Experiment tab** (`#experiment`) lists the scenarios, each with
+the question it asks; the one chosen opens at its own address
+(`#experiment/NAME`, so Back returns to the list) and draws it as an
 experiment: its steps as a tree forking by parameter and by repeat, black boxes
 on a grid, a line per value or per pooled set of values, with each step's time
 and cost. Click a step for what it means, its parameters (the ones that vary

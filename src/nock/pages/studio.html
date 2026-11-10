@@ -38,6 +38,8 @@
   --column: 60rem;
   --number: 2.25rem;
   --radius: 12px;
+  /* Every timestamp, on every tab: one light gray. */
+  --time: #9b9da7;
   color-scheme: light;
 }
 
@@ -238,7 +240,9 @@ input[type="search"]:focus-visible { border-bottom-color: var(--ring); }
 <script>
 // The studio: tabs register here, and the address says which is open (`#NAME`,
 // or `#NAME/ROUTE` for something in it). An address naming no tab goes to the
-// first, whole, as its route — so `#7` still opens what was decision 7.
+// first, whole, as its route — so `#7` still opens what was decision 7. No
+// element's id is a tab's name (a tab's fragment is `NAME-tab`): the browser
+// would scroll to it on its own when the address changes.
 const studio = {
   tabs: new Map(),
   summaries: new Map(),
@@ -293,9 +297,13 @@ const studio = {
     if (this.tabs.has(name)) return [name, rest.join("/")];
     return [this.tabs.keys().next().value, hash];
   },
+  // Where each tab was scrolled when the owner left it: coming back, it is where they left it. A
+  // tab away keeps what it drew, so it shows at once as it was, nothing drawn again.
+  scrolls: new Map(),
   open() {
     const [name, route] = this.route();
-    if (this.current && this.current !== name) this.tabs.get(this.current).hide();
+    const switching = this.current !== name;
+    if (this.current && switching) { this.scrolls.set(this.current, scrollY); this.tabs.get(this.current).hide(); }
     this.current = name;
     // A panel holding something shown on every tab (`data-everywhere`: the global chat) is set away
     // instead of hidden: it takes no room and shows nothing but that.
@@ -312,6 +320,7 @@ const studio = {
     document.getElementById("title").textContent = title;
     document.title = `nock studio — ${title}`;
     document.getElementById("summary").textContent = this.summaries.get(name) ?? "…";
+    if (switching) scrollTo({ top: this.scrolls.get(name) ?? 0, behavior: "instant" });
     this.tabs.get(name).show(route);
   },
 };
@@ -498,6 +507,19 @@ const restart = {
 restart.toast.querySelector("button").addEventListener("click", () => restart.go());
 restart.check();
 setInterval(() => { if (!document.hidden) restart.check(); }, 5000);
+// The studio keeps each tab's place itself; the browser restoring one as well would jump. A link
+// within the studio changes the address without the browser's own jump to the fragment (to the
+// top, as no element is named so), and Back and Forward still step through what was opened.
+history.scrollRestoration = "manual";
+document.addEventListener("click", event => {
+  const link = event.target.closest?.('a[href^="#"]');
+  if (!link || event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+  event.preventDefault();
+  const address = link.getAttribute("href");
+  if (decodeURIComponent(address) === decodeURIComponent(location.hash)) return;
+  history.pushState(null, "", address);
+  studio.open();
+});
 addEventListener("hashchange", () => studio.open());
 studio.open();
 </script>

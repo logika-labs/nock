@@ -1,6 +1,7 @@
 /* The Experiment tab's look: a scenario as an experiment — its measures on glass, its steps on a
    black field with a grid in nock's colours, the panel beside it. Every rule is under .experiment. */
-.experiment.frame { max-width: min(1400px, 100%); }
+/* The main strip, as wide as Work's (the shell's .frame); under the band as Work's bar is. */
+.experiment.frame { padding-block: 16px 80px; }
 .experiment { color-scheme: light;
   --ground: #e9e2ff;
   --ink: #111116;
@@ -30,6 +31,7 @@
 .experiment h2 { margin: 0; font: 700 20px/1.3 var(--display); letter-spacing: -.02em; text-wrap: balance; }
 .experiment .mock { margin: 0 0 14px; font-size: 13px; color: var(--muted); }
 .experiment .muted { color: var(--muted); }
+.experiment time { color: var(--time); font-variant-numeric: tabular-nums; }
 .experiment .small { font-size: 13.5px; }
 .experiment .measures { overflow-x: auto; }
 .experiment .mtable { display: grid; min-width: 560px; }
@@ -218,7 +220,11 @@
 @media (prefers-reduced-motion: reduce) {
 .experiment .panel { transition: none; }
 }
-.experiment .xp-picker { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+/* The experiments to choose from: a card each, its name over the question it asks. */
+.experiment .xp-list { display: grid; gap: 12px; }
+.experiment .xp-card { display: grid; gap: 6px; color: inherit; text-decoration: none; transition: box-shadow .18s, border-color .18s; }
+.experiment .xp-card .question { font: 700 18px/1.35 var(--display); letter-spacing: -.02em; text-wrap: balance; }
+.experiment .xp-card:hover { border-color: rgb(17 17 22 / .3); box-shadow: -6px -4px 18px -8px rgb(255 120 200 / .6), 6px 8px 18px -8px rgb(90 220 255 / .65); }
 .experiment .xp-note { margin: 0; }
 .experiment .xp-main { display: grid; gap: 14px; }
 .experiment .xp-question { margin: 0 0 10px; font: 700 22px/1.25 var(--display); letter-spacing: -.02em; text-wrap: balance; }

@@ -10,6 +10,7 @@ import json
 import threading
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from collections.abc import Callable, Iterator
 from pathlib import Path
@@ -201,6 +202,25 @@ def test_a_new_chat_names_the_one_left_and_every_chat_is_listed(
     post(page, "send", {"id": first, "text": "And now?"})
     assert answered(page, first)["messages"][-1]["text"] == "You said: And now?"
     assert leaving == {"naming": True}
+
+
+def test_the_chats_list_s_search_keeps_the_chats_holding_every_word(page: str) -> None:
+    """The Chats list's search, as Work's: a chat is kept when every word is in
+    its title, its summary or what was said in it, the latest first."""
+    orders = post(page, "send", {"text": "Where do orders live?"})[1]["id"]
+    answered(page, orders)
+    refunds = post(page, "send", {"text": "How are refunds of orders sent?"})[1]["id"]
+    answered(page, refunds)
+
+    def search(query: str) -> list[str]:
+        return get(page, f"/search/{urllib.parse.quote(query)}")["chats"]
+
+    assert search("orders") == [refunds, orders]
+    # Every word, in any case, anywhere in the chat: the agent's answer counts.
+    assert search("REFUNDS orders") == [refunds]
+    assert search("you said refunds") == [refunds]
+    assert search("orders shipping") == []
+    assert search("") == [] and search("  ") == []
 
 
 def test_tidy_up_lands_as_one_commit_only_drops_and_undo_reverts_it(

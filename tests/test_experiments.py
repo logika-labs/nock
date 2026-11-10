@@ -7,12 +7,16 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
 import threading
 import time
 import urllib.request
 from pathlib import Path
 from typing import Any
 
+import pytest
+
+from nock.errors import NotFoundError
 from nock.evaluation import Evaluations
 from nock.experiments import Experiment
 from nock.explorer import Explorer
@@ -124,7 +128,9 @@ def test_the_tab_answers_a_scenario_and_its_results(project: Project, toy: Path)
     worded(toy)
     call(project.root, "run")
     tab = ExperimentTab(project)
-    assert tab.get("") == {"scenarios": ["toy"]}
+    assert tab.get("") == {
+        "scenarios": [{"name": "toy", "question": "Does the toolbox find the planted bug?"}]
+    }
     tab.explorer("toy").current(wait=True)
     model = tab.get("toy")
     assert model["name"] == "toy" and model["states"]
@@ -147,7 +153,7 @@ def test_a_scenario_worded_with_a_question_and_decisions_opens_on_the_experiment
             with urllib.request.urlopen(f"{server.address}{path}", timeout=60) as response:
                 return json.loads(response.read())
 
-        assert fetch("experiment") == {"scenarios": ["toy"]}
+        assert fetch("experiment")["scenarios"][0]["name"] == "toy"
         for _ in range(600):
             drawn = fetch("experiment/toy")
             if "nodes" in drawn or drawn.get("problem"):
@@ -159,3 +165,34 @@ def test_a_scenario_worded_with_a_question_and_decisions_opens_on_the_experiment
     finally:
         server.shutdown()
         server.server_close()
+
+
+def test_the_tab_lists_the_experiments_to_choose_from_and_each_has_its_own_address(
+    project: Project, toy: Path
+) -> None:
+    """`#experiment` is the list (`GET /experiment`: each scenario's name and
+    question, read without a dry run); `#experiment/NAME` the one chosen
+    (`GET /experiment/NAME`); a name that is no scenario is not found."""
+    worded(toy)
+    plain = toy.parent / "plain"
+    shutil.copytree(toy, plain)
+    (plain / "studio.json").unlink()
+    broken = toy.parent / "broken"
+    shutil.copytree(toy, broken)
+    (broken / "studio.json").write_text("{not json")
+    tab = ExperimentTab(project)
+    assert tab.get("") == {
+        "scenarios": [
+            {"name": "broken", "question": ""},
+            {"name": "plain", "question": ""},
+            {"name": "toy", "question": "Does the toolbox find the planted bug?"},
+        ]
+    }
+    assert not tab.explorers, "listing derives nothing"
+    tab.explorer("toy").current(wait=True)
+    chosen = tab.get("toy")
+    assert (
+        chosen["name"] == "toy" and chosen["question"] == "Does the toolbox find the planted bug?"
+    )
+    with pytest.raises(NotFoundError):
+        tab.get("nope")

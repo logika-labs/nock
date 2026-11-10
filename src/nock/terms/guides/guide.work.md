@@ -13,19 +13,19 @@ the topics in the owner's order — by `priority` (1 first; `topics update
 TOPIC '{"priority": 1}'`, 0 takes it away), then the rest, newest activity
 first — each a row: its name, what it holds ("4
 decisions · 6 images · 3 texts") and its verdicts ("3 open · 12 accepted · 2 dropped"),
-its time ("21m", "3h", "2d", on a small grey pill) with its state's foil mark
+its time ("21m", "3h", "2d", in the light grey every timestamp in the studio takes) with its state's foil mark
 beside it (active a slowly turning spinner, planned a ring, done a full circle
 with a tick, abandoned one with a cross; a topic in review shows none, since
 waiting on the owner needs no mark), its status line in grey right after
 its name, and its description. A
 topic opens in place, its items in sections, each with its count and a caret
-that folds it: decisions as bubbles that open in place on the answer (its
+that folds it, each section's title twice as far from what is above it as from
+its own items: decisions as bubbles that open in place on the answer (its
 whole width; Markdown's single line breaks flow together, a blank line parts
 paragraphs), the alternatives, the files it concerns and Drop, Reject and Accept;
 a decision is done unless a Todo pill under its time (white on a foil edge, like Tidy up) says
-otherwise; before its title, its verdict: a dashed foil ring while open, a black tick on a cool foil
-circle (cyan into lavender) once accepted, a black cross on a warm one (yellow into pink) once
-rejected, a muted cross once dropped (hovered, in plain words: "Accepted on Nov 23, 2026 at 14:05",
+otherwise; before its title, its verdict: a dashed foil ring while open, the same foil filled
+with a white tick once accepted or a white cross once rejected, a muted cross once dropped (hovered, in plain words: "Accepted on Nov 23, 2026 at 14:05",
 in local time; a topic's state mark likewise says when it was set); an open
 decision is framed in the foil's cyan and pink (`?decisions=rail` or `lift`
 on the page's address shows two other looks); pictures as one line of
@@ -42,10 +42,11 @@ ribbon — a text in a column about 40% of the screen, a picture's viewer
 shrunk to the picture, each picture framed in a grey hairline: a version
 picked (a white pill on a foil edge, "v3", its list giving each
 version's time; with one version, the label alone in the middle of its
-pill), or Compare (off at first, and absent where there is nothing to
+pill), the file's path at the left of the line with Compare and the chat (one line always,
+a long path ending in an ellipsis), or Compare (off at first, and absent where there is nothing to
 compare: one version, options, a file only to download) for two side by
 side, the newest and the one before, each side's select on one line over
-it at its left edge, the file's path beside the left one (a text's as
+it at its left edge (a text's as
 a line diff in nock's colours, the changed words marked, a long unchanged run
 folded into one row a click unfolds); an item's options side
 by side instead, each with its star, Compare off; a Markdown file

@@ -1,5 +1,5 @@
-<div class="frame experiment" id="experiment">
-  <div class="xp-picker" id="xp-picker" role="group" aria-label="Scenario" hidden></div>
+<div class="frame experiment" id="experiment-tab">
+  <nav class="xp-list" id="xp-list" aria-label="Experiments" hidden></nav>
   <p class="glass xp-note" id="xp-note" hidden></p>
   <div class="xp-main" id="xp-main" hidden>
     <header class="glass">
@@ -23,44 +23,60 @@
 // experiment/NAME/results` the results of the outputs a panel shows, fetched when it shows them.
 (() => {
 const $ = id => document.getElementById("xp-" + id);
-const shell = { name: null, route: "", shown: false, controller: null, names: [] };
+const tab = { name: null, drawn: null, told: "", shown: false, controller: null, scenarios: [] };
 function load(name, route) {
   return fetch(`experiment/${encodeURIComponent(name)}`).then(r => r.json()).then(X => {
+    if (!tab.shown || tab.name !== name) return;
     if (X.error || X.deriving || X.problem) {
+      tab.drawn = null;
       $("main").hidden = true; $("note").hidden = false;
       $("note").textContent = X.error || X.problem || "Reading the workflow… this takes as long as a dry run, once.";
       studio.summary("experiment", `${name}: ${X.problem ? "can't read it" : "reading the workflow…"}`);
-      if (X.deriving) setTimeout(() => shell.shown && shell.name === name && load(name, route), 3000);
+      if (X.deriving) setTimeout(() => tab.shown && tab.name === name && load(name, route), 3000);
       return;
     }
     $("note").hidden = true; $("main").hidden = false;
-    shell.controller?.abort(); shell.controller = new AbortController();
-    boot(X, route, shell.controller.signal);
+    tab.drawn = name;
+    tab.controller?.abort(); tab.controller = new AbortController();
+    boot(X, route, tab.controller.signal);
   });
 }
-function pick() {
-  const box = $("picker");
-  box.hidden = shell.names.length < 2;
-  box.innerHTML = shell.names.map(n => `<button type="button" class="chip" aria-pressed="${n === shell.name}" data-name="${n}">${n}</button>`).join("");
-  box.querySelectorAll("[data-name]").forEach(b => b.onclick = () => { location.hash = `experiment/${b.dataset.name}`; });
+// The list to choose from: each scenario, its name and the question it asks, a link to its own
+// address (`#experiment/NAME`), so the browser's back comes back here.
+function list() {
+  tab.name = null;
+  $("main").hidden = true; $("note").hidden = true;
+  const box = $("list");
+  box.hidden = false;
+  box.innerHTML = tab.scenarios.map(s => `<a class="glass xp-card" href="#experiment/${encodeURIComponent(s.name)}" data-name="${esc(s.name)}">
+      <span class="eyebrow">${esc(s.name)}</span><span class="question">${esc(s.question || s.name)}</span></a>`).join("");
+  studio.summary("experiment", `${tab.scenarios.length} ${tab.scenarios.length === 1 ? "experiment" : "experiments"}: choose one`);
 }
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 studio.register("experiment", {
+  // `#experiment` the list; `#experiment/NAME[/RUN--ITERATIONS]` that experiment, drawn once and kept
+  // while the owner looks elsewhere.
   show(route) {
-    shell.shown = true;
-    const [name, ...rest] = (route || "").split("/");
+    tab.shown = true;
+    const [said, ...rest] = (route || "").split("/");
+    const name = decodeURIComponent(said || "");
     fetch("experiment").then(r => r.json()).then(data => {
-      shell.names = data.scenarios || [];
-      if (!shell.names.length) { $("main").hidden = true; $("note").hidden = false; $("note").textContent = "No scenarios yet: nock eval init NAME makes one."; studio.summary("experiment", "No scenarios yet"); return; }
-      const chosen = shell.names.includes(name) ? name : shell.name && shell.names.includes(shell.name) ? shell.name : shell.names[0];
-      const again = chosen === shell.name && shell.loaded;
-      shell.name = chosen; shell.loaded = true; pick();
-      if (!again) load(chosen, rest.join("/"));
+      if (!tab.shown) return;
+      tab.scenarios = data.scenarios || [];
+      if (!tab.scenarios.length) { $("list").hidden = true; $("main").hidden = true; $("note").hidden = false; $("note").textContent = "No experiments yet: nock eval init NAME makes one."; studio.summary("experiment", "No experiments yet"); return; }
+      if (!tab.scenarios.some(s => s.name === name)) { list(); return; }
+      $("list").hidden = true;
+      tab.name = name;
+      if (tab.drawn === name) { $("note").hidden = true; $("main").hidden = false; tellAgain(); return; }
+      load(name, rest.join("/"));
     });
   },
-  hide() { shell.shown = false; },
+  hide() { tab.shown = false; },
 });
+// The counts under the title, as the experiment last said them.
+const tellAgain = () => { if (tab.told) studio.summary("experiment", tab.told); };
 function boot(X, route, signal) {
-const tellStudio = text => studio.summary("experiment", text);
+const tellStudio = text => { tab.told = text; studio.summary("experiment", text); };
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
 const time = m => m == null ? "" : m < 1 ? `${Math.round(m * 60)}s` : m < 90 ? `${m < 10 ? m.toFixed(1) : Math.round(m)}min` : `${(m / 60).toFixed(1)}h`;
@@ -69,6 +85,8 @@ const num = v => Number.isInteger(v) ? String(v) : v.toFixed(1);
 const MONTH = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const pad = n => String(n).padStart(2, "0");
 const when = iso => { if (!iso) return "—"; const d = new Date(iso); return `${d.getDate()} ${MONTH[d.getMonth()]}, ${pad(d.getHours())}:${pad(d.getMinutes())}`; };
+// A moment as the page shows it: in the light gray every timestamp in the studio takes.
+const stamp = iso => iso ? `<time datetime="${esc(iso)}">${esc(when(iso))}</time>` : "—";
 
 // --- icons: only staleness has one (what didn't run is dimmed); verdicts are green ✓ and red ✗ ----------
 const GLYPH = {
@@ -102,9 +120,9 @@ const RUN = Object.fromEntries(X.runs.map(r => [r.id, r]));
 const LAUNCH = Object.fromEntries((X.launches || []).map(l => [l.id, l]));
 const madeBy = ss => { const ids = [...new Set(ss.map(s => s.launch).filter(Boolean))];
   if (!ids.length) return "";
-  if (ids.length > 1) return `<dt>made by</dt><dd>${ids.length} runs, ${esc(when(LAUNCH[ids[0]].started))} to ${esc(when(LAUNCH[ids.at(-1)].started))}</dd>`;
+  if (ids.length > 1) return `<dt>made by</dt><dd>${ids.length} runs, ${stamp(LAUNCH[ids[0]].started)} to ${stamp(LAUNCH[ids.at(-1)].started)}</dd>`;
   const l = LAUNCH[ids[0]];
-  return `<dt>made by</dt><dd>the run of ${esc(when(l.started))}${l.targets.length ? ` <span class="muted">· ${esc(l.targets.join(" "))}</span>` : ""}</dd>`; };
+  return `<dt>made by</dt><dd>the run of ${stamp(l.started)}${l.targets.length ? ` <span class="muted">· ${esc(l.targets.join(" "))}</span>` : ""}</dd>`; };
 const S = Object.fromEntries(X.states.map(s => [s.id, s]));
 const AT = d3.group(X.states, s => s.node);
 const valueOf = (p, v) => P[p]?.values.find(x => x.id === v);
@@ -448,7 +466,7 @@ function shell(kind, title, html) {
 }
 panel.addEventListener("click", ev => { if (!ev.target.closest(".sel")) panel.querySelectorAll(".sel-l").forEach(l => l.hidden = true); }, { signal });
 addEventListener("keydown", e => {
-  if (!shell.shown) return;
+  if (!tab.shown) return;
   if (e.key !== "Escape") return;
   const l = [...panel.querySelectorAll(".sel-l")].find(x => !x.hidden);
   if (l) l.hidden = true; else if (panel.classList.contains("open")) closePanel();
@@ -631,8 +649,8 @@ function resultsHtml(ss, stageId) {
 function whenHtml(r, ss) {
   if (!ss.length) return "";
   const cached = ss.filter(s => s.run !== r.id);
-  if (cached.length) return `<p class="small">Cached from an earlier run, ${pathKv(runPairs(RUN[cached[0].run]))}, made ${esc(when(cached[0].started))}.</p><dl class="kv">${madeBy(cached)}</dl>`;
-  return `<dl class="kv">${madeBy(ss)}<dt>started</dt><dd>${esc(when(d3.min(ss, s => s.started)))}</dd><dt>finished</dt><dd>${esc(when(d3.max(ss, s => s.finished)))}</dd></dl>`;
+  if (cached.length) return `<p class="small">Cached from an earlier run, ${pathKv(runPairs(RUN[cached[0].run]))}, made ${stamp(cached[0].started)}.</p><dl class="kv">${madeBy(cached)}</dl>`;
+  return `<dl class="kv">${madeBy(ss)}<dt>started</dt><dd>${stamp(d3.min(ss, s => s.started))}</dd><dt>finished</dt><dd>${stamp(d3.max(ss, s => s.finished))}</dd></dl>`;
 }
 function runPanel(n) {
   const r = RUN[view.run], c = candidates(n), { many, shown } = c;
@@ -673,7 +691,7 @@ function overlays() {
 // The address: the run, then the iterations kept at each level of iteration ("all" for every one).
 function hash() {
   const h = view.run ? [view.run, ...view.reps.map(x => x ? x.join("x") : "all")].join("--") : "";
-  if (!shell.shown) return;
+  if (!tab.shown) return;
   try { history.replaceState(null, "", `#experiment/${encodeURIComponent(X.name)}${h ? "/" + h : ""}`); } catch (e) { /* the frame may refuse */ }
 }
 function fromHash(raw) {

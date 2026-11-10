@@ -15,8 +15,8 @@ on the other. The owner's message waits for the agent's answer, the item
 owner can withdraw the message to edit it; a verdict given since overrides
 it. An agent's `--reply` while one waits is its answer (the command says
 `answered`); it may say more afterwards. The icon marks what the agent said
-since the owner last opened the chat (kept on the machine) with a glowing
-foil dot; while the owner's message waits for its answer, the icon's outline
+since the owner last opened the chat (kept on the machine) with a dot in the
+verdict marks' foil; the icon is a black circle while its chat is open; while the owner's message waits for its answer, the icon's outline
 swirls slowly in the foil's colours (still, for reduced motion). A long
 message grows the field to a limit, then scrolls inside it. Verdicts take no
 comment on the page.
@@ -64,9 +64,12 @@ and nock's docs, and changes nothing) is briefed with the project's
 studio; its words stream in as it writes, with what it runs. Each chat is
 one session, continued with `--resume`; when Claude Code no longer has it,
 the chat goes on in a new session told what was said, and looks no
-different. **New chat** starts an empty one, and an agent names the one
+different. **New chat** starts an empty one, untitled, and an agent names the one
 left — a short title and a summary of a line or two; the list beside the
-title holds every chat (title, summary, last time) to continue any of them.
+title holds every chat (title, summary, last time) to continue any of them,
+with a search in place of the title that keeps the chats holding every word
+typed (in their title, summary or messages) and marks the words, as Work's
+search does.
 Chats are the owner's conversations, not the project's records: they are
 kept on the machine, in `.nock/local/chats/`, never committed. It has the
 same composer as every chat: files, the recorder.

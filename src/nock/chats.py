@@ -238,6 +238,26 @@ class Chats:
         rows.sort(key=lambda row: (row[1]["updated"], row[0]), reverse=True)
         return [row for _, row in rows]
 
+    def search(self, query: str) -> list[str]:
+        """The chats holding every word searched for, in their title, summary
+        or messages, as the list orders them: what the Chats list's search
+        keeps."""
+        wanted = query.lower().split()
+        if not wanted:
+            return []
+        found = []
+        for row in self.listing():
+            try:
+                messages = self.load(row["id"])["messages"]
+            except Error:
+                continue
+            said = " ".join(
+                [row["title"], row["summary"], *(entry.get("text") or "" for entry in messages)]
+            ).lower()
+            if all(word in said for word in wanted):
+                found.append(row["id"])
+        return found
+
     def shown(self, identifier: str) -> dict[str, Any]:
         """A chat as the page shows it: its messages, and the answer being written."""
         with self.lock:

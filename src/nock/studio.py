@@ -40,7 +40,7 @@ from nock.configuration import with_table_settings
 from nock.errors import ConflictError, Error, NotFoundError, PreconditionError, UsageError
 from nock.evaluation import Evaluations
 from nock.experiments import Experiment
-from nock.explorer import Explorer
+from nock.explorer import Explorer, Wording
 from nock.project import Project
 from nock.schema import validate
 from nock.topics import (
@@ -109,7 +109,8 @@ class Shown(TypedDict):
 
 
 class ExperimentTab(Tab):
-    """`GET /experiment` the scenarios; `GET /experiment/NAME` one as an
+    """`GET /experiment` the scenarios, each with the question it asks, which
+    the page lists to choose from; `GET /experiment/NAME` one as an
     experiment (`experiments.Experiment`: its steps forking by parameter, repeat
     and decision, its results and runs, the measures comparing its variants,
     from the explorer's description and statuses); `POST
@@ -147,13 +148,23 @@ class ExperimentTab(Tab):
 
     def get(self, route: str) -> Any:
         if not route:
-            return {"scenarios": self.evaluations.names()}
+            return {"scenarios": [self.listed(name) for name in self.evaluations.names()]}
         name = urllib.parse.unquote(route)
         experiment = self.experiment(name)
         if experiment is None:
             explorer = self.explorer(name)
             return {"name": name, "deriving": explorer.problem is None, "problem": explorer.problem}
         return experiment.model()
+
+    def listed(self, name: str) -> dict[str, str]:
+        """A scenario in the list: its name and its question, read from its
+        words alone, so the list costs no dry run; a scenario whose words are
+        broken is listed by its name, and says what is wrong once chosen."""
+        try:
+            question = Wording(self.evaluations.scenario(name)).words.get("question") or ""
+        except Error:
+            question = ""
+        return {"name": name, "question": question}
 
     def post(self, route: str, body: Any) -> Any:
         name, _, action = route.partition("/")
@@ -617,7 +628,8 @@ class Which(TypedDict):
 class ChatRoutes(Tab):
     """The studio's chat (`chats.Chats`), which no tab owns: the page shows
     it on every tab, from its button beside the settings. `GET /chat` every
-    chat in a line, the latest first; `GET /chat/ID` one, with the answer
+    chat in a line, the latest first; `GET /chat/search/QUERY` the chats
+    holding every word of it; `GET /chat/ID` one, with the answer
     being written; `POST /chat/send` the owner's message (a new chat without
     `id`), `/stop` stops the answer, `/leave` names the chat the owner
     leaves for a new one, `/tidy` starts Tidy up, `/undo` reverts its commit,
@@ -640,6 +652,8 @@ class ChatRoutes(Tab):
         if identifier == "file":
             chat, _, path = rest.partition("/")
             return Raw(self.chats.attachment(chat, path))
+        if identifier == "search":
+            return {"chats": self.chats.search(rest)}
         return self.chats.shown(identifier)
 
     def post(self, route: str, body: Any) -> Any:

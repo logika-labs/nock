@@ -1,4 +1,4 @@
-<div class="frame topics" id="topics">
+<div class="frame topics" id="topics-tab">
   <div class="controls">
     <div class="bar">
       <div class="field">
@@ -754,18 +754,19 @@
     // Compared, each version's select stands over the side it chooses.
     const sides = ["left", "right"];
     const pickers = comparing ? "" : picker(item, "single", numbers[0]);
-    const path = !several && first && !comparing ? pathButton(first, 0) : "";
+    // The file's path on the line with Compare and the chat, at its left, compared or not.
+    const path = !several && first ? pathButton(first, 0) : "";
     let content, heads = "";
     if (comparing && panes.every(entry => entry.file?.type === "text")) {
       const pair = panes.map(entry => fileUrl(item, entry.version, entry.file.name)).join(" ");
-      heads = `<div class="heads" data-key="heads">${sides.map((side, index) => `<div class="head">${picker(item, side, numbers[index])}${index === 0 && first ? pathButton(first, 0) : ""}</div>`).join("")}</div>`;
+      heads = `<div class="heads" data-key="heads">${sides.map((side, index) => `<div class="head">${picker(item, side, numbers[index])}</div>`).join("")}</div>`;
       content = `<div class="panes" data-key="pair:${escape(pair)}" data-own data-pair="${escape(pair)}"><p class="missing">…</p></div>`;
     } else {
       // Keyed apart from a diff, so a diff filled once is not taken for this.
       content = `<div class="panes${panes.length > 1 ? " several" : ""}" data-key="panes" style="--panes:${panes.length}">${panes.map((entry, index) =>
         `<div class="column${several && entry.file && item.preferred?.version === entry.version.version && item.preferred?.name === entry.file.name ? " preferred" : ""}">${comparing
-          // Compared, each side's select (and the left one's path) on a line over it, at its left edge.
-          ? `<div class="stack${entry.file?.type === "image" ? " fit" : ""}"><div class="head">${picker(item, sides[index], numbers[index])}${index === 0 && entry.file ? pathButton(entry.file, 0) : ""}</div>${pane(item, entry.version, entry.file, index)}</div>`
+          // Compared, each side's select on a line over it, at its left edge.
+          ? `<div class="stack${entry.file?.type === "image" ? " fit" : ""}"><div class="head">${picker(item, sides[index], numbers[index])}</div>${pane(item, entry.version, entry.file, index)}</div>`
           : item.options && entry.file ? `<div class="pane-wrap">${pane(item, entry.version, entry.file, index)}${star(item, entry.version, entry.file)}</div>` : pane(item, entry.version, entry.file, index)}${several && entry.file ? optionBar(item, entry.version, entry.file, index) : ""}</div>`).join("")}</div>`;
     }
     const actions = awaitsOwner(item) || item.verdict !== "open" ? `<div class="actions"><span class="hint" data-problem="${escape(item.ref)}"></span><div class="buttons">${verdictButtons(item.ref, item.verdict)}</div></div>` : "";
@@ -801,7 +802,7 @@
   // A path's bubble floats free of the content that scrolls: under its path, or over it when the
   // screen has no room below.
   function placeSource() {
-    const bubble = document.querySelector("#topics .source");
+    const bubble = document.querySelector("#topics-tab .source");
     if (!bubble) return;
     const anchor = bubble.previousElementSibling.getBoundingClientRect();
     const below = anchor.bottom + 10 + bubble.offsetHeight < innerHeight - 8;
@@ -923,14 +924,15 @@
     draw();
   }
   // The words searched for, marked where they show: wrapped in place, after every drawing and
-  // every text fetched; unwrapped first, so a changed search leaves no old marks.
-  function markWords(scope) {
+  // every text fetched; unwrapped first, so a changed search leaves no old marks. The Chats list's
+  // search marks its own words the same way.
+  function markWords(scope, words = state.mode === "search" ? said() : []) {
     for (const old of scope.querySelectorAll("mark.found")) {
       const parent = old.parentNode;
       old.replaceWith(...old.childNodes);
       parent.normalize();
     }
-    const wanted = state.mode === "search" ? said().filter(word => word.length > 1) : [];
+    const wanted = words.filter(word => word.length > 1);
     if (!wanted.length) return;
     const source = wanted.map(word => word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|");
     const pattern = new RegExp(source, "gi"), holds = new RegExp(source, "i");
@@ -982,13 +984,13 @@
   }
 
   function restoreDrafts() {
-    for (const field of document.querySelectorAll("#topics [data-draft]")) {
+    for (const field of document.querySelectorAll("#topics-tab [data-draft]")) {
       const kept = field.disabled ? "" : state.drafts.get(field.dataset.draft) ?? "";
       if (document.activeElement !== field && field.value !== kept) field.value = kept;
       grow(field);
     }
     if (state.focus) {
-      const field = document.querySelector(`#topics [data-draft="${CSS.escape(state.focus)}"]`);
+      const field = document.querySelector(`#topics-tab [data-draft="${CSS.escape(state.focus)}"]`);
       if (field && !field.disabled) {
         const at = state.caretAt ?? field.value.length;
         field.focus(); field.setSelectionRange(at, at); state.focus = state.caretAt = null;
@@ -1010,14 +1012,14 @@
 
   // An open chat keeps its newest message in sight, and what it shows the owner counts as seen.
   function keepChats() {
-    for (const log of document.querySelectorAll("#topics [data-log]")) {
+    for (const log of document.querySelectorAll("#topics-tab [data-log]")) {
       const newest = log.lastElementChild?.dataset.key || "";
       if (log.newest !== newest) { log.newest = newest; log.scrollTop = log.scrollHeight; }
     }
     for (const key of state.chats) {
       const standing = key.startsWith("topic:") ? topicNamed(key.slice(6))?.chat : itemAt(key)?.chat;
       if (!standing?.unseen || state.looking.has(key)) continue;
-      if (!document.querySelector(`#topics [data-log="${CSS.escape(key)}"]`)) continue;
+      if (!document.querySelector(`#topics-tab [data-log="${CSS.escape(key)}"]`)) continue;
       state.looking.add(key);
       post("topics/seen", where(key)).then(() => { state.seen = ""; return load(); }).catch(() => {}).finally(() => state.looking.delete(key));
     }
@@ -1074,7 +1076,7 @@
     drawModal();
     drawLightbox();
     if (state.zoom && !state.zoom.boxes) { measureZoom(); drawModal(); drawLightbox(); }
-    fill($("topics"));
+    fill($("topics-tab"));
     markWords($("topics-main"));
     markWords($("topics-modal"));
     drawGlobal();
@@ -1289,7 +1291,7 @@
       transcribe(key, new Blob(chunks, { type: taken.mimeType || "audio/webm" }));
     });
     taken.start();
-    const ticker = setInterval(() => { for (const place of document.querySelectorAll("#topics [data-elapsed]")) place.textContent = elapsed(state.recording?.started ?? Date.now()); }, 250);
+    const ticker = setInterval(() => { for (const place of document.querySelectorAll("#topics-tab [data-elapsed]")) place.textContent = elapsed(state.recording?.started ?? Date.now()); }, 250);
     state.recording = { key, recorder: taken, started: Date.now(), ticker };
     state.failed.delete(key);
     draw();
@@ -1350,7 +1352,7 @@
 
   // --- events -------------------------------------------------------------------------------------
 
-  const root = $("topics");
+  const root = $("topics-tab");
   root.addEventListener("click", event => {
     const target = event.target;
     if (state.menu && !target.closest(".select")) { state.menu = null; draw(); if (!target.closest("button")) return; }
@@ -1436,6 +1438,7 @@
   });
   root.addEventListener("input", event => {
     const field = event.target;
+    if (field.matches("[data-chat-search]")) { talk.search = field.value; if (!talk.search.trim()) talk.found = null; findChats(); return; }
     if (field.id === "topics-input") { if (state.mode === "search") { state.search = field.value; find(true); } draw(); return; }
     if (field.dataset.draft) { state.drafts.set(field.dataset.draft, field.value); grow(field); caret(field); }
   });
@@ -1452,7 +1455,7 @@
   document.addEventListener("dragover", event => {
     if (!(state.shown || talk.open) || !dragsFiles(event)) return;
     event.preventDefault();
-    const over = event.target.closest?.("#topics [data-drop]");
+    const over = event.target.closest?.("#topics-tab [data-drop]");
     const key = over && !over.querySelector(".composer.frozen") ? over.dataset.drop : null;
     event.dataTransfer.dropEffect = key ? "copy" : "none";
     if (state.dropping !== key) { state.dropping = key; draw(); }
@@ -1463,7 +1466,7 @@
   document.addEventListener("drop", event => {
     if (!(state.shown || talk.open) || !dragsFiles(event)) return;
     event.preventDefault();
-    const over = event.target.closest?.("#topics [data-drop]");
+    const over = event.target.closest?.("#topics-tab [data-drop]");
     state.dropping = null;
     if (over) attach(over.dataset.drop, [...event.dataTransfer.files]); else draw();
   });
@@ -1651,12 +1654,26 @@
   const talk = {
     open: stored("nock.chat.open", "") === "1", pinned: stored("nock.chat.pinned", "") === "1",
     id: stored("nock.chat.current", "") || null, chat: null, list: null, listing: false, raw: "", timer: null, follow: true,
+    // The Chats list's search, as Work's: the chats holding every word (`GET chat/search/QUERY`),
+    // the words marked; until the first answer comes, every chat.
+    search: "", found: null,
   };
+  const searchWords = () => talk.search.toLowerCase().split(/\s+/).filter(Boolean);
+  async function findChats() {
+    const query = talk.search.trim();
+    if (!query) { talk.found = null; drawGlobal(); return; }
+    let answer;
+    try { answer = await (await fetch(`chat/search/${encodeURIComponent(query)}`)).json(); } catch { return; }
+    if (talk.search.trim() !== query) return;
+    talk.found = new Set(answer.chats);
+    drawGlobal();
+  }
   const CHAT_ICONS = {
     list: '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 5.5h12M4 10h12M4 14.5h8" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>',
     add: '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 4.5v11M4.5 10h11" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>',
     pin: '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3.5 4.5h13v11h-13zM11.5 4.5v11" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>',
     close: ICONS.cancel,
+    search: '<svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="8.75" cy="8.75" r="5.25" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="m12.75 12.75 3.75 3.75" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>',
   };
   const ranOf = activity => activity?.length ? `<details class="ran"><summary>Ran ${activity.length} ${activity.length === 1 ? "command" : "commands"}</summary><ol>${activity.map(line => `<li><code>${escape(line)}</code></li>`).join("")}</ol></details>` : "";
 
@@ -1698,19 +1715,24 @@
     return `<div class="address" data-key="address"><button type="button" class="address-button" data-global="address" title="Send an agent to answer each comment waiting in its thread: replies, new versions, changes to the code">${REPLY}<span>${escape(label)}</span></button></div>`;
   }
   function globalList() {
-    const rows = (talk.list || []).map(row => `<button type="button" class="chat-row${row.id === talk.id ? " current" : ""}" data-global="pick" data-id="${escape(row.id)}" data-key="row:${escape(row.id)}">
-        <span class="title">${row.kind === "tidy" ? `<span class="broom" aria-label="Tidy up">${BROOM}</span>` : ""}${escape(row.title)}${row.running ? ' <span class="spinner" aria-hidden="true"></span>' : ""}</span>
+    const kept = (talk.list || []).filter(row => !talk.search.trim() || !talk.found || talk.found.has(row.id));
+    const rows = kept.map(row => `<button type="button" class="chat-row${row.id === talk.id ? " current" : ""}" data-global="pick" data-id="${escape(row.id)}" data-key="row:${escape(row.id)}">
+        <span class="title">${row.kind === "tidy" ? `<span class="broom" aria-label="Tidy up">${BROOM}</span>` : ""}<span class="name">${escape(row.title)}</span>${row.running ? ' <span class="spinner" aria-hidden="true"></span>' : ""}</span>
         <span class="when">${time(row.updated)}</span>
         <span class="summary">${row.naming ? "Naming…" : escape(row.summary)}</span></button>`).join("");
-    return `<div class="chat-list" data-key="list">${talk.list === null ? '<p class="nothing">…</p>' : rows || '<p class="nothing">No chats yet.</p>'}</div>`;
+    const none = talk.list?.length ? '<p class="nothing">No chat holds that.</p>' : '<p class="nothing">No chats yet.</p>';
+    return `<div class="chat-list" data-key="list">${talk.list === null ? '<p class="nothing">…</p>' : rows || none}</div>`;
   }
   function globalPanel() {
     if (!talk.open) return "";
     const chat = talk.id && talk.chat?.id === talk.id ? talk.chat : null;
-    const title = talk.listing ? "Chats" : chat?.title || (chat ? "Chat" : "New chat");
+    // Listing, a search over the chats where the title was; a new chat, untitled until named, shows none.
+    const middle = talk.listing
+      ? `<span class="chat-search search" data-key="chat-search">${CHAT_ICONS.search}<input type="search" data-chat-search placeholder="Search chats" aria-label="Search chats" autocomplete="off" spellcheck="false"></span>`
+      : `<span class="label" data-key="chat-title" title="${escape(chat?.summary || "")}">${escape(chat?.title || "")}</span>`;
     const head = `<div class="chat-head">
         <button type="button" class="head-button" data-global="list" aria-pressed="${talk.listing}" aria-label="Previous chats" title="Previous chats">${CHAT_ICONS.list}</button>
-        <span class="label" title="${escape(chat?.summary || "")}">${escape(title)}</span>
+        ${middle}
         <button type="button" class="head-button new" data-global="new" aria-label="New chat" title="New chat">${CHAT_ICONS.add}<span>New chat</span></button>
         <button type="button" class="head-button" data-global="pin" aria-pressed="${talk.pinned}" aria-label="${talk.pinned ? "Unpin" : "Pin to the right"}" title="${talk.pinned ? "Unpin: float it again" : "Pin it to the right half"}">${CHAT_ICONS.pin}</button>
         <button type="button" class="head-button" data-global="close" aria-label="Close the chat" title="Close (Esc)">${CHAT_ICONS.close}</button></div>`;
@@ -1730,6 +1752,10 @@
     // Following the newest words unless the owner scrolled up to read.
     if (log) talk.follow = log.scrollTop + log.clientHeight >= log.scrollHeight - 24;
     studio.morph(place, globalPanel());
+    const field = place.querySelector("[data-chat-search]");
+    if (field && document.activeElement !== field && field.value !== talk.search) field.value = talk.search;
+    const list = place.querySelector(".chat-list");
+    if (list) markWords(list, searchWords());
     placeGlobal();
     document.documentElement.classList.toggle("chat-pinned", talk.open && talk.pinned);
     const button = document.getElementById("chat-button");
@@ -1790,7 +1816,12 @@
     const what = button.dataset.global;
     if (what === "close") { openGlobal(false); return; }
     if (what === "pin") { talk.pinned = !talk.pinned; store("nock.chat.pinned", talk.pinned ? "1" : null); drawGlobal(); return; }
-    if (what === "list") { talk.listing = !talk.listing; talk.raw = ""; drawGlobal(); loadGlobal(); return; }
+    if (what === "list") {
+      talk.listing = !talk.listing; talk.raw = ""; talk.search = ""; talk.found = null;
+      drawGlobal(); loadGlobal();
+      if (talk.listing) $("topics-global").querySelector("[data-chat-search]")?.focus();
+      return;
+    }
     if (what === "new") {
       if (talk.id) post("chat/leave", { id: talk.id }).catch(() => {});
       talk.id = null; talk.chat = null; talk.listing = false; talk.list = null;
@@ -1825,7 +1856,8 @@
   // Floating, it hangs under the band with its button while the band is in sight, then from the top.
   function placeGlobal() {
     const band = document.querySelector(".band");
-    const below = band ? band.getBoundingClientRect().bottom + 4 : 16;
+    // A little over the band's foot, nearer its button.
+    const below = band ? band.getBoundingClientRect().bottom - 11 : 16;
     $("topics-global").style.setProperty("--chat-top", `${Math.max(16, below)}px`);
   }
   addEventListener("scroll", placeGlobal, { passive: true });
@@ -1843,6 +1875,8 @@
   document.addEventListener("keydown", event => {
     if (event.key !== "Escape") return;
     if (state.tidying) { state.tidying = false; draw(); return; }
+    // In the Chats list's search, Escape empties it first.
+    if (event.target.matches?.("[data-chat-search]") && event.target.value) { event.target.value = ""; talk.search = ""; talk.found = null; drawGlobal(); return; }
     if (talk.open && event.target.closest?.("#topics-global")) openGlobal(false);
   });
   // A Tidy up or an Address my comments that ends changes Work: the list is read again.
@@ -1857,11 +1891,11 @@
 
   // Shown, the tab keeps up with what agents submit: it asks again every few seconds.
   studio.register("topics", {
+    // Coming back to the same address, the list is as it was left: nothing is arrived at again (which
+    // would scroll), and the poll redraws in place only what changed meanwhile.
     show(route) {
       state.shown = true;
-      state.route = route || "";
-      state.arrived = null;
-      state.seen = "";
+      if ((route || "") !== state.route || state.arrived === null) { state.route = route || ""; state.arrived = null; state.seen = ""; }
       load();
     },
     hide() { state.shown = false; document.documentElement.classList.remove("topics-viewing"); },

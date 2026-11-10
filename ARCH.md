@@ -73,7 +73,8 @@ src/nock/
   transcription.py   Transcription: the studio's recorder, a recording forwarded to the
                      Whisper server `studio.transcribe_url` names and made text
   pages/             studio.html, the shell (band with the title and the menu, routing by
-                     `#NAME/ROUTE`); studio.css, its look, put in the shell;
+                     `#NAME/ROUTE`; every tab's tokens, `--time` the one grey of every
+                     timestamp); studio.css, its look (`--foil-ring` the verdict marks'), put in the shell;
                      NAME.html, each tab's fragment (markup, style, a script registering it);
                      topics.css and experiment.css, the two tabs' own looks, put before their fragments;
                      chat.css, Work's filters and Tidy up and the global chat, with topics.css
@@ -541,6 +542,11 @@ its look (`pages/studio.css`), each tab's link in the menu and its fragment
 shows the tab the address names (`#NAME`, or `#NAME/ROUTE` for something in
 it; an address naming no tab goes to the first, so `#7` opens the item a
 decision 7 became).
+A tab away keeps what it drew, and the shell keeps where each tab was
+scrolled, so coming back shows it at once as it was left: a link within the
+studio changes the address with `history.pushState` (no element's id is a
+tab's name, and the browser's own jump to the fragment is never taken), and
+Work arrives at its address again only when it changed.
 On the server, `/NAME/ROUTE` goes to that tab's `get` or `post`, JSON both
 ways, a nock `Error` becoming 404 or 400. A tab is a `studio.Tab` subclass
 listed in `TABS`, and a fragment whose script calls
@@ -579,7 +585,10 @@ it; otherwise, or when the resume fails before a word, a new session is
 briefed with the chat's transcript. Files a message carries go up as in
 every chat (the topics tab's `Uploads`) and are moved to
 `.nock/local/chats/ID/STAMP/`, the agent told where to read them. Leaving a chat for a new one dispatches
-the `namer` (no tools) for a title and summary. Tidy up is a chat whose
+the `namer` (no tools) for a title and summary. `GET /chat/search/QUERY` is
+the Chats list's search: the chats holding every word in their title,
+summary or messages (`Chats.search`), the page marking the words as Work's
+search does. Tidy up is a chat whose
 agent is the `tidier`: `Topics.commit` commits nothing for that role, and
 when it ends `Chats.gather` commits `.nock/topics` once; Undo is `git
 revert` of that commit, aborted when it conflicts. `items judge` refuses the
@@ -633,9 +642,12 @@ the repeat's; each result belongs to the earliest run it is part of. Results
 are read only when the page shows them (`POST /experiment/NAME/results`): a
 rule's `results` words name a file and how to show it, or a prefix of its
 metrics shown as checks; without them, its metrics and `diff.patch`. The page
-draws with D3 from cdnjs (as it loads its fonts from Google), its address
-`#experiment/NAME/RUN--ITERATIONS` (`#evals`, `#evaluations` and
-`#experiments` open it too).
+draws with D3 from cdnjs (as it loads its fonts from Google). `#experiment`
+lists the scenarios to choose from (`GET /experiment`: each one's name and its
+words' `question`, read without deriving anything; `#evals`, `#evaluations` and
+`#experiments` open it too); the one chosen has its own address,
+`#experiment/NAME/RUN--ITERATIONS`, and stays drawn while the owner looks
+elsewhere.
 
 ### Dispatch
 

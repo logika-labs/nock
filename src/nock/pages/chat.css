@@ -60,6 +60,10 @@
   flex: 1; min-width: 0; padding: 0 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   font: 600 13px/1 var(--sans); letter-spacing: 0; text-transform: none; color: var(--foreground);
 }
+/* The Chats list's search, where the title is: the studio's search field, small. */
+.topics .chat.global .chat-search { flex: 1; min-width: 0; margin: 0 6px; }
+.topics .chat.global .chat-search input { padding: 3px 0 3px 22px; font-size: 13.5px; line-height: 20px; }
+.topics .chat.global .chat-search svg { width: 14px; height: 14px; }
 .topics .head-button {
   flex: none; display: inline-flex; align-items: center; gap: 5px; height: 30px; min-width: 30px; justify-content: center;
   padding: 0 6px; border: 0; border-radius: 999px; background: none; color: var(--muted); font: 500 12px/1 var(--sans);
@@ -91,8 +95,9 @@
 .topics .chat-row:hover { background: rgb(17 17 22 / .05); }
 .topics .chat-row.current { background: #fff; box-shadow: 0 0 0 1px var(--border); }
 .topics .chat-row .title { display: flex; align-items: center; gap: 6px; min-width: 0; font: 600 13.5px/1.35 var(--sans); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.topics .chat-row .title .name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .topics .chat-row .broom svg { width: 15px; height: 15px; display: block; }
-.topics .chat-row .when { font: 500 11px/1.35 var(--mono); color: var(--muted); }
+.topics .chat-row .when { font: 500 11px/1.35 var(--mono); }
 .topics .chat-row .summary { grid-column: 1 / -1; font-size: 12.5px; line-height: 1.45; color: var(--muted); }
 .topics .chat-row:focus-visible { outline: 2px solid #111116; outline-offset: 1px; }
 

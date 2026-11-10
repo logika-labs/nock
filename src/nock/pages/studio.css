@@ -28,6 +28,9 @@
   --yellow: #ffe27a;
   --lavender: #b9a6ff;
   --holo: linear-gradient(115deg, #ff9ad5 0%, #c3b2ff 22%, #8fe9ff 45%, #d9ffd0 62%, #fff2a0 78%, #ffb0d6 100%);
+  /* The verdict marks' foil: the open one's dashed ring, and accepted and rejected filled with it;
+     also a chat's new-message dot. */
+  --foil-ring: conic-gradient(from 210deg, #2fcdf5, #8f6bff, #ff5cb8, #ffc93d, #2fcdf5);
   --holo-conic: conic-gradient(from 210deg at 50% 50%, #ff9ad5, #c3b2ff, #8fe9ff, #d9ffd0, #fff2a0, #ffb0d6, #ff9ad5);
   --noise: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3' stitchTiles='stitch'/><feColorMatrix type='saturate' values='0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
   /* Grain for the field: dark specks and light ones, the rest transparent. */
