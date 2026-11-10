@@ -135,7 +135,6 @@ p { margin: 0; }
 .heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 20px; padding: 12px 12px 12px 24px; }
 .wordmark { display: inline-flex; align-items: center; gap: 10px; color: var(--foreground); text-decoration: none; font: 800 24px/1.1 var(--display); letter-spacing: -.03em; }
 .wordmark:hover { text-decoration: none; }
-.wordmark svg { width: 32px; height: 23px; flex: none; }
 .menu { display: flex; align-items: center; gap: 4px; padding: 4px; border-radius: 999px; background: rgb(17 17 22 / .05); }
 .menu a {
   display: inline-flex; align-items: center; padding: 8px 14px; border-radius: 999px; border: 1px solid transparent;
@@ -417,8 +416,9 @@ pre.code code { background: none; padding: 0; color: inherit; font: inherit; ove
 
 .hero-b { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 16px; }
 .hero-b .intro { padding: 36px; }
-.hero-b .begin { padding: 28px; align-content: center; box-shadow: 3px 3px 0 0 var(--cyan), -3px -3px 0 0 var(--pink), var(--lift); border: 1px solid rgb(17 17 22 / .14); }
-.hero-b .begin .install, .story-b .begin .install { width: 100%; }
+.hero-b .begin { padding: 28px; align-content: center; justify-items: center; text-align: center; box-shadow: 3px 3px 0 0 var(--cyan), -3px -3px 0 0 var(--pink), var(--lift); border: 1px solid rgb(17 17 22 / .14); }
+.hero-b .begin .install { width: 100%; text-align: left; }
+.hero-b .begin .actions { justify-content: center; }
 .theatre { padding: 0 !important; gap: 0 !important; overflow: hidden; }
 .tablist { display: flex; gap: 6px; padding: 14px 16px; width: 100%; border-bottom: 1px solid var(--border); overflow-x: auto; }
 .tablist [role="tab"] {
@@ -435,17 +435,12 @@ pre.code code { background: none; padding: 0; color: inherit; font: inherit; ove
 .theatre .demo { padding: 18px; background: var(--wash); }
 .story-b .community.wide { grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); gap: 24px; justify-items: stretch; align-items: start; }
 .story-b .community.wide > div { display: grid; gap: 12px; justify-items: start; }
+.story-b .community .actions { justify-self: end; }
 .story-b .logika.wide { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 28px; justify-items: stretch; align-items: center; }
 .story-b .logika.wide > div { display: grid; gap: 12px; justify-items: start; }
 .story-b .logika .art { display: block; border-radius: 14px; overflow: hidden; border: 1px solid rgb(17 17 22 / .14); box-shadow: 3px 3px 0 0 var(--peach), -3px -3px 0 0 var(--cyan); }
 .story-b .logika .art img { display: block; width: 100%; height: auto; }
 .story-b .wide-intro { padding: 32px 36px; }
-.with-aside { display: grid; grid-template-columns: minmax(0, 1fr) 19rem; gap: 16px; align-items: start; }
-.with-aside > * { min-width: 0; }
-.with-aside .prose { padding: 32px 36px; }
-.story-b .begin.sticky { position: sticky; top: 16px; padding: 22px; box-shadow: 3px 3px 0 0 var(--cyan), -3px -3px 0 0 var(--pink), var(--lift); border: 1px solid rgb(17 17 22 / .14); }
-.story-b .begin.sticky .actions { flex-direction: column; align-items: stretch; width: 100%; }
-.story-b .begin.sticky .button { justify-content: center; }
 .stepper-card { padding: 0 !important; gap: 0 !important; overflow: hidden; }
 .stepper-card .rail { display: flex; gap: 6px; padding: 14px 16px; width: 100%; border-bottom: 1px solid var(--border); overflow-x: auto; }
 .stepper-card .rail:empty { display: none; }
@@ -464,6 +459,9 @@ pre.code code { background: none; padding: 0; color: inherit; font: inherit; ove
 .stepper-pager { display: none; }
 .stepping ~ .stepper-pager { display: flex; justify-content: space-between; align-items: center; gap: 12px; width: 100%; padding: 14px 18px; border-top: 1px solid var(--border); }
 .stepper-pager .button:disabled { opacity: .4; cursor: default; }
+.stepper-pager .button { gap: 8px; }
+.stepper-pager .button svg { width: 16px; height: 16px; flex: none; }
+.stepper-card .steps { overflow: hidden; }
 
 /* --- the docs: four groups, a page each, what the agent reads folded under ------------------- */
 
@@ -499,15 +497,14 @@ pre.code code { background: none; padding: 0; color: inherit; font: inherit; ove
 /* --- phone width ------------------------------------------------------------------------------ */
 
 @media (max-width: 860px) {
-  .hero-b, .theatre-body, .with-aside, .story-b .community.wide, .story-b .logika.wide { grid-template-columns: minmax(0, 1fr); }
+  .hero-b, .theatre-body, .story-b .community.wide, .story-b .logika.wide { grid-template-columns: minmax(0, 1fr); }
   .story-b .logika .art { order: -1; }
   .theatre .panels { border-right: 0; border-bottom: 1px solid var(--border); }
-  .story-b .begin.sticky { position: static; }
   .groups { grid-template-columns: minmax(0, 1fr); }
   .step { grid-template-columns: minmax(0, 1fr); }
 }
 @media (max-width: 560px) {
-  .hero-b .intro, .hero-b .begin, .story-b .wide-intro, .with-aside .prose { padding: 22px 18px; }
+  .hero-b .intro, .hero-b .begin, .story-b .wide-intro { padding: 22px 18px; }
   .story .lead { font-size: 16px; }
   .step { padding: 20px 18px; }
   .menu { width: 100%; justify-content: space-between; }

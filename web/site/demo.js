@@ -146,6 +146,75 @@ tonight; nothing changes until then.</pre></span></div></section>
         </article>
       </div>`,
     },
+    evaluation: {
+      label: "Evaluation",
+      steps: [
+        { caption: "An evaluation asks one question, with the variants to compare as parameters. A dry run prices it first.", hold: 4800 },
+        { caption: "The runs fork by variant and repeat; every output is cached by its content, so the next question costs only what changed.", hold: 5200 },
+        { caption: "The studio's Experiment tab counts each measure per variant.", hold: 4600 },
+        { caption: "eval compare says how sure the difference is, and the tree follows one run to its verdict.", hold: 5200 },
+      ],
+      markup: () => `<div class="scene-evaluation">
+        <div class="session terminal-card" data-until="1">
+          <div class="bar"><span class="who">claude · session 21</span></div>
+          <ol class="calls">
+            ${call("Bash", ".nock/nock eval init detect", "", 0)}
+            ${call("Edit", "evals/detect/Snakefile", "", 0.5)}
+            ${call("Bash", ".nock/nock eval run --dry --budget 20", "", 1)}
+            <li class="output" style="--d:1.6s"><pre>scenario: detect
+to_compute: 42
+from_cache: 7
+estimated_cost_usd: 14.7
+budget_usd: 20</pre></li>
+            ${call("Bash", ".nock/nock eval run --budget 20", "", 2.4)}
+          </ol>
+        </div>
+        <div class="tree" data-at="1">
+          <svg viewBox="0 0 320 250" preserveAspectRatio="xMidYMid meet" role="img" aria-label="The experiment as a tree: the bug planted, detection forking by arm, and whether each run found the bug">
+            <defs><linearGradient id="evaluation-foil" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ff9ad5"/><stop offset=".5" stop-color="#c3b2ff"/><stop offset="1" stop-color="#8fe9ff"/></linearGradient></defs>
+            <g class="lines">
+              <path d="M160 52C160 82 80 76 80 96"/><path d="M160 52C160 82 240 76 240 96" data-on="3:lit"/>
+              <path d="M80 164C80 192 42 186 42 212" stroke-width="3"/><path d="M80 164C80 192 118 186 118 212" stroke-width="3"/>
+              <path d="M240 164C240 192 202 186 202 212" stroke-width="5" data-on="3:lit"/><path d="M240 164C240 192 278 186 278 212" stroke-width="1"/>
+            </g>
+            <g class="node"><rect x="104" y="8" width="112" height="44" rx="9"/><text x="160" y="27" class="title">Plant the bug</text><text x="160" y="41" class="meta">7 bugs · 1min · $0</text></g>
+            <g class="pill"><rect x="42" y="96" width="76" height="16" rx="8"/><text x="80" y="107"><tspan class="key">arm:</tspan> control</text></g>
+            <g class="node"><rect x="20" y="120" width="120" height="44" rx="9"/><text x="80" y="139" class="title">Detect</text><text x="80" y="153" class="meta">21 runs · 38min · $6.10</text></g>
+            <g class="pill"><rect x="200" y="96" width="80" height="16" rx="8"/><text x="240" y="107"><tspan class="key">arm:</tspan> toolbox</text></g>
+            <g class="node" data-on="3:lit"><rect x="180" y="120" width="120" height="44" rx="9"/><text x="240" y="139" class="title">Detect</text><text x="240" y="153" class="meta">21 runs · 31min · $5.40</text></g>
+            <g class="verdict good"><rect x="8" y="212" width="68" height="20" rx="10"/><text x="42" y="225">found · 9</text></g>
+            <g class="verdict bad"><rect x="84" y="212" width="68" height="20" rx="10"/><text x="118" y="225">missed · 9</text></g>
+            <g class="verdict good" data-on="3:lit"><rect x="168" y="212" width="68" height="20" rx="10"/><text x="202" y="225">found · 16</text></g>
+            <g class="verdict bad"><rect x="244" y="212" width="68" height="20" rx="10"/><text x="278" y="225">missed · 2</text></g>
+          </svg>
+          <div class="sheet compare" data-at="3">
+            <span class="label">eval compare, by arm, per bug</span>
+            <p><strong>toolbox − control: +0.39</strong> of the bugs found, 95 in 100 between +0.17 and +0.61, paired on the same bugs.</p>
+          </div>
+        </div>
+        <div class="side">
+          <div class="sheet question">
+            <span class="label">evals/detect</span>
+            <strong class="ask">Does the toolbox find the planted bug?</strong>
+            <dl class="parameters" data-until="2">
+              <div><dt>arm</dt><dd>control · toolbox</dd></div>
+              <div><dt>bug</dt><dd>6 planted, and none: the clean twin <span class="pill pooled">pooled</span></dd></div>
+              <div><dt>rep</dt><dd>3 repeats</dd></div>
+            </dl>
+          </div>
+          <div class="sheet measures" data-at="2">
+            <table>
+              <thead><tr><th>Measure</th><th>control</th><th>toolbox</th></tr></thead>
+              <tbody>
+                <tr style="--d:.2s"><td>Bugs found<span>higher is better</span></td><td>9/18<span>(3/6 ±1.2)</span></td><td><b>16/18</b><span>(5/6 ±0.5)</span></td></tr>
+                <tr style="--d:.5s"><td>Clean twin, no alarm<span>higher is better</span></td><td>3/3</td><td>3/3</td></tr>
+                <tr style="--d:.8s"><td>Cost per bug<span>lower is better</span></td><td>$0.34</td><td><b>$0.30</b></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>`,
+    },
   };
 
   const reduced = matchMedia("(prefers-reduced-motion: reduce)");
@@ -324,7 +393,8 @@ tonight; nothing changes until then.</pre></span></div></section>
       const next = buttons[(buttons.findIndex(button => button.dataset.tab === scene) + 1) % buttons.length];
       setTimeout(() => { if (!held) { choose(next.dataset.tab, false); stage.play(); } }, 900);
     };
-    choose(buttons[0].dataset.tab, false);
+    // The tab the page marks selected opens first: Reflection.
+    choose((buttons.find(button => button.getAttribute("aria-selected") === "true") ?? buttons[0]).dataset.tab, false);
     autoplay(stage);
   }
 
@@ -335,33 +405,95 @@ tonight; nothing changes until then.</pre></span></div></section>
     if (!rail || !steps.length) return;
     rail.innerHTML = steps.map((step, index) =>
       `<button type="button" role="tab" data-go="${index}" aria-controls="${step.id}" aria-label="${step.querySelector("h2").textContent}"><span>${index + 1}</span><em>${step.querySelector("h2").textContent}</em></button>`).join("");
-    const pager = root.parentElement.querySelector("[data-stepper-pager]");
-    const go = (index, scroll) => {
-      steps.forEach((step, at) => { step.hidden = at !== index; });
+    const card = root.parentElement;
+    const pager = card.querySelector("[data-stepper-pager]");
+    let current = 0;
+    let turn = 0;
+    const mark = index => {
       for (const button of rail.querySelectorAll("[data-go]")) {
         const at = Number(button.dataset.go);
         button.setAttribute("aria-selected", String(at === index));
+        button.tabIndex = at === index ? 0 : -1;
         button.classList.toggle("done", at < index);
       }
+      // The rail scrolled to the chosen step, the steps after it in view and a little of the one before.
+      const chosen = rail.querySelector(`[data-go="${index}"]`).getBoundingClientRect();
+      const left = rail.scrollLeft + chosen.left - rail.getBoundingClientRect().left - 48;
+      rail.scrollTo({ left: Math.max(0, left), behavior: reduced.matches ? "auto" : "smooth" });
       if (pager) {
         pager.querySelector("[data-step-back]").disabled = index === 0;
         pager.querySelector("[data-step-next]").disabled = index === steps.length - 1;
         pager.querySelector(".where").textContent = `${index + 1} of ${steps.length}`;
         pager.dataset.at = String(index);
       }
-      if (scroll) root.scrollIntoView({ block: "nearest" });
+    };
+    // The step and what follows it in view, with room below: the card's foot if it fits the window,
+    // else its top.
+    const reveal = () => {
+      const box = card.getBoundingClientRect();
+      const buffer = 48;
+      const fits = box.height + buffer + 16 <= innerHeight;
+      const by = !fits || box.top < 16 ? box.top - 16 : Math.max(0, box.bottom + buffer - innerHeight);
+      if (Math.abs(by) > 1) scrollBy({ top: by, behavior: reduced.matches ? "auto" : "smooth" });
+    };
+    const phase = (element, keyframes, duration) =>
+      element.animate(keyframes, { duration, easing: "ease-out", fill: "forwards" }).finished;
+    // Fades the old step out, eases the list to the new one's height, fades the new one in; with
+    // reduced motion, the new step at once. A later choice cuts a running one short.
+    const go = async (index, scroll) => {
+      if (index === current) return;
+      const from = steps[current];
+      const to = steps[index];
+      current = index;
+      const mine = ++turn;
+      mark(index);
+      for (const step of steps) for (const animation of step.getAnimations()) animation.cancel();
+      for (const animation of root.getAnimations()) animation.cancel();
+      if (reduced.matches) {
+        steps.forEach((step, at) => { step.hidden = at !== index; });
+        if (scroll) reveal();
+        return;
+      }
+      try {
+        await phase(from, [{ opacity: 1 }, { opacity: 0 }], 140);
+        if (mine !== turn) return;
+        const before = root.offsetHeight;
+        steps.forEach((step, at) => { step.hidden = at !== index; });
+        to.style.opacity = "0";
+        const after = root.offsetHeight;
+        await phase(root, [{ height: `${before}px` }, { height: `${after}px` }], 160);
+        if (mine !== turn) return;
+        for (const animation of root.getAnimations()) animation.cancel();
+        if (scroll) reveal();
+        await phase(to, [{ opacity: 0 }, { opacity: 1 }], 150);
+      } catch {
+        // Cancelled by a later choice, which draws its own step.
+      } finally {
+        if (mine === turn) {
+          steps.forEach((step, at) => { step.hidden = at !== index; step.style.opacity = ""; });
+          for (const step of steps) for (const animation of step.getAnimations()) animation.cancel();
+        }
+      }
     };
     rail.addEventListener("click", event => {
       const button = event.target.closest("[data-go]");
-      if (button) go(Number(button.dataset.go), false);
+      if (button) go(Number(button.dataset.go), true);
+    });
+    rail.addEventListener("keydown", event => {
+      const move = { ArrowRight: 1, ArrowLeft: -1 }[event.key];
+      if (!move) return;
+      event.preventDefault();
+      const index = Math.min(steps.length - 1, Math.max(0, current + move));
+      go(index, true);
+      rail.querySelector(`[data-go="${index}"]`).focus();
     });
     pager?.addEventListener("click", event => {
-      const at = Number(pager.dataset.at);
-      if (event.target.closest("[data-step-back]")) go(Math.max(0, at - 1), true);
-      if (event.target.closest("[data-step-next]")) go(Math.min(steps.length - 1, at + 1), true);
+      if (event.target.closest("[data-step-back]")) go(Math.max(0, current - 1), true);
+      if (event.target.closest("[data-step-next]")) go(Math.min(steps.length - 1, current + 1), true);
     });
     root.classList.add("stepping");
-    go(0, false);
+    steps.forEach((step, at) => { step.hidden = at !== 0; });
+    mark(0);
   }
 
   function start() {

@@ -11,7 +11,6 @@
     <span class="label">Start in your repository</span>
     {{ copy:install }}
     {{ copy:hero-actions }}
-    {{ copy:hero-note }}
   </div>
 </section>
 
@@ -19,6 +18,7 @@
   <div class="tablist" role="tablist" aria-label="The parts" data-tabs-for="demo-stage">
     <button type="button" role="tab" data-tab="reflection" aria-selected="true">{{ copy:reflection-label }}</button>
     <button type="button" role="tab" data-tab="review" aria-selected="false">{{ copy:review-label }}</button>
+    <button type="button" role="tab" data-tab="evaluation" aria-selected="false">{{ copy:evaluation-label }}</button>
   </div>
   <div class="theatre-body">
     <div class="panels">
@@ -30,8 +30,12 @@
         <h2>{{ copy:review-title }}</h2>
         {{ copy:review-copy }}
       </div>
+      <div class="panel" data-panel="evaluation" data-panel-for="demo-stage" id="evaluation">
+        <h2>{{ copy:evaluation-title }}</h2>
+        {{ copy:evaluation-copy }}
+      </div>
     </div>
-    <div class="demo" id="demo-stage" data-demo="reflection review"></div>
+    <div class="demo" id="demo-stage" data-demo="reflection review evaluation"></div>
   </div>
 </section>
 

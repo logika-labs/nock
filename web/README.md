@@ -6,8 +6,8 @@ Standard library only, like nock.
 
 ```
 layout.html        every page's frame: the band and its menu, the main column, the footer
-landing/           the landing page, About and Getting started: their templates (home.html,
-                   about.html, start.html) and copy.html, the words they share, a block each
+landing/           the landing page and Getting started: their templates (home.html,
+                   start.html) and copy.html, the words they share, a block each
 legal/             privacy.md and terms.md, each with its plain-words summary (NAME-plain.md)
 site/              style.css, demo.js and demo.css (the demo), fonts/, logika.webp and .png
                    (Logika's art, beside "nock in Logika"), og.jpg (the link preview, the
@@ -39,6 +39,8 @@ guide.NAME`) and the short terms beside them (what agents read), so edit those, 
 the terms folded under it as "What your agent reads"; the terms page lists every term. A guide
 placed nowhere, or a term that does not exist, fails the build. A link between guides lands on the
 right page, and an old address, `/docs/#ANCHOR`, is sent on to the page that has the heading now.
+A page that is gone (`MOVED` in `build.py`: /about/) is built as a page that only sends its visitor
+on to where its subject is now, kept out of the sitemap and of search.
 
 **The demo** (`site/demo.js`) is coded, not recorded: a scene per part of nock,
 each a script of steps with a caption, every element saying from which step it shows (`data-at`,

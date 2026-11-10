@@ -1,4 +1,4 @@
-<!-- The words the story pages share, a block each: the templates beside this file (home, about,
+<!-- The words the story pages share, a block each: the templates beside this file (home and
      start) place them with {{ copy:NAME }}, and {{ url:/PATH/ }} is a page's address. build.py fills
      them in. -->
 
@@ -22,10 +22,6 @@ The toolbox your agent was missing.
   <a class="button primary" href="{{ url:/getting-started/ }}">Get started</a>
   <a class="button" href="/docs/">Read the docs</a>
 </div>
-<!-- end -->
-
-<!-- block hero-note -->
-<p class="note">Standard-library Python 3.12, no dependencies, vendored into your repository. Made for Claude Code. Nothing leaves your machine without your yes.</p>
 <!-- end -->
 
 <!-- block reflection-label -->
@@ -54,17 +50,29 @@ You judge what they made, when it suits you.
 <a class="more" href="/docs/work/">Reviewing in Work</a>
 <!-- end -->
 
+<!-- block evaluation-label -->
+Evaluation
+<!-- end -->
+
+<!-- block evaluation-title -->
+Know whether a change made them better.
+<!-- end -->
+
+<!-- block evaluation-copy -->
+<p>A new tool, brief or model: does it make your agents better? An evaluation answers with real runs. It is a scenario in git beside the code, its variants are parameters, and every output is cached by its content, so the next question costs only what changed. The studio's Experiment tab draws it as a tree of runs and counts each measure per variant.</p>
+<a class="more" href="/docs/evaluation/">Evaluations</a>
+<!-- end -->
+
 <!-- block logika-label -->
 nock in Logika
 <!-- end -->
 
 <!-- block logika-title -->
-The rules round that catches bugs before they happen.
+The reflection round that catches bugs before they happen.
 <!-- end -->
 
 <!-- block logika-copy -->
 <p><a href="{{ logika }}">Logika</a> is observability and analytics for coding agents. It runs its reflection rounds on nock: in the logika round, your agent reads Logika's evidence map, what each event logs and what could go wrong with it, and writes the rules with you from real captures. Logika then checks every span against them, so a bug is caught as an issue with its evidence before anyone notices it.</p>
-<a class="more" href="{{ logika }}">logika.host</a>
 <!-- end -->
 
 <!-- block community-title -->
@@ -78,48 +86,6 @@ Built with the people who use it.
 <!-- block community-actions -->
 <div class="actions">
   <a class="button primary" href="{{ github }}">nock on GitHub</a>
-</div>
-<!-- end -->
-
-<!-- block about-title -->
-About nock
-<!-- end -->
-
-<!-- block about-lead -->
-<p class="lead">A community learning to work with AI, as software engineers, and the open-source toolbox they learn with.</p>
-<!-- end -->
-
-<!-- block about-problem -->
-<h2>Why it exists</h2>
-<p>A coding agent starts every session knowing nothing of the last one: not what was decided yesterday, or why; not what you said about it; not which script someone wrote to do what it is about to do by hand. Over weeks, the project drifts: the same question answered three ways, a simplification nobody approved, the same mistake made again.</p>
-<p>The usual fix is prose: skills, notes, rules in CLAUDE.md. Prose goes stale without anyone noticing, and is read differently every time. A command that no longer fits the project breaks instead: it exits non-zero, a check fails, and the failure is recorded. So the toolbox can be kept honest by measuring it.</p>
-<blockquote><p><strong>A check beats a hook beats prose.</strong> A rule that a check enforces cannot be ignored. A behavior that a hook triggers cannot be forgotten. Prose is the last resort.</p></blockquote>
-<!-- end -->
-
-<!-- block about-principles -->
-<h2>Three principles</h2>
-<ol class="principles">
-  <li><strong>An agent-friendly CLI.</strong> Every byte a command prints is read by a model and paid for: a command prints what the next decision needs, success is often silence, the exit code says what to do next, and a mistake gets an answer, not just a refusal.</li>
-  <li><strong>Every run recorded.</strong> Every call to nock and every Claude Code session is recorded on your machine: what was asked, each tool call, what failed, what it cost. You cannot improve what you have not measured, and agents do not remember.</li>
-  <li><strong>Reflection.</strong> Every so often an agent reads that record and improves the toolbox: it builds tools for the work that keeps costing turns, repairs the ones that misbehave and retires the ones nobody uses, and writes down what it expects each change to do.</li>
-</ol>
-<!-- end -->
-
-<!-- block about-you -->
-<h2>Where you come in</h2>
-<p>You are there for the one thing no agent can infer: what the system is for. nock keeps your word where the next session finds it: every decision you accept or reject, every message in a thread, the map of what they mean for the work. Agents never wait on you, and nothing waits for you to be there.</p>
-<!-- end -->
-
-<!-- block about-makers -->
-<h2>Who makes it</h2>
-<p>nock is made by Parallel Labs, a company in Barcelona that also makes <a href="{{ logika }}">Logika</a>. It is open source under the MIT License, standard-library Python with no dependencies, and vendored into the repositories that use it, so it is your project's own code: your agents can read it, and fix it if they must.</p>
-<p>It is built in the open with the engineers who use it. What they learn — an insight, a feature, a new kind of reflection round — goes back into nock for everyone.</p>
-<!-- end -->
-
-<!-- block about-actions -->
-<div class="actions">
-  <a class="button primary" href="{{ url:/getting-started/ }}">Get started</a>
-  <a class="button" href="{{ github }}">GitHub</a>
 </div>
 <!-- end -->
 

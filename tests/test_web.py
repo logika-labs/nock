@@ -18,13 +18,16 @@ ROOT = Path(__file__).resolve().parent.parent
 WEB = ROOT / "web"
 
 
-def built(site: Path) -> dict[str, str]:
-    """Build into `site`; every page by the address it is served at."""
+def built(site: Path, moved: bool = False) -> dict[str, str]:
+    """Build into `site`; every page by the address it is served at (with `moved`, the pages that
+    only send a visitor on, instead)."""
     subprocess.run([sys.executable, WEB / "build.py", "--site", site], check=True)
     pages = {}
     for path in site.rglob("*.html"):
         folder = "/".join(["", *path.parent.relative_to(site).parts, ""]).replace("//", "/")
-        pages[folder if path.name == "index.html" else folder + path.name] = path.read_text()
+        text = path.read_text()
+        if ('http-equiv="refresh"' in text) == moved:
+            pages[folder if path.name == "index.html" else folder + path.name] = text
     return pages
 
 
@@ -83,15 +86,14 @@ def test_the_story_pages_are_one_layout_with_the_demo_on_a_tabbed_stage(tmp_path
     pages = built(tmp_path)
     demo = (WEB / "site" / "demo.js").read_text()
     scenes = set(re.findall(r"^    (\w+): \{\n      label:", demo, re.M))
-    assert scenes == {"reflection", "review"}
-    home, about, start = (pages[path] for path in ("/", "/about/", "/getting-started/"))
-    for text in (home, about, start):
+    assert scenes == {"reflection", "review", "evaluation"}
+    home, start = (pages[path] for path in ("/", "/getting-started/"))
+    for text in (home, start):
         assert "{{" not in text and "data-layout" not in text and 'class="layouts"' not in text
         menu = text.split('<nav class="menu"')[1].split("</nav>")[0]
-        assert 'href="/about/"' in menu and 'href="/getting-started/"' in menu
+        assert 'href="/about/"' not in menu and 'href="/getting-started/"' in menu
     assert not [url for url in pages if "index-" in url]
     assert sorted(path.name for path in (WEB / "landing").iterdir()) == [
-        "about.html",
         "copy.html",
         "home.html",
         "start.html",
@@ -100,12 +102,27 @@ def test_the_story_pages_are_one_layout_with_the_demo_on_a_tabbed_stage(tmp_path
     named = {name for value in re.findall(r'data-demo="([^"]+)"', home) for name in value.split()}
     assert named == scenes
     assert 'data-tabs-for="demo-stage"' in home
+    tabs = re.findall(r'data-tab="(\w+)" aria-selected="(\w+)"', home)
+    assert tabs == [("reflection", "true"), ("review", "false"), ("evaluation", "false")]
     assert "uvx nock init" in home and 'href="https://logika.host"' in home
     assert start.count('class="step"') == 7 and "data-stepper" in start
     assert (tmp_path / "studio" / "topics.css").read_text() == (
         ROOT / "src" / "nock" / "pages" / "topics.css"
     ).read_text()
     assert 'data-demo-still="review:3"' in pages["/getting-started/"]
+
+
+def test_a_page_that_is_gone_sends_its_visitor_on_and_is_not_listed(tmp_path: Path) -> None:
+    pages = built(tmp_path)
+    moved = built(tmp_path, moved=True)
+    assert list(moved) == ["/about/"]
+    about = moved["/about/"]
+    assert '<meta http-equiv="refresh" content="0; url=/docs/">' in about
+    assert '<meta name="robots" content="noindex">' in about
+    assert '<link rel="canonical" href="https://nock.dev/docs/">' in about
+    assert "/about/" not in (tmp_path / "sitemap.xml").read_text()
+    assert "/about/" not in (tmp_path / "llms.txt").read_text()
+    assert not [url for url, text in pages.items() if 'href="/about/"' in text]
 
 
 def test_the_home_page_shows_nock_in_logika_with_its_art_beside_and_no_logika_scene(
@@ -116,8 +133,8 @@ def test_the_home_page_shows_nock_in_logika_with_its_art_beside_and_no_logika_sc
     section = home.split('id="logika"')[1].split("</section>")[0]
     assert "nock in Logika" in section
     assert "observability and analytics for coding agents" in section
-    assert "rules round" in section
-    assert 'href="https://logika.host"' in section
+    assert "The reflection round that catches bugs before they happen." in section
+    assert 'href="https://logika.host"' in section and "logika.host</a>" not in section
     assert '<source srcset="/logika.webp" type="image/webp">' in section
     assert re.search(r'<img src="/logika.png" alt="" width="800" height="420"', section)
     for art in ("logika.webp", "logika.png"):
