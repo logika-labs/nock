@@ -7,6 +7,10 @@ dist/
 .DS_Store
 web/site/**/*.html
 web/site/studio/
+web/site/robots.txt
+web/site/sitemap.xml
+web/site/llms.txt
+web/site/llms-full.txt
 web/pages/
 server/build/
 web/build/
