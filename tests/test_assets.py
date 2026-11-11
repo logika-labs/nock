@@ -16,10 +16,12 @@ import pytest
 from nock.errors import ConflictError, UsageError
 from nock.notify import ICON, Notifications, Reason, desktop_command
 from nock.project import Project
+from nock.shared import Shared
 from nock.timeline import Timeline
 from nock.topics import Author, Topics
 
 from . import store
+from .conftest import git
 from .test_chats import answered
 from .test_chats import post as chat_post
 from .test_topics import item_folder, judge, open_topic, page, post, submit
@@ -162,23 +164,29 @@ def test_the_timeline_is_read_from_the_topics_and_a_notification_is_one_of_its_e
 def test_a_topic_s_status_changes_in_a_row_are_one_event_with_their_count(
     project: Project,
 ) -> None:
-    open_topic(project.root, {"name": "orders", "description": "Orders. Kept in one file."})
-    for status in ("one", "two", "three"):
-        run(project.root, "topics", "update", "orders", json.dumps({"status": status}))
-    submit(project.root)
-    run(project.root, "topics", "update", "orders", json.dumps({"status": "four"}))
-    # A second apart each, as an agent working writes them.
-    folder = project.root / ".nock" / "topics" / "orders"
-    topic = json.loads((folder / "topic.json").read_text())
-    topic["created"]["moment"] = "2026-01-01T10:00:00Z"
-    seconds = {"one": 1, "two": 2, "three": 3, "four": 5}
-    for entry in topic["thread"]:
-        entry["moment"] = f"2026-01-01T10:00:0{seconds.get(entry.get('status'), 0)}Z"
-    (folder / "topic.json").write_text(json.dumps(topic))
-    item_file = next(folder.glob("*/item.json"))
-    item = json.loads(item_file.read_text())
-    item["versions"][0]["moment"] = "2026-01-01T10:00:04Z"
-    item_file.write_text(json.dumps(item))
+    # A second apart each, as an agent working writes them: events as the store keeps them.
+    shared = Shared(project)
+    by = {"author": "agent", "on_behalf": "interactive", "session": "s1", "role": "interactive"}
+
+    def event(folder: Path, second: int, record: dict[str, Any], milli: int = 0) -> None:
+        identifier = f"{second * 1000 + milli:08x}"
+        path = folder / "events" / f"20260101T10000{second}.{milli:03d}Z-{identifier}.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        moment = f"2026-01-01T10:00:0{second}Z"
+        path.write_text(json.dumps({**record, "moment": moment, "id": identifier, "by": by}))
+
+    topic = shared.topic_folder("orders")
+    event(topic, 0, {"kind": "created", "description": "Orders. Kept in one file."})
+    for second, status in ((1, "one"), (2, "two"), (3, "three"), (5, "four")):
+        event(topic, second, {"kind": "state", "state": "active", "status": status})
+    decision = shared.item_folder("orders", "orders-live-in-sqlite")
+    event(decision, 4, {"kind": "created", "title": "Orders live in SQLite"})
+    event(decision, 4, {"kind": "version", "version": 1}, milli=1)
+    (decision / "versions" / "1").mkdir(parents=True)
+    (decision / "versions" / "1" / "decision.json").write_text(json.dumps({"answer": "One file."}))
+    git(project.root, "add", "-A")
+    git(project.root, "commit", "-qm", "Orders")
+    assert not shared.settle(by).problems
     events = Timeline(project).events()
     shown = [(event["kind"], event["title"], event.get("count")) for event in events]
     assert shown == [

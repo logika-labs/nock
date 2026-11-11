@@ -72,12 +72,8 @@ src/nock/
                      and written as events; where files are (`located`: the one layer
                      reading them), the owner's verdicts, the threads, search, what waits on
                      an agent, what an edited file's decisions are, the map's problems
-  legacy.py          LegacyTopics: the topics as an earlier nock kept them in `.nock/topics/`,
-                     read only by the migrations
   timeline.py        Timeline: what happened in the topics, read from them as events, newest
                      first; the notifications are these events
-  migration.py       Migration: an earlier nock's decisions and review items into topics, once;
-                     Splitting: one asset per item; Storing: `.nock/topics/` into the store
   inbox.py           Inbox: what the owner said that waits on an agent, by priority; each
                      reader's shown entries (`inbox_shown`); `wait`, settling a triage's batch
   views.py           Views: each topic folded into markdown in `.nock/local/views/`
@@ -156,6 +152,9 @@ tests/               real git repositories and processes; no mocks
   fake_agent.py      the scripted stand-in for the dispatched agents (consultant, sharer,
                      the studio's chatter, namer, tidier and addresser)
 scripts/release.py   cut a release: checks, asks, then tags vVERSION and pushes it (standard library)
+scripts/move-to-shared.py  a one-off: a project's topics from the old `.nock/topics/` layout,
+                     and its `.nock/reflections/`, into `.nock/shared/` in one commit; run
+                     once when the store lands, then deleted; nock never reads the old layout
 web/                 nock.dev, never vendored or packaged: layout.html, home.html, legal/, site/
                      (style, fonts, the built pages), build.py (the docs pages from the
                      terms and guides), deploy.py (to Logika's box)
@@ -430,7 +429,7 @@ re-execution; the project's modules are left as the variable says).
      a subagent of it, did its own work in a planned or active topic (review,
      like done and abandoned, says where it stands: `FINISHED`) (opened
      it, or submitted, versioned or answered an item there: the `wrote`
-     table, so a migration's rewrites and the owner's verdicts never count)
+     table, so the owner's verdicts never count)
      and never set its state or status (`Topics.unstated`);
    - **PostToolUse**, wired with an edit-tools-and-Bash matcher unless a
      project hook wants every tool, first settles what the tool wrote in the
@@ -516,8 +515,8 @@ verdict, thread and assets, each asset with its versions and preferred
 variant. A decision's verdict stands only while no version of it or of one
 of its assets came after it.
 
-Every write — an agent's own files, `Topics`' methods, the studio, a
-migration's — goes through `Shared.settle`: it reads `git status` under the
+Every write — an agent's own files, `Topics`' methods, the studio — goes
+through `Shared.settle`: it reads `git status` under the
 root, groups the changes by topic and by decision (a topic's first, so a
 decision may come with its new topic), checks each group whole (no committed
 event changed, every draft fitting its kind, a new decision or asset with
@@ -535,7 +534,7 @@ uncommitted and its problems returned. `Topics` writes its changes as drafts
 (`Topics.draft`, `decision_version`, `asset_version`), settles only those
 (`only`), and discards them, and any folder they leave empty, when the change
 fails. A ref is `topic/slug`; `resolve` also takes a ref it had before it moved,
-or an asset item's that the migration made its asset.
+or an asset item's that the move to the store made its asset.
 
 A topic's `state` (`State`: planned, active, review, done, abandoned) and `status`
 change through `update_topic`, which writes a `state` event with both (a
@@ -576,26 +575,6 @@ carries, when it carries any; rejected items), for the lists and `status.Standin
 `governing` are the prompt and edit hooks'. `citation_problems` is the
 `nock-map` check, on `[topic/slug]` citations. `nock init` writes
 an empty `map.md`.
-
-`migration.Migration` moves an earlier nock's `.nock/decisions/*.json` and
-`.nock/review/KEY/N/` into topics once, by `nock init` (so `nock upgrade`
-too, which runs the new core's init) or `nock topics migrate`: each old tag a
-topic (the first not `important`; none, `general`), each decision a decision
-item (summary, evidence and touches folded into the answer, its number an
-alias, its note an owner message, supersession a thread line), each review
-item an item of derived files with every version and its recipe (notes and
-feedback thread messages), verdicts kept, the map moved beside the topics and
-the `[decisions]` tags dropped from the config, in one commit. The owner's words it carries over count as told already (`told` rows for
-every session that made a version), so the prompt hook announces only what
-the owner says afterwards; `topics migrate --mark-seen`, on a project already
-migrated, records every word said so far as told (local state, nothing
-committed), idempotently. Then `migration.Splitting`, by the same commands,
-splits each item from before one asset per item that holds several files
-(not variants): the item keeps its first file (a decision, its decision and
-project files) under its ref, each other file becomes `SLUG-FILE` with the
-versions holding it under their own numbers, the verdict kept and the thread
-copied after a `split` note dated at the item's creation, so it changes
-nothing about who spoke last; one commit, once.
 
 `timeline.Timeline` reads the topics as events (`Event`: a topic opened, its
 state or status changed, it was revived, an item submitted, a version made,

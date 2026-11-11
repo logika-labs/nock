@@ -325,14 +325,8 @@ def message(
 
 
 def state_of(topic: dict[str, Any], items: list[dict[str, Any]] | None = None) -> State:
-    """Where a topic's work stands. One from before topics had a state (not
-    yet migrated) reads as the migration will set it: done once every item
-    in it is decided, otherwise active."""
-    if topic.get("state"):
-        return State(topic["state"])
-    if items and all(item["verdict"] != Verdict.OPEN for item in items):
-        return State.DONE
-    return State.ACTIVE
+    """Where a topic's work stands."""
+    return State(topic.get("state") or State.ACTIVE)
 
 
 def talk(thread: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -883,8 +877,8 @@ class Topics:
 
     def worked(self, topic: str, stamp: dict[str, Any]) -> None:
         """An agent's own work in a topic, as the stop hook counts it: kept
-        apart from what migrations rewrite and from the owner's verdicts,
-        which carry sessions too but are nobody's work there."""
+        apart from the owner's verdicts, which carry sessions too but are
+        nobody's work there."""
         if stamp.get("session"):
             self.project.store.insert(
                 "wrote",
@@ -1042,8 +1036,8 @@ class Topics:
     def unstated(self, session: str) -> list[str]:
         """The planned or active topics this session (or a subagent of it)
         did its own work in — opened, or submitted, versioned or answered an
-        item there — whose state or status it never set. A migration's
-        rewrites and the owner's verdicts are no one's work there."""
+        item there — whose state or status it never set. The owner's
+        verdicts are no one's work there."""
         mine = {session}
         worked = {
             row["topic"]
@@ -1606,33 +1600,6 @@ class Topics:
                 "told", {"session": session, "item": item["ref"], "updated": said}
             )
         return news
-
-    def mark_told(self, refs: set[str] | None = None) -> int:
-        """Record the owner's word so far on these items (all, without refs)
-        as told to every session that made a version of them, so `news_for`
-        announces only what is said later; how many tellings it recorded."""
-        told = {
-            (row["session"], row["item"], row["updated"])
-            for row in self.project.store.rows("SELECT session, item, updated FROM told")
-        }
-        marked = 0
-        for item in self.every():
-            said = owner_word(item)
-            if not said or (refs is not None and item["ref"] not in refs):
-                continue
-            sessions = {
-                version[key]
-                for version in every_version(item)
-                for key in ("session", "parent")
-                if version.get(key)
-            }
-            for session in sorted(sessions):
-                if (session, item["ref"], said) not in told:
-                    self.project.store.insert(
-                        "told", {"session": session, "item": item["ref"], "updated": said}
-                    )
-                    marked += 1
-        return marked
 
     def tell_writer(self, refs: list[str]) -> None:
         """The owner's word on these items, just recorded by this session (or

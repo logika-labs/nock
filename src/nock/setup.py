@@ -17,7 +17,6 @@ from nock.errors import ConflictError, NotFoundError, PreconditionError
 from nock.git import Git, GitError
 from nock.harnesses import NATIVE_EVENTS, Event, Harness
 from nock.hooks import EDIT_TOOLS, NOCK_COMMANDS
-from nock.migration import migrate_in
 from nock.primer import AGENTS, MARK_START, PRIMER, refresh, with_section
 from nock.project import NOCK_DIRECTORY, Project
 from nock.releases import PYPI, VERSION, Releases
@@ -286,7 +285,6 @@ class Installer:
             self.wire(harness)
         self.install_skills()
         self.start_map()
-        self.migrate()
         return self.lines()
 
     def lines(self) -> list[str]:
@@ -415,29 +413,12 @@ class Installer:
         return path.is_file() and path.read_text() == text
 
     def start_map(self) -> None:
-        """An empty map of topics, so an agent told to read it finds it (an
-        earlier nock's map of decisions moves here when the project migrates)."""
-        if (self.root / NOCK_DIRECTORY / "decisions" / MAP).exists():
-            return
+        """An empty map of topics, so an agent told to read it finds it, and
+        the team's settings."""
         self.start(
             f"{NOCK_DIRECTORY}/shared/{MAP}", MAP_STUB, "the map of topics, empty until a round"
         )
         self.start(f"{NOCK_DIRECTORY}/shared/{SETTINGS}", SETTINGS_STUB, "the team's settings")
-
-    def migrate(self) -> None:
-        migrated = migrate_in(self.root)
-        if migrated and migrated["migrated"]:
-            self.notes.append(
-                f"migrated {migrated['decisions']} decision(s) and {migrated['review_items']}"
-                f" review item(s) into {len(migrated['topics'])} topic(s) in"
-                f" {NOCK_DIRECTORY}/topics/"
-            )
-        if migrated and migrated.get("split"):
-            split = migrated["split"]
-            self.notes.append(
-                f"split {split['items']} item(s) holding several files into {split['into']},"
-                f" one asset each, in {NOCK_DIRECTORY}/topics/"
-            )
 
     def copy_core(self, core: Path) -> None:
         for relative, content in core_files(PACKAGE).items():
