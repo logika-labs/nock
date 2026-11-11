@@ -505,11 +505,12 @@ def hook_entry(harness: Harness, event: Event, project_events: set[Event]) -> di
     if harness is not Harness.CLAUDE_CODE:
         hook["timeout"] = HOOK_TIMEOUT
     entry: dict[str, Any] = {"hooks": [hook]}
-    # nock's own after-tool handler wants only edits, its before-tool one only its own
-    # commands; a project hook may want every tool.
+    # nock's own after-tool handler wants edits and shell commands (either may write
+    # in .nock/shared/), its before-tool one only its own commands; a project hook
+    # may want every tool.
     if harness is Harness.CLAUDE_CODE:
         if event is Event.AFTER_TOOL and Event.AFTER_TOOL not in project_events:
-            entry["matcher"] = EDIT_TOOLS
+            entry["matcher"] = f"{EDIT_TOOLS}|Bash"
         if event is Event.BEFORE_TOOL and Event.BEFORE_TOOL not in project_events:
             entry["matcher"] = "Bash"
             hook["if"] = NOCK_COMMANDS

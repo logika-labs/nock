@@ -97,6 +97,16 @@ class HookRunner:
         elif event is Event.SESSION_END:
             self.session_end()
         blocks: list[str] = []
+        if event is Event.AFTER_TOOL:
+            # Whatever the tool wrote in the store, settled now: a bad edit is said in
+            # this same turn, for the agent to fix.
+            refused = self.settled(self.writer())
+            if refused:
+                return self.refusal(refused)
+        elif event in (Event.SESSION_START, Event.PROMPT, Event.STOP):
+            refused = self.settled({})
+            if refused and event is Event.STOP:
+                blocks.append(refused)
         if event is Event.STOP and not self.waiting():
             blocks += self.rounds_left_open()
             if self.reminding:
@@ -138,6 +148,52 @@ class HookRunner:
         if text and event not in (Event.STOP, Event.SESSION_END):
             output["hookSpecificOutput"] = {"hookEventName": native, "additionalContext": text}
         return output or None
+
+    def writer(self) -> dict[str, str | None]:
+        """Who the tool call was, from the payload: a subagent by its own id,
+        its session its parent."""
+        session = self.payload.get("session_id")
+        agent = self.payload.get("agent_id")
+        if isinstance(agent, str) and agent:
+            role = self.payload.get("agent_type")
+            return {
+                "session": agent,
+                "parent": session if isinstance(session, str) else None,
+                "role": role if isinstance(role, str) and role else "subagent",
+            }
+        return {
+            "session": session if isinstance(session, str) else None,
+            "role": self.project.current_role() or "interactive",
+        }
+
+    def settled(self, writer: dict[str, str | None]) -> str:
+        """Settle what changed in the store (`nock.shared`), as `writer`
+        wrote it (no one known: a sweep); the problems left, said, or nothing."""
+        root = self.project.root / NOCK_DIRECTORY / "shared"
+        if not root.is_dir():
+            return ""
+        from nock.shared import Shared, by_for
+
+        store = Shared(self.project)
+        settled = store.settle_changes(lambda: by_for(self.project, writer=writer))
+        if settled.topics or settled.commit:
+            from nock.views import Views
+
+            Views(self.project).write(settled.topics)
+        if not settled.problems:
+            return ""
+        lines = [
+            "nock: these changes in .nock/shared/ don't hold, so none of them was committed"
+            " — fix them, or remove them (`.nock/nock docs files` has each kind):"
+        ]
+        lines += [f"- {problem}" for problem in settled.problems]
+        return "\n".join(lines)
+
+    def refusal(self, reason: str) -> dict[str, Any]:
+        """A bad edit, said to the agent in the turn that made it."""
+        if self.harness is Harness.CURSOR:
+            return {"followup_message": reason}
+        return {"decision": "block", "reason": reason}
 
     def own_hooks(self, event: Event) -> list[Hook]:
         """The project's hooks for the event; none at Cursor, whose payloads

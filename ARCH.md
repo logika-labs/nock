@@ -430,10 +430,21 @@ re-execution; the project's modules are left as the variable says).
      it, or submitted, versioned or answered an item there: the `wrote`
      table, so a migration's rewrites and the owner's verdicts never count)
      and never set its state or status (`Topics.unstated`);
-   - **PostToolUse**, wired with an edit-tools matcher unless a project hook
-     wants every tool, shows the items not rejected whose latest version holds
-     the edited file or was derived `from` it, once per session (the
-     `shown_items` table). It and the prompt's handler read every item
+   - **PostToolUse**, wired with an edit-tools-and-Bash matcher unless a
+     project hook wants every tool, first settles what the tool wrote in the
+     store (`HookRunner.settled`: `Shared.settle_changes`, one `git status`
+     when nothing changed), as the payload's session (a subagent by its
+     `agent_id`, its session the parent), writes the touched topics' views
+     (`views.Views`, `.nock/local/views/`), and refuses a change that does not
+     hold in the same turn (`{"decision": "block", "reason": …}`), nothing of
+     it committed; then it shows the decisions not rejected whose assets'
+     latest versions hold the edited file or were derived `from` it, once per
+     session (the `shown_items` table). In Codex it settles too. At
+     SessionStart, the prompt and Stop, the same settle sweeps up what no
+     hook saw, its writer unknown, and Stop refuses the end of a turn while
+     a change there does not hold; every nock command sweeps likewise first
+     (`shared.sweep`, in `cli.Invocation.sweep`), naming on stderr what stays
+     uncommitted. It and the prompt's handler read every item
      through `Topics.summaries`: what they look for in each decision
      (`topics.summary`) kept in `.nock/local/item-summaries.json` beside its
      event folders' modification times (`folder_stamp`), so a decision is

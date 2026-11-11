@@ -24,8 +24,10 @@ from nock.processes import Output
 from nock.project import Project
 from nock.releases import VERSION
 from nock.render import CHARACTERS, PACKAGE_INTERNAL, ROWS, as_json, capped, crash, plain, render
+from nock.shared import sweep
 from nock.telemetry import UNRECORDED_VARIABLE, Cache, Calls, digest, tree_state
 from nock.tools import BUILT_IN_SOURCE, CONFIRM_NOTES, Registry, Tool
+from nock.views import Views
 
 # Commands that work without a project.
 PROJECTLESS = ("init",)
@@ -95,6 +97,8 @@ class Invocation:
                     return ExitCode.SUCCESS
                 sys.stderr.write(f"nock: {error}\n")
                 return error.exit_code
+        if self.project is not None:
+            self.sweep(self.project)
         registry = self.project.registry if self.project else Registry.load(None)
         for failure in registry.failures:
             sys.stderr.write(f"nock: a tool did not load — {failure}\n")
@@ -115,6 +119,23 @@ class Invocation:
         tool = registry.tool(target.path)
         assert tool is not None
         return self.invoke(registry, tool, target, namespace)
+
+    def sweep(self, project: Project) -> None:
+        """Settle what was written in the store where no hook saw it, before
+        the command reads it; a change that does not hold is named, and the
+        command goes on."""
+        try:
+            settled = sweep(project)
+            if settled.topics:
+                Views(project).write(settled.topics)
+        except Exception as error:  # the store's trouble never stops a command
+            sys.stderr.write(f"nock: settling .nock/shared/ failed: {error!r}\n")
+            return
+        if settled.problems:
+            sys.stderr.write(
+                f"nock: {len(settled.problems)} change(s) in .nock/shared/ don't hold and stay"
+                f" uncommitted — {settled.problems[0]}\n"
+            )
 
     def attempted(self, registry: Registry) -> str:
         """The command a refused call meant: the known one its words name, or

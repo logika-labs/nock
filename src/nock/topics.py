@@ -835,6 +835,11 @@ class Topics:
         settled = self.shared.settle(self.by(author), only=written, removing=removing)
         if settled.problems:
             raise UsageError("; ".join(settled.problems))
+        # A genuine cycle: the views read the topics.
+        from nock.views import Views
+
+        removed = {path.relative_to(self.directory).parts[0] for path in removing or []}
+        Views(self.project).write(settled.topics | removed)
         return settled
 
     def draft(self, folder: Path, record: dict[str, Any]) -> Path:

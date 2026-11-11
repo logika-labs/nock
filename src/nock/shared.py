@@ -20,6 +20,7 @@ import secrets
 import shutil
 import socket
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -89,12 +90,19 @@ def is_media(name: str, data: bytes) -> bool:
     return kind_of(name, data) not in ("text", "html") or len(data) > SMALL_TEXT
 
 
-def by_for(project: Any, author: str = "agent") -> dict[str, Any]:
+def by_for(
+    project: Any, author: str = "agent", writer: dict[str, str | None] | None = None
+) -> dict[str, Any]:
     """Who writes: the owner (the studio) or an agent, on behalf of an
-    interactive session or of an agent; the user, the sessions, the host."""
-    writer = project.writer()
-    role = writer.get("role") or "interactive"
-    interactive = author == "owner" or (role == "interactive" and not writer.get("parent"))
+    interactive session or of an agent; the user, the sessions, the host.
+    `writer` (session, parent, role) is the call's own unless given: a hook's
+    is its payload's, a sweep's none."""
+    given: dict[str, str | None] = project.writer() if writer is None else writer
+    swept = writer is not None and not writer
+    role = given.get("role") or (None if swept else "interactive")
+    interactive = author == "owner" or (role == "interactive" and not given.get("parent"))
+    if swept:
+        interactive = False
     try:
         user = Git(project.root)("config", "user.email", check=False) or None
     except GitError:
@@ -103,11 +111,18 @@ def by_for(project: Any, author: str = "agent") -> dict[str, Any]:
         "author": author,
         "on_behalf": "interactive" if interactive else "agent",
         "user": user,
-        "session": writer.get("session"),
-        "parent": writer.get("parent"),
+        "session": given.get("session"),
+        "parent": given.get("parent"),
         "role": role,
         "host": socket.gethostname(),
     }
+
+
+def sweep(project: Any) -> Settled:
+    """What a nock command or a hook finds changed under the store and not
+    yet committed — written where no hook saw it — validated, completed and
+    committed, its writer unknown; what does not hold is left as it is."""
+    return Shared(project).settle_changes(lambda: by_for(project, writer={}))
 
 
 @dataclass
@@ -249,6 +264,13 @@ class Shared:
             if relative is not None:
                 found.append((code, relative.as_posix()))
         return found
+
+    def settle_changes(self, by: Callable[[], dict[str, Any]]) -> Settled:
+        """`settle` everything changed under the root, the writer named only
+        once there is something to settle: nothing changed, one `git status`."""
+        if not self.root.is_dir() or not self.changes():
+            return Settled()
+        return self.settle(by())
 
     def settle(
         self,
