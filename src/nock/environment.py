@@ -12,10 +12,10 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING
 
-if TYPE_CHECKING:
-    from nock.project import Project
+from nock.errors import Error
+from nock.project import Project
+from nock.utils import cache_bytecode
 
 # Set on the process nock re-executes itself as, and removed at once, so a
 # nock that a tool starts decides afresh.
@@ -51,7 +51,8 @@ class Environment:
                     f"the project's interpreter {configured} (environment.python) is missing, so "
                     f"tools that need the project's packages will not load — run {remedy} first"
                 )
-            elif interpreter is not None and os.path.abspath(sys.executable) != str(interpreter):
+            elif interpreter is not None and not running(interpreter):
+                cache_bytecode()
                 os.execve(
                     interpreter,
                     [str(interpreter), "-m", "nock", *arguments],
@@ -104,6 +105,30 @@ class Environment:
             if path.is_file():
                 return path
         return None
+
+
+def enter(arguments: list[str]) -> None:
+    """Run on the project's interpreter, with its PATH and dotenv, before
+    anything loads its tools."""
+    try:
+        project = Project.discover()
+    except Error:
+        return
+    for note in Environment(project).enter(arguments, setup=arguments[:1] != ["hook"]):
+        sys.stderr.write(f"nock: {note}\n")
+
+
+def running(interpreter: Path) -> bool:
+    """Whether this process already runs on `interpreter`: the same file, or
+    another name for it in the same directory (a venv's `python` and
+    `python3`), so it has the same site-packages and needs no re-execution."""
+    current = Path(os.path.abspath(sys.executable))
+    if current == interpreter:
+        return True
+    try:
+        return current.parent == interpreter.parent and os.path.samefile(current, interpreter)
+    except OSError:
+        return False
 
 
 def parse_dotenv(text: str) -> dict[str, str]:

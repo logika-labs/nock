@@ -20,6 +20,7 @@ from nock.docs import Docs
 from nock.errors import Error, ExitCode, Failed, PolicyError, UsageError
 from nock.fixtures import Shell
 from nock.generators import Catalogs, Generators
+from nock.harnesses import NATIVE_EVENTS
 from nock.kinds import DEFAULT, KINDS
 from nock.migration import Migration
 from nock.processes import Output
@@ -45,7 +46,7 @@ from nock.status import Standing
 from nock.studio import Studio
 from nock.telemetry import UNRECORDED_VARIABLE
 from nock.templates import SYNTAX
-from nock.tools import NATIVE_EVENTS, Tool, check, command
+from nock.tools import Tool, check, command
 from nock.topics import (
     ADDRESSER,
     SHORT,

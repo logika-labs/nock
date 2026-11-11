@@ -17,7 +17,7 @@ from nock import hooks
 from nock.commands import FRESH_FLAG, FULL_FLAG, JSON_FLAG, Command, Group
 from nock.configuration import Confirm
 from nock.docs import Article
-from nock.environment import Environment
+from nock.environment import enter
 from nock.errors import Error, Exit, ExitCode, PreconditionError, UsageError
 from nock.fixtures import Call, Scope
 from nock.processes import Output
@@ -38,22 +38,10 @@ FOOTER = (
 
 def main() -> None:
     arguments = sys.argv[1:]
-    enter_environment(arguments)
     if arguments[:1] == ["hook"]:
-        native, word = (*arguments[1:3], "", "")[:2]
-        sys.exit(hooks.run(native, sys.stdin.read(), word or "claude"))
+        hooks.main()
+    enter(arguments)
     sys.exit(Invocation(arguments).run())
-
-
-def enter_environment(arguments: list[str]) -> None:
-    """Run on the project's interpreter, with its PATH and dotenv, before
-    anything loads its tools."""
-    try:
-        project = Project.discover()
-    except Error:
-        return
-    for note in Environment(project).enter(arguments, setup=arguments[:1] != ["hook"]):
-        sys.stderr.write(f"nock: {note}\n")
 
 
 def build(registry: Registry) -> Group:

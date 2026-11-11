@@ -12,13 +12,13 @@ import sys
 import traceback
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from enum import StrEnum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from nock.commands import Command, command_name
 from nock.configuration import Confirm
 from nock.errors import PreconditionError
+from nock.harnesses import Event
 
 if TYPE_CHECKING:
     from nock.project import Project
@@ -28,30 +28,6 @@ BUILT_IN_SOURCE = "nock"
 CONFIRM_NOTES = {
     Confirm.ASK: " (asks the owner)",
     Confirm.ALLOW: " (only when the owner's request calls for it)",
-}
-
-
-class Event(StrEnum):
-    """What a `@nock.hook` reacts to: Claude Code's hook events, by nock's names."""
-
-    SESSION_START = "session-start"
-    PROMPT = "prompt"
-    BEFORE_TOOL = "before-tool"
-    AFTER_TOOL = "after-tool"
-    TOOL_FAILED = "tool-failed"
-    STOP = "stop"
-    SESSION_END = "session-end"
-
-
-# Claude Code's name for each event.
-NATIVE_EVENTS = {
-    Event.SESSION_START: "SessionStart",
-    Event.PROMPT: "UserPromptSubmit",
-    Event.BEFORE_TOOL: "PreToolUse",
-    Event.AFTER_TOOL: "PostToolUse",
-    Event.TOOL_FAILED: "PostToolUseFailure",
-    Event.STOP: "Stop",
-    Event.SESSION_END: "SessionEnd",
 }
 
 
@@ -264,8 +240,11 @@ class Registry:
         registry = cls()
         registry.adopt(built_in())
         if project is not None:
+            stamp = project.tools_stamp()
             for path in sorted(project.code_path("tools").glob("*.py")):
                 registry.import_module(path, project)
+            if not registry.failures:
+                project.record_hook_events(stamp, {str(entry.event) for entry in registry.hooks})
         names = registry.fixture_names()
         for tool in registry.tools:
             tool.command.fixtures = names

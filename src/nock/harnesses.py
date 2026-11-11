@@ -1,4 +1,5 @@
-"""The coding-agent harnesses nock wires itself into — Claude Code always,
+"""The hook events nock knows, by its names and Claude Code's, and the
+coding-agent harnesses nock wires itself into — Claude Code always,
 Codex and Cursor where the repository or `PATH` has them — and, for each,
 where its skills, hooks and instructions go and which of nock's hook events
 it can send."""
@@ -9,7 +10,29 @@ import shutil
 from enum import StrEnum
 from pathlib import Path
 
-from nock.tools import NATIVE_EVENTS, Event
+
+class Event(StrEnum):
+    """What a `@nock.hook` reacts to: Claude Code's hook events, by nock's names."""
+
+    SESSION_START = "session-start"
+    PROMPT = "prompt"
+    BEFORE_TOOL = "before-tool"
+    AFTER_TOOL = "after-tool"
+    TOOL_FAILED = "tool-failed"
+    STOP = "stop"
+    SESSION_END = "session-end"
+
+
+# Claude Code's name for each event.
+NATIVE_EVENTS = {
+    Event.SESSION_START: "SessionStart",
+    Event.PROMPT: "UserPromptSubmit",
+    Event.BEFORE_TOOL: "PreToolUse",
+    Event.AFTER_TOOL: "PostToolUse",
+    Event.TOOL_FAILED: "PostToolUseFailure",
+    Event.STOP: "Stop",
+    Event.SESSION_END: "SessionEnd",
+}
 
 # The events nock itself listens to in Claude Code.
 BUILT_IN_EVENTS = (

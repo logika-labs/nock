@@ -15,7 +15,7 @@ from nock import harnesses
 from nock.configuration import Confirm
 from nock.errors import ConflictError, NotFoundError, PreconditionError
 from nock.git import Git, GitError
-from nock.harnesses import Harness
+from nock.harnesses import NATIVE_EVENTS, Event, Harness
 from nock.hooks import EDIT_TOOLS, NOCK_COMMANDS
 from nock.kinds import KINDS
 from nock.migration import migrate_in
@@ -23,7 +23,6 @@ from nock.primer import AGENTS, MARK_START, PRIMER, refresh, with_section
 from nock.project import NOCK_DIRECTORY, Project
 from nock.releases import PYPI, VERSION, Releases
 from nock.templates import Library
-from nock.tools import NATIVE_EVENTS, Event
 from nock.topics import MAP
 from nock.utils import read_json, write_atomic, write_json
 
@@ -89,7 +88,7 @@ enabled = true
 confirm = "ask"
 """
 
-GITIGNORE = "local/\n"
+GITIGNORE = "local/\n__pycache__/\n"
 
 MAP_STUB = """\
 # The map of topics
@@ -271,7 +270,9 @@ class Installer:
         nock = NOCK_DIRECTORY
         self.put(f"{nock}/nock", SHIM, "runs the vendored core", executable=True)
         self.start(
-            f"{nock}/.gitignore", GITIGNORE, "keeps .nock/local/ (this machine's) out of git"
+            f"{nock}/.gitignore",
+            GITIGNORE,
+            "keeps .nock/local/ (this machine's) and the core's bytecode out of git",
         )
         self.start(f"{nock}/config.toml", CONFIG, "nock's settings, committed")
         self.start(f"{nock}/tools/.gitkeep", "", "where the project's own tools go")

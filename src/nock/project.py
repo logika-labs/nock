@@ -3,21 +3,26 @@ it is configured to do, its toolbox and its telemetry."""
 
 from __future__ import annotations
 
+import contextlib
 import fcntl
+import json
 import os
 import sys
 from collections.abc import Iterator
 from contextlib import contextmanager
 from functools import cached_property
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from nock.callers import Callers
 from nock.configuration import Configuration
 from nock.errors import PreconditionError
 from nock.git import Git, GitError
-from nock.sessions import HEADLESS, headless
 from nock.store import Store
-from nock.tools import Registry
+from nock.utils import write_json
+
+if TYPE_CHECKING:
+    from nock.tools import Registry
 
 NOCK_DIRECTORY = ".nock"
 # Set by nock on the sessions it dispatches; Claude Code sets the session's id.
@@ -27,6 +32,17 @@ SESSION_VARIABLE = "CLAUDE_CODE_SESSION_ID"
 PARENT_VARIABLE = "NOCK_PARENT_SESSION"
 # Claude Code's: `cli` for a session someone works in, `sdk-…` for `claude -p`.
 ENTRYPOINT_VARIABLE = "CLAUDE_CODE_ENTRYPOINT"
+# Which events each working tree's `@nock.hook`s listen to, in `local/`.
+HOOK_EVENTS_FILE = "hook-events.json"
+# The role of a `claude -p` run nock did not start.
+HEADLESS = "headless"
+
+
+def headless(entrypoint: str | None) -> bool:
+    """Whether a Claude Code entrypoint (`CLAUDE_CODE_ENTRYPOINT`, a
+    transcript's `entrypoint`) runs without a person: `sdk-cli`, `sdk-py`,
+    `sdk-ts`. Everything else — `cli`, an IDE, the desktop app — has one."""
+    return bool(entrypoint) and str(entrypoint).startswith("sdk")
 
 
 class Project:
@@ -44,9 +60,7 @@ class Project:
     def discover(cls, directory: Path | None = None) -> Project:
         directory = (directory or Path.cwd()).resolve()
         try:
-            git = Git(directory)
-            here = git.toplevel()
-            root = git.main_checkout()
+            here, root = Git(directory).location()
         except GitError as error:
             raise PreconditionError(f"{directory} is not inside a git repository") from error
         project = cls(root, here)
@@ -92,7 +106,45 @@ class Project:
     @cached_property
     def registry(self) -> Registry:
         """Built-ins and the project's `.nock/tools/`, loaded once."""
+        # Imported here, not at the top: a hook that needs no tools never loads them.
+        from nock.tools import Registry
+
         return Registry.load(self)
+
+    def tools_stamp(self) -> list[list[str | int]]:
+        """What the toolbox loads, as it stands: each module of `.nock/tools/`
+        by name, modification time and size."""
+        stamp: list[list[str | int]] = []
+        for path in sorted(self.code_path("tools").glob("*.py")):
+            status = path.stat()
+            stamp.append([path.name, status.st_mtime_ns, status.st_size])
+        return stamp
+
+    def hook_events(self) -> set[str] | None:
+        """The events the project's `@nock.hook`s listen to, as the last full
+        load of this working tree's toolbox found them, while its modules are
+        unchanged since; None when that is not known. A hook skips loading the
+        toolbox when the event has none."""
+        try:
+            recorded = json.loads((self.local / HOOK_EVENTS_FILE).read_text()).get(str(self.here))
+            if recorded is None or recorded["stamp"] != self.tools_stamp():
+                return None
+            return set(recorded["events"])
+        except (OSError, ValueError, KeyError, TypeError, AttributeError):
+            return None
+
+    def record_hook_events(self, stamp: list[list[str | int]], events: set[str]) -> None:
+        path = self.local / HOOK_EVENTS_FILE
+        try:
+            recorded = json.loads(path.read_text())
+        except (OSError, ValueError):
+            recorded = {}
+        entry = {"stamp": stamp, "events": sorted(events)}
+        if not isinstance(recorded, dict):
+            recorded = {}
+        if recorded.get(str(self.here)) != entry:
+            with contextlib.suppress(OSError):
+                write_json(path, {**recorded, str(self.here): entry})
 
     @cached_property
     def store(self) -> Store:

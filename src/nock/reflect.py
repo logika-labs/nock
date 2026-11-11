@@ -31,8 +31,9 @@ from nock.checks import Checks
 from nock.commands import schema_of
 from nock.errors import Failed, PreconditionError
 from nock.git import Git, GitError
+from nock.project import HEADLESS
 from nock.schema import validate
-from nock.sessions import HEADLESS, Sessions
+from nock.sessions import Sessions
 from nock.topics import CITATION, Topics
 from nock.topics import Verdict as ItemVerdict
 from nock.utils import format_duration, now, parse_moment, read_json, write_json

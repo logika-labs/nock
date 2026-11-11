@@ -18,17 +18,17 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from nock.prices import KINDS, Prices
+from nock.project import HEADLESS, headless
 from nock.utils import now, parse_moment, read_json
 
 if TYPE_CHECKING:
     from nock.project import Project
 
 INTERRUPTED = "[Request interrupted by user"
-# A session someone works in, and one run without a person: `claude -p` or the
-# Agent SDK, whose transcripts say `"entrypoint": "sdk-…"`. A session nock
-# dispatched carries the role it was dispatched as instead.
+# A session someone works in; one run without a person (`claude -p` or the
+# Agent SDK, whose transcripts say `"entrypoint": "sdk-…"`) is `HEADLESS`. A
+# session nock dispatched carries the role it was dispatched as instead.
 INTERACTIVE = "interactive"
-HEADLESS = "headless"
 PROMPT_LIMIT = 600
 INPUT_LIMIT = 400
 # The field of each tool's input that says what it was used on.
@@ -47,13 +47,6 @@ INPUT_FIELDS = {
     "Task": "description",
     "Skill": "skill",
 }
-
-
-def headless(entrypoint: str | None) -> bool:
-    """Whether a Claude Code entrypoint (`CLAUDE_CODE_ENTRYPOINT`, a
-    transcript's `entrypoint`) runs without a person: `sdk-cli`, `sdk-py`,
-    `sdk-ts`. Everything else — `cli`, an IDE, the desktop app — has one."""
-    return bool(entrypoint) and str(entrypoint).startswith("sdk")
 
 
 def configuration_directory() -> Path:

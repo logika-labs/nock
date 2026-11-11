@@ -31,7 +31,7 @@ guides (`src/nock/terms/guides/`, nock.dev's docs) cover what nock is for and ho
 ```
 src/nock/
   __init__.py        the public API: decorators, error classes, Output, Problem, Block
-  __main__.py        python -m nock → cli.main
+  __main__.py        python -m nock → hooks.main for `hook`, else cli.main; then utils.cache_bytecode
 
   # the framework: from words typed to an exit code
   cli.py             the weaver: one invocation, end to end
@@ -180,14 +180,20 @@ nock's built-ins.
 
 `.nock/nock failures --path tests` goes through `cli.Invocation.run`:
 
-0. **Enter the environment.** `cli.main`, before anything else (hooks
-   included), applies `[environment]`: it re-executes on
-   `environment.python` when that is not the interpreter running (making it
-   with `environment.setup` first if it is missing, except in a hook), puts
+0. **Enter the environment.** `environment.enter`, before anything else
+   (`cli.main`, and `hooks.main` for a hook), applies `[environment]`: it
+   re-executes on `environment.python` when that is not the interpreter
+   running (another name for the same file in the same directory, a venv's
+   `python` and `python3`, is the same interpreter; making it with
+   `environment.setup` first if it is missing, except in a hook), puts
    `environment.path` first on PATH and sets the dotenv's variables.
-1. **Discover.** `Project.discover()` finds `here` (`git rev-parse
-   --show-toplevel`) and `root` (the main checkout). It then requires
-   `.nock/` to exist.
+1. **Discover.** `Project.discover()` finds `here` (the working tree) and
+   `root` (the main checkout) with `Git.location`: from the `.git` directory
+   or file and its `commondir` (`git.located`), without starting git, unless
+   something could make git answer otherwise (a `GIT_DIR`-like variable, a
+   `core.worktree`, a bare repository, another owner, a filesystem crossed,
+   a directory inside `.git`), when one `git rev-parse` answers. It then
+   requires `.nock/` to exist.
 2. **Load.** `Registry.load(project)` imports `nock.builtin` and
    `nock.fixtures`, then every `.nock/tools/*.py` (subdirectories such as
    `archive/` are skipped). Each decorator appends to a pending list, which the
@@ -369,8 +375,14 @@ upgrade changes what a skill says without rewriting the skill.
 `.codex/hooks.json` and `.cursor/hooks.json` (`"$(git rev-parse
 --show-toplevel)"/.nock/nock hook EVENT codex|cursor`, since neither names
 the project directory, with a 300-second timeout, past the upgrade a session
-start may run). `cli.main` handles `hook` before anything else and hands it
-to `hooks.run`, which:
+start may run). `python -m nock hook` goes to `hooks.main` without loading
+the rest of the CLI (`__main__.py`), which enters the environment and hands
+it to `hooks.run`. A hook runs on every tool call, so each handler imports
+what only it needs inside itself (the package's public names load on first
+use too, `nock.__getattr__`), and nock's own bytecode is written even under
+`PYTHONDONTWRITEBYTECODE` (`utils.cache_bytecode`, at exit and before a
+re-execution; the project's modules are left as the variable says).
+`hooks.run`:
 
 1. reads the payload from stdin, in Claude Code's words (`hooks.normalized`:
    Cursor's `conversation_id` is the session, its first `workspace_roots`
@@ -413,11 +425,19 @@ to `hooks.run`, which:
    - **PostToolUse**, wired with an edit-tools matcher unless a project hook
      wants every tool, shows the items not rejected whose latest version holds
      the edited file or was derived `from` it, once per session (the
-     `shown_items` table);
+     `shown_items` table). It and the prompt's handler read every item
+     through `Topics.summaries`: what they look for in each (`topics.summary`)
+     kept in `.nock/local/item-summaries.json` beside its item file's stamp
+     (modification time, size, inode), so an item file is read again only
+     once it changed, and the items they tell of are read whole;
    - **SessionEnd** ingests the transcript and, for a session the human
      started, sends the usage statistics when due (`usage.Usage.send`);
 3. runs the project's `@nock.hook`s for the event, each in a fixture
-   `Scope` with `payload`. Returned text is joined into `additionalContext`,
+   `Scope` with `payload`. The toolbox is loaded for it only when the project
+   may have one: every full load records, per working tree, the events its
+   hooks listen to with a stamp of `.nock/tools/*.py` (name, modification
+   time, size) in `.nock/local/hook-events.json` (`Project.hook_events`), and
+   a hook for another event, with the stamp unchanged, skips the load. Returned text is joined into `additionalContext`,
    and `Block` at `stop` becomes `{"decision": "block"}`;
 4. answers in the harness's format: Claude Code's and Codex's are the same
    (`hookSpecificOutput.additionalContext`, `systemMessage`, `decision:
@@ -864,7 +884,7 @@ Notes:
 `setup.Installer.install` installs into the working tree it runs in (a
 worktree's install is that branch's change, never the main checkout's):
 
-- copies the core and writes the shim, `.gitignore` (`local/`),
+- copies the core and writes the shim, `.gitignore` (`local/`, `__pycache__/`),
   `config.toml`, `context.md` (the primer, from the settings) and `tools/`;
 - records the version, the source (`pypi` unless told otherwise) and, from a
   checkout, its commit in `.nock/core/VERSION.json`;
