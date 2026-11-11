@@ -1,0 +1,46 @@
+/* The Timeline: a feed of notifications on the topics' look (the fragment is also `.topics`), one
+   glass card each, grouped by day: a mark for its kind, what happened in bold and its time, where
+   (the topic, the item's title), a preview of a few lines, a picture's face at its right. New ones,
+   since the owner last left the tab, carry the foil's edge. */
+.timeline #timeline-main { display: grid; gap: 8px; margin-top: 16px; padding-bottom: 48px; }
+.timeline .day { margin: 14px 0 2px 6px; color: var(--foreground); }
+.timeline .day:first-child { margin-top: 0; }
+.timeline .event {
+  position: relative; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 12px; align-items: start;
+  padding: 12px 16px 12px 14px; border-radius: 16px; color: inherit; text-decoration: none;
+  background: var(--noise), rgb(255 255 255 / .95); background-blend-mode: soft-light, normal;
+  border: 1px solid rgb(255 255 255 / .95); box-shadow: 0 4px 16px rgb(60 20 120 / .08);
+  transition: box-shadow .15s, border-color .15s;
+}
+.timeline .event:hover { border-color: rgb(17 17 22 / .2); box-shadow: 0 8px 18px -6px rgb(150 215 255 / .6), 0 4px 16px rgb(60 20 120 / .08); }
+.timeline .event:focus-visible { outline: 2px solid #111116; outline-offset: 2px; }
+.timeline .event.new { box-shadow: 3px 3px 0 0 var(--cyan), -3px -3px 0 0 var(--pink), 0 4px 16px rgb(60 20 120 / .08); }
+.timeline .event .sign {
+  display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; margin-top: 1px;
+  background: rgb(17 17 22 / .05); color: var(--foreground);
+}
+.timeline .event .sign svg { width: 16px; height: 16px; }
+.timeline .event.answered .sign { background: var(--holo-conic); color: #111116; }
+.timeline .event.item .sign, .timeline .event.version .sign { background: #111116; color: #fff; }
+.timeline .event .body { display: grid; gap: 2px; min-width: 0; }
+.timeline .headline { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
+.timeline .headline strong { font: 600 14.5px/21px var(--sans); min-width: 0; overflow-wrap: anywhere; }
+.timeline .headline time { margin-left: auto; flex: none; color: var(--time); font: 500 12px/1 var(--mono); }
+.timeline .place { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; min-width: 0; font-size: 13.5px; }
+.timeline .place .topic { font: 500 12px/18px var(--mono); color: var(--muted); }
+.timeline .place .title { font: 600 13.5px/19px var(--display); letter-spacing: -.01em; overflow-wrap: anywhere; }
+.timeline .place .title code { font: 600 .9em var(--mono); background: #f1eefa; padding: 0 4px; border-radius: 4px; }
+.timeline .place .state { font: 500 11px/16px var(--mono); text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+.timeline .gist {
+  color: var(--muted); font-size: 13.5px; line-height: 1.5; overflow-wrap: anywhere;
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+}
+.timeline .gist code { font: 12px var(--mono); background: #f1eefa; padding: 0 4px; border-radius: 4px; }
+.timeline .still { width: 6.5rem; height: 4.5rem; border-radius: 10px; overflow: hidden; background: #f3f0fa; box-shadow: 0 0 0 1px var(--border); }
+.timeline .still img, .timeline .still video { display: block; width: 100%; height: 100%; object-fit: cover; object-position: top center; pointer-events: none; }
+.timeline .more { justify-self: center; margin-top: 8px; }
+.timeline .answer .mini { text-decoration: none; }
+@media (max-width: 560px) {
+  .timeline .event { grid-template-columns: auto minmax(0, 1fr); padding: 10px 12px; }
+  .timeline .still { grid-column: 2; width: 100%; height: 8rem; }
+}

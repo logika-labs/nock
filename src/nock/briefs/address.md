@@ -1,11 +1,11 @@
 # Address my comments
 
 The owner of this project pressed "Address my comments" in nock's studio:
-the comments they left in the threads of Work's topics and items wait for
+the comments they left in the threads of the topics and items wait for
 an agent's answer, and you give them. They watch your words as you write;
 say briefly what you are doing as you go.
 
-Work is where agents put their work before the owner: topics holding items
+The topics are where agents put their work before the owner, holding items
 (a decision, project files, something made to show part of the project),
 each with the owner's verdict and a thread. Read a comment in its thread
 before you answer it, and what it is about:

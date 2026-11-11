@@ -52,7 +52,8 @@ def fetch(address: str, route: str) -> tuple[int, bytes]:
 
 def search(address: str, query: str) -> Any:
     with urllib.request.urlopen(f"{address}topics/search/{urllib.parse.quote(query)}") as response:
-        return json.loads(response.read())
+        found = json.loads(response.read())
+    return {"topics": found["topics"], "items": found["items"]}
 
 
 def test_the_owner_s_files_go_with_their_message_beside_its_thread_for_agents_to_read(

@@ -1,0 +1,202 @@
+<div class="frame topics timeline" id="timeline-tab">
+  <div class="controls">
+    <div class="bar">
+      <div class="field">
+        <input type="text" id="timeline-input" placeholder="search the timeline" autocomplete="off" spellcheck="false" aria-label="Search the timeline">
+        <button type="button" class="inside" id="timeline-clear" aria-label="Clear the search" hidden>×</button>
+        <button type="button" class="inside" id="timeline-send" aria-label="Ask" hidden>→</button>
+      </div>
+      <div class="modes" role="group" aria-label="Search or ask">
+        <button type="button" data-timeline-mode="search" aria-pressed="true">Search</button>
+        <button type="button" data-timeline-mode="ask" aria-pressed="false">Ask</button>
+      </div>
+    </div>
+    <div class="sift" id="timeline-sift" role="toolbar" aria-label="Filters"></div>
+    <div class="answer" id="timeline-answer" aria-live="polite" hidden></div>
+  </div>
+  <main id="timeline-main"></main>
+</div>
+<script>
+// The Timeline (its look is pages/timeline.css): what happened in the topics as a feed of
+// notifications, the newest first (`GET timeline`, `nock.timeline`): an agent answered you, an item
+// came up for review or a new version of one, a topic opened, changed state or status, came back.
+// They are the same events nock's browser and desktop notifications tell (`nock.notify`). Each
+// leads to its topic with the thing opened: the item in the viewer, a decision expanded, a chat
+// open (`#topics/REF~chat`). Search ranks them as the topics' search does; the filters keep one kind;
+// Ask is the Topics tab's (`topics/ask`). What came since the owner last left the tab is marked new.
+(() => {
+  const $ = id => document.getElementById(id);
+  const escape = studio.escape;
+  const POLL = 5000;
+  const PAGE = 60;
+  const stored = (key, fallback) => { try { return localStorage.getItem(key) ?? fallback; } catch { return fallback; } };
+  const store = (key, value) => { try { if (value === null) localStorage.removeItem(key); else localStorage.setItem(key, value); } catch { /* a private window */ } };
+  const FILTERS = {
+    all: { label: "All" },
+    answers: { label: "Answers", title: "What agents wrote in the chats: their answers to you, and the rest" },
+    review: { label: "For review", title: "Items submitted for your verdict, and their new versions" },
+    topics: { label: "Topics", title: "Topics opened, their state and status, revivals" },
+  };
+  const state = {
+    shown: false, raw: "", events: [], total: 0, counts: {}, limit: PAGE, query: "", mode: "search", ask: null, dismissed: null,
+    filter: FILTERS[stored("nock.timeline.filter", "all")] ? stored("nock.timeline.filter", "all") : "all",
+    // What the owner had seen when they last left the tab: anything newer is new.
+    seen: stored("nock.timeline.seen", ""),
+  };
+  const ICONS = {
+    topic: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 2h12v3H2zM2 6.5h12v3H2zM2 11h8v3H2z" fill="currentColor"/></svg>',
+    state: '<svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="5.5" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="m5.5 8.2 1.8 1.8 3.4-3.8" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+    status: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 4h11M2.5 8h7M2.5 12h9" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>',
+    revived: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8a5 5 0 1 0 1.5-3.6M3 2.5v2.5h2.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+    item: '<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="2.5" y="2.5" width="11" height="11" rx="2.5" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M8 5.5v5M5.5 8h5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>',
+    version: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5 3.5h7.5v9H5zM3.5 5v8.5H11" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>',
+    answered: '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M8 5 3.5 9.5 8 14M3.5 9.5H11c3 0 5.5 2.3 5.5 5.5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+    message: '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 4.5h12a1.5 1.5 0 0 1 1.5 1.5v7a1.5 1.5 0 0 1-1.5 1.5H9l-3.5 3v-3H4A1.5 1.5 0 0 1 2.5 13V6A1.5 1.5 0 0 1 4 4.5z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>',
+  };
+  const fileUrl = event => `topics/file/${[event.topic, event.ref.split("/")[1], event.version, ...event.file.split("/")].map(encodeURIComponent).join("/")}`;
+
+  // A day's heading: Today, Yesterday, or the date.
+  function day(moment) {
+    const when = new Date(moment), today = new Date();
+    const start = date => new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+    const days = Math.round((start(today) - start(when)) / 86400000);
+    if (days === 0) return "Today";
+    if (days === 1) return "Yesterday";
+    return when.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", ...(when.getFullYear() !== today.getFullYear() ? { year: "numeric" } : {}) });
+  }
+
+  // A notification: what happened, where, a preview, its time; a picture's or a video's own face.
+  function card(event) {
+    const fresh = state.seen && event.moment > state.seen;
+    const where = event.ref ? `<span class="place"><span class="topic">${escape(event.topic)}</span><span class="title">${studio.render.titled(event.title || "")}</span></span>`
+      : `<span class="place"><span class="topic">${escape(event.topic)}</span>${event.state ? `<span class="state">${escape(event.state)}</span>` : ""}</span>`;
+    const face = event.file && ["image", "video"].includes(event.type)
+      ? `<span class="still">${event.type === "image" ? `<img src="${fileUrl(event)}" alt="" loading="lazy">` : `<video src="${fileUrl(event)}#t=0.1" preload="metadata" muted playsinline tabindex="-1"></video>`}</span>` : "";
+    const preview = event.preview ? `<span class="gist">${studio.render.inline(event.preview)}</span>` : "";
+    return `<a class="event ${escape(event.kind)}${fresh ? " new" : ""}" data-key="${escape(event.key)}" href="${escape(event.address)}">
+      <span class="sign" aria-hidden="true">${ICONS[event.kind] || ICONS.message}</span>
+      <span class="body"><span class="headline"><strong>${escape(event.text)}</strong>${studio.render.time(event.moment)}</span>${where}${preview}</span>${face}</a>`;
+  }
+
+  function drawList() {
+    let markup = "", last = "";
+    for (const event of state.events) {
+      const heading = state.query.trim() ? "" : day(event.moment);
+      if (heading && heading !== last) { markup += `<h3 class="label day" data-key="day:${escape(heading)}">${escape(heading)}</h3>`; last = heading; }
+      markup += card(event);
+    }
+    if (!state.events.length) {
+      markup = `<div class="empty" data-key="empty"><strong>${state.query.trim() ? "No matches" : "Nothing yet"}</strong><span>${state.query.trim() ? "No event holds that." : "What agents do in the topics shows here as it happens."}</span></div>`;
+    }
+    if (state.total > state.events.length) markup += `<button type="button" class="button secondary more" data-key="more" data-more>Show more · ${state.total - state.events.length}</button>`;
+    studio.morph($("timeline-main"), markup);
+  }
+
+  function drawSift() {
+    const chips = Object.entries(FILTERS).map(([name, filter]) =>
+      `<button type="button" class="chip" data-timeline-filter="${name}" data-key="filter:${name}" aria-pressed="${state.filter === name}"${filter.title ? ` title="${escape(filter.title)}"` : ""}>${escape(filter.label)} <span class="count">${state.counts[name] ?? ""}</span></button>`).join("");
+    studio.morph($("timeline-sift"), `<div class="chips" role="group" aria-label="Filter" data-key="filters">${chips}</div>`);
+  }
+
+  function drawBar() {
+    for (const button of document.querySelectorAll("[data-timeline-mode]")) button.setAttribute("aria-pressed", String(button.dataset.timelineMode === state.mode));
+    const input = $("timeline-input");
+    input.placeholder = state.mode === "search" ? "search the timeline" : "ask about the topics, the items, what was decided";
+    input.setAttribute("aria-label", state.mode === "search" ? "Search the timeline" : "Ask about the topics");
+    $("timeline-clear").hidden = state.mode !== "search" || !input.value;
+    $("timeline-send").hidden = state.mode !== "ask" || !input.value.trim();
+    $("timeline-send").disabled = !!state.ask?.running;
+  }
+
+  function drawAnswer() {
+    const place = $("timeline-answer"), ask = state.ask;
+    if (!ask || ask.started === state.dismissed) { place.hidden = true; studio.morph(place, ""); return; }
+    place.hidden = false;
+    if (ask.running) {
+      studio.morph(place, `<div class="head"><span class="spinner" aria-hidden="true"></span><span class="question">${escape(ask.question)}</span><span>asking since ${studio.render.time(ask.started)}</span><button type="button" class="button secondary" data-timeline-cancel>Cancel</button></div>`);
+      return;
+    }
+    const cards = (ask.items || []).map(ref => `<a class="mini" data-key="mini:${escape(ref)}" href="#topics/${escape(ref)}"><span class="ref">${escape(ref)}</span></a>`).join("");
+    studio.morph(place, `<div class="head"><span class="question">${escape(ask.question)}</span><button type="button" class="button ghost" data-timeline-dismiss aria-label="Close the answer">×</button></div>
+      ${ask.problem ? `<pre class="problem">${escape(ask.problem)}</pre>` : `<div class="context">${studio.render.markdown(ask.answer)}</div>`}
+      ${cards ? `<div class="cards">${cards}</div>` : ""}`);
+  }
+
+  function draw() {
+    const fresh = state.seen ? state.events.filter(event => event.moment > state.seen).length : 0;
+    studio.summary("timeline", state.total ? `${state.total} ${state.total === 1 ? "event" : "events"}${fresh ? ` · ${fresh} new` : ""}` : "nothing yet");
+    drawBar();
+    drawSift();
+    drawAnswer();
+    drawList();
+  }
+
+  async function load() {
+    const query = state.mode === "search" ? state.query.trim() : "";
+    const address = `timeline?${new URLSearchParams({ query, filter: state.filter, limit: String(state.limit) })}`;
+    try {
+      const [raw, asked] = await Promise.all([fetch(address).then(response => response.text()), fetch("topics/ask").then(response => response.json())]);
+      if ((state.mode === "search" ? state.query.trim() : "") !== query) return;
+      const changed = raw !== state.raw || JSON.stringify(asked.ask) !== JSON.stringify(state.ask);
+      state.ask = asked.ask;
+      if (!changed) return;
+      state.raw = raw;
+      const data = JSON.parse(raw);
+      state.events = data.events; state.total = data.total; state.counts = data.counts;
+      draw();
+    } catch {
+      studio.summary("timeline", "Lost touch with nock — is `nock studio` still running?");
+    }
+  }
+
+  async function post(path, body) {
+    const response = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    const answer = await response.json();
+    if (!response.ok) throw new Error(answer.error);
+    return answer;
+  }
+  async function ask() {
+    const question = $("timeline-input").value.trim();
+    if (!question || state.ask?.running) return;
+    try { state.ask = await post("topics/ask", { question }); } catch (error) { studio.toast(error.message); return; }
+    state.dismissed = null;
+    draw();
+  }
+
+  const root = $("timeline-tab");
+  root.addEventListener("click", event => {
+    const target = event.target;
+    const mode = target.closest("[data-timeline-mode]");
+    if (mode) { state.mode = mode.dataset.timelineMode; state.query = state.mode === "search" ? $("timeline-input").value : ""; state.raw = ""; load(); drawBar(); $("timeline-input").focus(); return; }
+    const filter = target.closest("[data-timeline-filter]");
+    if (filter) { state.filter = filter.dataset.timelineFilter; store("nock.timeline.filter", state.filter === "all" ? null : state.filter); state.limit = PAGE; state.raw = ""; load(); return; }
+    if (target.closest("#timeline-clear")) { $("timeline-input").value = ""; state.query = ""; state.raw = ""; load(); drawBar(); $("timeline-input").focus(); return; }
+    if (target.closest("#timeline-send")) { ask(); return; }
+    if (target.closest("[data-more]")) { state.limit += PAGE; state.raw = ""; load(); return; }
+    if (target.closest("[data-timeline-cancel]")) { post("topics/ask/cancel", {}).then(found => { state.ask = found; draw(); }); return; }
+    if (target.closest("[data-timeline-dismiss]")) { state.dismissed = state.ask?.started; draw(); }
+  });
+  root.addEventListener("input", event => {
+    if (event.target.id !== "timeline-input") return;
+    if (state.mode === "search") { state.query = event.target.value; state.limit = PAGE; state.raw = ""; load(); }
+    drawBar();
+  });
+  document.addEventListener("keydown", event => {
+    if (!state.shown || event.target.id !== "timeline-input") return;
+    if (event.key === "Enter" && state.mode === "ask") { event.preventDefault(); ask(); }
+    else if (event.key === "Escape") { event.target.value = ""; state.query = ""; state.raw = ""; load(); drawBar(); event.target.blur(); }
+  });
+
+  studio.register("timeline", {
+    show() { state.shown = true; state.raw = ""; load(); },
+    // Leaving, what it showed counts as seen: next time, only what came since is new.
+    hide() {
+      state.shown = false;
+      const newest = state.events[0]?.moment;
+      if (newest && (!state.seen || newest > state.seen) && !state.query.trim() && state.filter === "all") { state.seen = newest; store("nock.timeline.seen", newest); }
+    },
+  });
+  setInterval(() => { if (state.shown && !document.hidden) load(); }, POLL);
+  setInterval(() => { if (state.shown) draw(); }, 30000);
+})();
+</script>

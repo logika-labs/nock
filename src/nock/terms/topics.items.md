@@ -1,7 +1,7 @@
 ---
 term: topics.items
-aliases: [item, items, submit, files, derived, screenshot, screenshots]
-description: An item: a title and one asset, a decision, a project file or a derived file
+aliases: [item, items, submit, files, derived, screenshot, screenshots, asset, assets, description]
+description: An item: a title, a description, and one decision or asset
 ---
 
-`.nock/nock items create TOPIC '{"title": …, "decision": {…}}'`, one asset per item: a decision (`docs topics.decisions`), with the project `files` it concerns; one project file; or one `derived` file (`docs topics.derived`). Several files go in several items; variants of one are options (`docs topics.options`). Bare: no notes. Its ref is `topic/slug`. Move: `items update REF '{"topic": T}'`.
+`.nock/nock items create TOPIC '{"title": "Checkout email", "description": "The receipt after a paid order", …}'`: a short title, the details in `description`. Then one decision (`docs topics.decisions`) with the project `files` it concerns, or one asset: a project file or a `derived` file (`docs topics.derived`), or its variants (`docs topics.variants`). Bare: no notes. Ref: `topic/slug`. Move: `items update REF '{"topic": T}'`.

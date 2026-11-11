@@ -53,8 +53,9 @@ what waits on you, and what is finished, and you can search all of it.
 
 ## Items
 
-Into a topic go **items**. An item is bare, a title and one asset in each of its
-versions, of three kinds:
+Into a topic go **items**. An item is bare: a short title, a description
+under it with the details, and in each of its versions one decision or one
+asset:
 
 - a **decision**: the answer, written for someone who knows what the system
   does but not how it's built, the alternatives really weighed and why not,
@@ -77,9 +78,11 @@ $ .nock/nock items create charge-sweep '{"title": "The lapsed payment email",
                  "recipe": {"command": "uv run python dev/render.py lapsed --output out/"}}]}'
 ```
 
-Several files are several items, with one exception: **options**, variants of
-one asset, such as three takes on a banner, submitted with `"options": true`
-and shown side by side, for you to star the one you prefer.
+Several files are several items, with one exception: **variants**, takes on
+one asset, such as three takes on a banner, submitted with `"variants": true`
+and shown side by side, for you to star the one you prefer; you accept the
+asset once one is starred. An asset may also hold **views**, HTML pages with
+nock's look that lay its variants out, such as each favicon at three sizes.
 
 A decision is submitted only when a later reader would ask "why": a choice
 between real alternatives you haven't already made, a deliberate
@@ -94,16 +97,20 @@ Everything is kept in the main checkout's `.nock/topics/`, committed whichever
 worktree wrote it, so you see it at once; a file over 20 MB stays on the
 machine, uncommitted. Every record keeps who wrote it, down to the subagent.
 
-## Reviewing in Work
+## Reviewing in Topics
 
-`nock studio` serves your page on your machine, and its **Work** tab is the
+`nock studio` serves your page on your machine, and its **Topics** tab is the
 queue. Each topic is a row: its name and status, what it holds ("4 decisions ·
-6 images · 3 texts"), its verdicts ("3 open · 12 accepted"), its state and how
-long ago it moved. It opens in place, its items in sections: decisions as
-bubbles that open on the answer and its alternatives; pictures as a line of
-thumbnails; texts as a line of previews; options as one card.
+9 assets"), its verdicts ("3 open · 12 accepted"), its state and how long ago
+it moved. It opens in place, its items in two sections: decisions as bubbles
+that open on the answer and its alternatives, and assets as a grid of cards or
+a list of rows. A card shows the asset (the preferred variant, else the first),
+its state at the top right (accepted, rejected, a star for a variant preferred,
+or how many variants wait for one), and along its foot when it last changed,
+its chat, and as much of its title and description as fits.
 
-A picture or a text opens in a viewer. **Compare** puts two versions side by
+An asset opens in a viewer, its chat open beside it, one size whatever it
+holds. **Compare** puts two versions side by
 side, a text as a line diff with the changed words marked, a picture zoomed
 and panned in step with its other version, so you can check a detail. A video
 plays with its captions, and two versions play together. ← and → step through
@@ -117,12 +124,19 @@ answers with the items it relied on. The filters keep what matters at hand:
 **Waiting on agent**, **Todo** and **Active**; done topics and dropped items
 stay hidden until you show them.
 
+The **Timeline** tab shows the same topics as a feed of notifications, the
+newest first: an agent answered you, an item came up for review or a new
+version of one, a topic opened, changed state or status, or came back. Each has
+a preview and leads to the thing itself, opened: the item in the viewer, the
+chat with the answer. It searches and asks as Topics does, and its filters
+keep the answers, what is for review, or the topics' own changes.
+
 You don't have to keep looking. When a topic is your turn again (it moved to
 review, an agent answered you, or an item you rejected has a new version),
-nock tells you once, however many items the burst brought: "checkout is ready for
-review: 3 decisions, 2 files", on the desktop, or in the studio while it is
-open (its settings turn on the browser's notifications for when it is away),
-and a click opens the topic. `notifications = false` turns it off.
+nock tells you once, however many items the burst brought, on the desktop, or
+in the studio while it is open (its settings turn on the browser's
+notifications for when it is away), and a click opens what it tells of. These
+are the Timeline's own events. `notifications = false` turns it off.
 
 ## Verdicts
 
@@ -155,7 +169,8 @@ Files dropped into a chat go with your message, and the microphone records
 what you say and has it made text, by a Whisper server you name in the studio's
 settings, for you to edit before you send.
 
-You don't have to answer each comment in its own session. **Address my
+You don't have to wait for a session to answer. Under your waiting message,
+**Address now** sends an agent to answer it at once. **Address my
 comments**, over the chat's composer while comments wait ("Address my 3
 comments"), starts an agent that answers them all, each in its own thread, as
 an agent working the threads would: a reply, a new version of the item, a
@@ -169,14 +184,14 @@ they stay on your machine, never committed.
 
 ## Tidy up
 
-Work gets messy: items filed under the wrong topic, two topics that are one,
+The topics get messy: items filed under the wrong topic, two topics that are one,
 one that sprawls, statuses gone stale. **Tidy up**, at the end of the filters'
 line, sends an agent to reorganize it, after a short confirm. It moves misplaced
 items, merges near-duplicate topics and splits sprawling ones, sets each
 topic's state and status from what is there, drops stale or superseded items
 with a comment (it never accepts, nor asks for rework), and gives the open
 topics a priority, a reason in each status. Its changes land as one commit,
-"Work tidied up: …", and **Undo** reverts it.
+"Topics tidied up: …", and **Undo** reverts it.
 
 ## The map and consulting
 

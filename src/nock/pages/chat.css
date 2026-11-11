@@ -1,4 +1,4 @@
-/* Work's filters and Tidy up, under the bar; and the global chat, which the topics tab draws on
+/* The topics' filters and Tidy up, under the bar; and the global chat, which the topics tab draws on
    every tab. The chat is a chat like the others (pages/topics.css: its foil shadow, its messages,
    its composer), anchored under its button at the top right with a fixed height; pinned, it docks
    to the right half of the screen. */

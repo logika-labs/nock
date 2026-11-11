@@ -58,15 +58,19 @@ src/nock/
   logika.py          the `logika` kind: Ledger (logika.json read and counted), LogikaRound,
                      and what its two parts read: Material (rules), Analytics
   kinds.py           KINDS: the kinds of round, the default first; adding one is an entry here
-  topics.py          Topics: topics and their items (decision, project and derived files, by
-                     version), the owner's verdicts, the threads, search, what waits on an
-                     agent, what an edited file's items are, the map's problems
+  topics.py          Topics: topics and their items (a decision, or an asset: a project or a
+                     derived file, its variants and views, by version), where their files are
+                     (`located`, `write_file`: the one layer reading and writing them), the
+                     owner's verdicts, the threads, search, what waits on an agent, what an
+                     edited file's items are, the map's problems
+  timeline.py        Timeline: what happened in the topics, read from them as events, newest
+                     first; the notifications are these events
   migration.py       Migration: an earlier nock's decisions and review items into topics, once; Splitting: one asset per item
   asking.py          Asker: the studio's Ask, a fresh agent answering through `topics answer`
   chats.py           Chats: the studio's chat with a headless agent (a session per chat,
                      streamed, resumed or re-briefed with its transcript, named on leaving),
-                     Tidy up (its writes as one commit, Undo a revert) and Address my
-                     comments; `.nock/local/chats/`
+                     Tidy up (its writes as one commit, Undo a revert), Address my
+                     comments and Address now (one thread); `.nock/local/chats/`
   studio.py          the owner's page (`nock studio`): a local server, a Tab per tab, the chat's
                      routes; `code_moment`, so a studio older than its code offers to restart
                      in place (`POST /restart`, a re-exec on the same port)
@@ -77,7 +81,9 @@ src/nock/
                      timestamp); studio.css, its look (`--foil-ring` the verdict marks'), put in the shell;
                      NAME.html, each tab's fragment (markup, style, a script registering it);
                      topics.css, the topics tab's own look, put before its fragment;
-                     chat.css, Work's filters and Tidy up and the global chat, with topics.css
+                     chat.css, the topics' filters and Tidy up and the global chat, with topics.css;
+                     timeline.css, the Timeline's (on the topics' look); view.css, the look a
+                     view is served with; icon.png, nock's logo, shown with every notification
   status.py          Standing: a round due, the open items by topic, what waits on agents in
                      Topics, an unshared summary
   share.py           Sharing: a round's summary, held to naming nothing, sent on the owner's word
@@ -432,11 +438,15 @@ there.
 
 `topics.Topics` keeps, in the main checkout's `.nock/topics/`, a directory
 per topic (`topic.json`: name, description, state, status, created, thread) holding a
-directory per item (`SLUG/item.json`: title, aliases, verdict, decided,
-created, the thread, and the versions' records) and its versions' files
-(`SLUG/N/`: `decision.json`, project files under `project/PATH`, derived
-files by name); a file over `LARGE` goes under `.nock/local/topics/`
-instead, `"local": true`. Every change is committed there with
+directory per item (`SLUG/item.json`: title, description, aliases, verdict,
+decided, created, the thread, `variants`, `preferred`, and the versions'
+records, each its `files` and `views`) and its versions' files (`SLUG/N/`:
+`decision.json`, project files under `project/PATH`, derived files and views
+by name); a file over `LARGE` goes under `.nock/local/topics/` instead,
+`"local": true`. Where a version's file is read and written is one layer,
+`located` and `write_file`, so the storage can change behind it. An item
+from before variants says `options` (`has_variants` reads either).
+Every change is committed there with
 `git commit --only` (`topics.committed`), so a worktree's item lands on the
 main branch at once; it skips the commit, and says so, when the main
 checkout is mid-merge or mid-rebase. A ref is `topic/slug`; `resolve` also
@@ -453,12 +463,14 @@ marked `revived`, and `current_description` reads the latest one (or an
 older `kind: "revival"` note) as the description. Every record's stamp is
 `Project.writer()`: `session`, `role`, and `parent` for a subagent or a
 dispatched session.
-`add_version` writes a version from `Content` (decision, files, derived),
-carrying over what it leaves out from the previous one, project files copied
-again from the working tree, and `check_assets` holds it to one asset: a
-decision (with the project files it concerns, no derived file) or one file;
-several only when the item has `options` (variants of one type, of which the
-owner's `prefer` records `preferred`, its version and name); `update_item` does it in place for an open item
+`add_version` writes a version from `Content` (decision, files, derived,
+views), carrying over what it leaves out from the previous one, project files
+copied again from the working tree, and `check_assets` holds it to one asset: a
+decision (with the project files it concerns, no derived file, no view) or one
+file; several only when the item has variants (of one type, of which the
+owner's `prefer` records `preferred`, its version and name; `give` accepts
+such an asset only once one of its latest version's is preferred, and
+`judge_topic` accepting all leaves it out); `update_item` does it in place for an open item
 (the latest version rewritten) or as `--version` (a new one, reopening the
 item), refusing an in-place change to a decided item (`ConflictError`). The
 owner's word is `judge` and `judge_topic` (a `Word`: verdict and comment, the
@@ -496,11 +508,21 @@ the owner says afterwards; `topics migrate --mark-seen`, on a project already
 migrated, records every word said so far as told (local state, nothing
 committed), idempotently. Then `migration.Splitting`, by the same commands,
 splits each item from before one asset per item that holds several files
-(not options): the item keeps its first file (a decision, its decision and
+(not variants): the item keeps its first file (a decision, its decision and
 project files) under its ref, each other file becomes `SLUG-FILE` with the
 versions holding it under their own numbers, the verdict kept and the thread
 copied after a `split` note dated at the item's creation, so it changes
 nothing about who spoke last; one commit, once.
+
+`timeline.Timeline` reads the topics as events (`Event`: a topic opened, its
+state or status changed, it was revived, an item submitted, a version made,
+an agent's message, marked when it answers the owner), newest first, each
+with a stable `key`, a preview and its address in the studio
+(`#topics/REF~chat` opens the chat, `~vN` a version). Nothing is stored, so
+it covers all of the topics' history and reads the same on every machine.
+`Topics.owners_turn` hands `notify.Notifications.tell` the event the agent
+just wrote (`TURNS`, by reason), whose key and address the notification row
+keeps: the Timeline and the notifications are one source.
 
 `consult.Consultant` renders `briefs/consult.md` with the caller's intent
 and context, the map, the project's tools and the checks, and dispatches a
@@ -537,7 +559,11 @@ listed in `TABS`, and a fragment whose script calls
 `studio.register(NAME, {show(route), hide()})`; the studio gives it
 `studio.summary` (the counts under the title) and `studio.toast`. Fragments
 share the page's scripts and styles, so a tab keeps its script in a closure
-and its style under its own class. Three tabs: `TopicsTab`, which serves every
+and its style under its own class. The band's title is nock's name; the menu
+holds the tabs and the settings, each group of them (sharing, notifications,
+transcription) folding on its own. Two tabs: `TimelineTab`, the timeline's
+events (`GET /timeline?query=&filter=&limit=`: searched as the topics are,
+kept to one filter of kinds, `FILTERS`); and `TopicsTab`, which serves every
 topic with its items and where each chat stands (`topics.chat_state`:
 pending, unseen since `studio.Seen`'s last look, kept in
 `.nock/local/studio/seen.json`), a version's files as they are, the owner's
@@ -551,7 +577,17 @@ environment variable the configuration names; refused while no URL is set,
 which the page shows as a faded recorder saying how to set one), and the Ask (`studio.Asking`: one `nock topics ask` process at a
 time, cancelled by stopping it; `asking.Asker` dispatches the asker seat,
 which answers through `nock topics answer`, held to naming items that
-exist).
+exist; `GET /topics/ask` where it stands, for the Timeline's bar). Its search
+ranks as `Topics.score` does (every word first, more often higher, then all
+but one, a word found where a word starts). A version's view is served at
+`/topics/view/TOPIC/SLUG/N/NAME` with `view.css` and `window.nock` put in its
+head, and any other name there is the version's file of that name, so a view
+reaches the item's files by relative addresses. The page draws a topic's
+assets as a grid of cards or a list of rows, and opens one in a viewer of
+one size, its chat open; under the owner's waiting message, Address now
+(`POST /chat/address` with the thread) sends the addresser to that one
+thread, and `chat.addressing` (the threads a running one answers) is in each
+thread's `chat`.
 
 The global chat is no tab: `studio.ChatRoutes` answers `/chat/…` for
 `chats.Chats`, and the topics tab's fragment draws it in `#topics-global`,
@@ -571,7 +607,7 @@ every chat (the topics tab's `Uploads`) and are moved to
 `.nock/local/chats/ID/STAMP/`, the agent told where to read them. Leaving a chat for a new one dispatches
 the `namer` (no tools) for a title and summary. `GET /chat/search/QUERY` is
 the Chats list's search: the chats holding every word in their title,
-summary or messages (`Chats.search`), the page marking the words as Work's
+summary or messages (`Chats.search`), the page marking the words as the topics'
 search does. Tidy up is a chat whose
 agent is the `tidier`: `Topics.commit` commits nothing for that role, and
 when it ends `Chats.gather` commits `.nock/topics` once; Undo is `git

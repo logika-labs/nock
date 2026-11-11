@@ -38,9 +38,10 @@ from nock.chats import Chats, Kind
 from nock.commands import schema_of
 from nock.configuration import with_table_settings
 from nock.errors import ConflictError, Error, NotFoundError, UsageError
-from nock.notify import Notifications, Watching
+from nock.notify import ICON, Notifications, Watching
 from nock.project import Project
 from nock.schema import validate
+from nock.timeline import Event, Timeline
 from nock.topics import (
     ATTACHMENTS,
     Author,
@@ -48,8 +49,10 @@ from nock.topics import (
     Verdict,
     attachment_name,
     chat_state,
+    entry_name,
     in_order,
     kind_of,
+    occurrences,
     state_of,
 )
 from nock.topics import Word as Verdicted
@@ -69,6 +72,8 @@ WORK = {
 PAGES = PACKAGE / "pages"
 SHELL = PAGES / "studio.html"
 LOOK = PAGES / "studio.css"
+# Views' look: what nock's own pages use, for a view laying out an asset's variants.
+VIEW_LOOK = PAGES / "view.css"
 
 
 def code_moment() -> int:
@@ -132,6 +137,13 @@ class Raw:
     """A file a tab answers with as it is, not as JSON."""
 
     path: Path
+
+
+@dataclass(frozen=True)
+class Html:
+    """A page a tab answers with, made for the request."""
+
+    text: str
 
 
 class Judged(TypedDict):
@@ -201,11 +213,11 @@ class Uploads:
                 left -= len(chunk)
         return self.record(path)
 
-    def adopt(self, path: Path) -> dict[str, Any]:
-        """A file kept elsewhere, moved here to be sent again."""
-        target = self.directory / secrets.token_hex(8) / path.name
+    def adopt(self, path: Path, name: str) -> dict[str, Any]:
+        """A file kept elsewhere, copied here under its NAME to be sent again."""
+        target = self.directory / secrets.token_hex(8) / attachment_name(name)
         target.parent.mkdir(parents=True)
-        shutil.move(path, target)
+        shutil.copy2(path, target)
         return self.record(target)
 
     def path(self, token: str) -> Path:
@@ -333,15 +345,19 @@ class TopicsTab(Tab):
     with its files, `/withdraw` takes it back while it waits for its answer
     (its files uploaded again), `/seen` records that they looked at a chat,
     `/transcribe` a recording made text (`nock.transcription`), `/ask` a
-    question about the topics (one at a time), `/ask/cancel` stops it."""
+    question about the topics (one at a time), `/ask/cancel` stops it; `GET
+    /topics/ask` where the question stands; `GET /topics/view/TOPIC/SLUG/N/NAME`
+    a version's view with nock's look (`view.css`), or a file beside it."""
 
     name = "topics"
-    title = "Work"
+    title = "Topics"
     raw = ("upload", "transcribe")
 
     def __init__(self, project: Project) -> None:
         super().__init__(project)
         self.topics = Topics(project)
+        # The studio's chats, for the threads Address now answers: set by the studio.
+        self.chats: Chats | None = None
         self.asking = Asking(project)
         self.seen = Seen(project)
         self.uploads = Uploads(project)
@@ -368,8 +384,14 @@ class TopicsTab(Tab):
         if parts[0] == "attachment" and ATTACHMENTS in parts[2:4]:
             slug = None if parts[2] == ATTACHMENTS else parts[2]
             return Raw(self.topics.attachment(parts[1], slug, "/".join(parts[3 if slug else 2 :])))
+        if parts[0] == "ask" and len(parts) == 1:
+            return {"ask": self.asking.state()}
         if parts[0] == "search":
             return self.search("/".join(parts[1:]))
+        if parts[0] == "view.css":
+            return Raw(VIEW_LOOK)
+        if parts[0] == "view" and len(parts) >= 5 and parts[3].isdigit():
+            return self.view(parts[1], parts[2], int(parts[3]), "/".join(parts[4:]))
         if parts[0] != "file" or len(parts) < 5 or not parts[3].isdigit():
             raise NotFoundError("no such page")
         return Raw(self.topics.file(parts[1], parts[2], int(parts[3]), "/".join(parts[4:])))
@@ -377,34 +399,45 @@ class TopicsTab(Tab):
     def search(self, query: str) -> dict[str, Any]:
         """What the Search field finds, in what the owner sees: a topic by its
         name, description, status and thread; an item by its title, its
-        decision, its files' names, the text of its text files, its videos'
-        captions, and its thread (a thread's messages with the names of the files they carry) — never a recipe, a `from`, a ref or nock's own notes (a split,
-        a revival, a task kept as a note). Every word must be found in the
-        topic and the item together, and one at least in the item itself."""
+        description, its decision, its files' names, the text of its text
+        files, its videos' captions, and its thread (a thread's messages with
+        the names of the files they carry) — never a recipe, a `from`, a ref
+        or nock's own notes (a split, a revival, a task kept as a note).
+        Ranked as `topics list --query` ranks (`Topics.score`): what holds
+        every word first, more often higher, then what holds all but one, and
+        so on down. `topics` are those whose own words hold every word (shown
+        whole); `items` every item holding at least one word itself, the
+        strongest first, its topic's words counting too; `order` the topics
+        by their strongest match."""
         wanted = query.lower().split()
         if not wanted:
-            return {"topics": [], "items": []}
-        topics, items = [], []
+            return {"topics": [], "items": [], "order": []}
+        topics, items, best = [], [], {}
         for name in self.topics.names():
             record = self.topics.topic(name)
             around = " ".join(
                 [
-                    name,
                     record.get("description") or "",
                     self.topics.current_description(record),
                     record.get("status") or "",
                     *talk_of(record["thread"]),
                 ]
             ).lower()
-            if all(word in around for word in wanted):
+            heading = name.replace("-", " ")
+            points = self.topics.score(wanted, heading, around)
+            if points >= len(wanted) * 1000:
                 topics.append(name)
+                best[name] = points
             for item in self.topics.items(name):
                 own = self.seen_in(item)
-                if all(word in f"{around} {own}" for word in wanted) and any(
-                    word in own for word in wanted
-                ):
-                    items.append(f"{name}/{item['slug']}")
-        return {"topics": topics, "items": items}
+                if not any(occurrences(word, own) for word in wanted):
+                    continue
+                scored = self.topics.score(wanted, item["title"], f"{own} {heading} {around}")
+                items.append((scored, f"{name}/{item['slug']}"))
+                best[name] = max(best.get(name, 0), scored)
+        items.sort(key=lambda pair: -pair[0])
+        order = sorted(best, key=lambda name: -best[name])
+        return {"topics": topics, "items": [ref for _, ref in items], "order": order}
 
     def seen_in(self, item: dict[str, Any]) -> str:
         """An item's words as the owner sees them, lowercased; the text files
@@ -412,7 +445,7 @@ class TopicsTab(Tab):
         shown = self.topics.shown(item)
         latest = shown["versions"][-1]
         decision = latest.get("decision") or {}
-        parts = [item["title"], *talk_of(item["thread"])]
+        parts = [item["title"], item.get("description") or "", *talk_of(item["thread"])]
         if decision:
             parts.append(decision.get("answer") or "")
             for entry in decision.get("alternatives") or []:
@@ -437,9 +470,39 @@ class TopicsTab(Tab):
             self.texts[path] = kept
         return kept[1]
 
+    def view(self, topic: str, slug: str, version: int, name: str) -> Any:
+        """A version's view, with nock's look and the item's files named for it
+        (`window.nock.assets`); any other name, the version's file beside it,
+        so a view reaches them by relative addresses."""
+        item = self.topics.item(f"{topic}/{slug}")
+        record = next((entry for entry in item["versions"] if entry["version"] == version), None)
+        views = (record or {}).get("views", [])
+        if not any(entry["name"] == name for entry in views):
+            return Raw(self.topics.file(topic, slug, version, name))
+        page = self.topics.file(topic, slug, version, name).read_text(errors="replace")
+        assets = [
+            {
+                "name": entry_name(entry),
+                "type": entry["type"],
+                "title": item["title"],
+                "address": urllib.parse.quote(entry_name(entry)),
+                "preferred": (item.get("preferred") or {}).get("name") == entry_name(entry),
+            }
+            for entry in (record or {}).get("files", [])
+            if entry["kind"] != "decision"
+        ]
+        given = json.dumps({"assets": assets, "title": item["title"]}).replace("</", "<\\/")
+        head = (
+            '<link rel="stylesheet" href="/topics/view.css">'
+            f"<script>window.nock = {given};</script>"
+        )
+        at = page.lower().find("<head>")
+        return Html(page[: at + 6] + head + page[at + 6 :] if at >= 0 else head + page)
+
     def everything(self) -> list[dict[str, Any]]:
         found = []
         seen = self.seen.all()
+        addressing = self.chats.addressing() if self.chats is not None else set()
         for name in self.topics.names():
             record = self.topics.topic(name)
             items = self.topics.items(name)
@@ -450,13 +513,19 @@ class TopicsTab(Tab):
                     "state": str(state_of(record, items)),
                     "active": self.topics.activity(record, items),
                     "counts": self.topics.counts(items),
-                    "chat": chat_state(record["thread"], seen.get(name)),
+                    "chat": {
+                        **chat_state(record["thread"], seen.get(name)),
+                        "addressing": name in addressing,
+                    },
                     "items": [
                         {
                             **self.topics.shown(item),
-                            "chat": chat_state(
-                                item["thread"], seen.get(item["ref"]), item.get("decided")
-                            ),
+                            "chat": {
+                                **chat_state(
+                                    item["thread"], seen.get(item["ref"]), item.get("decided")
+                                ),
+                                "addressing": item["ref"] in addressing,
+                            },
                         }
                         for item in items
                     ],
@@ -505,7 +574,7 @@ class TopicsTab(Tab):
             text = self.topics.withdraw(
                 body.get("ref"),
                 body.get("topic"),
-                keep=lambda path, _: back.append(self.uploads.adopt(path)),
+                keep=lambda path, entry: back.append(self.uploads.adopt(path, entry["name"])),
             )
             return {"text": text, **({"attachments": back} if back else {})}
         if route == "seen":
@@ -530,7 +599,51 @@ class TopicsTab(Tab):
         raise NotFoundError("no such page")
 
 
-TABS: tuple[type[Tab], ...] = (TopicsTab,)
+# The Timeline's filters: each a few kinds of event (`timeline.Event`).
+FILTERS = {
+    "answers": (Event.ANSWERED, Event.MESSAGE),
+    "review": (Event.ITEM, Event.VERSION),
+    "topics": (Event.TOPIC, Event.STATE, Event.STATUS, Event.REVIVED),
+}
+# How many events the Timeline shows before More.
+SHOWN_EVENTS = 60
+
+
+class TimelineTab(Tab):
+    """`GET /timeline?query=Q&filter=F&limit=N`: the timeline's events
+    (`nock.timeline`), the newest first — or, searched, the strongest match
+    first — those of filter F (answers, review, topics), the first N, with
+    how many each filter holds. Ask goes to the topics tab's `/topics/ask`."""
+
+    name = "timeline"
+    title = "Timeline"
+
+    def __init__(self, project: Project) -> None:
+        super().__init__(project)
+        self.timeline = Timeline(project)
+
+    def fragment(self) -> str:
+        look = (PAGES / "timeline.css").read_text()
+        return f"<style>\n{look}</style>\n" + super().fragment()
+
+    def get(self, route: str) -> Any:
+        if route.split("?")[0]:
+            raise NotFoundError("no such page")
+        asked = urllib.parse.parse_qs(route.partition("?")[2])
+        query = asked.get("query", [""])[0]
+        chosen = asked.get("filter", ["all"])[0]
+        limit = asked.get("limit", [""])[0]
+        events = self.timeline.matching(self.timeline.events(), query)
+        counts = {"all": len(events)}
+        for name, kinds in FILTERS.items():
+            counts[name] = sum(1 for event in events if event["kind"] in kinds)
+        if chosen in FILTERS:
+            events = [event for event in events if event["kind"] in FILTERS[chosen]]
+        shown = int(limit) if limit.isdigit() else SHOWN_EVENTS
+        return {"events": events[:shown], "total": len(events), "counts": counts}
+
+
+TABS: tuple[type[Tab], ...] = (TopicsTab, TimelineTab)
 
 
 class Said(TypedDict):
@@ -540,6 +653,14 @@ class Said(TypedDict):
     id: NotRequired[str]
     text: str
     attachments: NotRequired[list[str]]
+
+
+class Thread(TypedDict):
+    """The one thread Address now answers: an item's (`ref`) or a topic's;
+    neither, every thread where the owner's comment waits."""
+
+    ref: NotRequired[str]
+    topic: NotRequired[str]
 
 
 class Which(TypedDict):
@@ -556,7 +677,7 @@ class ChatRoutes(Tab):
     being written; `POST /chat/send` the owner's message (a new chat without
     `id`), `/stop` stops the answer, `/leave` names the chat the owner
     leaves for a new one, `/tidy` starts Tidy up, `/undo` reverts its commit,
-    `/address` starts Address my comments;
+    `/address` starts Address my comments (with `ref` or `topic`, Address now: that one thread);
     `GET /chat/file/ID/PATH` a file a message carries. Files go up as in
     every chat (`topics/upload`), and are kept beside the chat."""
 
@@ -590,7 +711,8 @@ class ChatRoutes(Tab):
         if route == "tidy":
             return self.chats.tidy()
         if route == "address":
-            return self.chats.address()
+            validate(body, schema_of(Thread))
+            return self.chats.address(body.get("ref") or body.get("topic"))
         actions = {"stop": self.chats.stop, "leave": self.chats.leave, "undo": self.chats.undo}
         if route in actions:
             validate(body, schema_of(Which))
@@ -628,6 +750,7 @@ class Studio(ThreadingHTTPServer):
         topics = self.tabs[TopicsTab.name]
         assert isinstance(topics, TopicsTab)
         chat = ChatRoutes(project, topics.uploads)
+        topics.chats = chat.chats
         self.routes: dict[str, Tab] = {**self.tabs, chat.name: chat}
         self.chats = chat.chats
         self.asking = topics.asking
@@ -702,14 +825,16 @@ class Studio(ThreadingHTTPServer):
             "-.4 1.9H6.6l-.4-1.9-1.2-.7-1.8.6-1.4-2.4L3.2 8.7V7.3L1.8 6l1.4-2.4 1.8.6 1.2-.7z"
             'M8 10.2a2.2 2.2 0 1 0 0-4.4 2.2 2.2 0 0 0 0 4.4z"/></svg></button>\n'
             '        <div class="popover" id="settings" role="dialog" aria-label="Settings" hidden>\n'
+            '          <details class="group" id="sharing" open><summary><span>Sharing</span>'
+            f' <span class="state" id="share-state">{said}</span></summary>\n'
             '          <div class="setting"><span id="share-label">Share usage reports</span>'
-            f' <span class="state" id="share-state">{said}</span>'
             ' <button type="button" class="switch" role="switch" id="share-switch"'
             f' aria-checked="{str(answer is Answer.YES).lower()}" aria-labelledby="share-label">'
             "<span></span></button></div>\n"
             '          <p class="hint">Weekly at most, counts and categories only: never code,'
             " paths, names or what items say.</p>\n"
-            f"          <details><summary>What it holds</summary><p>{html.escape(QUESTION)}</p></details>\n"
+            f'          <details class="holds"><summary>What it holds</summary><p>{html.escape(QUESTION)}</p></details>\n'
+            "          </details>\n"
             f"{self.alerts()}"
             f"{self.transcription()}"
             "        </div>\n"
@@ -721,19 +846,19 @@ class Studio(ThreadingHTTPServer):
         away: the browser is asked only when the owner turns them on here."""
         if not self.notifications.enabled:
             return (
-                '          <div class="fields" id="alerts"><div class="setting"><span>Notifications</span>'
-                ' <span class="state">Off</span></div>\n'
-                '            <p class="hint"><code>notifications = false</code> in nock\'s config.</p></div>\n'
+                '          <details class="group" id="alerts"><summary><span>Notifications</span>'
+                ' <span class="state">Off</span></summary>\n'
+                '            <p class="hint"><code>notifications = false</code> in nock\'s config.</p></details>\n'
             )
         return (
-            '          <div class="fields" id="alerts" data-enabled>'
-            '<div class="setting"><span id="alerts-label">Notifications in this browser</span>'
-            ' <span class="state" id="alerts-state">Off</span></div>\n'
-            '            <p class="hint">When a topic is your turn again: here while the studio is'
-            " in front of you, from the browser while it is away, on the desktop when no page is"
-            " open.</p>\n"
+            '          <details class="group" id="alerts" data-enabled><summary>'
+            '<span id="alerts-label">Notifications</span>'
+            ' <span class="state" id="alerts-state">Off</span></summary>\n'
+            '            <p class="hint">In this browser, when a topic is your turn again: here while'
+            " the studio is in front of you, from the browser while it is away, on the desktop"
+            " when no page is open. The Timeline holds every one.</p>\n"
             '            <button type="button" class="save" id="alerts-allow">Turn on</button>\n'
-            "          </div>\n"
+            "          </details>\n"
         )
 
     def transcription(self) -> str:
@@ -744,10 +869,10 @@ class Studio(ThreadingHTTPServer):
             key: html.escape(str(settings.get(f"studio.{key}") or "")) for key in TRANSCRIPTION
         }
         return (
-            '          <form class="fields" id="transcription" aria-labelledby="transcription-label">\n'
-            '            <div class="setting"><span id="transcription-label">Transcription</span>'
+            '          <details class="group"><summary><span id="transcription-label">Transcription</span>'
             ' <span class="state" id="transcription-state">'
-            f"{'On' if value['transcribe_url'] else 'Off'}</span></div>\n"
+            f"{'On' if value['transcribe_url'] else 'Off'}</span></summary>\n"
+            '          <form class="fields" id="transcription" aria-labelledby="transcription-label">\n'
             '            <label>Whisper server <input name="transcribe_url" type="url" spellcheck="false"'
             ' placeholder="https://api.openai.com/v1" autocomplete="off"'
             f' value="{value["transcribe_url"]}"></label>\n'
@@ -760,7 +885,7 @@ class Studio(ThreadingHTTPServer):
             " variable names the environment variable holding the key, never the key. Kept on"
             " this machine, not committed.</p>\n"
             '            <button type="submit" class="save">Save</button>\n'
-            "          </form>\n"
+            "          </form></details>\n"
         )
 
     def configure(self, body: Any) -> dict[str, Any]:
@@ -831,7 +956,7 @@ class Studio(ThreadingHTTPServer):
 
 
 class Handler(BaseHTTPRequestHandler):
-    """`GET /` the page; `GET /restart` whether the code changed since it
+    """`GET /` the page; `GET /icon.png` nock's logo, for the notifications; `GET /restart` whether the code changed since it
     started and what is running, `POST /restart` starts it again in place;
     `GET /notifications` the page's poll for what to tell the owner;
     `POST /usage` the owner's answer on sharing, `/settings`
@@ -849,6 +974,9 @@ class Handler(BaseHTTPRequestHandler):
             return
         if self.path == "/restart":
             self.send_json(HTTPStatus.OK, self.studio.standing())
+            return
+        if self.path == "/icon.png":
+            self.send_file(ICON)
             return
         address = urllib.parse.urlsplit(self.path)
         if address.path == "/notifications":
@@ -890,7 +1018,10 @@ class Handler(BaseHTTPRequestHandler):
         self.answer(lambda tab, route: tab.post(route, body))
 
     def answer(self, call: Callable[[Tab, str], Any]) -> None:
-        name, _, route = self.path.split("?")[0].removeprefix("/").partition("/")
+        address, _, query = self.path.partition("?")
+        name, _, route = address.removeprefix("/").partition("/")
+        if name == TimelineTab.name and not route:
+            route = f"?{query}"
         tab = self.studio.routes.get(name)
         if tab is None:
             self.send_json(HTTPStatus.NOT_FOUND, {"error": "no such page"})
@@ -905,6 +1036,9 @@ class Handler(BaseHTTPRequestHandler):
             return
         if isinstance(value, Raw):
             self.send_file(value.path)
+            return
+        if isinstance(value, Html):
+            self.send(HTTPStatus.OK, value.text.encode(), "text/html")
             return
         self.send_json(HTTPStatus.OK, value)
 

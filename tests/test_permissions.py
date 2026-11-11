@@ -137,7 +137,7 @@ def test_each_seat_gets_exactly_its_tools_and_rules(
     monkeypatch.setenv("FAKE_ARGUMENTS", str(arguments))
     brief = (
         "NOTHING TO SHARE: <question> <intent> When each of the project's topics and items matters:"
-        " nock's studio # The conversation # Tidy up Work # Address my comments"
+        " nock's studio # The conversation # Tidy up the topics # Address my comments"
         " # Their message <message>\nhi\n</message>"
     )
     session = Dispatcher(project).launch(role, brief, project.root)

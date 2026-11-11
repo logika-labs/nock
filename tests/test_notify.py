@@ -17,7 +17,16 @@ from typing import Any
 
 import pytest
 
-from nock.notify import WATCHED, WINDOW, Notifications, Reason, Watching, desktop_command, display
+from nock.notify import (
+    ICON,
+    WATCHED,
+    WINDOW,
+    Notifications,
+    Reason,
+    Watching,
+    desktop_command,
+    display,
+)
 from nock.project import Project
 from nock.topics import Author, Topics
 from nock.utils import now, parse_moment
@@ -183,12 +192,14 @@ def test_the_desktop_command_opens_the_topic_on_a_click_where_the_platform_can(
         str(notifier),
         *("-title", "nock · demo", "-message", "eval is ready for review", "-open", address),
         *("-group", "nock-eval"),
+        *("-appIcon", str(ICON), "-contentImage", str(ICON)),
     ]
     assert desktop_command("nock", "text", address, "eval", "linux") is None
     sender = stand_in(tmp_path, "notify-send")
     assert desktop_command("nock", "text", address, "eval", "linux") == [
         str(sender),
         "--app-name=nock",
+        f"--icon={ICON}",
         "nock",
         f"text\n{address}",
     ]

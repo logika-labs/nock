@@ -12,7 +12,7 @@ nock's commands, which leave its writes uncommitted (`topics.TIDIER`); when
 it ends they land as one commit, which Undo reverts. So is Address my
 comments: an agent (`addresser`) answers each comment the owner left
 waiting in a thread, making new versions and changing the code where one
-asks for it.
+asks for it; Address now does the same for one thread.
 
 Chats are the owner's conversations, not the project's records: they are
 kept on this machine, in `.nock/local/chats/ID.json`, never committed."""
@@ -47,7 +47,7 @@ NAMER = "namer"
 # The topics, as the main checkout keeps them: what Tidy up commits.
 TOPICS = ".nock/topics"
 # What the owner's first message in a Tidy up chat says.
-TIDY_REQUEST = "Tidy up Work: regroup the items, set the topics' states, drop what is stale, and put the topics in order."
+TIDY_REQUEST = "Tidy up the topics: regroup the items, set the topics' states, drop what is stale, and put the topics in order."
 # How much of one comment the request to address them quotes; the agent reads the rest.
 QUOTED = 1_000
 # The longest naming may take, in seconds.
@@ -229,6 +229,7 @@ class Chats:
                         "updated": chat["updated"],
                         "messages": len(chat["messages"]),
                         "running": chat["id"] in self.turns,
+                        **({"refs": chat["refs"]} if chat.get("refs") else {}),
                         "naming": chat["id"] in self.naming,
                     },
                 )
@@ -349,23 +350,43 @@ class Chats:
             self.start(chat)
         return self.shown(chat["id"])
 
-    def address(self) -> dict[str, Any]:
+    def address(self, ref: str | None = None) -> dict[str, Any]:
         """Address my comments: a new chat whose agent answers every comment
-        the owner left waiting in a thread (one such chat at a time)."""
+        the owner left waiting in a thread; with REF (a topic's name or an
+        item's ref), Address now, the comment in that one thread. One such
+        chat at a time for each thread."""
         with self.lock:
-            running = [key for key in self.turns if self.load(key)["kind"] == Kind.ADDRESS]
-            if running:
-                raise ConflictError("your comments are being addressed already")
             comments = Topics(self.project).comments()
-            if not comments:
+            if ref is not None:
+                comments = [comment for comment in comments if comment["ref"] == ref]
+                if not comments:
+                    raise UsageError(f"no comment of yours waits for an answer in {ref}")
+            elif not comments:
                 raise UsageError("no comment of yours waits for an answer")
+            busy = self.addressing()
+            if any(comment["ref"] in busy for comment in comments):
+                raise ConflictError("your comments are being addressed already")
             chat = self.create(Kind.ADDRESS)
-            chat["title"] = "Address my comments"
+            chat["title"] = "Address now" if ref is not None else "Address my comments"
+            chat["refs"] = [comment["ref"] for comment in comments]
             said = address_request(comments)
             chat["messages"].append({"author": "owner", "text": said, "moment": now()})
             self.save(chat)
             self.start(chat)
         return self.shown(chat["id"])
+
+    def addressing(self) -> set[str]:
+        """The threads whose comments an agent is answering now."""
+        refs: set[str] = set()
+        with self.lock:
+            for key in list(self.turns):
+                try:
+                    chat = self.load(key)
+                except Error:
+                    continue
+                if chat["kind"] == Kind.ADDRESS:
+                    refs.update(chat.get("refs") or [])
+        return refs
 
     def create(self, kind: str) -> dict[str, Any]:
         moment = now()
@@ -540,7 +561,7 @@ class Chats:
         first = next(
             (line.strip("#*- ").strip() for line in summary.splitlines() if line.strip()), ""
         )
-        subject = f"Work tidied up: {first}" if first else "Work tidied up by Tidy up"
+        subject = f"Topics tidied up: {first}" if first else "Topics tidied up by Tidy up"
         if len(subject) > 100:
             subject = subject[:99] + "…"
         body = f"{subject}\n\n{summary}\n" if summary else subject

@@ -3,8 +3,11 @@ review, or an agent answered where the owner wrote last, or made a new version
 of an item they rejected), the nock process that records it tells them, once
 per topic per `WINDOW`: in the studio's page while one is watching (`WATCH`,
 which the running studio keeps), else as a native desktop notification whose
-click opens the studio at the topic. Each is a row of `notifications`, which
-the page reads; no display (CI, a headless agent) shows nothing."""
+click opens the studio at what it tells of. What it tells is the timeline's
+event (`nock.timeline`): the one the agent just wrote, its key kept with the
+notification, so the Timeline and the notifications are one source. Each is
+a row of `notifications`, which the page reads; no display (CI, a headless
+agent) shows nothing."""
 
 from __future__ import annotations
 
@@ -28,6 +31,8 @@ WINDOW = 300
 # The running studio's record, in `.nock/local/`: its process, its address and
 # how its page last said it is watched.
 WATCH = "studio.json"
+# nock's logo, the favicon's n, shown with every notification: packaged, so a vendored copy has it.
+ICON = Path(__file__).resolve().parent / "pages" / "icon.png"
 # Seconds a page's word on how it is watched holds: a hidden tab's timers run
 # about once a minute.
 WATCHED = 90
@@ -112,10 +117,11 @@ def display() -> bool:
 def desktop_command(
     title: str, text: str, address: str, topic: str, platform: str = sys.platform
 ) -> list[str] | None:
-    """The command that shows it. On macOS `terminal-notifier` when installed,
-    whose click opens the address; otherwise AppleScript's notification, which
-    cannot open anything on a click, so its text names the address. On Linux
-    `notify-send`, the address in its body."""
+    """The command that shows it, with nock's logo. On macOS `terminal-notifier`
+    when installed, whose click opens the address; otherwise AppleScript's
+    notification, which cannot open anything on a click (nor show a picture of
+    its own), so its text names the address. On Linux `notify-send`, the
+    address in its body."""
     if platform == "darwin":
         notifier = shutil.which("terminal-notifier")
         if notifier:
@@ -123,13 +129,14 @@ def desktop_command(
                 notifier,
                 *("-title", title, "-message", text, "-open", address),
                 *("-group", f"nock-{topic}"),
+                *("-appIcon", str(ICON), "-contentImage", str(ICON)),
             ]
         script = "on run argv\ndisplay notification (item 2 of argv) with title (item 1 of argv)\nend run"
         return ["osascript", "-e", script, title, f"{text} — {address}"]
     if platform.startswith("linux"):
         sender = shutil.which("notify-send")
         if sender:
-            return [sender, "--app-name=nock", title, f"{text}\n{address}"]
+            return [sender, "--app-name=nock", f"--icon={ICON}", title, f"{text}\n{address}"]
     return None
 
 
@@ -181,11 +188,12 @@ class Notifications:
         record = self.studio() or {"pid": os.getpid(), "address": ""}
         write_json(self.path, {**record, "seen": str(seen), "moment": at or now()})
 
-    def address(self, topic: str) -> str:
-        """The studio at the topic: the running one's address, else the configured port's."""
+    def address(self, topic: str, fragment: str | None = None) -> str:
+        """The studio at the topic, or at the place FRAGMENT names: the running
+        one's address, else the configured port's."""
         running = (self.studio() or {}).get("address")
         base = running or f"http://127.0.0.1:{self.project.configuration.get('studio.port')}/"
-        return f"{base}#topics/{topic}"
+        return f"{base}{fragment or f'#topics/{topic}'}"
 
     def page_watching(self, at: str) -> bool:
         record = self.studio()
@@ -194,11 +202,17 @@ class Notifications:
         return seconds_between(record.get("moment") or "", at) <= WATCHED
 
     def tell(
-        self, topic: str, reason: Reason, items: list[dict[str, Any]], at: str | None = None
+        self,
+        topic: str,
+        reason: Reason,
+        items: list[dict[str, Any]],
+        at: str | None = None,
+        event: dict[str, Any] | None = None,
     ) -> dict[str, Any] | None:
         """It is the owner's turn in TOPIC: record it and show it, unless they
         were told of this topic less than `WINDOW` seconds ago (or turned
-        notifications off); the row recorded, or None."""
+        notifications off); the row recorded, or None. EVENT is the timeline's
+        event it tells of, its address where a click leads."""
         if not self.enabled:
             return None
         at = at or now()
@@ -220,16 +234,19 @@ class Notifications:
                 "reason": str(reason),
                 "text": text,
                 "shown": str(shown),
+                "event": (event or {}).get("key"),
+                "address": (event or {}).get("address") or f"#topics/{topic}",
+                "preview": (event or {}).get("preview") or "",
             }
             row["id"] = self.project.store.insert("notifications", row)
         if shown is Shown.DESKTOP:
-            self.show(topic, text)
+            self.show(topic, text, row["address"])
         return row
 
-    def show(self, topic: str, text: str) -> None:
+    def show(self, topic: str, text: str, address: str | None = None) -> None:
         """On the desktop, left to run on its own: the caller does not wait."""
         command = desktop_command(
-            f"nock · {self.project.root.name}", text, self.address(topic), topic
+            f"nock · {self.project.root.name}", text, self.address(topic, address), topic
         )
         if command is None:
             return
@@ -252,5 +269,5 @@ class Notifications:
             "SELECT * FROM notifications WHERE id > ? ORDER BY id LIMIT 20", (after,)
         )
         for row in rows:
-            row["address"] = f"#topics/{row['topic']}"
+            row["address"] = row.get("address") or f"#topics/{row['topic']}"
         return {"latest": latest, "notifications": rows}

@@ -21,7 +21,7 @@ on:
   that is never committed;
 - **agents put their work before you** in topics: the decisions they made,
   the files they changed, what they made to show it. You accept, reject or
-  chat about each in the studio's Work tab (`.nock/nock studio`), when it
+  chat about each in the studio's Topics tab (`.nock/nock studio`), when it
   suits you; a topic whose work is built and waits only on your verdicts
   is in review;
 - **every week or so a reflection round** reads the record and improves the

@@ -260,7 +260,7 @@ def test_tidy_up_lands_as_one_commit_only_drops_and_undo_reverts_it(
     assert post(page, "tidy", {})[0] == 400
     shown = answered(page, started["id"])
     owner, agent = shown["messages"]
-    assert owner["author"] == "owner" and "Tidy up Work" in owner["text"]
+    assert owner["author"] == "owner" and "Tidy up the topics" in owner["text"]
     # What it said along the way is shown; its last message is the summary.
     assert (
         agent["text"] == "Reading the topics first.\n\nMoved refunds to billing\n\n- billing first"
@@ -268,7 +268,7 @@ def test_tidy_up_lands_as_one_commit_only_drops_and_undo_reverts_it(
     assert shown["summary"] == "Moved refunds to billing - billing first"
     # One commit for everything it did, and nothing left uncommitted.
     commits = git(project.root, "log", "--format=%H %s", f"{head}..HEAD").splitlines()
-    assert len(commits) == 1 and commits[0].endswith(" Work tidied up: Moved refunds to billing")
+    assert len(commits) == 1 and commits[0].endswith(" Topics tidied up: Moved refunds to billing")
     assert shown["tidy"]["commit"] == commits[0].split()[0]
     assert git(project.root, "status", "--porcelain") == ""
     topics = Topics(project)
@@ -290,7 +290,7 @@ def test_tidy_up_lands_as_one_commit_only_drops_and_undo_reverts_it(
     # Undo reverts that commit.
     status, undone = post(page, "undo", {"id": started["id"]})
     assert status == 200 and undone["tidy"]["reverted"]
-    assert git(project.root, "log", "-1", "--format=%s").startswith('Revert "Work tidied up')
+    assert git(project.root, "log", "-1", "--format=%s").startswith('Revert "Topics tidied up')
     topics = Topics(project)
     assert topics.item(misplaced)["topic"] == "orders"
     assert topics.item(stale)["verdict"] == "open"

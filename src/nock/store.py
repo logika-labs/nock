@@ -119,7 +119,10 @@ CREATE TABLE IF NOT EXISTS notifications (
     topic TEXT NOT NULL,
     reason TEXT NOT NULL,        -- review, answered or reworked
     text TEXT NOT NULL,          -- what it said
-    shown TEXT NOT NULL          -- studio (a page watching), desktop, or nowhere (no display)
+    shown TEXT NOT NULL,         -- studio (a page watching), desktop, or nowhere (no display)
+    event TEXT,                  -- the timeline event it told of (`nock.timeline`), by its key
+    address TEXT,                -- where in the studio it leads: `#topics/REF~chat`
+    preview TEXT                 -- the event's preview: what the agent said, the item's description
 );
 CREATE TABLE IF NOT EXISTS nudged (
     round TEXT NOT NULL          -- a round whose unshared summary, or a week's logika-round offer, a session start mentioned
@@ -127,9 +130,25 @@ CREATE TABLE IF NOT EXISTS nudged (
 """
 
 
+# Columns a table gained after it was first made: added to a database made before.
+ADDED = {"notifications": (("event", "TEXT"), ("address", "TEXT"), ("preview", "TEXT"))}
+# The databases already holding them, in this process.
+CURRENT: set[Path] = set()
+
+
 class Store:
     def __init__(self, path: Path) -> None:
         self.path = path
+
+    def add_columns(self, connection: sqlite3.Connection) -> None:
+        if self.path in CURRENT:
+            return
+        for table, columns in ADDED.items():
+            have = {row[1] for row in connection.execute(f"PRAGMA table_info({table})")}
+            for name, kind in columns:
+                if name not in have:
+                    connection.execute(f"ALTER TABLE {table} ADD COLUMN {name} {kind}")
+        CURRENT.add(self.path)
 
     @contextlib.contextmanager
     def connection(self) -> Iterator[sqlite3.Connection]:
@@ -138,6 +157,7 @@ class Store:
         connection.row_factory = sqlite3.Row
         try:
             connection.executescript(SCHEMA)
+            self.add_columns(connection)
             yield connection
             connection.commit()
         finally:

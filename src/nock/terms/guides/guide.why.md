@@ -60,7 +60,7 @@ to review in the same queue, with convenient ways for me to leave a comment
 on further work, compare different versions, choose amongst several options
 and so on.
 
-That queue is the studio's Work tab, and the whole of it is in [Review on your
+That queue is the studio's Topics tab, and the whole of it is in [Review on your
 time](#review-on-your-time).
 
 ## An experiment
