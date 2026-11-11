@@ -1,18 +1,15 @@
-"""nock.dev, in `web/`: the pages built from nock's guides and terms and `web/`, and publishing
-to a Pages repository — here a local bare one."""
+"""nock.dev, in `web/`: the pages built from nock's guides and terms and `web/`."""
 
 from __future__ import annotations
 
 import html
 import json
 import re
-import shutil
 import subprocess
 import sys
 from pathlib import Path
 
 from nock.docs import Docs
-from tests.conftest import git
 
 ROOT = Path(__file__).resolve().parent.parent
 WEB = ROOT / "web"
@@ -383,62 +380,3 @@ def test_llms_full_txt_is_every_guide_and_every_term_as_markdown(tmp_path: Path)
     prose = re.sub(r"```.*?```|`[^`\n]*`", "", text, flags=re.S)
     for target in re.findall(r"\]\(([^)\s]+)\)", prose):
         assert re.match(r"https?://|mailto:", target), target
-
-
-def publish(source: Path, pages: Path, answer: str = "", *options: str) -> str:
-    return subprocess.run(
-        [sys.executable, source / "web" / "publish.py", "--repository", str(pages), *options],
-        input=answer,
-        check=True,
-        capture_output=True,
-        text=True,
-    ).stdout
-
-
-def test_publishing_replaces_the_pages_tree_and_pushes_only_on_the_word(tmp_path: Path) -> None:
-    source = tmp_path / "nock"
-
-    def unbuilt(directory: str, names: list[str]) -> set[str]:
-        """What the build makes and the checkout gitignores."""
-        if Path(directory) == WEB / "site":
-            return {name for name in names if name not in ("style.css", "story.js", "fonts")}
-        return {name for name in names if name in ("pages", "__pycache__")}
-
-    shutil.copytree(WEB, source / "web", ignore=unbuilt)
-    shutil.copytree(ROOT / "src", source / "src", ignore=shutil.ignore_patterns("__pycache__"))
-    git(source, "init", "-q", "-b", "main")
-    git(source, "add", "-A")
-    git(source, "commit", "-q", "-m", "init")
-    pages = tmp_path / "pages.git"
-    git(tmp_path, "init", "-q", "--bare", str(pages))
-
-    assert "not pushed" in publish(source, pages, "", "--no-push")
-    checkout = source / "web" / "pages"
-    published = {path.name for path in checkout.iterdir()} - {".git"}
-    assert published == {
-        "CNAME",
-        ".nojekyll",
-        "index.html",
-        "robots.txt",
-        "sitemap.xml",
-        "llms.txt",
-        "llms-full.txt",
-        "style.css",
-        "story.js",
-        "getting-started",
-        "docs",
-        "privacy",
-        "terms",
-        "fonts",
-    }
-    assert (checkout / "CNAME").read_text() == "nock.dev\n"
-    assert not git(pages, "for-each-ref")
-
-    assert "not pushed" in publish(source, pages, "n\n")
-    assert not git(pages, "for-each-ref")
-
-    assert "published to https://nock.dev" in publish(source, pages, "y\n")
-    files = git(pages, "ls-tree", "-r", "--name-only", "main").splitlines()
-    assert {"CNAME", ".nojekyll", "index.html", "docs/index.html"} <= set(files)
-
-    assert "already up to date" in publish(source, pages, "", "--no-push")

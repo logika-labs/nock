@@ -1,6 +1,6 @@
 # nock.dev on Logika's box: /etc/caddy/sites/nock.dev.caddy (installed by `python3 web/deploy.py HOST`), imported by
 # the box's Caddyfile, which issues and renews the certificates. The pages are the release `current` names under
-# /srv/sites/nock.dev. It serves as GitHub Pages did: a directory's index.html, the bare path redirected to the
+# /srv/sites/nock.dev. It serves a directory's index.html, the bare path redirected to the
 # slashed one, files with their types; www.nock.dev redirects to nock.dev. No `log` directive: no access log.
 nock.dev {
 	header {
