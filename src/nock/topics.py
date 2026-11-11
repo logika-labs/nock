@@ -1785,9 +1785,8 @@ def occurrences(word: str, text: str) -> list[str]:
 
 
 def has_variants(item: dict[str, Any]) -> bool:
-    """Whether an item's files are variants of one asset (`options`, as an
-    item from before variants says it)."""
-    return bool(item.get("variants") or item.get("options"))
+    """Whether an item's files are variants of one asset."""
+    return bool(item.get("variants"))
 
 
 def variants_of(item: dict[str, Any]) -> list[dict[str, Any]]:

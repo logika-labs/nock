@@ -238,20 +238,16 @@ class Rounds:
         return self.project.local.joinpath("reflections", *self.place)
 
     def all(self) -> list[dict[str, Any]]:
-        """Every finished round, oldest first (rounds from before rounds had
-        directories included)."""
+        """Every finished round, oldest first."""
         if not self.directory.is_dir():
             return []
         records = []
-        paths = [*self.directory.glob("*/record.json"), *self.directory.glob("*.json")]
-        for path in paths:
+        for path in self.directory.glob(f"*/{RECORD_FILE}"):
             try:
                 record = read_json(path)
             except PreconditionError:
                 continue
-            record.setdefault(
-                "round", path.parent.name if path.name == "record.json" else path.stem
-            )
+            record.setdefault("round", path.parent.name)
             records.append(record)
         return sorted(records, key=lambda record: record.get("finished") or record["round"])
 

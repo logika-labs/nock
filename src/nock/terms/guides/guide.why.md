@@ -1,6 +1,6 @@
 ---
 term: guide.why
-aliases: [guide.about, guide.origin]
+aliases: []
 description: Why nock exists: the usual problems of AI engineering, the queue it grew into, and an experiment
 ---
 

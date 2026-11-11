@@ -342,7 +342,7 @@ def test_a_summary_is_vetted_and_shared_only_when_sent(
     server.server_close()
 
 
-def test_init_installs_the_skills_and_retires_the_old_ones(project: Project) -> None:
+def test_init_installs_the_skills(project: Project) -> None:
     skills = project.root / ".claude" / "skills"
     lead = (skills / "nock-reflect" / "SKILL.md").read_text()
     assert lead.startswith("---\nname: nock-reflect\n")
@@ -354,8 +354,6 @@ def test_init_installs_the_skills_and_retires_the_old_ones(project: Project) -> 
     assert ".nock/nock docs --full tools tools.signature" in (
         nock(project.root, "docs", "reflection.toolbox").stdout
     )
-    stale = skills / "nock-reflect" / "process.md"
-    stale.write_text("an earlier version's brief\n")
     assert (skills / "nock-triage" / "SKILL.md").read_text().startswith("---\nname: nock-triage\n")
     work = (skills / "nock-work" / "SKILL.md").read_text()
     assert work.endswith("\n---\n\nRun `.nock/nock docs work` and do what it says.\n")
@@ -366,11 +364,7 @@ def test_init_installs_the_skills_and_retires_the_old_ones(project: Project) -> 
         "Never kill a process you didn't start"
         in nock(project.root, "docs", "work.subagent").stdout
     )
-    old = skills / "consolidate" / "SKILL.md"
-    old.parent.mkdir()
-    old.write_text("---\nname: consolidate\n---\n")
     assert nock(project.root, "init").returncode == 0
-    assert not old.parent.exists() and not stale.exists()
 
 
 def test_a_round_s_window_opens_at_its_moment_whatever_the_machine_s_time_zone(

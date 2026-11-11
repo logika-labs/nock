@@ -18,7 +18,7 @@ from nock.project import Project
 from nock.timeline import Timeline
 from nock.topics import Author, Topics
 
-from .conftest import git, nock
+from .conftest import nock
 from .test_chats import answered
 from .test_chats import post as chat_post
 from .test_topics import open_topic, page, post, run, submit
@@ -36,9 +36,7 @@ def fetch(address: str, route: str) -> bytes:
         return response.read()
 
 
-def test_an_item_from_before_variants_reads_its_options_as_variants_and_a_description_is_added(
-    project: Project, page: str
-) -> None:
+def test_an_item_keeps_the_description_it_was_submitted_with(project: Project) -> None:
     ref = submit(
         project.root,
         {
@@ -48,20 +46,8 @@ def test_an_item_from_before_variants_reads_its_options_as_variants_and_a_descri
             "derived": [{"text": name, "name": f"{name}.md"} for name in "ab"],
         },
     )
-    assert (
-        run(project.root, "items", "show", ref)["description"]
-        == "Three takes on the landing banner"
-    )
-    path = project.root / ".nock" / "topics" / "orders" / ref.split("/")[1] / "item.json"
-    record = json.loads(path.read_text())
-    del record["variants"], record["description"]
-    path.write_text(json.dumps({**record, "options": True}))
-    git(project.root, "commit", "-qam", "An item as nock wrote it before variants")
-    assert post(page, "judge", {"ref": ref, "verdict": "accepted"})[0] == 400
-    assert post(page, "prefer", {"ref": ref, "version": 1, "name": "a.md"})[0] == 200
-    assert post(page, "judge", {"ref": ref, "verdict": "accepted"}) == (200, {"judged": [ref]})
-    # Nothing is moved or rewritten on disk: the item keeps its layout, with what was added.
-    assert sorted(json.loads(path.read_text())) == sorted([*record, "options", "preferred"])
+    shown = run(project.root, "items", "show", ref)
+    assert shown["description"] == "Three takes on the landing banner"
 
 
 def test_an_asset_with_variants_is_accepted_only_once_one_is_preferred(

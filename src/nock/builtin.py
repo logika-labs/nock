@@ -32,7 +32,6 @@ from nock.schema import check_schema, validate
 from nock.sessions import Sessions
 from nock.setup import (
     PERMISSION,
-    RETIRED_PERMISSIONS,
     Installer,
     Upgrader,
     ours,
@@ -973,11 +972,6 @@ def hooks_wired(project: Project) -> list[str]:
             f'Claude Code asks before `{rule.removeprefix("Bash(.nock/nock ").removesuffix(":*)")}` although `permissions.confirm` is "allow" — `.nock/nock init` allows it'
             for rule in sorted(asked)
             if ours(rule) and project.configuration.confirm() is Confirm.ALLOW
-        ]
-        + [
-            f"Claude Code allows `{rule}`, which lets `.nock/nock run` take any command unasked — `.nock/nock init` narrows it"
-            for rule in RETIRED_PERMISSIONS
-            if rule in allowed
         ]
         + [
             f"`{rule.removeprefix('Bash(').removesuffix(':*)')}` is not allowed yet, so Claude Code asks before each call — `.nock/nock init` allows it (it asks the owner)"

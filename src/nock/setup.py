@@ -106,13 +106,6 @@ IMPORT_LINE = "@.nock/context.md"
 SKILLS = ("nock-triage", "nock-work")
 # Skills any harness can follow, written to `.agents/skills/` too, where Codex reads them.
 PORTABLE_SKILLS = ("nock-work",)
-# Skills earlier versions installed, removed on install.
-RETIRED_SKILLS = ("reflect", "consolidate")
-# The briefs earlier versions installed beside a skill, now `nock docs` terms.
-RETIRED_SKILL_FILES = {
-    "nock-reflect": ("process.md", "knowledge.md", "nock.md"),
-    "nock-reflect-logika": ("rules.md", "analytics.md"),
-}
 HOOK_COMMAND = '"$CLAUDE_PROJECT_DIR"/.nock/nock hook {event}'
 # Codex and Cursor give a hook no project directory, and may run it in a subdirectory.
 OTHER_HOOK_COMMAND = '"$(git rev-parse --show-toplevel)"/.nock/nock hook {event} {harness}'
@@ -143,8 +136,6 @@ NEXT = (
 PERMISSION = "Bash(.nock/nock {path}:*)"
 LISTING = ("Bash(.nock/nock)", "Bash(.nock/nock --help)")
 UNLISTED = ("run",)
-# Rules earlier versions wrote: the blanket allow let `run` take any command unasked.
-RETIRED_PERMISSIONS = ("Bash(.nock/nock:*)",)
 
 
 def permission_rules(root: Path, kind: str) -> set[str]:
@@ -372,16 +363,6 @@ class Installer:
                     library.render(f"{name}/agents/{source.name}"),
                     f"the {source.stem} subagent, for Claude Code",
                 )
-        for name, files in RETIRED_SKILL_FILES.items():
-            for file in files:
-                relative = f".claude/skills/{name}/{file}"
-                if (self.root / relative).is_file():
-                    self.remove(relative, "an earlier version's brief, now a `nock docs` term")
-        for name in RETIRED_SKILLS:
-            relative = f".claude/skills/{name}/SKILL.md"
-            skill = self.root / relative
-            if skill.is_file() and skill.read_text().startswith(f"---\nname: {name}\n"):
-                self.remove(relative, "a skill earlier versions installed")
 
     def ours(self, relative: str, text: str) -> bool:
         path = self.root / relative
@@ -502,11 +483,7 @@ class Installer:
         permissions = settings.setdefault("permissions", {})
         allow, ask = wanted_permissions(Project(self.root))
         for kind, wanted in (("allow", allow), ("ask", ask)):
-            kept = [
-                rule
-                for rule in permissions.get(kind, [])
-                if not ours(rule) and rule not in RETIRED_PERMISSIONS
-            ]
+            kept = [rule for rule in permissions.get(kind, []) if not ours(rule)]
             if kept + wanted:
                 permissions[kind] = kept + wanted
             else:

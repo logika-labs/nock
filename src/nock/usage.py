@@ -87,32 +87,22 @@ RECORD = (
 )
 
 
-def sharing(project: Project) -> tuple[Answer, str | None]:
-    """The owner's answer, and a note when the setting is an earlier nock's
-    `[share]` table: `level = "none"` reads as no, anything else as yes,
-    which now shares only the report. `share` unset is the answer this
+def sharing(project: Project) -> Answer:
+    """The owner's answer: `share` in the config, or, unset, the answer this
     machine recorded, if any; else unanswered."""
     value = project.configuration.get("share")
     if value is None:
         answered = Usage(project).state().get("answered")
         if isinstance(answered, dict) and isinstance(answered.get("share"), bool):
-            return (Answer.YES if answered["share"] else Answer.NO), None
-        return Answer.UNANSWERED, None
-    if isinstance(value, bool):
-        return (Answer.YES if value else Answer.NO), None
-    if not isinstance(value, dict):
+            return Answer.YES if answered["share"] else Answer.NO
+        return Answer.UNANSWERED
+    if not isinstance(value, bool):
         raise PreconditionError(f"`share` is {value!r}: it is true or false")
-    shared = value.get("level") != "none"
-    said = f"`share.level = {json.dumps(value['level'])}`" if "level" in value else "`[share]`"
-    return (Answer.YES if shared else Answer.NO), (
-        f"{said} is an earlier nock's setting and reads as `share = {str(shared).lower()}`;"
-        " write `share = true` or `share = false` at the top of .nock/config.toml instead"
-        " (the endpoints are now under [endpoints])."
-    )
+    return Answer.YES if value else Answer.NO
 
 
 def shares(project: Project) -> bool:
-    return sharing(project)[0] is Answer.YES
+    return sharing(project) is Answer.YES
 
 
 def with_setting(text: str, key: str, value: bool) -> str:
@@ -122,10 +112,6 @@ def with_setting(text: str, key: str, value: bool) -> str:
     lines = text.splitlines(keepends=True)
     tables = [index for index, line in enumerate(lines) if line.lstrip().startswith("[")]
     top = tables[0] if tables else len(lines)
-    if any(line.strip() == f"[{key}]" for line in lines):
-        raise PreconditionError(
-            f"an earlier nock's `[{key}]` table is in the config: remove it, then answer again"
-        )
     setting = f"{key} = {str(value).lower()}\n"
     for pattern in (rf"^{key}\s*=", rf"^#\s*{key}\s*="):
         for index in range(top):
@@ -155,7 +141,7 @@ class Usage:
         """What to ask the owner, the first time on this machine they engage
         with nock while nobody has answered; nothing after that."""
         state = self.state()
-        if sharing(self.project)[0] is not Answer.UNANSWERED or state.get("asked"):
+        if sharing(self.project) is not Answer.UNANSWERED or state.get("asked"):
             return None
         state["asked"] = {"moment": str(moment), "at": now(), "prompt": QUESTION_VERSION}
         write_json(self.path, state)
@@ -235,16 +221,13 @@ class Usage:
 
     def since(self) -> str | None:
         """Where the next report starts: the last one's end, else the owner's
-        answer (or, from an earlier nock, when they were told) — nothing from
-        before is counted."""
+        answer — nothing from before is counted."""
         state = self.state()
         sent = state.get("sent") or []
         if sent:
             return sent[-1]["until"]
-        for key in ("answered", "disclosed"):
-            if isinstance(state.get(key), dict) and state[key].get("at"):
-                return state[key]["at"]
-        return None
+        answered = state.get("answered")
+        return answered["at"] if isinstance(answered, dict) and answered.get("at") else None
 
     def report(self, sending: bool = False) -> dict[str, Any]:
         """Exactly what the next send carries. Only a send makes the project's
@@ -341,7 +324,7 @@ class Usage:
         """The owner's answer (unanswered, yes or no) and when this machine
         asked and recorded it, the reports sent, when the next goes, and the
         next one exactly."""
-        answer, note = sharing(self.project)
+        answer = sharing(self.project)
         shared = answer is Answer.YES
         offered = answer is not Answer.NO
         state = self.state()
@@ -367,8 +350,6 @@ class Usage:
         if answer is Answer.UNANSWERED:
             standing["question"] = QUESTION
             standing["record"] = RECORD
-        if note:
-            standing["note"] = note
         return standing
 
 

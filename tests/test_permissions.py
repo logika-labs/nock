@@ -247,21 +247,6 @@ def test_init_allows_each_command_but_run_and_asks_for_the_owner_s(project: Proj
     assert nock(project.root, "check", "nock-wiring").returncode == 0
 
 
-def test_the_blanket_rule_earlier_versions_wrote_is_flagged_and_taken_out(
-    project: Project,
-) -> None:
-    settings = project.root / ".claude" / "settings.json"
-    written = json.loads(settings.read_text())
-    written["permissions"]["allow"] += ["Bash(.nock/nock:*)", "Bash(npm test:*)"]
-    settings.write_text(json.dumps(written))
-    stale = nock(project.root, "check", "nock-wiring")
-    assert stale.returncode == 1 and "`.nock/nock run` take any command" in stale.stdout
-    assert nock(project.root, "init").returncode == 0
-    allowed = json.loads(settings.read_text())["permissions"]["allow"]
-    assert "Bash(.nock/nock:*)" not in allowed and "Bash(npm test:*)" in allowed
-    assert nock(project.root, "check", "nock-wiring").returncode == 0
-
-
 def test_a_new_tool_asks_until_init_allows_it(project: Project) -> None:
     write_tool(project, "work", "import nock\n\n@nock.command\ndef ship():\n    '''Ship it.'''\n")
     unwired = nock(project.root, "check", "nock-wiring")

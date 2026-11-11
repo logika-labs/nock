@@ -18,16 +18,13 @@ ROOT = Path(__file__).resolve().parent.parent
 WEB = ROOT / "web"
 
 
-def built(site: Path, moved: bool = False) -> dict[str, str]:
-    """Build into `site`; every page by the address it is served at (with `moved`, the pages that
-    only send a visitor on, instead)."""
+def built(site: Path) -> dict[str, str]:
+    """Build into `site`; every page by the address it is served at."""
     subprocess.run([sys.executable, WEB / "build.py", "--site", site], check=True)
     pages = {}
     for path in site.rglob("*.html"):
         folder = "/".join(["", *path.parent.relative_to(site).parts, ""]).replace("//", "/")
-        text = path.read_text()
-        if ('http-equiv="refresh"' in text) == moved:
-            pages[folder if path.name == "index.html" else folder + path.name] = text
+        pages[folder if path.name == "index.html" else folder + path.name] = path.read_text()
     return pages
 
 
@@ -105,9 +102,11 @@ def test_the_art_is_web_sized_and_small() -> None:
         assert preview.stat().st_size < 300_000
 
 
-def test_every_link_between_pages_lands_and_old_addresses_are_sent_on(tmp_path: Path) -> None:
+def test_every_link_between_pages_lands_and_no_page_forwards_anywhere(tmp_path: Path) -> None:
     pages = built(tmp_path)
     for url, text in pages.items():
+        assert 'http-equiv="refresh"' not in text and "location.replace" not in text, url
+        assert 'content="noindex"' not in text, url
         for href in re.findall(r'href="([^"]+)"', text):
             if href.startswith("#"):
                 assert href[1:] in ids(text), (url, href)
@@ -117,44 +116,7 @@ def test_every_link_between_pages_lands_and_old_addresses_are_sent_on(tmp_path: 
                 path, _, anchor = href.partition("#")
                 assert path in pages, (url, href)
                 assert not anchor or anchor in ids(pages[path]), (url, href)
-    moved = json.loads(re.search(r"const moved = (\{.*?\});", pages["/docs/"]).group(1))
-    assert moved["a-tool"] == "/docs/cli/#a-tool"
-    assert moved["the-map"] == "/docs/review/#the-map-and-consulting"
-    assert moved["getting-started"] == "/docs/setup/#install"
-    assert moved["what-agents-see"] == "/docs/reflection/#the-first-session"
-    assert moved["the-projects-environment"] == "/docs/cli/#the-projects-environment"
-    for target in moved.values():
-        path, _, anchor = target.partition("#")
-        assert path in pages and (not anchor or anchor in ids(pages[path])), target
-    sent = built(tmp_path, moved=True)
-    old = {
-        "install",
-        "session",
-        "work",
-        "chat",
-        "tidy",
-        "topics",
-        "consult",
-        "tool",
-        "check",
-        "commands",
-        "settings",
-        "telemetry",
-        "permissions",
-        "sharing",
-        "developing",
-    }
-    assert set(sent) == {f"/docs/{name}/" for name in old} | {"/about/"}
-    for url, text in sent.items():
-        if url == "/about/":
-            continue
-        target = re.findall(r'<meta http-equiv="refresh" content="0; url=([^"]+)">', text)[0]
-        path, _, anchor = target.partition("#")
-        assert path in pages and anchor in ids(pages[path]), (url, target)
-        assert 'name="robots" content="noindex"' in text
-    assert "/docs/review/#topics" in sent["/docs/topics/"]
-    sitemap = (tmp_path / "sitemap.xml").read_text()
-    assert not any(f"https://nock.dev{url}<" in sitemap for url in sent)
+    assert "/about/" not in pages
 
 
 def test_the_story_pages_are_one_layout_with_a_minute_of_video_per_tab(tmp_path: Path) -> None:
@@ -195,19 +157,6 @@ def test_the_story_pages_are_one_layout_with_a_minute_of_video_per_tab(tmp_path:
     for still in re.findall(r'<img class="still" src="/videos/([^"]+)"', start):
         assert (WEB / "site" / "videos" / still).is_file()
     assert start.count('class="still"') == 2
-
-
-def test_a_page_that_is_gone_sends_its_visitor_on_and_is_not_listed(tmp_path: Path) -> None:
-    pages = built(tmp_path)
-    moved = built(tmp_path, moved=True)
-    assert "/about/" in moved
-    about = moved["/about/"]
-    assert '<meta http-equiv="refresh" content="0; url=/docs/why/">' in about
-    assert '<meta name="robots" content="noindex">' in about
-    assert '<link rel="canonical" href="https://nock.dev/docs/why/">' in about
-    assert "/about/" not in (tmp_path / "sitemap.xml").read_text()
-    assert "/about/" not in (tmp_path / "llms.txt").read_text()
-    assert not [url for url, text in pages.items() if 'href="/about/"' in text]
 
 
 def test_the_home_page_shows_nock_in_logika_with_its_art_beside_and_no_logika_scene(
@@ -476,7 +425,6 @@ def test_publishing_replaces_the_pages_tree_and_pushes_only_on_the_word(tmp_path
         "llms-full.txt",
         "style.css",
         "story.js",
-        "about",
         "getting-started",
         "docs",
         "privacy",

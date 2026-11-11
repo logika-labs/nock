@@ -70,46 +70,6 @@ REFERENCE_PAGE = (
     "Reference",
     "Every nock command and exit code, and every term your agents read with nock docs, each in full.",
 )
-# The docs' earlier pages, by the heading that holds their text now: their addresses are sent on to it.
-MOVED_PAGES = {
-    "install": "install",
-    "session": "the-first-session",
-    "work": "reviewing-in-topics",
-    "chat": "chatting",
-    "tidy": "tidy-up",
-    "topics": "topics",
-    "consult": "the-map-and-consulting",
-    "tool": "a-tool",
-    "check": "checks-hooks-and-generators",
-    "commands": "commands",
-    "settings": "settings",
-    "telemetry": "telemetry",
-    "permissions": "what-nocks-agents-may-do",
-    "sharing": "what-nock-shares",
-    "developing": "nock-is-its-own-first-user",
-}
-# Headings of the one-page docs, the README's sections before the guides and the guides' pages, by the
-# heading that has their text now: an old address, /docs/#ANCHOR or /docs/PAGE/#ANCHOR, is sent on to it.
-RENAMED = {
-    "getting-started": "install",
-    "reflection": "reflection-rounds",
-    "the-map": "the-map-and-consulting",
-    "consulting": "the-map-and-consulting",
-    "what-agents-see": "the-first-session",
-    "topics-and-items": "topics",
-    "reference": "commands",
-    "concepts": "why-nock",
-    "what-changes-for-you": "why-nock",
-    "commands-and-exit-codes": "commands",
-    "the-logika-round": "nock-in-logika",
-    "a-framework-not-a-library": "a-tool",
-    "the-projects-environment": "the-projects-environment",
-    "upgrading": "upgrading",
-    "your-tests-as-the-gate": "your-tests-as-the-gate",
-}
-# Pages that are gone, by their old address, with where they send a visitor now: a page that only
-# redirects, kept out of the sitemap and of search. About's story is the first essay's now.
-MOVED = {"/about/": "/docs/why/"}
 # Each legal page: its source in legal/ (and its plain-words summary, NAME-plain.md), its description.
 LEGAL = {
     "privacy": "What reaches nock's makers from nock.dev and from nock: the usage report, shared summaries, reports you write, and your rights.",
@@ -533,9 +493,8 @@ def art(name: str, wide: bool) -> str:
     return f'<img src="{ART}{file}" alt="{alt}" width="{width}" height="{height}"{loading}>'
 
 
-def docs_index(pages: list[Page], located: dict[str, str]) -> str:
-    """The essays as one list, each with its art, title and line, the reference page last; an
-    address naming a heading of the earlier docs goes to the page that has it now."""
+def docs_index(pages: list[Page]) -> str:
+    """The essays as one list, each with its art, title and line, the reference page last."""
     entries = []
     for page in pages:
         if page.art:
@@ -557,18 +516,7 @@ def docs_index(pages: list[Page], located: dict[str, str]) -> str:
 <ol class="essays">
 {chr(10).join(entries)}
 </ol>
-</div>
-<script>
-// The docs were one page; a link to one of its headings opens the page that has it now.
-const moved = {json.dumps(moved(located), sort_keys=True)};
-const anchor = decodeURIComponent(location.hash.slice(1));
-if (Object.hasOwn(moved, anchor)) location.replace(moved[anchor]);
-</script>"""
-
-
-def moved(located: dict[str, str]) -> dict[str, str]:
-    """Every heading anchor, and every renamed one, by where it is now."""
-    return located | {old: located[new] for old, new in RENAMED.items() if new in located}
+</div>"""
 
 
 def docs_page(page: Page, pages: list[Page], located: dict[str, str]) -> str:
@@ -851,23 +799,6 @@ def sitemap(lastmod: dict[str, str]) -> str:
     )
 
 
-def moved_page(target: str, located: dict[str, str]) -> str:
-    """A page that is gone: it sends the visitor on to `target` at once (or, when the address names
-    a heading that moved, to that heading), and asks not to be indexed."""
-    address = html.escape(ORIGIN + target)
-    return (
-        '<!doctype html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n'
-        f"<title>Moved · nock</title>\n"
-        '<meta name="robots" content="noindex">\n'
-        f'<link rel="canonical" href="{address}">\n'
-        f'<meta http-equiv="refresh" content="0; url={html.escape(target)}">\n'
-        f"<script>\nconst moved = {json.dumps(moved(located), sort_keys=True)};\n"
-        "const anchor = decodeURIComponent(location.hash.slice(1));\n"
-        f"location.replace(Object.hasOwn(moved, anchor) ? moved[anchor] : {json.dumps(target)});\n</script>\n"
-        f'</head>\n<body><p>This page has moved to <a href="{html.escape(target)}">{address}</a>.</p></body>\n</html>\n'
-    )
-
-
 def robots() -> str:
     return f"User-agent: *\nAllow: /\n\nSitemap: {ORIGIN}/sitemap.xml\n"
 
@@ -992,7 +923,7 @@ def build(site: Path, terms: Path | None = None, today: str | None = None) -> li
         "Docs · nock",
         "nock from first principles, in a few long essays, and the reference: every command and term.",
         "/docs/",
-        docs_index(pages, located),
+        docs_index(pages),
     )
     for page in pages:
         image = (f"{ART}{page.name}.jpg", ART_ALT[page.name]) if page.art else None
@@ -1009,12 +940,6 @@ def build(site: Path, terms: Path | None = None, today: str | None = None) -> li
             if page.art
             else [terms]
         )
-    for old, anchor in MOVED_PAGES.items():
-        if anchor not in located:
-            raise SystemExit(f"web/build.py: /docs/{old}/ moves to #{anchor}, which no page has")
-        if old in ESSAYS or old == "terms":
-            raise SystemExit(f"web/build.py: /docs/{old}/ is a page, so it cannot move")
-        written[f"docs/{old}/index.html"] = moved_page(located[anchor], located)
     for name, description in LEGAL.items():
         title, main = legal_page(name)
         head = (
@@ -1025,8 +950,6 @@ def build(site: Path, terms: Path | None = None, today: str | None = None) -> li
             f"/{name}/", f"{title} · nock", description, "", main, head
         )
         sources[f"/{name}/"] = [HERE / "legal" / f"{name}.md", HERE / "legal" / f"{name}-plain.md"]
-    for old, new in MOVED.items():
-        written[old.lstrip("/") + "index.html"] = moved_page(new, located)
     written["robots.txt"] = robots()
     written["sitemap.xml"] = sitemap(
         {url: last_changed(paths, today) for url, paths in sources.items()}

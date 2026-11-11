@@ -1,6 +1,6 @@
 ---
 term: guide.cli
-aliases: [guide.tool, guide.tools, guide.check, guide.checks, guide.hooks, guide.generators, guide.developing, guide.development, guide.release]
+aliases: []
 description: The framework your agent writes its tools in, and why what they print is made for a model to read
 ---
 

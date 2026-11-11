@@ -90,7 +90,7 @@ CREATE TABLE IF NOT EXISTS transcripts (
 CREATE TABLE IF NOT EXISTS told (
     session TEXT NOT NULL,       -- a session told of the owner's word on an item it made
     item TEXT NOT NULL,          -- the item's ref, topic/slug
-    updated TEXT NOT NULL        -- the owner's word on it, as told: its moment and digest (`owner_word`); a bare moment from an earlier nock
+    updated TEXT NOT NULL        -- the owner's word on it, as told: its moment and digest (`owner_word`)
 );
 CREATE TABLE IF NOT EXISTS shown_items (
     session TEXT NOT NULL,       -- a session shown an item about a file it edited
@@ -130,25 +130,9 @@ CREATE TABLE IF NOT EXISTS nudged (
 """
 
 
-# Columns a table gained after it was first made: added to a database made before.
-ADDED = {"notifications": (("event", "TEXT"), ("address", "TEXT"), ("preview", "TEXT"))}
-# The databases already holding them, in this process.
-CURRENT: set[Path] = set()
-
-
 class Store:
     def __init__(self, path: Path) -> None:
         self.path = path
-
-    def add_columns(self, connection: sqlite3.Connection) -> None:
-        if self.path in CURRENT:
-            return
-        for table, columns in ADDED.items():
-            have = {row[1] for row in connection.execute(f"PRAGMA table_info({table})")}
-            for name, kind in columns:
-                if name not in have:
-                    connection.execute(f"ALTER TABLE {table} ADD COLUMN {name} {kind}")
-        CURRENT.add(self.path)
 
     @contextlib.contextmanager
     def connection(self) -> Iterator[sqlite3.Connection]:
@@ -157,7 +141,6 @@ class Store:
         connection.row_factory = sqlite3.Row
         try:
             connection.executescript(SCHEMA)
-            self.add_columns(connection)
             yield connection
             connection.commit()
         finally:

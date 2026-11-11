@@ -471,12 +471,11 @@ With `permissions.confirm = "allow"` (`Configuration.confirm`, a
 nothing is asked, since an `ask` rule prompts even in bypass mode; the
 toolbox's listings then mark them `tools.CONFIRM_NOTES[ALLOW]`, for when the
 owner's request calls for them, instead of "asks the owner".
-`wire_claude` replaces nock's own rules (any `Bash(.nock/nock …)`) and the
-retired blanket `Bash(.nock/nock:*)`, and keeps the rest. The
+`wire_claude` replaces nock's own rules (any `Bash(.nock/nock …)`) and keeps
+the rest. The
 `nock-wiring` check fails when a hook exists for an event that isn't wired,
 a `confirm` command has no ask rule (or, with `confirm = "allow"`, nock
-still has one), a command has no allow rule yet, or the blanket is still
-there.
+still has one), or a command has no allow rule yet.
 
 ### Topics
 
@@ -488,8 +487,7 @@ records, each its `files` and `views`) and its versions' files (`SLUG/N/`:
 `decision.json`, project files under `project/PATH`, derived files and views
 by name); a file over `LARGE` goes under `.nock/local/topics/` instead,
 `"local": true`. Where a version's file is read and written is one layer,
-`located` and `write_file`, so the storage can change behind it. An item
-from before variants says `options` (`has_variants` reads either).
+`located` and `write_file`, so the storage can change behind it.
 Every change is committed there with
 `git commit --only` (`topics.committed`), so a worktree's item lands on the
 main branch at once; it skips the commit, and says so, when the main
@@ -743,8 +741,7 @@ toolbox brief names the `nock docs` terms the part reads before writing.
    per-tool snapshot and `shared: null`; and commits `.nock/` (and the main
    checkout's topics, from a worktree).
 
-`Rounds` reads `.nock/reflections/*/record.json` (and the single-file records
-of earlier versions). Rounds are directories named by date, so records from
+`Rounds` reads `.nock/reflections/*/record.json`. Rounds are directories named by date, so records from
 different machines merge as plain files. The next round's window opens at
 the latest one's `finished`.
 
@@ -795,8 +792,7 @@ refuses), so every clone and worktree reports the same id. A report built
 only to be shown (`nock usage`) never makes it: it shows `UNMADE` instead. `send` posts the report to
 `endpoints.usage` when the answer is yes and a week has
 passed (a day after a failed try), with a three-second timeout. `nock usage`
-shows it all. `sharing` reads an earlier nock's `[share]` table too:
-`level = "none"` as false, anything else as true, with a note.
+shows it all.
 
 `share.Sharing` reads a round's `share.md`. Its `problems` — the
 `nock-share` check — flag every line naming the repository's directory or
@@ -848,7 +844,7 @@ Everything a project adds lives in `.nock/` and is committed:
 | generated file | `.nock/tools/*.py` | `@nock.generator(path)` | `generators.Generators` |
 | catalog | `.nock/generators/NAME/` | `nock gen new` | `generators.Catalog` |
 | brief | `.nock/briefs/NAME.md` (consult, ask) | the file's presence | `templates.Library`, before the packaged briefs |
-| skill | `.claude/skills/nock-reflect/`, `.claude/skills/nock-triage/`, `.claude/skills/nock-work/` (and `.agents/skills/nock-work/` where Codex is found), `.claude/skills/nock-reflect-logika/` (Logika projects) | `nock init` | Claude Code and Cursor, and Codex for `/nock-work`; `nock init` rewrites them, and removes the retired `reflect` and `consolidate` and the briefs earlier versions put beside a skill |
+| skill | `.claude/skills/nock-reflect/`, `.claude/skills/nock-triage/`, `.claude/skills/nock-work/` (and `.agents/skills/nock-work/` where Codex is found), `.claude/skills/nock-reflect-logika/` (Logika projects) | `nock init` | Claude Code and Cursor, and Codex for `/nock-work`; `nock init` rewrites them |
 | settings | `.nock/config.toml`, `.nock/local/config.toml` | — | `configuration.Configuration` |
 | the core itself | `.nock/core/nock/` | edit it | kept by `nock upgrade`'s three-way merge |
 

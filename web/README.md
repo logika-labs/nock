@@ -45,10 +45,7 @@ essays, `ESSAYS` in `build.py` in reading order, a page each at `/docs/NAME/` wi
 top, a way back to the list beside its title and the next essay as a button at its foot; and the
 reference page, `/docs/terms/`, with the guides in `REFERENCE` (every command and exit code) and every
 term. The docs index is one list of them, each with its art, title and line. A guide placed nowhere
-fails the build. A link between guides lands on the right page; an old address, `/docs/#ANCHOR`, is
-sent on to the page that has the heading now, and an earlier page, `/docs/NAME/` (`MOVED_PAGES`), is a
-small page of its own that sends its visitor on to the heading that holds its text, never indexed; so
-is a page that is gone (`MOVED`: /about/, whose story is Why nock now), kept out of the sitemap too.
+fails the build. A link between guides lands on the right page.
 
 Each essay's art is the owner's style, drawn through the Codex CLI with the site's art attached as the
 house style (as Logika's `banners` tool does), then cut to the three sizes above with ImageMagick:
