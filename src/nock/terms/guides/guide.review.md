@@ -106,11 +106,12 @@ it moved. It opens in place, its items in two sections: decisions as bubbles
 that open on the answer and its alternatives, and assets as a grid of cards or
 a list of rows. A card shows the asset (the preferred variant, else the first),
 its state at the top right (accepted, rejected, a star for a variant preferred,
-or how many variants wait for one), and along its foot when it last changed,
-its chat, and as much of its title and description as fits.
+or how many variants wait for one), and along its foot as much of its title
+and description as fits, then when it last changed and its chat; hovering it
+shows the whole title and description.
 
-An asset opens in a viewer, its chat open beside it, one size whatever it
-holds. **Compare** puts two versions side by
+An asset opens in a viewer, one size whatever it holds; its chat icon opens
+it with its chat beside it. **Compare** puts two versions side by
 side, a text as a line diff with the changed words marked, a picture zoomed
 and panned in step with its other version, so you can check a detail. A video
 plays with its captions, and two versions play together. ← and → step through
