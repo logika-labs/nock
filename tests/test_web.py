@@ -35,7 +35,7 @@ def ids(text: str) -> set[str]:
     return set(re.findall(r'id="([^"]+)"', text))
 
 
-ESSAYS = ["why", "reflection", "cli", "review", "evaluation", "logika", "setup"]
+ESSAYS = ["why", "reflection", "cli", "review", "logika", "setup"]
 
 
 def test_the_docs_are_one_list_of_essays_each_with_its_art_and_a_reference_page_last(
@@ -177,7 +177,7 @@ def test_the_story_pages_are_one_layout_with_a_minute_of_video_per_tab(tmp_path:
     assert not (tmp_path / "studio").exists()
     assert 'data-tabs-for="films"' in home
     tabs = re.findall(r'data-tab="(\w+)" aria-selected="(\w+)"', home)
-    assert tabs == [("reflection", "true"), ("review", "false"), ("evaluation", "false")]
+    assert tabs == [("reflection", "true"), ("review", "false")]
     for name, _ in tabs:
         film = home.split(
             f'<figure class="film" data-panel="{name}" data-panel-for="films" id="{name}">'

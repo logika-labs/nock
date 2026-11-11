@@ -66,7 +66,7 @@ square of radius 7/32, since iOS puts a transparent icon on black; and
 
 **What nock does** is a tab per part (`data-tabs-for`), each its minute of video with the part's words
 beside it (`landing/home.html`, the words in `copy.html`); a tab shows its film and pauses the others, and
-the address can name one (`/#evaluation`). Getting started is a stepper of seven steps, two of them with a
+the address can name one (`/#review`). Getting started is a stepper of seven steps, two of them with a
 still from the review video. Without script, every film and every step shows. `site/story.js` does both.
 
 The legal pages carry the TL;DR switch at the right end of the title's line. They show only their

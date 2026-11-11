@@ -183,7 +183,6 @@ main { display: block; padding-top: 16px; }
 .home .hero strong { color: var(--foreground); font-weight: 650; }
 #reflection { --one: var(--yellow); --two: var(--cyan); }
 #review { --one: var(--lavender); --two: var(--pink); }
-#evaluation { --one: var(--mint); --two: var(--lavender); }
 .home .part { box-shadow: 3px 3px 0 0 var(--one), -3px -3px 0 0 var(--two), var(--lift); border: 1px solid rgb(17 17 22 / .14); }
 .install {
   display: flex; align-items: center; gap: 12px; width: 100%; margin-top: 4px; padding: 8px 8px 8px 16px; border-radius: 14px;

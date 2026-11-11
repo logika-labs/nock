@@ -4,7 +4,6 @@ import { waitForFonts } from "./fonts";
 import captions from "./captions.json";
 import { Reflection, type ReflectionProps } from "./reflection";
 import { Review, type ReviewProps } from "./review";
-import { Evaluation, type EvaluationProps } from "./evaluation";
 
 // What a video shows is made by record/ into public/ (gitignored): the recordings, the studio's stills,
 // and data/NAME.json, which names them and holds what the scenes draw.
@@ -37,16 +36,6 @@ export function Root() {
         durationInFrames={captions.fps * (captions.intro + captions.review.seconds)}
         defaultProps={{} as ReviewProps}
         calculateMetadata={() => props<ReviewProps>("review")}
-      />
-      <Composition
-        id="evaluation"
-        component={Evaluation}
-        width={1920}
-        height={1080}
-        fps={captions.fps}
-        durationInFrames={captions.fps * (captions.intro + captions.evaluation.seconds)}
-        defaultProps={{} as EvaluationProps}
-        calculateMetadata={() => props<EvaluationProps>("evaluation")}
       />
     </>
   );

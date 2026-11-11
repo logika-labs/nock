@@ -12,11 +12,10 @@ const root = path.join(here, "..");
 const site = path.join(root, "..", "site", "videos");
 const captions = JSON.parse(readFileSync(path.join(root, "src", "captions.json"), "utf8"));
 const LIMIT = 10 * 1024 * 1024;
-// Each encoder's CRF; a video whose stills pan and zoom over the grain for most of its length needs more.
-const CRF = { evaluation: { h264: 31, vp9: 46 } };
-const DEFAULT_CRF = { h264: 28, vp9: 42 };
+// Each encoder's CRF.
+const CRF = { h264: 28, vp9: 42 };
 // The poster: a second of each video, after its opening card, that shows what it is about.
-const POSTER = { reflection: 30, review: 25, evaluation: 24 };
+const POSTER = { reflection: 30, review: 25 };
 // Stills Getting started shows, NAME.webp at 1200 wide: a second of a video each.
 const STILLS = { review: { "review-work": 9, "review-verdict": 43 } };
 
@@ -31,15 +30,15 @@ function run(command, args) {
 
 mkdirSync(site, { recursive: true });
 mkdirSync(path.join(root, "out"), { recursive: true });
-const names = process.argv.slice(2).length ? process.argv.slice(2) : ["reflection", "review", "evaluation"];
+const names = process.argv.slice(2).length ? process.argv.slice(2) : ["reflection", "review"];
 for (const name of names) {
   const master = path.join(root, "out", `${name}.mp4`);
   run("npx", ["remotion", "render", name, master, "--crf=18", "--log=error"]);
   const mp4 = path.join(site, `${name}.mp4`);
-  run("ffmpeg", ["-v", "error", "-y", "-i", master, "-c:v", "libx264", "-preset", "slow", "-crf", String((CRF[name] ?? DEFAULT_CRF).h264), "-pix_fmt", "yuv420p",
+  run("ffmpeg", ["-v", "error", "-y", "-i", master, "-c:v", "libx264", "-preset", "slow", "-crf", String(CRF.h264), "-pix_fmt", "yuv420p",
     "-profile:v", "high", "-movflags", "+faststart", "-an", mp4]);
   const webm = path.join(site, `${name}.webm`);
-  run("ffmpeg", ["-v", "error", "-y", "-i", master, "-c:v", "libvpx-vp9", "-crf", String((CRF[name] ?? DEFAULT_CRF).vp9), "-b:v", "0", "-row-mt", "1",
+  run("ffmpeg", ["-v", "error", "-y", "-i", master, "-c:v", "libvpx-vp9", "-crf", String(CRF.vp9), "-b:v", "0", "-row-mt", "1",
     "-deadline", "good", "-cpu-used", "2", "-an", webm]);
   run("ffmpeg", ["-v", "error", "-y", "-ss", String(captions.intro + POSTER[name]), "-i", master, "-frames:v", "1", "-q:v", "4",
     path.join(site, `${name}.jpg`)]);
