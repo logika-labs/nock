@@ -231,8 +231,8 @@ def test_an_asset_s_event_carries_the_face_of_each_of_its_pictures(
     text = submit(project.root, {"title": "Notes", "derived": [{"text": "x", "name": "x.md"}]})
     events = {event.get("ref"): event for event in Timeline(project).events()}
     assert events[pictures]["faces"] == [
-        {"file": "a.svg", "type": "image"},
-        {"file": "b.svg", "type": "image"},
+        {"file": "a.svg", "type": "image", "asset": "favicon", "version": 1},
+        {"file": "b.svg", "type": "image", "asset": "favicon", "version": 1},
     ]
     assert "faces" not in events[text]
 
