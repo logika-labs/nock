@@ -40,6 +40,16 @@ def isolated(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(tmp_path / "gitconfig"))
     # No display: a test never shows the owner a desktop notification.
     monkeypatch.setenv("CI", "1")
+    # Only Claude Code, unless a test puts another harness's command on PATH.
+    harnesses = ("codex", "cursor", "cursor-agent")
+    monkeypatch.setenv(
+        "PATH",
+        os.pathsep.join(
+            directory
+            for directory in os.environ.get("PATH", "").split(os.pathsep)
+            if not any((Path(directory) / name).exists() for name in harnesses)
+        ),
+    )
     yield
 
 

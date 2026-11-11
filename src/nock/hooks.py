@@ -31,6 +31,7 @@ from typing import Any
 
 from nock.callers import Callers
 from nock.fixtures import Call, Scope
+from nock.harnesses import Harness
 from nock.kinds import kinds
 from nock.primer import refresh
 from nock.project import NOCK_DIRECTORY, Project
@@ -42,15 +43,6 @@ from nock.topics import Author, Topics
 from nock.usage import Usage
 
 EVENTS = {native: event for event, native in NATIVE_EVENTS.items()}
-# The events nock itself always listens to.
-BUILT_IN_EVENTS = (
-    Event.SESSION_START,
-    Event.PROMPT,
-    Event.BEFORE_TOOL,
-    Event.AFTER_TOOL,
-    Event.STOP,
-    Event.SESSION_END,
-)
 # The tools whose use is an edit, as a Claude Code matcher: the after-tool handler's.
 EDIT_TOOLS = "Edit|MultiEdit|Write|NotebookEdit"
 # The before-tool handler's: only Bash commands running nock, as Claude Code's hook `if` rule.
@@ -69,9 +61,12 @@ class Block(Exception):
 
 
 class HookRunner:
-    def __init__(self, project: Project, payload: dict[str, Any]) -> None:
+    def __init__(
+        self, project: Project, payload: dict[str, Any], harness: Harness = Harness.CLAUDE_CODE
+    ) -> None:
         self.project = project
-        self.payload = payload
+        self.harness = harness
+        self.payload = normalized(payload, harness)
         # What the human should see, beside what the agent reads.
         self.notices: list[str] = []
 
@@ -104,7 +99,8 @@ class HookRunner:
             blocks += self.rounds_left_open()
             if self.reminding:
                 blocks += self.topics_unstated()
-        for entry in self.project.registry.hooks_for(event):
+        own = self.project.registry.hooks_for(event) if self.harness is not Harness.CURSOR else []
+        for entry in own:
             values = {
                 "project": self.project,
                 "payload": self.payload,
@@ -124,8 +120,15 @@ class HookRunner:
             if isinstance(result, str) and result.strip():
                 messages.append(result.strip())
         if blocks and event is Event.STOP and self.payload.get("stop_hook_active") is not True:
-            return {"decision": "block", "reason": "\n".join(blocks)}
+            reason = "\n".join(blocks)
+            if self.harness is Harness.CURSOR:
+                return {"followup_message": reason}
+            return {"decision": "block", "reason": reason}
         text = "\n\n".join(message for message in messages if message)
+        if self.harness is Harness.CURSOR:
+            # Cursor shows the human nothing a hook says; the agent reads it.
+            told = "\n\n".join(part for part in (text, *self.notices) if part)
+            return {"additional_context": told} if told and event is Event.SESSION_START else None
         output: dict[str, Any] = {}
         if self.notices:
             output["systemMessage"] = "\n".join(self.notices)
@@ -276,6 +279,8 @@ class HookRunner:
         """Whether the turn ends only to wait on background agents it launched
         (a round's parts), which give the session another turn as they end:
         nock asks for nothing then, and asks at the turn after the last."""
+        if self.harness is not Harness.CLAUDE_CODE:
+            return False
         session = self.payload.get("session_id")
         transcript = self.payload.get("transcript_path")
         path = (
@@ -323,16 +328,39 @@ class HookRunner:
             Usage(self.project).send()
 
 
-def run(native: str, stdin_text: str) -> int:
-    """The hook entry point; always exits 0 — a block is said in the output."""
+def normalized(payload: dict[str, Any], harness: Harness) -> dict[str, Any]:
+    """Cursor's payload in Claude Code's words: its conversation is the
+    session, its first workspace root the directory, and a stop it already
+    continued after (`loop_count`) a stop hook's."""
+    if harness is not Harness.CURSOR:
+        return payload
+    roots = payload.get("workspace_roots")
+    count = payload.get("loop_count")
+    return {
+        **payload,
+        "session_id": payload.get("session_id") or payload.get("conversation_id"),
+        "cwd": payload.get("cwd") or (roots[0] if isinstance(roots, list) and roots else None),
+        "stop_hook_active": isinstance(count, int) and count > 0,
+    }
+
+
+def run(native: str, stdin_text: str, word: str = Harness.CLAUDE_CODE) -> int:
+    """The hook entry point, `nock hook EVENT [HARNESS]`: EVENT by Claude
+    Code's name, HARNESS `claude` (the default), `codex` or `cursor`; always
+    exits 0 — a block is said in the output."""
     if native not in EVENTS:
         print(f"nock: unknown hook event {native!r}; known: {', '.join(EVENTS)}", file=sys.stderr)
         return 0
+    if word not in {harness.value for harness in Harness}:
+        known = ", ".join(harness.value for harness in Harness)
+        print(f"nock: unknown harness {word!r}; known: {known}", file=sys.stderr)
+        return 0
+    harness = Harness(word)
     try:
         payload = json.loads(stdin_text) if stdin_text.strip() else {}
-        payload = payload if isinstance(payload, dict) else {}
+        payload = normalized(payload if isinstance(payload, dict) else {}, harness)
         project = Project.discover(Path(payload.get("cwd") or "."))
-        output = HookRunner(project, payload).handle(native)
+        output = HookRunner(project, payload, harness).handle(native)
     except Exception as error:  # fail open: nock must never wedge the session
         print(f"nock: the {native} hook failed and was skipped: {error!r}", file=sys.stderr)
         return 0

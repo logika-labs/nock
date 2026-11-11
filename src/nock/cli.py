@@ -40,7 +40,8 @@ def main() -> None:
     arguments = sys.argv[1:]
     enter_environment(arguments)
     if arguments[:1] == ["hook"]:
-        sys.exit(hooks.run(arguments[1] if len(arguments) > 1 else "", sys.stdin.read()))
+        native, word = (*arguments[1:3], "", "")[:2]
+        sys.exit(hooks.run(native, sys.stdin.read(), word or "claude"))
     sys.exit(Invocation(arguments).run())
 
 

@@ -815,9 +815,10 @@ def init(
     *, source: Annotated[str | None, Option(help="Where upgrades come from.")] = None
 ) -> list[str]:
     """Install nock into this repository — vendored into `.nock/`, wired into
-    Claude Code — or re-wire it. Safe to run again."""
-    report = Installer(Path.cwd()).install(source)
-    return report.lines()
+    each agent harness it uses (Claude Code always; Codex and Cursor when the
+    repository or PATH has them) — or re-wire it; says what it found, exactly
+    what it changed, and the next step. Safe to run again."""
+    return Installer(Path.cwd()).install(source)
 
 
 @command(confirm=True)
