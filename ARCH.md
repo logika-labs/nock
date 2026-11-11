@@ -74,7 +74,9 @@ src/nock/
                      first; the notifications are these events
   migration.py       Migration: an earlier nock's decisions and review items into topics, once;
                      Splitting: one asset per item; Storing: `.nock/topics/` into the store
-  asking.py          Asker: the studio's Ask, a fresh agent answering through `topics answer`
+  inbox.py           Inbox: what the owner said that waits on an agent, by priority; each
+                     reader's shown entries (`inbox_shown`); `wait`, settling a triage's batch
+  views.py           Views: each topic folded into markdown in `.nock/local/views/`
   chats.py           Chats: the studio's chat with a headless agent (a session per chat,
                      streamed, resumed or re-briefed with its transcript, named on leaving),
                      Tidy up (its writes as one commit, Undo a revert), Address my
@@ -99,7 +101,8 @@ src/nock/
                      the question asked once, the project's random id, the weekly send
   reports.py         Reports: what the user writes to nock's makers (`nock report`), shown and
                      asked on a terminal, sent with no terminal only with `--yes`
-  consult.py         Consultant: a fresh agent advises on a task, submitting through `nock advise`
+  consult.py         Consultant: a fresh agent answers — advice on a task, or the studio's Ask —
+                     submitting through `nock consult --submit`
   dispatch.py        Dispatcher: launch a headless `claude -p` session and ingest it
   hooks.py           `nock hook EVENT [HARNESS]`: nock's own handlers, then the project's
   harnesses.py       Harness: Claude Code, Codex, Cursor; which are found, and each one's
@@ -151,7 +154,7 @@ src/nock/
 
 tests/               real git repositories and processes; no mocks
   conftest.py        a fresh repository with nock installed, per test; the `nock()` runner
-  fake_agent.py      the scripted stand-in for the dispatched agents (consultant, asker, sharer,
+  fake_agent.py      the scripted stand-in for the dispatched agents (consultant, sharer,
                      the studio's chatter, namer, tidier and addresser)
 scripts/release.py   cut a release: checks, asks, then tags vVERSION and pushes it (standard library)
 web/                 nock.dev, never vendored or packaged: layout.html, home.html, legal/, site/
@@ -607,15 +610,18 @@ it covers all of the topics' history and reads the same on every machine.
 just wrote (`TURNS`, by reason), whose key and address the notification row
 keeps: the Timeline and the notifications are one source.
 
-`consult.Consultant` renders `briefs/consult.md` with the caller's intent
-and context, the map, the project's tools and the checks, and dispatches a
-read-only consultant in the caller's working tree under `consult.DEADLINE`,
-with `NOCK_CONSULTATION` naming the file its submission goes to. The
-consultant ends with `nock advise` (`Advice`: advice, items, tools,
-checks, feedback), which only that role may run and which refuses an
-item, tool or check that doesn't exist. The caller prints the advice as
-submitted, then each named item's title and verdict, each tool's usage
-and the checks to run; a consultant that submits nothing (a project's own
+`consult.Consultant` renders `briefs/consult.md` with the caller's question
+(`nock consult TEXT`, an agent's intent or the owner's question from the
+studio's Ask) and `--context`, the map, the project's tools and the checks,
+and dispatches a read-only consultant in the caller's working tree under
+`consult.DEADLINE`, with `NOCK_CONSULTATION` naming the file its submission
+goes to. The consultant ends with `nock consult --submit JSON` (`Advice`:
+answer, items, tools, checks, docs, feedback), which only that role may run
+and which refuses a decision, tool or check that doesn't exist. The caller
+prints the answer as submitted, then each named decision's title and
+verdict, each tool's usage and the checks to run, and, when
+`NOCK_CONSULT_RESULT` names a file (the studio's Ask does), writes the answer
+and the decisions it rests on there as JSON; a consultant that submits nothing (a project's own
 brief) is heard by its last message. The consultation is kept in
 `.nock/local/consultations/`, and its `feedback` goes to the next round's
 nock material. `consult.enabled = false` returns a line saying the
@@ -657,10 +663,9 @@ message they go with is sent; a withdrawn message's come back there), a
 recording made text (`transcription.Transcription`: multipart, as OpenAI's
 `/v1/audio/transcriptions` takes it, to the configured URL, the key from the
 environment variable the configuration names; refused while no URL is set,
-which the page shows as a faded recorder saying how to set one), and the Ask (`studio.Asking`: one `nock topics ask` process at a
-time, cancelled by stopping it; `asking.Asker` dispatches the asker seat,
-which answers through `nock topics answer`, held to naming items that
-exist; `GET /topics/ask` where it stands, for the Timeline's bar). Its search
+which the page shows as a faded recorder saying how to set one), and the Ask (`studio.Asking`: one `nock consult` process at a
+time, cancelled by stopping it, its answer and the decisions it rests on read
+back from the file `NOCK_CONSULT_RESULT` names; `GET /topics/ask` where it stands, for the Timeline's bar). Its search
 ranks as `Topics.score` does (every word first, more often higher, then all
 but one, a word found where a word starts). A version's view is served at
 `/topics/view/TOPIC/SLUG/N/NAME` with `view.css` and `window.nock` put in its
@@ -694,10 +699,13 @@ summary or messages (`Chats.search`), the page marking the words as the topics'
 search does. Tidy up is a chat whose
 agent is the `tidier`: `Topics.commit` commits nothing for that role, and
 when it ends `Chats.gather` commits `.nock/shared` once; Undo is `git
-revert` of that commit, aborted when it conflicts. `items judge` refuses the
-tidier anything but a drop (`"rework": false`). Address my comments is a chat
-whose agent is the `addresser` (Edit and Write inside the project, nock's
-reply and version commands, the project's check and test): `Topics.comments`
+revert` of that commit, aborted when it conflicts. The tidier writes events in the store (its seat may
+write `.nock/shared/` and nothing else); when its turn ends `Chats.settled`
+settles them as its own and `gather` commits what that wrote, moved or
+removed. Address my comments is a chat whose agent is the `addresser` (Edit
+and Write inside the project and the store, the project's check and test, and
+the recipe commands of the assets it answers on, each allowed for that launch
+alone, `Chats.recipes`), its writes settled when its turn ends: `Topics.comments`
 lists the threads where the owner's comment waits (`pending`), quoted in the
 chat's first message (`chats.address_request`). A topic's `priority` orders the list
 (`topics.in_order`) in the studio and in `topics list`.
@@ -706,7 +714,7 @@ chat's first message (`chats.address_request`). A topic's `priority` orders the 
 
 `dispatch.Dispatcher.launch` runs `claude -p --output-format stream-json
 --session-id …` (`agent.command`, `agent.model`) for the sessions no human
-sits in: the consultant, the asker, the sharer, and the studio's chatter,
+sits in: the consultant, the sharer, and the studio's chatter,
 namer, tidier and addresser. (A reflection
 round's parts are the lead's own subagents, not dispatched: the types in
 `briefs/KIND/agents/`, which `nock init` installs in `.claude/agents/`, each
@@ -717,13 +725,16 @@ with only the tools its part needs.) It:
   prompted), `--setting-sources user` (the project's and the checkout's
   Claude Code settings, whose allow rules would widen the seat, are not
   loaded), `--strict-mcp-config`, `--tools` (the seat's tools) and
-  `--allowedTools` (its rules; a long brief's file adds a `Read` of that
-  file), and `--disallowedTools` for what its rules would let through but
+  `--allowedTools` (its rules; a seat's `store` adds reading
+  `.nock/shared/`, the views and the linked files' cache, or writing the store
+  too, by absolute path, since it may lie outside the directory the seat runs
+  in; a long brief's file adds a `Read` of that file; a launch may add rules
+  of its own, an asset's recipe), and `--disallowedTools` for what its rules would let through but
   must not run (git's `--output`, `dispatch.GIT_WRITING`). A role with no seat is refused, and so is an `agent.command` with a
   bypass flag (`dispatch.BYPASS`) or one of these flags of its own;
 - reads what Claude Code refused from the result's `permission_denials`
   into `Session.denied`, and appends it to the run's log; the consultant
-  keeps it in the consultation's record and its failure, the asker in its
+  keeps it in the consultation's record and its failure, the studio's Ask in its
   log, the sharer in `outgoing.json` and the share's failure;
 
 - runs under a Supervisor, with `agent.deadline` (or the caller's) and
@@ -813,13 +824,13 @@ dispatches a rules part per directory with gaps. Its end requires
 
 `usage.Usage` keeps `.nock/local/usage.json`: when this machine asked the
 owner whether nock shares (`ask`, called by a round's start, `studio` and
-the owner's first verdict through `items judge` or `topics judge`, only while
+the owner's first verdict, only while
 `share` is unanswered; the page asks under the title, with buttons posting
 to `POST /usage`, until it is answered), the answer (`answer`, from `nock
-usage share yes|no` or the page: `share` written with `with_setting` into
-the main checkout's config and committed, or the local config that already
-sets it, and a worktree's copy that sets it; when, where and the question's
-version in the state), and the reports sent. `share` unset is unanswered
+config share true|false` or the page: `share` written with `with_setting` into
+the team's settings, `.nock/shared/settings.toml`, and committed, or the
+local config that already sets it; when, where and the question's version in
+the state), and the reports sent. `share` unset is unanswered
 (`sharing` falls back to this machine's recorded answer, so a worktree reads
 it before its branch has the config); a `share = true` already in a config is
 a yes whose counting starts the first time `send` sees it. `report` is the
@@ -830,9 +841,9 @@ from the main checkout's committed `.nock/project.json`, or — as the first
 report is sent, which is after the yes — makes a random UUID4 under a
 lock, writes it there and commits that file alone (left uncommitted if git
 refuses), so every clone and worktree reports the same id. A report built
-only to be shown (`nock usage`) never makes it: it shows `UNMADE` instead. `send` posts the report to
+only to be shown (`nock config share`) never makes it: it shows `UNMADE` instead. `send` posts the report to
 `endpoints.usage` when the answer is yes and a week has
-passed (a day after a failed try), with a three-second timeout. `nock usage`
+passed (a day after a failed try), with a three-second timeout. `nock config share`
 shows it all.
 
 `share.Sharing` reads a round's `share.md`. Its `problems` — the
@@ -883,7 +894,7 @@ Everything a project adds lives in `.nock/` and is committed:
 | command check | `.nock/config.toml` | `[checks.NAME] command = …` (and `fix = …`) | `checks.Checks`, through the `sh` fixture |
 | hook | `.nock/tools/*.py` | `@nock.hook(event)` | `hooks.HookRunner` |
 | generated file | `.nock/tools/*.py` | `@nock.generator(path)` | `generators.Generators` |
-| catalog | `.nock/generators/NAME/` | `nock gen new` | `generators.Catalog` |
+| catalog | `.nock/generators/NAME/` | its files, written by hand | `generators.Catalog` |
 | brief | `.nock/briefs/NAME.md` (consult, ask) | the file's presence | `templates.Library`, before the packaged briefs |
 | skill | `.claude/skills/nock-reflect/`, `.claude/skills/nock-triage/`, `.claude/skills/nock-work/` (and `.agents/skills/nock-work/` where Codex is found), `.claude/skills/nock-reflect-logika/` (Logika projects) | `nock init` | Claude Code and Cursor, and Codex for `/nock-work`; `nock init` rewrites them |
 | settings | `.nock/config.toml`, `.nock/local/config.toml` | — | `configuration.Configuration` |
@@ -998,7 +1009,7 @@ a GitHub release.
 - `tests/` runs the vendored `.nock/nock` in real temporary repositories,
   with real git and real processes. The dispatched agents are
   `tests/fake_agent.py`, configured as `agent.command`: it answers as the
-  consultant and as the asker. It will not start with permissions bypassed, keeps its
+  consultant (the Ask's too). It will not start with permissions bypassed, keeps its
   command line for a test to read, and refuses and reports a call its
   seat's rules don't allow, as Claude Code does in `dontAsk`. There are no
   mocks.

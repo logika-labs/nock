@@ -21,22 +21,26 @@ agents consult before they change anything.
 ## Topics
 
 The queue isn't a task manager. Its unit is a **topic**: a piece of work, with
-a name, a line on why it exists, and a thread. An agent looks for the topic of
-what it is doing, or opens one:
+a name, a line on why it exists, and a thread. Topics are files in the
+repository, `.nock/shared/topics/`, one event per file, and agents write them
+with their own tools; nock checks each file, fills in when and who, and
+commits it on its own. An agent looks for the topic of what it is doing, or
+opens one:
 
 ```sh
-$ .nock/nock topics list --query "charge sweep"
-$ .nock/nock topics create '{"name": "charge-sweep",
-    "description": "The nightly sweep of failed charges, for the payments rework."}'
+$ .nock/nock search "charge sweep"
+$ cat .nock/shared/topics/charge-sweep/events/new.json
+{"kind": "created", "description": "The nightly sweep of failed charges, for the payments rework."}
 ```
 
 A topic says where its work stands with a **state** (planned, active, review,
-done or abandoned) and a **status**, a free line the agent keeps current:
+done or abandoned) and a **status**, a free line the agent keeps current, each
+a `state` event:
 
-```sh
-$ .nock/nock topics update charge-sweep '{"state": "active", "status": "requeueing dead charges"}'
-$ .nock/nock topics update charge-sweep '{"status": "waiting for the gate on main"}'
-$ .nock/nock topics update charge-sweep '{"state": "review", "status": "built; 3 decisions to judge"}'
+```json
+{"kind": "state", "state": "active", "status": "requeueing dead charges"}
+{"kind": "state", "status": "waiting for the gate on main"}
+{"kind": "state", "state": "review", "status": "built; 3 decisions to judge"}
 ```
 
 Review means the work is built and only your verdicts remain. Each change is
@@ -44,52 +48,56 @@ kept in the topic's thread with its moment and who wrote it, so the history
 stays. The primer asks every agent to keep its topic current, and a session
 that worked in a topic without ever saying where it stands is stopped once, at
 the end of its turn, and asked to. A topic gets a **priority** too
-(`'{"priority": 1}'`), which orders your list. A done topic takes no new items
-until it is revived, `--revive "why it is back"`, which sets it active again
-with its history kept.
+(`"priority": 1`), which orders your list. A done topic takes no new decisions
+until it is revived (`"state": "active", "revived": true, "note": "why it is
+back"`), with its history kept. Each topic is also written out whole, for
+agents to read, in `.nock/local/views/`.
 
 That is all the tracking there is, and it's enough: you see what is under way,
 what waits on you, and what is finished, and you can search all of it.
 
-## Items
+## Decisions and their assets
 
-Into a topic go **items**. An item is bare: a short title, a description
-under it with the details, and in each of its versions one decision or one
-asset:
+Into a topic go **decisions**. A decision is bare: a short title, a
+description under it, and its answer, written for someone who knows what the
+system does but not how it's built, with the alternatives really weighed and
+why not, and whether it is done or a todo. It holds the **assets** that show
+what it looks like:
 
-- a **decision**: the answer, written for someone who knows what the system
-  does but not how it's built, the alternatives really weighed and why not,
-  and whether it is done or a todo, with the project files it concerns;
-- a **project file**: a path in the repository, copied as it is when the
-  version is made, so versions compare: a skill, a prompt, a page of copy;
+- a **project file**: a path in the repository, linked at the commit that last
+  changed it, so versions compare: a skill, a prompt, a page of copy;
 - a **derived file**: something made to show part of the project, such as a
   screenshot of an email, a rendered page, a video of a flow or a PDF, with the
   project files it shows (`from`), the condition it shows (`when`: "the payment
   lapsed") and a `recipe` to make it again.
 
 ```sh
-$ .nock/nock items create charge-sweep '{"title": "The sweep requeues dead charges only",
-    "decision": {"answer": "The nightly sweep picks up charges whose job died, not ones still retrying…",
-                 "alternatives": [{"option": "Requeue failed and dead jobs",
-                                   "why_not": "failed jobs are on their backoff; it doubles the attempts"}]}}'
-$ .nock/nock items create charge-sweep '{"title": "The lapsed payment email",
-    "derived": [{"path": "out/lapsed.png", "from": ["billing/emails/lapsed.py"],
-                 "when": "the payment lapsed",
-                 "recipe": {"command": "uv run python dev/render.py lapsed --output out/"}}]}'
+.nock/shared/topics/charge-sweep/decisions/requeue-dead-only/
+  events/…json                     {"kind": "created", "title": "The sweep requeues dead charges only"}
+  versions/1/decision.json         {"answer": "…", "alternatives": [{"option": "…", "why_not": "…"}]}
+  assets/lapsed-email/
+    events/…json                   {"kind": "created", "title": "The lapsed payment email"}
+    versions/1/assets.json         {"files": [{"kind": "derived", "name": "lapsed.png", "from": […],
+                                    "when": "the payment lapsed", "recipe": {"command": "…"}}]}
 ```
 
-Several files are several items, with one exception: **variants**, takes on
-one asset, such as three takes on a banner, submitted with `"variants": true`
-and shown side by side, for you to star the one you prefer; you accept the
-asset once one is starred. An asset may also hold **views**, HTML pages with
-nock's look that lay its variants out, such as each favicon at three sizes.
+A file that needs your eye but holds no real choice gets a plain decision,
+"Review: the lapsed payment email", holding it. **Before and after** are two
+versions of one asset: version 1 the before (rendered from git history, say),
+version 2 the after, and the studio compares them side by side or with a
+toggle; that is how a change is reviewed. **Variants** are for "pick one of
+these": takes on one thing, such as three banners, in one asset version with
+`"variants": true`, for you to star the one you prefer; the decision is
+accepted only once each asset with variants has one starred. An asset may also
+hold **views**, HTML pages with nock's look that lay its variants out, such as
+each favicon at three sizes.
 
-A decision is submitted only when a later reader would ask "why": a choice
+A decision is recorded only when a later reader would ask "why": a choice
 between real alternatives you haven't already made, a deliberate
 simplification, a reading of something ambiguous, or, as a todo, something
 that should be done and isn't yet. Carrying out your explicit instruction is
 not a decision; the instruction is the record. And what only you can settle,
-while you are away, is submitted as the answer the agent proposes ("Refunds
+while you are away, is recorded as the answer the agent proposes ("Refunds
 never exceed the charge"), the others as its alternatives, and the agent
 carries on with it.
 
@@ -148,31 +156,22 @@ are the Timeline's own events. `notifications = false` turns it off.
 
 ## Verdicts
 
-Each item takes your verdict:
-
-| | open | accepted | rejected | dropped |
-|---|---|---|---|---|
-| **a decision, done** | done; please check | it stands | rework it | closed: nothing to rework |
-| **a decision, todo** | worth doing later? | on the backlog | do not do it | do not do it |
-| **files** | please look | it stands | make it again | closed: nothing to remake |
-
-**Accept all** and **Reject all** close a topic at once. A rejection asks for
-rework, unless you drop the item: superseded, nothing to rework. If you'd rather
-stay in the terminal, `/nock-triage` goes through the open items with you one at
-a time in a session.
-
-The session that submitted an item hears your verdict or message the next time
-you type there, once. An agent that reworks an item adds a **version**, and the
-item is open again, with its history beside it for you to compare. And when a
-later session edits a file an item holds or shows, it's told which item, the
-first time.
+The verdict is the decision's: accepting it accepts its assets' current
+versions; rejecting it asks for rework, as its thread says; dropping it
+closes it, nothing to rework. An agent may write a verdict too (Tidy up drops
+what is stale), and each says who wrote it, so you can reverse one. The
+session that recorded a decision hears your verdict or message the next time
+you type there, once; `nock inbox` gives any agent what you said that waits
+on one. A new version of the decision or of one of its assets opens it again,
+with its history beside it to compare. And when a later session edits a file
+a decision's asset holds or shows, it's told which decision, the first time.
 
 ## Chatting
 
 Every word goes through a chat: a topic's, a decision's, a file's, each
 opened by the icon beside it. You leave a question on a decision, a comment on
 a screenshot; your message waits for the agent's answer, and the agent answers
-in that thread (`--reply`), with a new version when the comment asks for one.
+in that thread, with a new version when the comment asks for one.
 Files dropped into a chat go with your message, and the microphone records
 what you say and has it made text, by a Whisper server you name in the studio's
 settings, for you to edit before you send.

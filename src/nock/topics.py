@@ -119,8 +119,8 @@ FINISHED = (State.REVIEW, *CLOSED)
 # The studio's Tidy up: its writes are not committed one by one; the studio
 # commits them together when it ends, so one revert undoes them.
 TIDIER = "tidier"
-# The studio's Address my comments: it may make an item's derived files again
-# by their recipe (`items remake`), so a recipe in a version it wrote never runs.
+# The studio's Address my comments: it may run the recipes of the assets it
+# answers on (allowed to it one by one), never a recipe in a version it wrote.
 ADDRESSER = "addresser"
 
 
@@ -377,7 +377,9 @@ class Topics:
         if record is None:
             close = [other for other in self.names() if name in other or other in name]
             hint = f" — did you mean {', '.join(close[:3])}?" if close else ""
-            raise NotFoundError(f"no topic {name!r}{hint} (`.nock/nock topics list`)")
+            raise NotFoundError(
+                f"no topic {name!r}{hint} (`.nock/local/views/index.md` lists them)"
+            )
         return record
 
     def items(self, name: str) -> list[dict[str, Any]]:
@@ -441,7 +443,7 @@ class Topics:
                 return item["topic"], item["slug"]
         if topic:
             self.topic(topic)
-        raise NotFoundError(f"no item {ref!r} — `.nock/nock items list {topic}` lists them")
+        raise NotFoundError(f"no item {ref!r} — `.nock/nock search` finds them")
 
     def item(self, ref: str) -> dict[str, Any]:
         topic, slug = self.resolve(ref)
@@ -452,7 +454,7 @@ class Topics:
     def recipes(self, ref: str) -> list[str]:
         """The commands that make a decision's derived assets again: the
         recipes of each asset's latest version not written by Address my
-        comments, so what `items remake` runs is always a recipe its author
+        comments, so what the addresser may run is always a recipe its author
         wrote."""
         item = self.item(ref)
         commands: list[str] = []
@@ -469,7 +471,7 @@ class Topics:
         if not commands:
             raise NotFoundError(
                 f"{item['ref']} has no recipe command to make it again: follow its recipe's"
-                " instruction, if it has one (`.nock/nock items show`)"
+                " instruction, if it has one (its topic's view)"
             )
         return commands
 
@@ -1998,3 +2000,12 @@ def checked_decision(decision: Decision | dict[str, Any]) -> bytes:
         )
         + "\n"
     ).encode()
+
+
+def listing(topics: Topics) -> str:
+    """Every topic in a line, as a brief shows them: its state, counts and description."""
+    return "\n".join(
+        f"- `{row['name']}` ({row['state']}; {row['open']} open, {row['accepted']} accepted,"
+        f" {row['rejected']} rejected, {row['dropped']} dropped): {row['description']}"
+        for row in (topics.row(name) for name in topics.names())
+    )

@@ -37,8 +37,8 @@ In your last message, two parts:
 # What you may do
 
 You may read anything in the repository; run nock's read-only
-commands (`.nock/nock query`, `stats`, `sessions`, `calls`, `topics
-list|show`, `items list|show`, `docs`). You have no tool that edits a file: change nothing, run
+commands (`.nock/nock query`, `query stats`, `query sessions`, `query
+calls`, `search`, `docs`), and the topics' views in `.nock/local/views/`. You have no tool that edits a file: change nothing, run
 nothing that writes. Claude Code's permissions are the session's: a command
 they don't allow is refused or waits for the owner. When a call is refused,
 don't work around it (another command doing the same, a script, a file

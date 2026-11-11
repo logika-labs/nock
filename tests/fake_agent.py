@@ -67,7 +67,40 @@ def allows(command: str) -> bool:
             prefix = rule[len("Bash(") : -len(":*)")]
             if command == prefix or command.startswith(prefix + " "):
                 return True
+        elif rule == f"Bash({command})":
+            return True
     return False
+
+
+def writes(path: Path) -> bool:
+    """Whether a `Write(/…/**)` rule lets the agent write this file."""
+    for rule in ALLOWED:
+        if rule.startswith("Write(//") and rule.endswith("/**)"):
+            # Claude Code's absolute path: `//` and the path from the root.
+            folder = Path("/" + rule[len("Write(//") : -len("/**)")])
+            if path.resolve().is_relative_to(folder):
+                return True
+    return False
+
+
+def act(step: list[str]) -> subprocess.CompletedProcess[str]:
+    """One step of a scripted agent: `["write", PATH, TEXT]` writes a file
+    (refused where no rule lets it), `["sh", COMMAND]` runs a shell command, or
+    a nock command."""
+    if step[0] == "write":
+        path = Path(step[1])
+        if not writes(path):
+            DENIED.append({"tool_name": "Write", "tool_input": {"file_path": step[1]}})
+            return subprocess.CompletedProcess(step, 1, "", "Permission denied")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(step[2])
+        return subprocess.CompletedProcess(step, 0, "", "")
+    if step[0] == "sh":
+        if not allows(step[1]):
+            DENIED.append({"tool_name": "Bash", "tool_input": {"command": step[1]}})
+            return subprocess.CompletedProcess(step, 1, "", "Permission denied")
+        return subprocess.run(["sh", "-c", step[1]], capture_output=True, text=True)
+    return run(".nock/nock", *step)
 
 
 def run(*arguments: str) -> subprocess.CompletedProcess[str]:
@@ -129,8 +162,6 @@ def main() -> int:
         run(*json.loads(os.environ["FAKE_TRY"]))
     if os.environ.get("NOCK_ROLE") == "consultant":
         return consult(session, prompt)
-    if os.environ.get("NOCK_ROLE") == "asker":
-        return answer(session, prompt)
     if os.environ.get("NOCK_ROLE") == "sharer":
         assert "NOTHING TO SHARE:" in prompt
         authors = run("git", "log", "--format=%an %ae")
@@ -154,39 +185,32 @@ def main() -> int:
 
 
 def consult(session: str, prompt: str) -> int:
-    """Advise through `nock advise` (FAKE_ADVICE, else a stock answer), and
+    """Answer through `nock consult --submit` (FAKE_ADVICE, else a stock
+    answer; FAKE_ANSWER for the owner's question from the studio's Ask), and
     once more, fixed, when the first is refused; FAKE_ADVICE=`silent` only
-    answers in its last message, and `nothing` gives no answer at all."""
-    assert "<intent>" in prompt and "When each of the project's topics and items matters:" in prompt
+    answers in its last message, `nothing` gives no answer at all, and
+    FAKE_ANSWER=`slow` takes a minute."""
+    assert (
+        "<question>" in prompt and "When each of the project's topics and items matters:" in prompt
+    )
     write_transcript(session, prompt)
-    given = os.environ.get("FAKE_ADVICE", "")
+    given = os.environ.get("FAKE_ADVICE", "") or os.environ.get("FAKE_ANSWER", "")
+    if given == "slow":
+        time.sleep(60)
     if given == "nothing":
         finish("")
         return 0
     if given == "silent":
         finish("Nothing bears on it.")
         return 0
-    advice = json.loads(given) if given else {"advice": "Nothing in nock bears on it."}
-    result = run(".nock/nock", "advise", json.dumps(advice))
+    advice = json.loads(given) if given else {"answer": "Nothing in nock bears on it."}
+    result = run(".nock/nock", "consult", "--submit", json.dumps(advice))
     print(json.dumps({"type": "system", "message": result.stdout + result.stderr}), flush=True)
     if result.returncode != 0:
-        fixed = {key: value for key, value in advice.items() if key in ("advice", "feedback")}
-        result = run(".nock/nock", "advise", json.dumps(fixed))
+        fixed = {key: value for key, value in advice.items() if key in ("answer", "feedback")}
+        result = run(".nock/nock", "consult", "--submit", json.dumps(fixed))
         print(json.dumps({"type": "system", "message": result.stdout + result.stderr}), flush=True)
     finish("submitted")
-    return 0
-
-
-def answer(session: str, prompt: str) -> int:
-    assert "<question>" in prompt
-    write_transcript(session, prompt)
-    given = os.environ.get("FAKE_ANSWER", "")
-    if given == "slow":
-        time.sleep(60)
-    said = json.loads(given) if given and given != "slow" else {"answer": "Nothing says so."}
-    result = run(".nock/nock", "topics", "answer", json.dumps(said))
-    print(json.dumps({"type": "system", "message": result.stdout + result.stderr}), flush=True)
-    finish("answered")
     return 0
 
 
@@ -226,9 +250,9 @@ def chat(session: str, prompt: str, resumed: bool) -> int:
         assert "# Their message" in prompt and "nock's studio" in prompt
         heard = prompt.split("<message>\n", 1)[1].split("\n</message>", 1)[0]
         write_transcript(session, prompt)
-    tool = {"type": "tool_use", "name": "Bash", "input": {"command": ".nock/nock topics list"}}
+    tool = {"type": "tool_use", "name": "Bash", "input": {"command": ".nock/nock search orders"}}
     print(json.dumps({"type": "assistant", "message": {"content": [tool]}}), flush=True)
-    listed = run(".nock/nock", "topics", "list")
+    listed = run(".nock/nock", "search", "orders")
     assert listed.returncode == 0, listed.stderr
     text = os.environ.get("FAKE_CHAT") or f"You said: {heard}"
     say(text)
@@ -243,7 +267,7 @@ def tidy(session: str, prompt: str) -> int:
     for command in json.loads(os.environ.get("FAKE_TIDY") or "[]"):
         tool = {"type": "tool_use", "name": "Bash", "input": {"command": " ".join(command)}}
         print(json.dumps({"type": "assistant", "message": {"content": [tool]}}), flush=True)
-        result = run(".nock/nock", *command)
+        result = act(command)
         print(json.dumps({"type": "system", "message": result.stdout + result.stderr}), flush=True)
     summary = os.environ.get("FAKE_TIDY_SUMMARY") or "Moved one item\n\n- orders: first"
     say(summary)
@@ -259,7 +283,7 @@ def address(session: str, prompt: str) -> int:
     for command in json.loads(os.environ.get("FAKE_ADDRESS") or "[]"):
         tool = {"type": "tool_use", "name": "Bash", "input": {"command": " ".join(command)}}
         print(json.dumps({"type": "assistant", "message": {"content": [tool]}}), flush=True)
-        result = run(".nock/nock", *command)
+        result = act(command)
         assert result.returncode == 0, result.stdout + result.stderr
     summary = "Answered every comment."
     say(summary)

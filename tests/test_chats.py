@@ -25,8 +25,8 @@ from nock.sessions import find_transcript
 from nock.studio import Studio
 from nock.topics import Author, Topics
 
-from .conftest import git, nock
-from .test_topics import run, submit
+from .conftest import git
+from .test_topics import item_folder, run, submit
 
 DEADLINE = 60
 
@@ -90,7 +90,7 @@ def test_the_answer_streams_as_it_is_written_and_the_chat_continues_its_session(
     live = until(lambda: get(page, f"/{chat}")["live"]["text"] or None)
     assert live == "Orders live in one"
     shown = get(page, f"/{chat}")
-    assert shown["running"] and shown["live"]["activity"] == ["Bash: .nock/nock topics list"]
+    assert shown["running"] and shown["live"]["activity"] == ["Bash: .nock/nock search orders"]
     status, refused = post(page, "send", {"id": chat, "text": "And refunds?"})
     assert status == 400 and "still answering" in refused["error"]
     gate.touch()
@@ -98,12 +98,10 @@ def test_the_answer_streams_as_it_is_written_and_the_chat_continues_its_session(
     owner, agent = shown["messages"]
     assert owner == {**owner, "author": "owner", "text": "Where do orders live?"}
     assert agent["text"] == "Orders live in one SQLite file beside the app"
-    assert agent["activity"] == ["Bash: .nock/nock topics list"] and "problem" not in agent
+    assert agent["activity"] == ["Bash: .nock/nock search orders"] and "problem" not in agent
     first = asked(log)[0]
     assert first["role"] == "chatter" and not first["resumed"]
-    assert (
-        "Where do orders live?" in first["prompt"] and "`.nock/nock topics list" in first["prompt"]
-    )
+    assert "Where do orders live?" in first["prompt"] and "`.nock/nock search" in first["prompt"]
     # The chat's next message continues the same Claude Code session.
     monkeypatch.delenv("FAKE_CHAT")
     post(page, "send", {"id": chat, "text": "And refunds?"})
@@ -223,7 +221,7 @@ def test_the_chats_list_s_search_keeps_the_chats_holding_every_word(page: str) -
     assert search("") == [] and search("  ") == []
 
 
-def test_tidy_up_lands_as_one_commit_only_drops_and_undo_reverts_it(
+def test_tidy_up_writes_events_that_land_as_one_commit_and_undo_reverts_it(
     project: Project, page: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     kept = submit(project.root)
@@ -234,23 +232,24 @@ def test_tidy_up_lands_as_one_commit_only_drops_and_undo_reverts_it(
     )
     submit(project.root, {"title": "Billing is monthly", "decision": {"answer": "Yes."}}, "billing")
     head = git(project.root, "rev-parse", "HEAD")
+    store = project.root / ".nock" / "shared" / "topics"
+
+    def event(where: str, record: dict[str, Any]) -> list[str]:
+        return ["write", str(store / where / "events" / "tidy.json"), json.dumps(record)]
+
+    slug = misplaced.split("/")[1]
     monkeypatch.setenv(
         "FAKE_TIDY",
         json.dumps(
             [
-                ["items", "update", misplaced, json.dumps({"topic": "billing"})],
-                ["items", "judge", kept, json.dumps({"verdict": "accepted"})],
-                ["items", "judge", kept, json.dumps({"verdict": "rejected"})],
-                [
-                    "items",
-                    "judge",
-                    stale,
-                    json.dumps(
-                        {"verdict": "rejected", "rework": False, "comment": "Dropped: superseded."}
-                    ),
-                ],
-                ["topics", "update", "billing", json.dumps({"priority": 1, "status": "first"})],
-                ["topics", "update", "orders", json.dumps({"priority": 2, "status": "next"})],
+                event(f"orders/decisions/{slug}", {"kind": "moved", "to": "billing"}),
+                event(
+                    f"orders/decisions/{stale.split('/')[1]}",
+                    {"kind": "verdict", "verdict": "dropped", "comment": "Dropped: superseded."},
+                ),
+                event("billing", {"kind": "state", "priority": 1, "status": "first"}),
+                event("orders", {"kind": "state", "priority": 2, "status": "next"}),
+                ["write", str(project.root / "README.md"), "Not the store."],
             ]
         ),
     )
@@ -274,6 +273,8 @@ def test_tidy_up_lands_as_one_commit_only_drops_and_undo_reverts_it(
     topics = Topics(project)
     assert topics.item(misplaced)["topic"] == "billing"
     assert topics.item(kept)["verdict"] == "open"
+    # It writes only in the store: the project's files are not its.
+    assert (project.root / "README.md").read_text() == "# demo\n"
     rejected = topics.item(stale)
     assert rejected["verdict"] == "dropped"
     assert rejected["thread"][-1]["text"] == "Dropped: superseded."
@@ -338,12 +339,15 @@ def test_address_my_comments_sends_the_waiting_comments_and_each_gets_its_answer
 
     # What the page counts for its button: the two comments waiting.
     assert waiting() == 2
+    store = project.root / ".nock" / "shared" / "topics"
+    said = {"kind": "message", "text": "One file is enough at today's load."}
+    monthly = {"kind": "message", "text": "Monthly only, for now."}
     monkeypatch.setenv(
         "FAKE_ADDRESS",
         json.dumps(
             [
-                ["items", "update", ref, "--reply", "One file is enough at today's load."],
-                ["topics", "update", "billing", "--reply", "Monthly only, for now."],
+                ["write", str(item_folder(project, ref) / "events" / "a.json"), json.dumps(said)],
+                ["write", str(store / "billing" / "events" / "a.json"), json.dumps(monthly)],
             ]
         ),
     )
@@ -380,55 +384,61 @@ def test_address_my_comments_makes_a_screenshot_again_by_its_own_recipe(
     )
     shot.unlink()
     Topics(project).reply(ref, "Make it big.", Author.OWNER)
-    version = {"derived": [{"path": "shot.txt", "recipe": {"command": "rm -rf src"}}]}
+    item = Topics(project).item(ref)
+    (asset,) = item["assets"]
+    folder = item_folder(project, ref) / "assets" / asset["name"]
+    made = {"files": [{"kind": "derived", "name": "shot.txt", "recipe": {"command": "rm -rf src"}}]}
+    reply = {"kind": "message", "text": "Bigger."}
     monkeypatch.setenv(
         "FAKE_ADDRESS",
         json.dumps(
             [
-                ["items", "remake", ref],
-                ["items", "update", ref, "--version", json.dumps(version), "--reply", "Bigger."],
+                # Its asset's recipe, allowed to it alone, makes the file again…
+                ["sh", recipe["command"]],
+                # …and it puts what it made in as the asset's next version.
+                ["write", str(folder / "versions" / "next" / "shot.txt"), "big\n"],
+                ["write", str(folder / "versions" / "next" / "assets.json"), json.dumps(made)],
+                ["write", str(item_folder(project, ref) / "events" / "b.json"), json.dumps(reply)],
             ]
         ),
     )
-    assert "Bash(.nock/nock items remake:*)" in SEATS["addresser"].allowed
-    answered(page, post(page, "address", {})[1]["id"])
+    shown = answered(page, post(page, "address", {})[1]["id"])
+    assert "problem" not in shown["messages"][-1], shown["messages"][-1]
+    assert shot.read_text() == "big\n"
     item = Topics(project).item(ref)
     (asset,) = item["assets"]
     assert [entry["role"] for entry in asset["versions"]] == ["interactive", "addresser"]
-    shown = Topics(project).file(item["topic"], item["slug"], asset["name"], 2, "shot.txt")
-    assert shown.read_text() == "big\n"
-    # The recipe the addresser wrote into its version never runs: the author's does.
+    again = Topics(project).file(item["topic"], item["slug"], asset["name"], 2, "shot.txt")
+    assert again.read_text() == "big\n" and item["thread"][-1]["text"] == "Bigger."
+    # The recipe the addresser would write into a version never runs: the author's does.
     assert Topics(project).recipes(ref) == [recipe["command"]]
-    refused = nock(project.root, "items", "remake", ref)
-    assert refused.returncode == 43 and "`printf 'big\\n' > shot.txt`" in refused.stderr
-    shot.unlink()
-    monkeypatch.setenv("NOCK_ROLE", "addresser")
-    assert nock(project.root, "items", "remake", ref).returncode == 0
-    assert shot.read_text() == "big\n"
-    plain = submit(project.root, {"title": "Refunds are capped", "decision": {"answer": "Yes."}})
-    missing = nock(project.root, "items", "remake", plain)
-    assert missing.returncode == 44 and "no recipe command" in missing.stderr
 
 
-def test_the_chat_reads_as_the_ask_does_and_tidy_up_writes_only_through_nock(
+def test_the_chat_reads_as_the_consultant_does_and_tidy_up_writes_only_in_the_store(
     project: Project,
 ) -> None:
     dispatcher = Dispatcher(project)
     chatter = dispatcher.command("chatter")
     allowed = set(SEATS["chatter"].allowed)
-    assert allowed - set(SEATS["asker"].allowed) == {"Bash(.nock/nock docs:*)"}
+    assert allowed <= set(SEATS["consultant"].allowed)
     assert chatter[chatter.index("--permission-mode") + 1] == "dontAsk"
-    assert "Write" not in SEATS["chatter"].tools and "Edit" not in SEATS["tidier"].tools
+    assert "Write" not in SEATS["chatter"].tools
+    shared = (project.root / ".nock" / "shared").resolve()
+    rules = chatter[chatter.index("--allowedTools") + 1 :]
+    assert f"Read(/{shared}/**)" in rules and not any(rule.startswith("Write(") for rule in rules)
+    tidier = dispatcher.command("tidier")
+    written = [rule for rule in tidier if rule.startswith(("Write(", "Edit("))]
+    assert written == [f"Write(/{shared}/**)", f"Edit(/{shared}/**)"]
     assert all(
         rule.startswith(("Bash(.nock/nock ", "Bash(git ")) for rule in SEATS["tidier"].allowed
     )
     namer = dispatcher.command("namer")
     assert namer[namer.index("--tools") + 1] == "" and "--allowedTools" not in namer
-    # Address my comments writes inside the project and through nock, never a verdict nor a commit.
+    # Address my comments writes inside the project and the store, never a commit.
     addresser = SEATS["addresser"]
     assert {"Edit", "Write"} <= set(addresser.tools)
     assert {"Edit(./**)", "Write(./**)"} <= set(addresser.allowed)
-    assert not any("judge" in rule or "commit" in rule for rule in addresser.allowed)
+    assert not any("commit" in rule for rule in addresser.allowed)
 
 
 def test_a_topic_s_priority_orders_the_list_and_zero_takes_it_away(project: Project) -> None:

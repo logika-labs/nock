@@ -7,12 +7,15 @@ it; a session the human starts begins with it."""
 
 from __future__ import annotations
 
+from collections import Counter
 from typing import TYPE_CHECKING, Any
 
+from nock.inbox import Inbox
 from nock.kinds import offered
 from nock.reflect import Reflection
 from nock.releases import Updates
 from nock.share import Sharing
+from nock.shared import Shared
 from nock.topics import Topics
 
 if TYPE_CHECKING:
@@ -38,8 +41,14 @@ class Standing:
                 "sessions_since": len(window.sessions),
                 "days_since": round(reflection.days(window), 1),
             },
-            # The open items by topic, and what waits on an agent.
+            # The open decisions by topic, and what waits on an agent.
             "topics": topics.summary(),
+            # What the owner said that no agent has addressed, by kind.
+            "inbox": dict(
+                Counter(entry["kind"] for entry in Inbox(self.project).entries(every=True))
+            ),
+            # What was written in the store and not committed: it does not hold.
+            "uncommitted": [path for _, path in Shared(self.project).changes()],
             "unshared": Sharing(self.project).unshared(),
             "newer_nock": Updates(self.project).newer(),
             # The other kinds of round that can run here, each offered when due.
@@ -81,7 +90,7 @@ class Standing:
                 if count
             ]
             lines.append(
-                f"nock: waiting on you in Topics — {', '.join(parts)}: `.nock/nock topics list`."
+                f"nock: waiting on you in Topics — {', '.join(parts)}: `.nock/nock inbox`."
             )
             attached = awaiting.get("attachments", {})
             lines += [
@@ -89,9 +98,14 @@ class Standing:
                 + (f" (attached: {', '.join(attached[ref])})" if ref in attached else "")
                 for ref in threads[:SHOWN]
             ]
-            lines += [f"- rework {ref} (`--version`)" for ref in rejected[:SHOWN]]
+            lines += [f"- rework {ref} (a new version)" for ref in rejected[:SHOWN]]
             if len(threads) > SHOWN or len(rejected) > SHOWN:
-                lines.append("- and more — `.nock/nock topics list` has them all")
+                lines.append("- and more — `.nock/nock inbox` has them all")
+        if standing.get("uncommitted"):
+            lines.append(
+                f"nock: {len(standing['uncommitted'])} change(s) in .nock/shared/ don't hold and"
+                " stay uncommitted — fix or remove them (`.nock/nock docs files`)."
+            )
         if standing["newer_nock"]:
             lines.append(
                 f"nock: nock {standing['newer_nock']} is out (this project has "

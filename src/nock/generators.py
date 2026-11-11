@@ -4,40 +4,30 @@ drift from their source. Two kinds:
 - a `@nock.generator(path)` function returns the text of one file (or its
   exact bytes), from whatever it reads (a schema, a spec, the code itself);
 - a catalog is a central ledger the code is generated from — error codes,
-  feature flags, UI strings: a directory under `.nock/generators/` holding the
-  schema of one entry, the entries, and templates (`nock.templates`) bound to
-  the files they render. Every write re-renders its outputs.
+  feature flags, UI strings: plain files under `.nock/generators/NAME/` an
+  agent edits — the schema of one entry (`schema.json`), the entries
+  (`entries.json`), templates (`nock.templates`) and which file each renders
+  (`outputs.toml`).
 
-`nock gen` writes every generated file; a check fails when one has drifted."""
+`nock gen` writes every generated file, refusing a catalog whose entries do
+not fit its schema; the `nock-generators` check fails on that and on drift."""
 
 from __future__ import annotations
 
-import json
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from nock.errors import ConflictError, Error, NotFoundError, PreconditionError, UsageError
+from nock.errors import Error, NotFoundError, PreconditionError, UsageError
 from nock.fixtures import Call, Scope
-from nock.schema import Validator, check_schema, validate
+from nock.schema import Validator
 from nock.templates import Library
-from nock.utils import read_json, slug, write_atomic, write_json
+from nock.utils import read_json, write_atomic
 
 if TYPE_CHECKING:
     from nock.project import Project
     from nock.tools import Generator
-
-BINDING_SCHEMA: dict[str, Any] = {
-    "type": "object",
-    "required": ["template", "file"],
-    "additionalProperties": False,
-    "properties": {
-        "template": {"type": "string", "description": "A file under the catalog's templates/."},
-        "file": {"type": "string", "description": "The output, relative to the repository root."},
-        "tag": {"type": "string", "description": "Render only entries whose `tags` include it."},
-    },
-}
 
 
 @dataclass
@@ -97,75 +87,6 @@ class Catalog:
             for problem in Validator().problems(entry, schema)
         ]
 
-    def validated(self, entries: dict[str, dict[str, Any]]) -> dict[str, dict[str, Any]]:
-        problems = self.problems(entries)
-        if problems:
-            raise UsageError("; ".join(problems))
-        return dict(sorted(entries.items()))
-
-    # --- writing ---------------------------------------------------------------------
-
-    def save(self, entries: dict[str, dict[str, Any]]) -> list[Path]:
-        """Write the entries and re-render every output; returns what changed."""
-        write_json(self.entries_file, self.validated(entries))
-        return [self.entries_file, *self.render()]
-
-    def add(self, record: dict[str, Any]) -> list[Path]:
-        key = record.get("key")
-        if not isinstance(key, str) or not key:
-            raise UsageError("an entry needs a `key`")
-        entries = self.entries()
-        if key in entries:
-            raise ConflictError(f"{self.name} already has {key!r} — set it instead")
-        entries[key] = {name: value for name, value in record.items() if name != "key"}
-        return self.save(entries)
-
-    def set(self, key: str, change: dict[str, Any]) -> list[Path]:
-        """Merge `change` into an entry; a null removes a field."""
-        entries = self.entries()
-        if key not in entries:
-            raise NotFoundError(f"{self.name} has no {key!r}")
-        merged = {**entries[key], **change}
-        entries[key] = {name: value for name, value in merged.items() if value is not None}
-        return self.save(entries)
-
-    def remove(self, key: str) -> list[Path]:
-        entries = self.entries()
-        if entries.pop(key, None) is None:
-            raise NotFoundError(f"{self.name} has no {key!r}")
-        return self.save(entries)
-
-    def bind(self, record: dict[str, Any]) -> list[Path]:
-        validate(record, BINDING_SCHEMA)
-        if not (self.directory / "templates" / record["template"]).is_file():
-            raise NotFoundError(
-                f"no template {record['template']} in {self.directory / 'templates'}"
-            )
-        bindings = [binding for binding in self.bindings() if binding.file != record["file"]]
-        bindings.append(Binding(record["template"], record["file"], record.get("tag")))
-        self.write_bindings(bindings)
-        return [self.outputs_file, *self.render()]
-
-    def unbind(self, file: str) -> list[Path]:
-        bindings = [binding for binding in self.bindings() if binding.file != file]
-        self.write_bindings(bindings)
-        return [self.outputs_file]
-
-    def write_bindings(self, bindings: list[Binding]) -> None:
-        blocks = []
-        for binding in bindings:
-            lines = [
-                "[[output]]",
-                f"template = {json.dumps(binding.template)}",
-                f"file = {json.dumps(binding.file)}",
-            ]
-            if binding.tag:
-                lines.append(f"tag = {json.dumps(binding.tag)}")
-            blocks.append("\n".join(lines))
-        write_atomic(self.outputs_file, "\n\n".join(blocks) + "\n" if blocks else "")
-
-    # --- rendering -------------------------------------------------------------------
-
     def rendered(self, root: Path | None = None) -> dict[Path, str]:
         """Each bound output's path and the text it should hold."""
         root = root or self.project.here
@@ -190,28 +111,12 @@ class Catalog:
             )
         return outputs
 
-    def render(self) -> list[Path]:
-        written = []
-        for path, text in self.rendered(self.project.here).items():
-            if not path.is_file() or path.read_text() != text:
-                write_atomic(path, text)
-                written.append(path)
-        return written
-
     def drifted(self, root: Path) -> list[str]:
         return [
             str(path.relative_to(root))
             for path, text in self.rendered(root).items()
             if not path.is_file() or path.read_text() != text
         ]
-
-    def summary(self) -> dict[str, Any]:
-        return {
-            "name": self.name,
-            "schema": self.schema(),
-            "entries": self.entries(),
-            "outputs": [binding.__dict__ for binding in self.bindings()],
-        }
 
 
 class Entry(dict[str, Any]):
@@ -247,17 +152,6 @@ class Catalogs:
         catalog = Catalog(self.project, name)
         if not catalog.exists():
             raise NotFoundError(f"no catalog {name!r} — `nock gen new {name} SCHEMA` creates it")
-        return catalog
-
-    def new(self, name: str, schema: dict[str, Any]) -> Catalog:
-        name = slug(name)
-        catalog = Catalog(self.project, name)
-        if catalog.exists():
-            raise ConflictError(f"catalog {name!r} exists")
-        check_schema(schema)
-        write_json(catalog.schema_file, schema)
-        write_json(catalog.entries_file, {})
-        (catalog.directory / "templates").mkdir(parents=True, exist_ok=True)
         return catalog
 
 
@@ -305,6 +199,11 @@ class Generators:
         written = []
         root = self.project.here
         for catalog in Catalogs(self.project).all():
+            problems = catalog.problems()
+            if problems:
+                raise UsageError(
+                    f"catalog {catalog.name}'s entries don't fit its schema: {'; '.join(problems)}"
+                )
             for path, text in catalog.rendered(root).items():
                 if not holds(path, text):
                     write_atomic(path, text)

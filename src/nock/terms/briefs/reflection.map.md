@@ -11,12 +11,13 @@ The agents here put their work before the owner in topics, in
 (what was decided and why, the alternatives), project files or something made
 to show part of the project, with the owner's verdict (open, accepted,
 rejected) and a thread. The map, `.nock/shared/map.md`, is what an agent
-(usually a consultant) reads to find the topics and items that bear on a
+(usually a consultant) reads to find the topics and decisions that bear on a
 piece of work, and the relations between them no search would find.
 
-Your material has the items changed since the last round in full, every
-topic with its items in a line, and the map. `.nock/nock items show REF` shows
-any item; read the code and history where it points.
+Your material has the decisions changed since the last round in full, every
+topic with its decisions in a line, and the map. Each topic's view,
+`.nock/local/views/<topic>.md`, shows it whole; read the code and history
+where it points.
 `.nock/nock docs topics topics.map topics.verdicts` has how topics, the map
 and the verdicts work.
 
@@ -38,9 +39,9 @@ one, todos waiting long).
 # What you may do
 
 You may read anything in the repository and its history; edit
-`.nock/shared/map.md` only; run `.nock/nock topics list|show`, `.nock/nock
-items list|show`, `.nock/nock docs` and `.nock/nock check nock-map`. Never
-edit an item, a topic, code or tools; never commit. Claude Code's
+`.nock/shared/map.md` only; run `.nock/nock search`, `.nock/nock docs` and
+`.nock/nock check nock-map`. Never write a topic's or a decision's files,
+code or tools; never commit. Claude Code's
 permissions are the session's: a command they don't allow is refused or
 waits for the owner. When a call is refused, don't work around it (another
 command doing the same, a script, a file written elsewhere): say in your

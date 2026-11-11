@@ -320,9 +320,9 @@ class HookRunner:
         found = Topics(self.project).governing(session, relative)
         if not found:
             return ""
-        lines = [f"nock: items in Topics are about {relative} — keep to them, or say why not:"]
+        lines = [f"nock: decisions in Topics are about {relative} — keep to them, or say why not:"]
         lines += [f"- [{item['ref']}] ({item['verdict']}) {item['title']}" for item in found]
-        lines.append("`.nock/nock items show REF` has each in full.")
+        lines.append("Each topic's view, `.nock/local/views/TOPIC.md`, has them in full.")
         return "\n".join(lines)
 
     def reviews(self) -> str:
@@ -347,10 +347,10 @@ class HookRunner:
             return ""
         return "\n".join(
             [
-                "nock: the owner said something on item(s) you submitted:",
+                "nock: the owner said something on decision(s) you recorded:",
                 *lines,
-                "Rework what was rejected as a new version (`.nock/nock items update REF --version '{…}'`);"
-                " answer a question in the thread (`--reply`), briefly, when the owner is away.",
+                "Rework what was rejected as a new version (`.nock/nock docs topics.versions`);"
+                " answer a question in the thread (a message event), briefly, when the owner is away.",
             ]
         )
 
@@ -400,9 +400,10 @@ class HookRunner:
         listed = ", ".join(names)
         return [
             f"nock: you worked in topic(s) {listed} and never set where they stand. Before you"
-            f' stop: `.nock/nock topics update {names[0]} \'{{"status": "…"}}\'` — or'
-            ' `{"state": "review"}` when it is built and only the owner\'s verdicts remain,'
-            ' `{"state": "done"}` (or "abandoned") when the work is finished.'
+            f" stop: a `state` event in .nock/shared/topics/{names[0]}/events/,"
+            ' `{"kind": "state", "status": "…"}` — or `"state": "review"` when it is built and'
+            ' only the owner\'s verdicts remain, `"state": "done"` (or "abandoned") when the'
+            " work is finished."
         ]
 
     def session_end(self) -> None:

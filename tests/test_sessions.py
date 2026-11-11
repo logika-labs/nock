@@ -120,7 +120,7 @@ def test_a_claude_p_run_is_headless_and_kept_out_of_the_owner_s_numbers(
     assert (metrics["sessions"], metrics["headless_sessions"]) == (1, 1)
     assert (metrics["requests"], metrics["tool_calls"], metrics["failed_tool_calls"]) == (1, 1, 0)
     assert "Grade this diff" not in Material(project, window, None).render()
-    listed = json.loads(nock(project.root, "sessions", "--json").stdout)
+    listed = json.loads(nock(project.root, "query", "sessions", "--json").stdout)
     assert {row["id"]: row["role"] for row in listed} == roles
     monkeypatch.setenv("CLAUDE_CODE_ENTRYPOINT", "sdk-cli")
     assert project.current_role() == "headless"
@@ -190,7 +190,9 @@ def test_a_session_still_running_counts_in_usage_without_ending(project: Project
             ]
         ),
     )
-    metrics = json.loads(nock(project.root, "usage", "--json").stdout)["would_send"]["metrics"]
+    metrics = json.loads(nock(project.root, "config", "share", "--json").stdout)["would_send"][
+        "metrics"
+    ]
     # Only what the session did inside the week's window is the week's work.
     assert (metrics["sessions"], metrics["requests"], metrics["tool_calls"]) == (1, 1, 1)
     assert metrics["input_tokens"] == 200 and metrics["tokens"] == 220
@@ -229,9 +231,9 @@ def test_an_unpriced_session_is_unknown_never_zero_and_priced_once_it_can_be(
     metrics = Reflection(project).metrics(window)
     assert (metrics["api_cost"], metrics["unpriced_sessions"]) == (None, 2)
     assert "cost unknown" in Material(project, window, None).overview()
-    usage = json.loads(nock(project.root, "usage", "--json").stdout)["would_send"]
+    usage = json.loads(nock(project.root, "config", "share", "--json").stdout)["would_send"]
     assert usage["schema"] == 3 and usage["metrics"]["api_cost"] is None
-    listed = json.loads(nock(project.root, "sessions", "--json").stdout)
+    listed = json.loads(nock(project.root, "query", "sessions", "--json").stdout)
     assert {row["api_cost"] for row in listed} == {"unknown"}
     # Back online: the cache and its failed try are gone, the table is fetched.
     (project.local / "prices.json").unlink()

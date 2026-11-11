@@ -34,12 +34,12 @@ recorded the round.
 1. `.nock/nock reflect logika` prints the round's two material files and
    the report you write. The material shows what the ledger already says
    and measures, per component, event (with its risks) and param, what
-   changed since the last round, and the items earlier rounds left in the
+   changed since the last round, and the decisions earlier rounds left in the
    `logika` topic.
 2. Start with what is owed:
-   - the items the owner rejected or wrote on: act on each, as a new
-     version (`items update REF --version`), answering in its thread when
-     the version doesn't say it;
+   - the decisions the owner rejected or wrote on: act on each, as a new
+     version (`.nock/nock docs topics.versions`), answering in its thread
+     when the version doesn't say it;
    - the last round's rules that raised false alarms: fix them or take them
      out (`logika query` shows them).
 3. Find the gaps: `logika map` (`logika docs map`) prints, per file, each
@@ -67,10 +67,10 @@ recorded the round.
    to them) or a genuine ambiguity, where the docs, the copy, the tests and
    the code's intent leave the intended behaviour open. Ask a few at a time,
    each with the rule it settles and the answer you propose, and carry on
-   with your answer meanwhile; if they would rather answer later, submit it
-   as a decision in the `logika` topic (`.nock/nock items create logika
-   '{"title": …, "decision": {"answer": …}}'`, your answer as the title;
-   `.nock/nock docs topics.decisions`; `topics create` it the first time). Thresholds aren't questions: they come from the
+   with your answer meanwhile; if they would rather answer later, record it
+   as a decision in the `logika` topic, your answer as its title
+   (`.nock/nock docs topics.items topics.decisions`; create the topic the
+   first time). Thresholds aren't questions: they come from the
    data, with the margin you chose stated in the rule's evidence.
 6. Add the instrumentation the rules need, as Logika's docs describe
    (`logika docs instrument`): the raw input a decision read beside its
@@ -132,7 +132,7 @@ recorded the round.
 11. Tell the owner in a few lines what changed, what you decided that they
     may want to look at, and where the report is. If `reflect logika` gave
     `ask_the_owner`, ask them that too, in its words, and record exactly
-    their answer with `.nock/nock usage share yes` or `no` (nothing if they
+    their answer with `.nock/nock config share true` or `false` (nothing if they
     don't answer). Production is judged against the new rules, and measured
     by the new declarations, once `logika sync` deploys the ledger, which is
     the owner's to run.

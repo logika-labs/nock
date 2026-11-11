@@ -21,7 +21,7 @@ from nock.reflect import SESSIONS, Reflection, Rounds, shape
 from nock.sessions import Sessions, encoded
 from nock.share import Sharing
 
-from .conftest import git, nock, write_tool
+from .conftest import drop_topics_tool, git, nock, write_tool
 
 
 def transcript(
@@ -162,6 +162,7 @@ def test_a_round_is_due_after_enough_sessions(project: Project) -> None:
 
 
 def test_the_material_starts_from_the_work_and_names_the_waste(project: Project) -> None:
+    drop_topics_tool(project)
     write_tool(
         project, "work", "import nock\n\n@nock.command\ndef unused():\n    '''Never called.'''\n"
     )
@@ -179,7 +180,7 @@ def test_the_material_starts_from_the_work_and_names_the_waste(project: Project)
         )
     nock(project.root, "unusd")
     for _ in range(12):
-        nock(project.root, "calls", "--limit", "1")
+        nock(project.root, "query", "calls", "--limit", "1")
     started = Reflection(project).start()
     material = (project.root / started["material"]["process"]).read_text()
     assert material.index("# What the human asked for") < material.index("# The toolbox")
@@ -215,19 +216,22 @@ def test_a_command_that_ran_and_failed_is_not_nock_refusing(project: Project) ->
     assert nock(project.root, "run", "--", python, "-c", "exit(1)").returncode == 1
     # pytest's own usage error, or any code a wrapped command exits with, is its answer.
     assert nock(project.root, "run", "--", python, "-c", "exit(42)").returncode == 42
-    assert nock(project.root, "calls", "--bogus").returncode == 40
+    assert nock(project.root, "query", "calls", "--bogus").returncode == 40
     assert finish(project, RECORD).returncode == 42
     reflection = Reflection(project)
     metrics = reflection.metrics(reflection.window())
     assert (metrics["nock_failed"], metrics["nock_refused"], metrics["nock_broke"]) == (2, 2, 0)
-    stats = {row["tool"]: row for row in json.loads(nock(project.root, "stats", "--json").stdout)}
+    stats = {
+        row["tool"]: row
+        for row in json.loads(nock(project.root, "query", "stats", "--json").stdout)
+    }
     assert (stats["run"]["failed"], stats["run"]["refused"]) == (2, 0)
-    assert (stats["calls"]["failed"], stats["calls"]["refused"]) == (0, 1)
+    assert (stats["query"]["failed"], stats["query"]["refused"]) == (0, 1)
 
 
 def test_a_round_finishes_with_its_report_its_summary_and_its_numbers(project: Project) -> None:
     for _ in range(2):
-        nock(project.root, "calls", "--limit", "1")
+        nock(project.root, "query", "calls", "--limit", "1")
     assert finish(project, RECORD).returncode == 42
     started = json.loads(nock(project.root, "reflect", "--json").stdout)
     material = {
@@ -254,7 +258,7 @@ def test_a_round_finishes_with_its_report_its_summary_and_its_numbers(project: P
     )
     (round_,) = Rounds(project).all()
     assert round_["changes"][0]["expect"] == "calls stays under 1k"
-    assert round_["snapshot"]["calls"]["calls"] == 2 and round_["since"] is None
+    assert round_["snapshot"]["query"]["calls"] == 2 and round_["since"] is None
     assert round_["metrics"]["nock_calls"] >= 2 and round_["shared"] is None
 
     again = Reflection(project).start()
@@ -275,7 +279,7 @@ def test_a_second_start_picks_up_the_open_round_and_rewrites_nothing(
     kept = project.local / "reflections" / first["round"] / "round.json"
     begun = json.loads(kept.read_text())
     for _ in range(3):
-        nock(project.root, "calls", "--limit", "1")
+        nock(project.root, "query", "calls", "--limit", "1")
     monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "s2")
     second = json.loads(nock(project.root, "reflect", "--json").stdout)
     assert second["round"] == first["round"] and second["material"] == first["material"]

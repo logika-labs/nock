@@ -37,6 +37,7 @@ from typing import Any, NotRequired, TypedDict
 from nock.chats import Chats, Kind
 from nock.commands import schema_of
 from nock.configuration import with_table_settings
+from nock.consult import RESULT_VARIABLE
 from nock.errors import ConflictError, Error, NotFoundError, UsageError
 from nock.notify import ICON, Notifications, Watching
 from nock.project import Project
@@ -277,15 +278,17 @@ class Seen:
 
 
 class Asking:
-    """The one question being asked at a time: a `nock topics ask` run in its
-    own process, so it is cancelled by stopping it."""
+    """The one question being asked at a time: a `nock consult` run in its own
+    process, so it is cancelled by stopping it; its answer, with the decisions
+    it rests on, comes back as data (`consult.RESULT_VARIABLE`)."""
 
     def __init__(self, project: Project) -> None:
         self.project = project
         self.question: str | None = None
         self.started: str | None = None
         self.process: subprocess.Popen[bytes] | None = None
-        self.output = project.local / "answers" / "studio.json"
+        self.output = project.local / "answers" / "studio.log"
+        self.result = project.local / "answers" / "studio.json"
         self.cancelled = False
 
     def start(self, question: str) -> dict[str, Any]:
@@ -294,11 +297,16 @@ class Asking:
         if self.process is not None and self.process.poll() is None:
             raise UsageError("a question is being answered: wait for it, or cancel it")
         self.output.parent.mkdir(parents=True, exist_ok=True)
+        self.result.unlink(missing_ok=True)
         with self.output.open("wb") as output:
             self.process = subprocess.Popen(
-                [sys.executable, "-m", "nock", "topics", "ask", question.strip(), "--json"],
+                [sys.executable, "-m", "nock", "consult", question.strip()],
                 cwd=self.project.here,
-                env={**os.environ, "PYTHONPATH": str(PACKAGE.parent)},
+                env={
+                    **os.environ,
+                    "PYTHONPATH": str(PACKAGE.parent),
+                    RESULT_VARIABLE: str(self.result),
+                },
                 stdin=subprocess.DEVNULL,
                 stdout=output,
                 stderr=subprocess.STDOUT,
@@ -324,8 +332,8 @@ class Asking:
         text = self.output.read_text() if self.output.is_file() else ""
         if self.process.returncode == 0:
             try:
-                answered = json.loads(text)
-            except json.JSONDecodeError:
+                answered = json.loads(self.result.read_text())
+            except (OSError, json.JSONDecodeError):
                 answered = {"answer": text.strip(), "items": []}
             return {**said, "running": False, **answered}
         return {

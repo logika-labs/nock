@@ -1120,7 +1120,12 @@ class Shared:
     # --- committing -----------------------------------------------------------------
 
     def commit(
-        self, paths: list[str], by: dict[str, Any], settled: Settled
+        self,
+        paths: list[str],
+        by: dict[str, Any],
+        settled: Settled,
+        subject: str | None = None,
+        body: str = "",
     ) -> tuple[str | None, str | None]:
         """Commit these paths under the root, alone, in the main checkout, with
         the writer's trailers; unless that would land in the middle of a merge or
@@ -1146,20 +1151,10 @@ class Shared:
             return None, None
         trailers = "\n".join(f"{label}: {by.get(key) or 'unknown'}" for label, key in TRAILERS)
         git(
-            "commit", "--quiet", "--no-verify", "--only", "-m", summary(settled), "-m", trailers,
-            "--", *specs,
+            "commit", "--quiet", "--no-verify", "--only", "-m", subject or summary(settled),
+            *(["-m", body.strip()] if body.strip() else []), "-m", trailers, "--", *specs,
         )  # fmt: skip
         return git.head(), None
-
-    def commit_all(self, by: dict[str, Any], message: str) -> str | None:
-        """Commit everything changed under the root at once (Tidy up's gathered writes)."""
-        settled = Settled()
-        paths = [path for _, path in self.changes()]
-        if not paths:
-            return None
-        settled.written = paths
-        commit, _ = self.commit(paths, by, Settled(written=paths, events=[{"kind": message}]))
-        return commit
 
 
 def summary(settled: Settled) -> str:

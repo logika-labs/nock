@@ -31,7 +31,7 @@ from nock.project import Project
 from nock.studio import PAGES, TABS, Studio
 from nock.topics import Author, Topics, owner_word
 
-from .conftest import git, nock
+from .conftest import drop_topics_tool, git, nock
 
 TOPIC = {"name": "orders", "description": "Where orders are kept, for the checkout work."}
 DECISION: dict[str, Any] = {
@@ -484,7 +484,7 @@ def test_a_restart_starts_the_studio_again_in_place_on_its_port(project: Project
         probe.bind(("127.0.0.1", 0))
         port = probe.getsockname()[1]
     process = subprocess.Popen(
-        [str(project.root / ".nock" / "nock"), "studio", json.dumps({"port": port})],
+        [str(project.root / ".nock" / "nock"), "studio", "--port", str(port)],
         cwd=project.root,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
@@ -814,6 +814,7 @@ def test_a_session_starts_with_what_is_new_in_topics_and_what_awaits_it_once_a_d
     ref = submit(project.root)
     submit(project.root, {**DECISION, "title": "Emails go out at nine"}, topic="emails")
     submit(project.root, {**DECISION, "title": "Emails are plain text"}, topic="emails")
+    drop_topics_tool(project)
     begun = start(project, "s1")
     context = begun["hookSpecificOutput"]["additionalContext"]
     assert "nock: 3 new in Topics (emails: 2, orders: 1)" in context
@@ -822,7 +823,7 @@ def test_a_session_starts_with_what_is_new_in_topics_and_what_awaits_it_once_a_d
     post(page, "reply", {"ref": ref, "text": "Postgres."})
     post(page, "judge", {"ref": ref, "verdict": "rejected"})
     context = start(project, "s3")["hookSpecificOutput"]["additionalContext"]
-    assert f"- rework {ref} (`--version`)" in context
+    assert f"- rework {ref} (a new version)" in context
     assert HookRunner(project, {"session_id": "s4"}).handle("SessionStart") is None
     standing = run(project.root, "status")
     assert standing["topics"]["awaiting_you"]["rejected"] == [ref]
@@ -1004,9 +1005,9 @@ def test_the_owner_asks_and_the_answer_names_items_that_exist(
     monkeypatch.setenv(
         "FAKE_ANSWER", json.dumps({"answer": "In SQLite.", "items": ["orders/nope"]})
     )
-    # Its answer refused, the agent's last message is what it said.
-    fallen = run(project.root, "topics", "ask", "Where do orders live?")
-    assert fallen["answer"] == "answered" and fallen["items"] == []
+    # Its answer refused for naming what does not exist, it answers again without.
+    fallen = nock(project.root, "consult", "Where do orders live?")
+    assert fallen.returncode == 0 and fallen.stdout.startswith("In SQLite.")
     monkeypatch.setenv("FAKE_ANSWER", json.dumps({"answer": "In **SQLite**.", "items": [ref]}))
     status, started = post(page, "ask", {"question": "Where do orders live?"})
     assert status == 200 and started["running"] is True
@@ -1030,9 +1031,9 @@ def test_an_ask_is_cancelled(project: Project, page: str, monkeypatch: pytest.Mo
     assert status == 200 and cancelled["problem"] == "cancelled" and not cancelled["running"]
 
 
-def test_only_an_asked_agent_submits_an_answer(project: Project) -> None:
-    result = nock(project.root, "topics", "answer", json.dumps({"answer": "Yes."}))
-    assert result.returncode == 43 and "only an agent the studio's Ask dispatched" in result.stderr
+def test_only_the_consultant_submits_an_answer(project: Project) -> None:
+    result = nock(project.root, "consult", "--submit", json.dumps({"answer": "Yes."}))
+    assert result.returncode == 43 and "only the consultant nock dispatches" in result.stderr
 
 
 def test_an_earlier_nock_s_decisions_and_review_items_move_into_topics_once(

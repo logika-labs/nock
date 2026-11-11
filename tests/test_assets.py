@@ -21,7 +21,7 @@ from nock.topics import Author, Topics
 from .conftest import nock
 from .test_chats import answered
 from .test_chats import post as chat_post
-from .test_topics import open_topic, page, post, run, submit
+from .test_topics import item_folder, open_topic, page, post, run, submit
 
 __all__ = ["page"]
 
@@ -252,9 +252,9 @@ def test_address_now_answers_the_comment_in_one_thread(
     topics = Topics(project)
     topics.reply(ref, "Why not Postgres?", Author.OWNER)
     topics.reply(other, "And the cap?", Author.OWNER)
-    monkeypatch.setenv(
-        "FAKE_ADDRESS", json.dumps([["items", "update", ref, "--reply", "One file is enough."]])
-    )
+    said = {"kind": "message", "text": "One file is enough."}
+    reply = ["write", str(item_folder(project, ref) / "events" / "a.json"), json.dumps(said)]
+    monkeypatch.setenv("FAKE_ADDRESS", json.dumps([reply]))
     status, started = chat_post(page, "address", {"ref": ref})
     assert status == 200 and started["title"] == "Address now" and started["refs"] == [ref]
     assert started["messages"][0]["text"].startswith("Address my comment:")

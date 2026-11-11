@@ -196,7 +196,7 @@ def test_the_agents_md_section_follows_the_committed_settings(repository: Path) 
     Installer(repository).install()
     agents = repository / "AGENTS.md"
     agents.write_text(agents.read_text() + "\n## Ours\n\nKept.\n")
-    config = repository / ".nock" / "config.toml"
+    config = repository / ".nock" / "shared" / "settings.toml"
     config.write_text(config.read_text().replace("reminders = true", "reminders = false"))
     git(repository, "add", "-A")
     git(repository, "commit", "-qm", "Quiet nock")

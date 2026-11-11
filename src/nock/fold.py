@@ -229,7 +229,9 @@ class Fold:
         ]
         if verdict is not None and verdict["key"] > max(versioned, default=""):
             record["verdict"] = verdict["verdict"]
-            record["decided"] = stamp(verdict) if verdict["verdict"] != "open" else None
+            record["decided"] = (
+                {**stamp(verdict), "id": verdict["id"]} if verdict["verdict"] != "open" else None
+            )
         return record
 
     def version(self, folder: Path, event: dict[str, Any]) -> dict[str, Any]:

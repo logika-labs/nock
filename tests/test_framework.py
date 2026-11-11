@@ -190,7 +190,7 @@ def test_every_call_is_recorded_with_what_it_cost(project: Project) -> None:
     )
     assert team["source"] == ".nock/tools/house.py" and team["duration"] > 0
     assert boom["exit_code"] == 50 and boom["error"] == "IndexError: list index out of range"
-    listed = nock(project.root, "calls", "--failed")
+    listed = nock(project.root, "query", "calls", "--failed")
     assert "boom" in listed.stdout and "team" not in listed.stdout
 
 
@@ -205,7 +205,7 @@ def test_the_listing_puts_the_project_s_tools_first(project: Project) -> None:
 
 def test_a_tool_that_does_not_load_is_reported_on_every_call(project: Project) -> None:
     write_tool(project, "broken", "import nock\n\nraise RuntimeError('oops')\n")
-    result = nock(project.root, "calls")
+    result = nock(project.root, "query", "calls")
     assert result.returncode == 0
     assert "a tool did not load — .nock/tools/broken.py:3: RuntimeError: oops" in result.stderr
     assert nock(project.root, "check", "nock-tools").returncode == 1

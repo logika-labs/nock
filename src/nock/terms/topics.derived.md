@@ -4,4 +4,4 @@ aliases: [from, recipe, regenerate, video, captions, poster, gif]
 description: A derived file: made to show part of the project, and how to make it again
 ---
 
-`{"path": FILE}` (or `{"text": …, "name": "email.md"}`), with `from` (the project files it shows), `when` (the case it shows), `recipe` (`{"command": …}` and/or `{"instruction": …}`). Images (a GIF animates), videos, PDFs, HTML and text show in the studio; over 20 MB stays local. A video takes `captions` (WebVTT; `NAME.vtt` beside it by default) and a `poster`. New version: follow the recipe (Address my comments runs its command by `items remake`), `--version`.
+A derived file in an asset's `assets.json`: `{"kind": "derived", "name": "shot.png"}`, the file beside it, with `from` (the project files it shows), `when` (the case it shows), `recipe` (`{"command": …}` and/or `{"instruction": …}`). Images (a GIF animates), videos, PDFs, HTML and text show in the studio; all but small text go to `.nock/shared/media/`. A video takes `captions` (WebVTT) and a `poster`, named beside it. New version: run the recipe, then write the asset's `versions/next/`.

@@ -1,8 +1,9 @@
-"""Consulting: before an agent changes code, a fresh one reads the project's
-topics and their items, their map, its tools and checks, and advises — short
-and specific, the items the work must keep to, the tools that do its steps,
-the checks that judge it — through `nock advise`, which holds what it names
-to what exists. Behind `consult.enabled`: off, nothing is dispatched."""
+"""Consulting: a fresh agent reads the project's topics and their decisions,
+their map, its tools and checks, and answers — advice before an agent's
+change (the items the work must keep to, the tools that do its steps, the
+checks that judge it), or the owner's question from the studio's Ask —
+through `nock consult --submit`, which holds what it names to what exists.
+Behind `consult.enabled`: off, nothing is dispatched."""
 
 from __future__ import annotations
 
@@ -13,9 +14,11 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, NotRequired, TypedDict
 
 from nock.checks import Checks
+from nock.commands import schema_of
 from nock.dispatch import Dispatcher
 from nock.docs import Docs
 from nock.errors import Failed, NotFoundError, PolicyError, UsageError
+from nock.schema import validate
 from nock.templates import Library
 from nock.topics import Topics
 from nock.utils import now, read_json, write_json
@@ -27,8 +30,11 @@ ROLE = "consultant"
 # The longest a consultation may take, in seconds: the caller waits.
 DEADLINE = 600
 BRIEFS = Path(__file__).resolve().parent / "briefs"
-# Set in the consultant's environment: where its `nock advise` writes the advice.
+# Set in the consultant's environment: where its `nock consult --submit` writes.
 SUBMISSION_VARIABLE = "NOCK_CONSULTATION"
+# Set by whoever wants the answer as data (the studio's Ask): where it goes, with
+# the decisions it rests on.
+RESULT_VARIABLE = "NOCK_CONSULT_RESULT"
 OFF = (
     "nock's consultant is off in this project (`consult.enabled = false` in .nock/config.toml):"
     " go ahead without it."
@@ -43,8 +49,8 @@ class Consultation(TypedDict):
 
 
 class Advice(TypedDict):
-    advice: str
-    """What the agent should know and do, as it should read it: short and specific."""
+    answer: str
+    """What the asker should know and do, as they should read it: short and specific."""
     items: NotRequired[list[str]]
     """The items that bear on the work, as `topic/slug`; the agent is shown each one's title and verdict."""
     tools: NotRequired[list[str]]
@@ -114,16 +120,29 @@ class Consultant:
                 "denied": session.denied,
             },
         )
+        result = os.environ.get(RESULT_VARIABLE)
+        if result:
+            items = (submitted or {}).get("items") or []
+            write_json(
+                Path(result),
+                {
+                    "answer": (submitted or {}).get("answer") or answer,
+                    "items": items,
+                    "session": session.id,
+                },
+            )
         return answer
 
     def answer(self, submitted: dict[str, Any]) -> str:
         """The advice exactly as submitted, then what it names: each item's
         verdict, each tool's usage, the checks to pass."""
-        parts = [str(submitted["advice"]).strip()]
+        parts = [str(submitted["answer"]).strip()]
         topics = Topics(self.project)
         named = [topics.item(ref) for ref in submitted.get("items") or []]
         if named:
-            lines = ["The items this rests on (`.nock/nock items show REF` has each in full):"]
+            lines = [
+                "The decisions this rests on (each topic's view in .nock/local/views/ has them in full):"
+            ]
             for item in named:
                 lines.append(f"- [{item['ref']}] ({item['verdict']}) {item['title']}")
             parts.append("\n".join(lines))
@@ -152,13 +171,13 @@ class Consultant:
         target = os.environ.get(SUBMISSION_VARIABLE)
         if self.project.current_role() != ROLE or not target:
             raise PolicyError(
-                "only the consultant nock dispatches submits advice — to consult, "
-                '`.nock/nock consult \'{"intent": …, "context": …}\'`'
+                "only the consultant nock dispatches submits an answer — to consult,"
+                ' `.nock/nock consult "what you are about to do, or your question"`'
             )
         problems = []
-        if not advice["advice"].strip():
+        if not str(advice.get("answer") or "").strip():
             problems.append(
-                "`advice` is empty: say what the agent should know, or that nothing in nock bears on it"
+                "`answer` is empty: say what the asker should know, or that nothing in nock bears on it"
             )
         topics = Topics(self.project)
         for ref in advice.get("items") or []:
@@ -190,6 +209,7 @@ class Consultant:
             raise UsageError(
                 "the advice names what does not exist — fix it and submit again", problems
             )
+        validate(advice, schema_of(Advice))
         write_json(Path(target), dict(advice))
         return (
             "submitted: the agent reads your advice exactly as written, then the items, "

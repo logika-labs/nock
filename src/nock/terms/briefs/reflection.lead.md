@@ -49,6 +49,6 @@ material, not from memory.
    nothing is published). Send it (`'{"send": true}'`) only on their yes. If `reflect` gave
    `ask_the_owner`, ask them that too, in its words: whether nock may share
    its weekly usage report, asked once. Record exactly their answer with
-   `.nock/nock usage share yes` or `no`; nothing if they don't answer.
+   `.nock/nock config share true` or `false`; nothing if they don't answer.
    If the round found something nock itself lacks or gets wrong, offer to
    send it to nock's makers with `.nock/nock report`, on their go-ahead.

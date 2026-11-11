@@ -72,6 +72,8 @@ class Seat:
     allowed: tuple[str, ...]
     denied: tuple[str, ...] = ()
     """Rules refused even where `allowed` would let them through."""
+    store: str = ""
+    """`read` or `write`: what it may do in the store, `.nock/shared/`."""
 
 
 READING = ("Read", "Grep", "Glob", "Bash")
@@ -79,90 +81,52 @@ READING = ("Read", "Grep", "Glob", "Bash")
 # accepts, down to `--ou`) writes their output to a file anywhere.
 GIT_READING = ("Bash(git log:*)", "Bash(git show:*)")
 GIT_WRITING = ("Bash(git * --ou*)",)
+# What a seat may do in the store (`.nock/shared/`, in the main checkout, maybe
+# outside the directory it runs in): read it and the topics' views, or write
+# events and versions there too, which nock settles when the session ends.
+READS, WRITES = "read", "write"
 SEATS = {
-    # Reads the topics and advises through `nock advise`; changes nothing.
+    # Reads the project and its topics and answers through `nock consult
+    # --submit` — advice before a change, or the owner's question from the
+    # studio's Ask; changes nothing.
     "consultant": Seat(
         READING,
         (
-            nock("topics list"),
-            nock("topics show"),
-            nock("items list"),
-            nock("items show"),
+            nock("search"),
             nock("docs"),
-            nock("advise"),
-        ),
-    ),
-    # Reads the topics, the code and its history, and answers the owner's
-    # question through `nock topics answer`; changes nothing.
-    "asker": Seat(
-        READING,
-        (
-            nock("topics list"),
-            nock("topics show"),
-            nock("items list"),
-            nock("items show"),
-            nock("topics answer"),
+            "Bash(.nock/nock consult --submit:*)",
             *GIT_READING,
         ),
         GIT_WRITING,
+        READS,
     ),
     # Reads what identifies the project and answers in its last message.
     "sharer": Seat(READING, (GIT_READING[0],), GIT_WRITING),
-    # The studio's chat: talks with the owner, reading what the asker reads
-    # (and nock's docs); changes nothing.
-    "chatter": Seat(
-        READING,
-        (
-            nock("topics list"),
-            nock("topics show"),
-            nock("items list"),
-            nock("items show"),
-            nock("docs"),
-            *GIT_READING,
-        ),
-        GIT_WRITING,
-    ),
+    # The studio's chat: talks with the owner, reading what the consultant
+    # reads; changes nothing.
+    "chatter": Seat(READING, (nock("search"), nock("docs"), *GIT_READING), GIT_WRITING, READS),
     # Names a finished chat from its transcript, in its last message: no tools.
     "namer": Seat((), ()),
-    # The studio's Tidy up: reorganizes the topics through nock's commands
-    # (moving items, setting states, statuses and priorities, dropping what
-    # is stale; never accepting nor asking rework, which `items judge`
-    # refuses it), its writes
-    # gathered into one commit by the studio.
+    # The studio's Tidy up: reorganizes the topics by writing events in the store
+    # (moving decisions, setting states, statuses and priorities, dropping what
+    # is stale; never accepting nor asking rework), gathered into one commit by
+    # the studio when it ends.
     "tidier": Seat(
-        READING,
-        (
-            nock("topics list"),
-            nock("topics show"),
-            nock("topics create"),
-            nock("topics update"),
-            nock("topics delete"),
-            nock("items list"),
-            nock("items show"),
-            nock("items update"),
-            nock("items judge"),
-            nock("docs"),
-            *GIT_READING,
-        ),
+        (*READING, "Write", "Edit"),
+        (nock("search"), nock("docs"), *GIT_READING),
         GIT_WRITING,
+        WRITES,
     ),
     # The studio's Address my comments: answers each comment the owner left
-    # waiting in a thread — a reply, a new version of the item, a change to
-    # the project's files — through nock's commands and Claude Code's edits
-    # inside the project, and checks it with the project's own gate. It
-    # gives no verdict (the owner's), commits no code (the owner looks
-    # first) and runs nothing else but an item's own recipe, which makes a
-    # derived file again (`items remake`, its alone: never a recipe it wrote).
+    # waiting in a thread — a message, a new version of a decision or of one
+    # of its assets, a change to the project's files — and checks it with the
+    # project's own gate. It commits no code (the owner looks first) and runs
+    # nothing else but the recipes of the assets it answers on, which the
+    # studio allows it one by one (never a recipe it wrote).
     "addresser": Seat(
         (*READING, "Edit", "Write"),
         (
-            nock("topics list"),
-            nock("topics show"),
-            nock("topics update"),
-            nock("items list"),
-            nock("items show"),
-            nock("items update"),
-            nock("items remake"),
+            nock("search"),
             nock("docs"),
             nock("check"),
             nock("test"),
@@ -173,6 +137,7 @@ SEATS = {
             "Bash(git status:*)",
         ),
         GIT_WRITING,
+        WRITES,
     ),
 }
 
@@ -206,14 +171,16 @@ class Dispatcher:
         arguments: tuple[str, ...] = (),
         listener: Callable[[bytes], None] | None = None,
         stop: threading.Event | None = None,
+        allowed: tuple[str, ...] = (),
     ) -> Session:
         """`resume` continues that session (`--resume`) instead of starting one;
         `arguments` go to Claude Code before the brief; `listener` and `stop`
-        are the Supervisor's: the output as it comes, and a stop."""
+        are the Supervisor's: the output as it comes, and a stop; `allowed`
+        rules widen the seat for this launch alone (an asset's recipe)."""
         session = resume or str(uuid.uuid4())
         settings = self.project.configuration
-        prompt, allowed = self.carried(session, brief)
-        command = [*self.command(role, allowed)]
+        prompt, carried = self.carried(session, brief)
+        command = [*self.command(role, (*carried, *allowed))]
         command += ["--resume", session] if resume else ["--session-id", session]
         command += list(arguments)
         model = str(settings.get("agent.model") or "")
@@ -272,9 +239,25 @@ class Dispatcher:
             "--strict-mcp-config",
             "--tools",
             ",".join(seat.tools),
-            *(["--allowedTools", *seat.allowed, *allowed] if seat.allowed or allowed else []),
+            *(
+                ["--allowedTools", *seat.allowed, *self.store_rules(seat), *allowed]
+                if seat.allowed or allowed
+                else []
+            ),
             *(["--disallowedTools", *seat.denied] if seat.denied else []),
         ]
+
+    def store_rules(self, seat: Seat) -> tuple[str, ...]:
+        """Reading the store and the views; writing the store too."""
+        shared = (self.project.root / ".nock" / "shared").resolve()
+        views = (self.project.local / "views").resolve()
+        cache = (self.project.local / "cache").resolve()
+        if not seat.store:
+            return ()
+        reading = (f"Read(/{shared}/**)", f"Read(/{views}/**)", f"Read(/{cache}/**)")
+        if seat.store == READS:
+            return reading
+        return (*reading, f"Write(/{shared}/**)", f"Edit(/{shared}/**)")
 
     def environment(self, session: str, role: str) -> dict[str, str]:
         environment = {

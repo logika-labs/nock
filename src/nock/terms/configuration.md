@@ -1,7 +1,7 @@
 ---
 term: configuration
 aliases: [config, settings, config-toml]
-description: .nock/config.toml, committed; .nock/local/config.toml overrides it
+description: Settings: the code's, the team's and one machine's; nock config
 ---
 
-`.nock/config.toml` is committed; `.nock/local/config.toml` overrides it on one machine; the `config` fixture reads both. Keys: `branch`, `reminders`, `notifications`, `run.deadline` and `silence`, `checks.*`, `reflect.logika.days`, `agent.command`, `model` and `deadline`, `permissions.confirm`, `studio.*`, `consult.enabled`, `upgrade.check`, `auto`, `index`, `share`, `endpoints.*`, `environment.*`. `.nock/nock docs guide.setup` has each default.
+Three files, read in order: `.nock/config.toml` (the code's: `branch`, `run.*`, `checks.*`, `environment.*`, `permissions.confirm`, `upgrade.*`, `endpoints.*`; by hand), `.nock/shared/settings.toml` (the team's: `share`, `reminders`, `reflect.*`, `inbox.*`, `consult.enabled`, `agent.*`) and `.nock/local/config.toml` (one machine's: `notifications`, `studio.*`). `.nock/nock config [KEY [VALUE]]` lists, reads and sets the last two kinds.

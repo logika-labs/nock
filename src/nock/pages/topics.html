@@ -688,7 +688,7 @@
       shown.sort(([one], [two]) => (rank.get(one.name) ?? Infinity) - (rank.get(two.name) ?? Infinity));
     }
     const empty = !state.topics.length
-      ? '<div class="empty" data-key="empty"><strong>No topics yet</strong><span>Agents open a topic for their work with <code>.nock/nock topics create</code> and submit items into it; they appear here.</span></div>'
+      ? '<div class="empty" data-key="empty"><strong>No topics yet</strong><span>Agents open a topic for their work in <code>.nock/shared/topics/</code> and record decisions in it; they appear here.</span></div>'
       : !shown.length ? `<div class="empty" data-key="empty"><strong>No matches</strong><span>No topic or item fits the ${said().length ? "search" : "filter"}${state.sift !== "all" || !state.closed ? " as filtered" : ""}.</span></div>` : "";
     studio.morph($("topics-main"), empty + shown.map(([topic, items]) => sheet(topic, items)).join(""));
   }

@@ -49,8 +49,9 @@ kept out of the numbers and out of what a round reads. A test suite run by
 nock command sets `NOCK_UNRECORDED=1` for what it starts, and you can set it
 yourself for anything else that should stay out.
 
-You can look at it all: `nock calls`, `nock stats` and `nock sessions`
-summarize it, and `nock query "SELECT …"` runs read-only SQL over its tables.
+You can look at it all: `nock query calls`, `nock query stats` and `nock
+query sessions` summarize it, and `nock query "SELECT …"` runs read-only SQL
+over its tables.
 
 ## The first session
 
@@ -174,7 +175,7 @@ round, opening the studio, or your first verdict on an item. Your answer is
   projects without knowing which;
 - **`share = false`**: nothing is ever sent, round summaries included.
 
-`.nock/nock usage` shows your answer, the reports sent, and exactly what the
+`.nock/nock config share` shows your answer, the reports sent, and exactly what the
 next one would carry, even before you answer, so you see what you are asked
 about.
 

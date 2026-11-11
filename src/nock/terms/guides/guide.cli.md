@@ -156,11 +156,11 @@ run on every event of every session, so prefer a check.
 
 **Generators** keep derived files in step with their source.
 `@nock.generator("src/version.py")` returns one file's text (or its bytes,
-written exactly). A **catalog** (`nock gen new`) is a list that code is
-generated from, such as error codes, feature flags or strings: its entries are
-checked against a schema and rendered through templates into every file that
-lists them, and `nock gen add flags '{"key": "dark_mode", …}'` adds one and
-rewrites all of those files in one call. `nock gen write` writes them, and
+written exactly). A **catalog** is a list that code is generated from, such as error codes,
+feature flags or strings, kept as plain files an agent edits: a schema of one
+entry, the entries, and templates naming the files they render. `nock gen`
+writes every generated file out of step, refusing entries that don't fit
+their schema, and
 `nock check` fails when one has drifted.
 
 Together they are the order nock prefers: a rule a check enforces can't be

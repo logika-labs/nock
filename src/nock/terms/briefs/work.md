@@ -14,9 +14,9 @@ yourself; anything longer is a subagent's.
 ## For each piece of work
 
 1. **Its topic.** Every piece of work is tied to a topic: find it
-   (`.nock/nock topics list --query "…"`; a done one that comes back is
-   revived, `.nock/nock docs topics.revive`) or open it (`.nock/nock topics
-   create '{"name": …, "description": …, "status": "dispatching"}'`).
+   (`.nock/nock search "…"`; a done one that comes back is revived,
+   `.nock/nock docs topics.revive`) or open it (`.nock/nock docs topics`:
+   its `created` event, then a `state` with "dispatching").
    Independent pieces get their own topics and their own subagents, side by
    side.
 2. **The brief.** A subagent knows only what you write: the goal, what you
@@ -26,7 +26,7 @@ yourself; anything longer is a subagent's.
        Read `.nock/nock docs work.subagent` first and follow it.
        Your topic is TOPIC: set it active with a status now, keep the
        status current at each milestone, and report back in its thread.
-       Put what you would ask the owner as decision items in TOPIC
+       Put what you would ask the owner as decisions in TOPIC
        (the answer you propose, the others as alternatives) and carry on
        with the proposed answer. Set TOPIC to review when you finish.
        Work in a worktree branch and merge it to main on the plain changed
@@ -40,7 +40,7 @@ yourself; anything longer is a subagent's.
 4. **When it reports.** Check what it claims where that's cheap (the
    commit is on main, the check is green, the page renders). Then tell the
    owner concisely: what changed, what needs their word (the topic's open
-   decision items, by ref), what is left.
+   decisions, by ref), what is left.
 
 ## What only the owner sets off
 
@@ -53,8 +53,8 @@ the work reaches such a step, stop there and ask.
 
 ## The owner's verdicts
 
-What the owner says about an item goes on it (`.nock/nock docs
-topics.verdicts`), on their word only. A rejected item is reworked as a new
-version, by the subagent that made it or a new one briefed with the
-thread. Before you finish a turn, `.nock/nock topics list`: threads where
-the owner wrote last and rejected items are yours to act on.
+What the owner says about a decision goes on it (`.nock/nock docs
+topics.verdicts`), on their word only. A rejected decision is reworked as a
+new version, by the subagent that made it or a new one briefed with the
+thread. Before you finish a turn, `.nock/nock inbox`: what the owner said
+that waits on an agent; `.nock/nock inbox --wait` waits for it.

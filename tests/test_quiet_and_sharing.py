@@ -22,14 +22,14 @@ from nock.project import Project
 from nock.studio import Studio
 from nock.usage import IDENTITY, QUESTION, QUESTION_VERSION, UNMADE, Moment, Usage
 
-from .conftest import git, nock, write_tool
+from .conftest import drop_topics_tool, git, nock, write_tool
 from .test_telemetry_and_reflection import transcript
 from .test_topics import judge, submit
 
 
 def configure(project: Project, old: str, new: str) -> Project:
-    """A committed setting changed, the project read afresh."""
-    config = project.root / ".nock" / "config.toml"
+    """A committed team setting changed, the project read afresh."""
+    config = project.root / ".nock" / "shared" / "settings.toml"
     assert old in config.read_text()
     config.write_text(config.read_text().replace(old, new, 1))
     return Project.discover(project.root)
@@ -105,7 +105,7 @@ def end_session(project: Project, session: str) -> None:
 
 
 def usage(project: Project) -> dict[str, Any]:
-    return json.loads(nock(project.root, "usage", "--json").stdout)
+    return json.loads(nock(project.root, "config", "share", "--json").stdout)
 
 
 def test_unanswered_is_asked_once_and_sends_nothing(
@@ -116,7 +116,7 @@ def test_unanswered_is_asked_once_and_sends_nothing(
     assert before["question"] == QUESTION and before["would_send"]["project"] == UNMADE
     started = json.loads(nock(project.root, "reflect", "--json").stdout)
     assert started["ask_the_owner"].startswith(QUESTION)
-    assert "`.nock/nock usage share yes`" in started["ask_the_owner"]
+    assert "`.nock/nock config share true`" in started["ask_the_owner"]
     again = json.loads(nock(project.root, "reflect", "--json").stdout)
     assert "ask_the_owner" not in again
     assert "ask_the_owner" not in judge(project.root, submit(project.root), "accepted")
@@ -136,14 +136,15 @@ def test_unanswered_is_asked_once_and_sends_nothing(
 def test_the_command_writes_a_yes_and_a_report_goes_a_week_later_counts_only(
     project: Project, receiver: list[dict[str, object]]
 ) -> None:
+    drop_topics_tool(project)
     write_tool(
         project, "secret", "import nock\n\n@nock.command\ndef acme_payroll():\n    '''Pay.'''\n"
     )
     nock(project.root, "acme-payroll")
-    said = json.loads(nock(project.root, "usage", "share", "yes", "--json").stdout)
+    said = json.loads(nock(project.root, "config", "share", "true", "--json").stdout)
     assert said["share"] == "yes" and said["answered"]["via"] == "command"
     assert said["answered"]["prompt"] == QUESTION_VERSION and said["answered"]["at"]
-    config = (project.root / ".nock" / "config.toml").read_text()
+    config = (project.root / ".nock" / "shared" / "settings.toml").read_text()
     assert "\nshare = true\n" in config and "# share = false" not in config
     assert git(project.root, "status", "--porcelain") == ""
     assert "share = true" in git(project.root, "log", "-1", "--format=%s")
@@ -181,18 +182,18 @@ def test_the_command_writes_a_yes_and_a_report_goes_a_week_later_counts_only(
 def test_a_no_never_sends_and_a_later_yes_replaces_it(
     project: Project, receiver: list[dict[str, object]]
 ) -> None:
-    said = json.loads(nock(project.root, "usage", "share", "no", "--json").stdout)
+    said = json.loads(nock(project.root, "config", "share", "false", "--json").stdout)
     assert said["share"] == "no" and said["would_send"] is None and said["to"] is None
-    assert "\nshare = false\n" in (project.root / ".nock" / "config.toml").read_text()
+    assert "\nshare = false\n" in (project.root / ".nock" / "shared" / "settings.toml").read_text()
     a_week_ago(project)
     end_session(project, "s1")
     assert receiver == []
     assert not (project.root / ".nock" / IDENTITY).exists()
     assert "ask_the_owner" not in json.loads(nock(project.root, "reflect", "--json").stdout)
-    nock(project.root, "usage", "share", "yes")
-    config = (project.root / ".nock" / "config.toml").read_text()
+    nock(project.root, "config", "share", "true")
+    config = (project.root / ".nock" / "shared" / "settings.toml").read_text()
     assert config.count("share = ") == 1 and "\nshare = true\n" in config
-    assert nock(project.root, "usage", "share", "maybe").returncode == 40
+    assert nock(project.root, "config", "share", "maybe").returncode == 40
 
 
 def test_an_explicit_share_true_already_in_the_config_is_respected(
@@ -233,7 +234,7 @@ def test_every_clone_reports_the_same_id(project: Project, tmp_path: Path) -> No
 
 def test_share_is_only_true_or_false(project: Project) -> None:
     table = configure(project, "# share = false", '[share]\nlevel = "none"')
-    refused = nock(table.root, "usage")
+    refused = nock(table.root, "config", "share")
     assert refused.returncode == 42 and "it is true or false" in refused.stderr
 
 
@@ -250,7 +251,9 @@ def test_the_page_asks_until_the_owner_answers_with_its_buttons(project: Project
         )
         answered = json.loads(urllib.request.urlopen(post).read())
         assert answered["share"] == "no" and answered["answered"]["via"] == "studio"
-        assert "\nshare = false\n" in (project.root / ".nock" / "config.toml").read_text()
+        assert (
+            "\nshare = false\n" in (project.root / ".nock" / "shared" / "settings.toml").read_text()
+        )
         assert 'id="usage"' not in urllib.request.urlopen(studio.address).read().decode()
     finally:
         studio.shutdown()
@@ -259,7 +262,7 @@ def test_the_page_asks_until_the_owner_answers_with_its_buttons(project: Project
 
 def test_a_share_that_is_not_true_or_false_is_refused_plainly(project: Project) -> None:
     shared(project, '"everything"')
-    result = nock(project.root, "usage")
+    result = nock(project.root, "config", "share")
     assert result.returncode == 42 and "it is true or false" in result.stderr
 
 

@@ -22,7 +22,7 @@ from nock.migration import migrate_in
 from nock.primer import AGENTS, MARK_START, PRIMER, refresh, with_section
 from nock.project import NOCK_DIRECTORY, Project
 from nock.releases import PYPI, VERSION, Releases
-from nock.shared import MAP
+from nock.shared import MAP, SETTINGS
 from nock.templates import Library
 from nock.utils import read_json, write_atomic, write_json
 
@@ -44,18 +44,6 @@ CONFIG = """\
 # machine-specific overrides go in .nock/local/config.toml (not committed).
 
 branch = "main"
-
-# Whether nock speaks up unasked: the primer's advice, the toolbox and an
-# occasional word on where things stand at a session's start, the owner's
-# word in the topics, the items about an edited file. false: silent unless asked.
-reminders = true
-
-# Whether nock shares a usage report with its makers, weekly: counts and
-# categories, and a random id for the project, never code, paths, names or
-# text. Unset until the owner answers nock's question, and nothing is sent
-# unless it is true; false sends nothing at all. `.nock/nock usage` shows
-# exactly what would be sent.
-# share = false
 
 # Checks `.nock/nock check` runs besides the @nock.check functions in
 # .nock/tools/. Exit 0 passes, 1 fails (the code is wrong), anything else
@@ -85,12 +73,30 @@ confirm = "ask"
 
 GITIGNORE = "local/\n__pycache__/\n"
 
+SETTINGS_STUB = """\
+# The team's settings: whatever the people working on this project share,
+# committed with the topics. `.nock/nock config` lists and sets them; the code's
+# settings are in .nock/config.toml, one machine's in .nock/local/config.toml.
+
+# Whether nock speaks up unasked: the primer's advice, the toolbox and an
+# occasional word on where things stand at a session's start, the owner's
+# word in the topics, the decisions about an edited file. false: silent unless asked.
+reminders = true
+
+# Whether nock shares a usage report with its makers, weekly: counts and
+# categories, and a random id for the project, never code, paths, names or
+# text. Unset until the owner answers nock's question, and nothing is sent
+# unless it is true; false sends nothing at all. `.nock/nock config share` shows
+# exactly what would be sent.
+# share = false
+"""
+
 MAP_STUB = """\
 # The map of topics
 
 When each topic and its items matter, and how they bear on each other,
 citing each item by its ref in brackets. Empty until the first reflection round
-writes it; until then, `.nock/nock topics list` lists the topics.
+writes it; until then, `.nock/local/views/index.md` lists the topics.
 """
 
 IMPORT_LINE = "@.nock/context.md"
@@ -371,6 +377,7 @@ class Installer:
         self.start(
             f"{NOCK_DIRECTORY}/shared/{MAP}", MAP_STUB, "the map of topics, empty until a round"
         )
+        self.start(f"{NOCK_DIRECTORY}/shared/{SETTINGS}", SETTINGS_STUB, "the team's settings")
 
     def migrate(self) -> None:
         migrated = migrate_in(self.root)

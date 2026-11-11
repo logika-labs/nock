@@ -167,7 +167,7 @@ def test_the_briefs_point_only_at_terms_and_the_toolbox_brief_at_the_framework()
     for term in docs.terms:
         if term.term.split(".")[0] in FRAMEWORK:
             assert term.term in toolbox, f"the toolbox brief doesn't point at {term.term}"
-    for brief in ("consult.md", "ask.md", "reflection.map.md", "reflection.nock.md"):
+    for brief in ("consult.md", "reflection.map.md", "reflection.nock.md"):
         assert brief in named, brief
 
 

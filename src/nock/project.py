@@ -92,7 +92,13 @@ class Project:
 
     @cached_property
     def configuration(self) -> Configuration:
-        return Configuration([self.code_path("config.toml"), self.local / "config.toml"])
+        return Configuration(
+            [
+                self.code_path("config.toml"),
+                self.root / NOCK_DIRECTORY / "shared" / "settings.toml",
+                self.local / "config.toml",
+            ]
+        )
 
     @cached_property
     def git(self) -> Git:

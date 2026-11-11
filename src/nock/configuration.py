@@ -87,6 +87,14 @@ DEFAULTS: dict[str, Any] = {
         # a bearer token ("OPENAI_API_KEY"); empty sends none. Never the key itself.
         "transcribe_key_variable": "",
     },
+    "inbox": {
+        # How long `nock inbox --wait` waits, in seconds: under Claude Code's
+        # ten-minute limit on a command.
+        "wait": 540,
+        # How long the owner is quiet after a verdict or a comment before the
+        # waiting agent hears them, so a triage lands as one batch.
+        "settle": 60,
+    },
     "consult": {
         # Whether the consultant runs, and the primer asks agents to consult.
         "enabled": True,
@@ -104,8 +112,8 @@ DEFAULTS: dict[str, Any] = {
     },
     # `share`, whether nock shares a usage report with its makers (counts and
     # categories, and a random id for the project), weekly, has no default: unset
-    # is unanswered and sends nothing until the owner says yes (`nock usage share
-    # yes|no` writes it); false sends nothing at all, summaries included — only
+    # is unanswered and sends nothing until the owner says yes (`nock config share
+    # true|false` writes it); false sends nothing at all, summaries included — only
     # what someone writes and sends themselves with `nock report` still goes.
     "endpoints": {
         # Where `nock share` sends a round's summary, when the owner says so.
@@ -169,7 +177,7 @@ class Configuration:
         return value if isinstance(value, dict) else {}
 
 
-def with_table_settings(text: str, table: str, values: dict[str, str]) -> str:
+def with_table_settings(text: str, table: str, values: dict[str, Any]) -> str:
     """A TOML file's text with `key = "value"` set in `[table]`: each key's
     line replaced where the table has it, the rest added at the table's end;
     the table added at the file's end when it has none."""
@@ -200,4 +208,45 @@ def with_table_settings(text: str, table: str, values: dict[str, str]) -> str:
         else:
             lines[found] = setting
     lines[end:end] = added
+    return "".join(lines)
+
+
+# Who a setting belongs to, which says the file `nock config KEY VALUE`
+# writes: the team's in `.nock/shared/settings.toml`, committed with the topics;
+# one machine's in `.nock/local/config.toml`. The code's (checks, environment,
+# permissions, …) stay in `.nock/config.toml`, written by hand.
+TEAM = ("share", "reminders", "reflect", "inbox", "consult", "agent")
+MACHINE = (
+    "notifications",
+    "studio.port",
+    "studio.transcribe_url",
+    "studio.transcribe_model",
+    "studio.transcribe_key_variable",
+)
+
+
+def scope_of(key: str) -> str | None:
+    """`team`, `machine`, or None for a key `nock config` does not write."""
+    if key in MACHINE:
+        return "machine"
+    if key.split(".")[0] in TEAM:
+        return "team"
+    return None
+
+
+def with_key(text: str, key: str, value: Any) -> str:
+    """A TOML file's text with a dotted key set: `share`, `studio.port`,
+    `reflect.logika.days`."""
+    table, _, name = key.rpartition(".")
+    if table:
+        return with_table_settings(text, table, {name: value})
+    lines = text.splitlines(keepends=True)
+    tables = [index for index, line in enumerate(lines) if line.lstrip().startswith("[")]
+    top = tables[0] if tables else len(lines)
+    setting = f"{key} = {json.dumps(value)}\n"
+    for index in range(top):
+        if re.match(rf"^#?\s*{re.escape(key)}\s*=", lines[index]):
+            lines[index] = setting
+            return "".join(lines)
+    lines.insert(top, setting + ("\n" if tables else ""))
     return "".join(lines)

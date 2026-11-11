@@ -124,6 +124,10 @@ CREATE TABLE IF NOT EXISTS notifications (
     address TEXT,                -- where in the studio it leads: `#topics/REF~chat`
     preview TEXT                 -- the event's preview: what the agent said, the item's description
 );
+CREATE TABLE IF NOT EXISTS inbox_shown (
+    reader TEXT NOT NULL,        -- a session (a subagent by its own id) `nock inbox` showed an entry to
+    entry TEXT NOT NULL          -- the entry, by its key: the owner's message's or verdict's event id
+);
 CREATE TABLE IF NOT EXISTS nudged (
     round TEXT NOT NULL          -- a round whose unshared summary, or a week's logika-round offer, a session start mentioned
 );
