@@ -201,10 +201,11 @@
   background: var(--noise), rgb(255 255 255 / .95); background-blend-mode: soft-light, normal;
   box-shadow: 0 6px 24px rgb(60 20 120 / .1);
 }
-/* An open one takes the menu's pair: pink above and to the left, cyan below and to the right. */
+/* An open one takes the menu's pair: pink above and to the left, cyan below and to the right. Its
+   black edge is the border's width and an outline's beside it, so opening one moves nothing. */
 :root .sheet.open {
-  border: 2px solid #111116;
-  box-shadow: 5px 5px 0 0 var(--one), -5px -5px 0 0 var(--two), 0 12px 32px rgb(60 20 120 / .18);
+  border-color: #111116; outline: 1px solid #111116;
+  box-shadow: 6px 6px 0 0 var(--one), -6px -6px 0 0 var(--two), 0 12px 32px rgb(60 20 120 / .18);
 }
 :root .sheet.open .body { border-top: 1px solid rgb(17 17 22 / .14); }
 :root .sheet.open .section > .label { color: var(--foreground); }

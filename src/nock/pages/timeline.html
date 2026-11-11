@@ -65,20 +65,20 @@
     return when.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", ...(when.getFullYear() !== today.getFullYear() ? { year: "numeric" } : {}) });
   }
 
-  // A notification: what happened, its time, where, a preview; an asset's pictures and videos by
-  // their own faces, one in a column at the right, several in a row under the rest. The topic's name
-  // is a pill that opens the topic; the rest of the card, the event's own place.
+  // A notification: what happened, its time and the dot that marks it unseen, where, a preview; an
+  // asset's pictures and videos in a row of their own under the rest. The topic's name is a pill
+  // that opens the topic; the rest of the card, the event's own place.
   function card(event) {
     const fresh = state.seen && event.moment > state.seen;
     const topic = `<span class="topic" role="link" tabindex="0" data-topic-link="#topics/${escape(event.topic)}">${escape(event.topic)}</span>`;
     const where = event.ref ? `<span class="place">${topic}<span class="title">${studio.render.titled(event.title || "")}</span></span>`
       : `<span class="place">${topic}${event.state ? `<span class="state">${escape(event.state)}</span>` : ""}</span>`;
     const faces = (event.faces || []).map(face => `<span class="still">${face.type === "image" ? `<img src="${fileUrl(event, face)}" alt="" loading="lazy">` : `<video src="${fileUrl(event, face)}#t=0.1" preload="metadata" muted playsinline tabindex="-1"></video>`}</span>`);
-    const shown = faces.length === 1 ? faces[0] : faces.length ? `<span class="stills">${faces.join("")}</span>` : "";
+    const shown = faces.length ? `<span class="stills${faces.length === 1 ? " single" : ""}">${faces.join("")}</span>` : "";
     const preview = event.preview ? `<span class="gist">${studio.render.inline(event.preview)}</span>` : "";
-    return `<a class="event ${escape(event.kind)}${fresh ? " new" : ""}${faces.length === 1 ? " faced" : ""}" data-key="${escape(event.key)}" href="${escape(event.address)}">
+    return `<a class="event ${escape(event.kind)}${fresh ? " new" : ""}" data-key="${escape(event.key)}" href="${escape(event.address)}">
       <span class="sign" aria-hidden="true">${ICONS[event.kind] || ICONS.message}</span>
-      <span class="headline"><strong>${escape(event.text)}</strong>${studio.render.time(event.moment)}</span>${where}${preview}${shown}</a>`;
+      <span class="headline"><strong>${escape(event.text)}</strong>${studio.render.time(event.moment)}<span class="unseen"${fresh ? ' title="New since you last looked"' : ""}></span></span>${where}${preview}${shown}</a>`;
   }
 
   function drawList() {

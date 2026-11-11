@@ -1,23 +1,22 @@
 /* The Timeline: a feed of notifications on the topics' look (the fragment is also `.topics`), one
-   glass card each, grouped by day: a foil mark for its kind, what happened in bold and its time,
-   where (the topic's pill, the item's title), a preview of a few lines, an asset's faces. New ones,
-   since the owner last left the tab, carry the foil's edge. Every card keeps a column for a face at
-   its right, so each time ends at the same place: one face fills it, several make a row under the
-   preview, and without one the text below the headline runs on into it. */
+   glass card each, grouped by day: a foil mark for its kind, what happened in bold and its time at
+   the top right of the text, where (the topic's pill, the item's title), a preview of a few lines,
+   an asset's pictures in a row of their own under it. One not yet seen, since the owner last left
+   the tab, has a foil dot after its time, in a place every card keeps, so each time ends at the same
+   place. Hovered, a card takes the foil's edge, as a shadow: nothing moves. */
 .timeline #timeline-main { display: grid; gap: 8px; margin-top: 16px; padding-bottom: 48px; }
 .timeline .day { margin: 14px 0 2px 6px; color: var(--foreground); }
 .timeline .day:first-child { margin-top: 0; }
 .timeline .event {
-  position: relative; display: grid; grid-template-columns: 30px minmax(0, 1fr) 6.5rem;
+  position: relative; display: grid; grid-template-columns: 30px minmax(0, 1fr);
   justify-self: stretch; width: 100%; box-sizing: border-box; gap: 2px 12px; align-items: start;
   padding: 12px 16px 12px 14px; border-radius: 16px; color: inherit; text-decoration: none;
   background: var(--noise), rgb(255 255 255 / .95); background-blend-mode: soft-light, normal;
   border: 1px solid rgb(255 255 255 / .95); box-shadow: 0 4px 16px rgb(60 20 120 / .08);
   transition: box-shadow .15s, border-color .15s;
 }
-.timeline .event:hover { border-color: rgb(17 17 22 / .2); box-shadow: 0 8px 18px -6px rgb(150 215 255 / .6), 0 4px 16px rgb(60 20 120 / .08); }
+.timeline .event:hover { box-shadow: 3px 3px 0 0 var(--cyan), -3px -3px 0 0 var(--pink), 0 4px 16px rgb(60 20 120 / .08); }
 .timeline .event:focus-visible { outline: 2px solid #111116; outline-offset: 2px; }
-.timeline .event.new { box-shadow: 3px 3px 0 0 var(--cyan), -3px -3px 0 0 var(--pink), 0 4px 16px rgb(60 20 120 / .08); }
 /* As the topics' state and verdict marks: a white glyph on the foil, whatever the kind. */
 .timeline .event .sign {
   grid-row: 1 / span 3; display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; margin-top: 1px;
@@ -27,8 +26,10 @@
 .timeline .headline { grid-column: 2; display: flex; align-items: baseline; gap: 10px; min-width: 0; }
 .timeline .headline strong { font: 600 14.5px/21px var(--sans); min-width: 0; overflow-wrap: anywhere; }
 .timeline .headline time { margin-left: auto; flex: none; color: var(--time); font: 500 12px/1 var(--mono); }
-.timeline .place, .timeline .gist, .timeline .stills { grid-column: 2 / -1; }
-.timeline .event.faced .place, .timeline .event.faced .gist { grid-column: 2; }
+/* The chats' unread dot, in its place whether or not the card is new. */
+.timeline .headline .unseen { flex: none; align-self: center; width: 8px; height: 8px; border-radius: 50%; margin-left: -4px; }
+.timeline .event.new .headline .unseen { background: var(--foil-ring); box-shadow: 0 0 0 1.5px #fff; }
+.timeline .place, .timeline .gist, .timeline .stills { grid-column: 2; }
 .timeline .place { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; min-width: 0; font-size: 13.5px; }
 /* The topic's name, a pill in Tidy up's look, opens the topic. */
 .timeline .place .topic {
@@ -47,16 +48,23 @@
   display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
 }
 .timeline .gist code { font: 12px var(--mono); background: #f1eefa; padding: 0 4px; border-radius: 4px; }
-.timeline .event.faced > .still { grid-column: 3; grid-row: 1 / span 3; }
-.timeline .stills { display: flex; gap: 8px; margin-top: 8px; overflow: hidden; }
-.timeline .still { flex: none; width: 6.5rem; height: 4.5rem; border-radius: 10px; overflow: hidden; background: #f3f0fa; box-shadow: 0 0 0 1px var(--border); }
-.timeline .still img, .timeline .still video { display: block; width: 100%; height: 100%; object-fit: cover; object-position: top center; pointer-events: none; }
+/* One picture as it is, as wide as the text and no taller than a screenful's half; several side by
+   side, sharing the row, scrolling once each would be narrower than 8rem. */
+.timeline .stills {
+  display: grid; grid-auto-flow: column; grid-auto-columns: minmax(8rem, 1fr); gap: 8px; margin-top: 8px;
+  overflow-x: auto; scrollbar-width: thin;
+}
+.timeline .still { display: block; border-radius: 10px; overflow: hidden; background: #f3f0fa; outline: 1px solid var(--border); outline-offset: -1px; }
+.timeline .still img, .timeline .still video { display: block; pointer-events: none; }
+.timeline .stills:not(.single) .still { aspect-ratio: 16 / 10; max-height: 14rem; }
+.timeline .stills:not(.single) .still img, .timeline .stills:not(.single) .still video { width: 100%; height: 100%; object-fit: cover; object-position: top center; }
+.timeline .stills.single { display: block; }
+.timeline .stills.single .still { width: fit-content; max-width: 100%; }
+.timeline .stills.single .still img, .timeline .stills.single .still video { max-width: 100%; max-height: min(24rem, 50vh); width: auto; height: auto; }
 .timeline .more { justify-self: center; margin-top: 8px; }
 .timeline .answer .mini { text-decoration: none; }
 @media (max-width: 560px) {
-  .timeline .event { grid-template-columns: 30px minmax(0, 1fr); padding: 10px 12px; }
-  .timeline .event.faced > .still { grid-column: 2; grid-row: auto; width: 100%; height: 8rem; margin-top: 8px; }
-  .timeline .stills .still { width: 5rem; height: 3.5rem; }
+  .timeline .event { padding: 10px 12px; }
 }
 /* A timeline card for a message is not a chat bubble: none of `.topics .message` applies. */
 .timeline .event.message { max-width: none; align-self: auto; font-size: inherit; line-height: inherit; }
