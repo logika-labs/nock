@@ -1,7 +1,9 @@
-"""The primer, `.nock/context.md`, which CLAUDE.md imports so every session
-reads it: what nock is for here and what to do with it — as the committed
-settings have it, so `reminders = false` leaves only a word on what nock is,
-and `consult.enabled = false` leaves out consulting."""
+"""The primer, `.nock/context.md`, which CLAUDE.md imports so every Claude
+Code session reads it, and which AGENTS.md holds between nock's markers for
+the harnesses that read AGENTS.md and follow no import (Codex, Cursor): what
+nock is for here and what to do with it — as the committed settings have it,
+so `reminders = false` leaves only a word on what nock is, and
+`consult.enabled = false` leaves out consulting."""
 
 from __future__ import annotations
 
@@ -11,6 +13,9 @@ from nock.configuration import Configuration
 from nock.utils import write_atomic
 
 PRIMER = "context.md"
+AGENTS = "AGENTS.md"
+MARK_START = "<!-- nock -->"
+MARK_END = "<!-- /nock -->"
 
 INTRODUCTION = """\
 ## nock
@@ -96,13 +101,31 @@ def primer(configuration: Configuration) -> str:
     return INTRODUCTION + "\n" + (CONSULT if consulting else "") + TOPICS + REPORT
 
 
-def refresh(directory: Path) -> bool:
-    """Rewrite `directory/context.md` when the committed settings say
-    otherwise; whether it changed. A machine's own `local/config.toml` never
-    changes a committed file."""
+def with_section(text: str, section: str) -> str:
+    """`text` with `section` between nock's markers, replacing an earlier one
+    in place, or after everything else."""
+    block = f"{MARK_START}\n{section.rstrip()}\n{MARK_END}\n"
+    start, end = text.find(MARK_START), text.find(MARK_END)
+    if 0 <= start < end:
+        after = text[end + len(MARK_END) :].removeprefix("\n")
+        return text[:start] + block + after
+    return text.rstrip("\n") + "\n\n" + block if text.strip() else block
+
+
+def refresh(directory: Path) -> list[Path]:
+    """Rewrite `directory/context.md`, and the section of an AGENTS.md beside
+    `directory` that holds one, when the committed settings say otherwise;
+    the files it changed. A machine's own `local/config.toml` never changes a
+    committed file."""
     text = primer(Configuration([directory / "config.toml"]))
+    changed = []
     path = directory / PRIMER
-    if path.is_file() and path.read_text() == text:
-        return False
-    write_atomic(path, text)
-    return True
+    if not (path.is_file() and path.read_text() == text):
+        write_atomic(path, text)
+        changed.append(path)
+    agents = directory.parent / AGENTS
+    held = agents.read_text() if agents.is_file() else ""
+    if MARK_START in held and with_section(held, text) != held:
+        write_atomic(agents, with_section(held, text))
+        changed.append(agents)
+    return changed

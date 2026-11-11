@@ -359,8 +359,7 @@ def test_init_installs_the_skills_and_retires_the_old_ones(project: Project) -> 
     assert (skills / "nock-triage" / "SKILL.md").read_text().startswith("---\nname: nock-triage\n")
     work = (skills / "nock-work" / "SKILL.md").read_text()
     assert work.endswith("\n---\n\nRun `.nock/nock docs work` and do what it says.\n")
-    assert (project.root / ".agents" / "skills" / "nock-work" / "SKILL.md").read_text() == work
-    assert not (project.root / ".agents" / "skills" / "nock-triage").exists()
+    assert not (project.root / ".agents").exists(), "no Codex here (tests/test_harnesses.py)"
     printed = nock(project.root, "docs", "work").stdout
     assert ".nock/nock docs work.subagent" in printed and "never `--all`" in printed
     assert (

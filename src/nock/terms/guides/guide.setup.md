@@ -20,15 +20,26 @@ uvx nock init
 - vendors nock into `.nock/core/` and writes the `.nock/nock` shim (a core
   already vendored is kept, since `nock upgrade` is what changes it);
 - writes `.nock/config.toml` and an empty `.nock/tools/`;
-- writes the primer, `.nock/context.md`, and imports it into CLAUDE.md;
-- wires the coding agent's hooks;
-- allows each `.nock/nock` command in the agent's permissions, one rule per
-  command (more on that [below](#what-nocks-agents-may-do));
-- installs the skills, and the subagents a round's parts run as. Each is its
-  trigger and one line, "Run `.nock/nock docs TERM` and do what it says.", so
-  the text it follows always matches the vendored core. `/nock-work`, how
-  you work with an orchestrating agent that hands the work to subagents, is
-  written to `.agents/skills/` too, where Codex finds it.
+- finds the coding agents the repository uses: Claude Code always; Codex
+  when there is a `.codex/` directory or `codex` on PATH; Cursor when there
+  is a `.cursor/` directory or `cursor` or `cursor-agent` on PATH;
+- writes the primer, `.nock/context.md`, and imports it into CLAUDE.md; for
+  Codex and Cursor, which read AGENTS.md, it writes the primer there too,
+  between `<!-- nock -->` markers, and keeps it current;
+- wires each agent's hooks (`.claude/settings.json`, `.codex/hooks.json`,
+  `.cursor/hooks.json`), keeping any hooks of yours there;
+- allows each `.nock/nock` command in Claude Code's permissions, one rule
+  per command (more on that [below](#what-nocks-agents-may-do));
+- installs the skills, and the subagents a round's parts run as, in
+  `.claude/skills/` and `.claude/agents/` (Cursor reads them there). Each is
+  its trigger and one line, "Run `.nock/nock docs TERM` and do what it
+  says.", so the text it follows always matches the vendored core.
+  `/nock-work`, how you work with an orchestrating agent that hands the work
+  to subagents, goes to `.agents/skills/` too when Codex is found;
+- prints the agents it found, each file it added or changed and what it
+  holds, and the next step.
+
+Codex runs a project's hooks only once you trust them: `/hooks` in Codex.
 
 Commit the result. From then on every session in the repository starts with
 the toolbox listed, and is recorded when it ends. nock speaks up unasked only a
