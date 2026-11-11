@@ -25,7 +25,6 @@ build.py           the pages: landing/; the docs from ../src/nock/terms/ (a page
                    what crawlers read: each page's canonical link and JSON-LD, robots.txt,
                    sitemap.xml (each page dated by its sources' last commit), llms.txt and
                    llms-full.txt (every essay, the reference and every term as Markdown)
-publish.py         build, and push to GitHub Pages
 deploy.py          build, and release to Logika's box (/srv/sites/nock.dev), with nock.dev.caddy,
                    Caddy's site for it there
 ```
@@ -70,18 +69,6 @@ The legal pages carry the TL;DR switch at the right end of the title's line. The
 summary while it is on (the default) and only the full text while it is off; without script, both. Turning it off is kept in the visitor's
 browser's `localStorage`, as the privacy policy says.
 
-## Publish
-
-```sh
-python3 web/publish.py --no-push   # build, stage and commit in web/pages/; show the change
-python3 web/publish.py             # the same, then ask before pushing
-```
-
-The site is served by GitHub Pages from `logika-labs/nock.dev` (branch `main`,
-the root). Publishing clones it into `web/pages/` (gitignored), replaces
-everything but `.git` with `site/` plus `CNAME` (`nock.dev`) and `.nojekyll`,
-commits, shows the change, and pushes only when you answer `y`.
-
 ## Release to the box
 
 ```sh
@@ -89,16 +76,15 @@ python3 web/deploy.py ops@box-1              # build from the committed tree, sh
 python3 web/deploy.py ops@box-1 --rollback   # switch back to the release before the current one
 ```
 
-nock.dev is moving from GitHub Pages to Logika's box, beside api.nock.dev; Pages stays the
-fallback until the records point at the box (`deploy/runbooks/sites.md` in Logika's repository has
-the switch, and the DNS records it changes). A release stages `site/`'s tracked files, the
+nock.dev is served from Logika's box, beside api.nock.dev (`deploy/runbooks/sites.md` in Logika's
+repository has its DNS records). A release stages `site/`'s tracked files, the
 built pages and the videos they play (rendered into `site/videos/` by `videos/`, not committed; it refuses
 to go while one is missing) in `web/build/release/ID` (so pages left by earlier builds never ship), copies them over
 SSH to `/srv/sites/nock.dev/releases/ID`, and switches `current`, the link Caddy serves, in one
 rename; the five newest releases stay. It installs `nock.dev.caddy` as
 `/etc/caddy/sites/nock.dev.caddy` when it changed, which the box's Caddyfile imports, validates it
-with that Caddyfile (the previous one goes back if Caddy refuses it) and reloads Caddy, which then
-issues nock.dev's and www.nock.dev's certificates once their records point at the box. Nothing
+with that Caddyfile (the previous one goes back if Caddy refuses it) and reloads Caddy, which
+issues nock.dev's and www.nock.dev's certificates. Nothing
 runs before you answer `y`.
 
 ## The API

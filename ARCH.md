@@ -148,7 +148,7 @@ tests/               real git repositories and processes; no mocks
 scripts/release.py   cut a release: checks, asks, then tags vVERSION and pushes it (standard library)
 web/                 nock.dev, never vendored or packaged: layout.html, home.html, legal/, site/
                      (style, fonts, the built pages), build.py (the docs pages from the
-                     terms and guides), publish.py (to GitHub Pages)
+                     terms and guides), deploy.py (to Logika's box)
 server/              api.nock.dev, where `nock share`, the usage reports and `nock report` post: a
                      distribution of
                      its own (`nock-api`, Python 3.14, FastAPI, Postgres), never vendored or
