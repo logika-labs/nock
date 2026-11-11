@@ -559,8 +559,10 @@ nothing about who spoke last; one commit, once.
 `timeline.Timeline` reads the topics as events (`Event`: a topic opened, its
 state or status changed, it was revived, an item submitted, a version made,
 an agent's message, marked when it answers the owner), newest first, each
-with a stable `key`, a preview and its address in the studio
-(`#topics/REF~chat` opens the chat, `~vN` a version). Nothing is stored, so
+with a stable `key`, a `phrase` for what happened, a `title`, a preview and
+its address in the studio (`#topics/REF~chat` opens the chat, `~reply` with
+its field focused, `~vN` a version); a topic's status changes with nothing
+between them fold into the latest, with their `count`. Nothing is stored, so
 it covers all of the topics' history and reads the same on every machine.
 `Topics.owners_turn` hands `notify.Notifications.tell` the event the agent
 just wrote (`TURNS`, by reason), whose key and address the notification row

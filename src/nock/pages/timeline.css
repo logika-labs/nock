@@ -1,9 +1,10 @@
 /* The Timeline: a feed of notifications on the topics' look (the fragment is also `.topics`), one
-   glass card each, grouped by day: a foil mark for its kind, what happened in bold and its time at
-   the top right of the text, where (the topic's pill, the item's title), a preview of a few lines,
-   an asset's pictures in a row of their own under it. One not yet seen, since the owner last left
-   the tab, has a foil dot after its time, in a place every card keeps, so each time ends at the same
-   place. Hovered, a card takes the foil's edge, as a shadow: nothing moves. */
+   glass card each, grouped by day: a foil mark for its kind; then, on one line, the topic's pill,
+   what happened, and its time at the top right of the text; a title on one line; a description of
+   up to three; an asset's pictures in a row of their own. One not yet seen, since the owner last
+   left the tab, has a foil dot after its time, in a place every card keeps, so each time ends at
+   the same place. Hovered, a card takes the foil's edge, as a shadow, and its actions show over
+   its corner: nothing moves. */
 .timeline #timeline-main { display: grid; gap: 8px; margin-top: 16px; padding-bottom: 48px; }
 .timeline .day { margin: 14px 0 2px 6px; color: var(--foreground); }
 .timeline .day:first-child { margin-top: 0; }
@@ -19,35 +20,50 @@
 .timeline .event:focus-visible { outline: 2px solid #111116; outline-offset: 2px; }
 /* As the topics' state and verdict marks: a white glyph on the foil, whatever the kind. */
 .timeline .event .sign {
-  grid-row: 1 / span 3; display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; margin-top: 1px;
+  grid-row: 1 / span 3; display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; margin-top: -4px;
   background: var(--foil-ring); color: #fff;
 }
 .timeline .event .sign svg { width: 16px; height: 16px; filter: drop-shadow(0 0 1px rgb(17 17 22 / .45)); }
-.timeline .headline { grid-column: 2; display: flex; align-items: baseline; gap: 10px; min-width: 0; }
-.timeline .headline strong { font: 600 14.5px/21px var(--sans); min-width: 0; overflow-wrap: anywhere; }
+.timeline .headline { grid-column: 2; display: flex; align-items: center; gap: 10px; min-width: 0; height: 22px; }
+.timeline .headline strong { flex: 0 1 auto; min-width: 0; font: 600 13.5px/22px var(--sans); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.timeline .headline .count { flex: none; margin-left: -4px; color: var(--muted); font-size: 13px; white-space: nowrap; }
 .timeline .headline time { margin-left: auto; flex: none; color: var(--time); font: 500 12px/1 var(--mono); }
 /* The chats' unread dot, in its place whether or not the card is new. */
-.timeline .headline .unseen { flex: none; align-self: center; width: 8px; height: 8px; border-radius: 50%; margin-left: -4px; }
+.timeline .headline .unseen { flex: none; width: 8px; height: 8px; border-radius: 50%; margin-left: -4px; }
 .timeline .event.new .headline .unseen { background: var(--foil-ring); box-shadow: 0 0 0 1.5px #fff; }
-.timeline .place, .timeline .gist, .timeline .stills { grid-column: 2; }
-.timeline .place { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; min-width: 0; font-size: 13.5px; }
-/* The topic's name, a pill in Tidy up's look, opens the topic. */
-.timeline .place .topic {
-  display: inline-flex; align-items: center; height: 20px; padding: 0 8px; border-radius: 999px; cursor: pointer;
-  border: 1px solid transparent; color: var(--foreground); font: 500 11.5px/1 var(--mono);
+/* The topic's name, a pill in Tidy up's look, opens the topic; a long one gives way first. */
+.timeline .headline .topic {
+  flex: 0 1000 auto; min-width: 3.5rem; display: block; height: 20px; box-sizing: border-box; padding: 0 8px; border-radius: 999px; cursor: pointer;
+  border: 1px solid transparent; color: var(--foreground); font: 500 11.5px/18px var(--mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   background: linear-gradient(#fff, #fff) padding-box, linear-gradient(100deg, #ff9ad5, #c3b2ff, #8fe9ff) border-box;
   box-shadow: -3px 3px 8px -5px rgb(255 120 200 / .55), 3px 4px 8px -5px rgb(90 220 255 / .6);
 }
-.timeline .place .topic:hover { background: linear-gradient(#f7f4ff, #f7f4ff) padding-box, linear-gradient(100deg, #ff9ad5, #c3b2ff, #8fe9ff) border-box; }
-.timeline .place .topic:focus-visible { outline: 2px solid #111116; outline-offset: 2px; }
-.timeline .place .title { font: 600 13.5px/19px var(--display); letter-spacing: -.01em; overflow-wrap: anywhere; }
-.timeline .place .title code { font: 600 .9em var(--mono); background: #f1eefa; padding: 0 4px; border-radius: 4px; }
-.timeline .place .state { font: 500 11px/16px var(--mono); text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+.timeline .headline .topic:hover { background: linear-gradient(#f7f4ff, #f7f4ff) padding-box, linear-gradient(100deg, #ff9ad5, #c3b2ff, #8fe9ff) border-box; }
+.timeline .headline .topic:focus-visible { outline: 2px solid #111116; outline-offset: 2px; }
+.timeline .title, .timeline .gist, .timeline .stills { grid-column: 2; }
+.timeline .title {
+  margin-top: 2px; min-width: 0; font: 600 15px/22px var(--sans); color: var(--foreground);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.timeline .title code { font: 600 .9em var(--mono); background: #f1eefa; padding: 0 4px; border-radius: 4px; }
 .timeline .gist {
   color: var(--muted); font-size: 13.5px; line-height: 1.5; overflow-wrap: anywhere;
   display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
 }
+.timeline .gist.muted { color: var(--time); }
 .timeline .gist code { font: 12px var(--mono); background: #f1eefa; padding: 0 4px; border-radius: 4px; }
+/* An open decision's Accept and Reject, an answer's Reply: over the card's bottom right corner,
+   shown on hover or focus; on a screen without hover, in a row of their own under the rest. */
+.timeline .actions {
+  position: absolute; right: 12px; bottom: 10px; display: flex; gap: 6px; padding: 4px; border-radius: 14px;
+  background: rgb(255 255 255 / .92); box-shadow: 0 6px 18px -6px rgb(60 20 120 / .3);
+  opacity: 0; pointer-events: none; transition: opacity .12s;
+}
+.timeline .event:hover .actions, .timeline .event:focus-within .actions { opacity: 1; pointer-events: auto; }
+.timeline .actions .button { display: inline-flex; align-items: center; height: 28px; padding: 0 12px; font: 600 12.5px/1 var(--sans); cursor: pointer; }
+@media (hover: none) {
+  .timeline .actions { position: static; grid-column: 2; justify-self: end; margin-top: 8px; padding: 0; background: none; box-shadow: none; opacity: 1; pointer-events: auto; }
+}
 /* One picture as it is, as wide as the text and no taller than a screenful's half; several side by
    side, sharing the row, scrolling once each would be narrower than 8rem. */
 .timeline .stills {
@@ -60,7 +76,7 @@
 .timeline .stills:not(.single) .still img, .timeline .stills:not(.single) .still video { width: 100%; height: 100%; object-fit: cover; object-position: top center; }
 .timeline .stills.single { display: block; }
 .timeline .stills.single .still { width: fit-content; max-width: 100%; }
-.timeline .stills.single .still img, .timeline .stills.single .still video { max-width: 100%; max-height: min(24rem, 50vh); width: auto; height: auto; }
+.timeline .stills.single .still img, .timeline .stills.single .still video { max-width: 100%; max-height: min(20rem, 50vh); width: auto; height: auto; }
 .timeline .more { justify-self: center; margin-top: 8px; }
 .timeline .answer .mini { text-decoration: none; }
 @media (max-width: 560px) {

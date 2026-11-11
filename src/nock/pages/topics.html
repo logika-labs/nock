@@ -1164,8 +1164,8 @@
 
   // Where an address leads: a topic opens in the list; a decision opens in its topic; a
   // picture or a text in the viewer, comparing its last two versions when it has them.
-  // `~chat` after it opens its chat too (`#topics/REF~chat`), `~vN` shows version N: where the
-  // Timeline's notifications lead.
+  // `~chat` after it opens its chat too (`#topics/REF~chat`), `~reply` with its field ready to
+  // write, `~vN` shows version N: where the Timeline's notifications lead.
   function arrive(route) {
     state.arrived = route;
     state.reveal_to = "";
@@ -1173,7 +1173,8 @@
     const topic = topicNamed(place);
     if (topic) {
       state.open.add(topic.name); state.reveal_to = `topic-${topic.name}`; state.modal = null;
-      if (focus === "chat") state.chats.add(`topic:${topic.name}`);
+      if (focus === "chat" || focus === "reply") state.chats.add(`topic:${topic.name}`);
+      if (focus === "reply") state.focus = `reply:topic:${topic.name}`;
       return;
     }
     const item = place ? itemAt(place) : null;
@@ -1184,7 +1185,8 @@
       state.modal = null;
       state.reveal_to = `item-${item.ref}`;
     } else view(item, false);
-    if (focus === "chat") state.chats.add(item.ref);
+    if (focus === "chat" || focus === "reply") state.chats.add(item.ref);
+    if (focus === "reply") state.focus = `reply:${item.ref}`;
     const number = focus.match(/^v(\d+)$/);
     if (number && kindOf(item) !== "decision") state.single = Number(number[1]);
   }

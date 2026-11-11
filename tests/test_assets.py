@@ -156,7 +156,18 @@ def test_the_timeline_is_read_from_the_topics_and_a_notification_is_one_of_its_e
     assert sorted(kinds[:2]) == ["answered", "state"] and kinds[2:] == ["item", "topic"]
     answered_you = next(event for event in events if event["kind"] == "answered")
     assert answered_you["address"] == f"#topics/{ref}~chat"
-    assert answered_you["preview"] == "One file is enough."
+    # Each says what happened, then a title, then a description.
+    said = {event["kind"]: (event["phrase"], event["title"], event["preview"]) for event in events}
+    assert said == {
+        "answered": ("replied to you", "Why not Postgres?", "One file is enough."),
+        "state": ("ready for your review", "built", "1 decision"),
+        "item": (
+            "decision for you",
+            "Orders live in SQLite",
+            "One file is enough for **orders** at today's load.",
+        ),
+        "topic": ("started", "Orders.", ""),
+    }
     told = project.store.rows("SELECT event, address FROM notifications ORDER BY id")
     # The answer told the owner; the review, within the same five minutes, waits for the next window.
     assert told == [{"event": answered_you["key"], "address": answered_you["address"]}]
@@ -164,6 +175,40 @@ def test_the_timeline_is_read_from_the_topics_and_a_notification_is_one_of_its_e
     assert [event["key"] for event in listed["events"]] == [answered_you["key"]]
     assert listed["counts"] == {"all": 4, "answers": 1, "review": 1, "topics": 2}
     assert get(page, "timeline?query=postgres%20sqlite")["events"][0]["ref"] == ref
+
+
+def test_a_topic_s_status_changes_in_a_row_are_one_event_with_their_count(
+    project: Project,
+) -> None:
+    open_topic(project.root, {"name": "orders", "description": "Orders. Kept in one file."})
+    for status in ("one", "two", "three"):
+        run(project.root, "topics", "update", "orders", json.dumps({"status": status}))
+    submit(project.root)
+    run(project.root, "topics", "update", "orders", json.dumps({"status": "four"}))
+    # A second apart each, as an agent working writes them.
+    folder = project.root / ".nock" / "topics" / "orders"
+    topic = json.loads((folder / "topic.json").read_text())
+    topic["created"]["moment"] = "2026-01-01T10:00:00Z"
+    seconds = {"one": 1, "two": 2, "three": 3, "four": 5}
+    for entry in topic["thread"]:
+        entry["moment"] = f"2026-01-01T10:00:0{seconds.get(entry.get('status'), 0)}Z"
+    (folder / "topic.json").write_text(json.dumps(topic))
+    item_file = next(folder.glob("*/item.json"))
+    item = json.loads(item_file.read_text())
+    item["versions"][0]["moment"] = "2026-01-01T10:00:04Z"
+    item_file.write_text(json.dumps(item))
+    events = Timeline(project).events()
+    shown = [(event["kind"], event["title"], event.get("count")) for event in events]
+    assert shown == [
+        ("status", "four", None),
+        ("item", "Orders live in SQLite", None),
+        ("status", "three", 3),
+        ("topic", "Orders.", None),
+    ]
+    # The status it moved on from, before the three.
+    assert events[2]["preview"] == "" and events[2]["muted"] is True
+    assert events[0]["preview"] == "three"
+    assert events[3]["preview"] == "Kept in one file."
 
 
 def test_an_asset_s_event_carries_the_face_of_each_of_its_pictures(
