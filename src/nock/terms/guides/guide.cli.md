@@ -148,7 +148,7 @@ gate](#your-tests-as-the-gate)). `nock check` runs the checks the branch's
 changes can affect, side by side, and prints nothing when they all pass;
 `--all` runs every one.
 
-**Hooks** react to Claude Code's events: `session-start`, `prompt`,
+**Hooks** react to the coding agent's events: `session-start`, `prompt`,
 `before-tool`, `after-tool`, `tool-failed`, `stop` and `session-end`. A hook
 asks for `payload`, the event's JSON; text it returns is added to what the agent
 reads; `raise nock.Block("why")` at `stop` refuses the end of the turn. Hooks
@@ -171,7 +171,7 @@ resort.
 
 Some commands only you may set off: a deploy, a release, a payment.
 `@nock.command(confirm=True)` marks one. `nock init` allows every other
-command of the toolbox in Claude Code's permissions, one rule per command, and
+command of the toolbox in the agent's permissions, one rule per command, and
 gives these an `ask` rule instead, so an agent's call waits for you to approve
 it, and the toolbox lists it as asking the owner. Since the examples of every
 tool run in the gate, a `confirm` tool's are only parsed against its
@@ -179,7 +179,7 @@ arguments, never run.
 
 nock's own commands of that kind ask too: `init` (it rewrites these rules),
 `upgrade` (it fetches and merges code), `share` and `report` (they send
-something out). If you run Claude Code with bypassed
+something out). If you run your agent with bypassed
 permissions and want no prompts at all, `permissions.confirm = "allow"` makes
 `nock init` allow these too, and the agents are told to run them only when
 your request calls for them. What nock's own agents may do is in [What nock's

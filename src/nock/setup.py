@@ -102,7 +102,9 @@ IMPORT_LINE = "@.nock/context.md"
 # wanted. Each SKILL.md and subagent (`agents/`) is its trigger and one line pointing
 # at its brief in `nock docs`, so the text always matches the vendored core and an
 # upgrade never rewrites a skill.
-SKILLS = ("nock-triage",)
+SKILLS = ("nock-triage", "nock-work")
+# Skills any harness can follow, written to `.agents/skills/` too, where Codex reads them.
+PORTABLE_SKILLS = ("nock-work",)
 # Skills earlier versions installed, removed on install.
 RETIRED_SKILLS = ("reflect", "consolidate")
 # The briefs earlier versions installed beside a skill, now `nock docs` terms.
@@ -261,18 +263,20 @@ class Installer:
         return self.report
 
     def install_skills(self) -> None:
-        """`/nock-triage` and each kind of round's skill where it is wanted
-        (`/nock-reflect`; `/nock-reflect-logika` in a Logika project), with
-        the subagents its parts run as, kept in step with the core like the
-        primer."""
+        """`/nock-triage`, `/nock-work` (in `.agents/skills/` too) and each
+        kind of round's skill where it is wanted (`/nock-reflect`;
+        `/nock-reflect-logika` in a Logika project), with the subagents its
+        parts run as, kept in step with the core like the primer."""
         briefs = PACKAGE / "briefs"
         library = Library(briefs)
         rounds = tuple(kind.skill for kind in KINDS.values() if kind.wanted(self.root))
         for name in (*rounds, *SKILLS):
             for source in sorted((briefs / name).glob("*.md")):
-                relative = f".claude/skills/{name}/{source.name}"
-                write_atomic(self.root / relative, library.render(f"{name}/{source.name}"))
-                self.report.written.append(relative)
+                directories = (".claude", ".agents") if name in PORTABLE_SKILLS else (".claude",)
+                for directory in directories:
+                    relative = f"{directory}/skills/{name}/{source.name}"
+                    write_atomic(self.root / relative, library.render(f"{name}/{source.name}"))
+                    self.report.written.append(relative)
             # The round's parts as Claude Code subagents, each with only the tools its part needs.
             for source in sorted((briefs / name / "agents").glob("*.md")):
                 relative = f".claude/agents/{source.name}"

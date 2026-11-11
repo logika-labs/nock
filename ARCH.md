@@ -95,7 +95,7 @@ src/nock/
     briefs/          the long texts the installed skills and subagents follow:
                      reflection.lead and its parts reflection.toolbox, .map, .nock;
                      reflection.logika.lead and its parts .rules, .analytics;
-                     topics.triage
+                     topics.triage; work and work.subagent (the orchestrator, and what it dispatches)
     guides/          the documentation for people: a few long essays (guide.why, guide.review, …)
                      and the reference (guide.commands), nock.dev's docs built from them; at most
                      16,000 characters, printed whole
@@ -106,6 +106,7 @@ src/nock/
     nock-reflect-logika/  the `/nock-reflect-logika` skill and its two parts' subagent types,
                      installed in Logika projects only; pointers likewise
     nock-triage/     the `/nock-triage` skill, a pointer to `topics.triage`
+    nock-work/       the `/nock-work` skill, a pointer to `work`, in `.agents/skills/` too
     ask.md           the brief of the agent that answers the studio's Ask
     consult.md       the consultant's brief
     share.md         the brief of the agent that vets a summary before it is shared
@@ -135,7 +136,6 @@ tests/               real git repositories and processes; no mocks
   fake_agent.py      the scripted stand-in for the dispatched agents (consultant, asker, sharer,
                      the studio's chatter, namer, tidier and addresser)
 scripts/release.py   cut a release: checks, asks, then tags vVERSION and pushes it (standard library)
-evals/               does reflection pay? real sessions, with and without a toolbox
 web/                 nock.dev, never vendored or packaged: layout.html, home.html, legal/, site/
                      (style, fonts, the built pages), build.py (the docs pages from the
                      terms and guides), publish.py (to GitHub Pages)
@@ -768,7 +768,7 @@ Everything a project adds lives in `.nock/` and is committed:
 | generated file | `.nock/tools/*.py` | `@nock.generator(path)` | `generators.Generators` |
 | catalog | `.nock/generators/NAME/` | `nock gen new` | `generators.Catalog` |
 | brief | `.nock/briefs/NAME.md` (consult, ask) | the file's presence | `templates.Library`, before the packaged briefs |
-| skill | `.claude/skills/nock-reflect/`, `.claude/skills/nock-triage/`, `.claude/skills/nock-reflect-logika/` (Logika projects) | `nock init` | Claude Code; `nock init` rewrites them, and removes the retired `reflect` and `consolidate` and the briefs earlier versions put beside a skill |
+| skill | `.claude/skills/nock-reflect/`, `.claude/skills/nock-triage/`, `.claude/skills/nock-work/` (and `.agents/skills/nock-work/`), `.claude/skills/nock-reflect-logika/` (Logika projects) | `nock init` | Claude Code, and Codex for `/nock-work`; `nock init` rewrites them, and removes the retired `reflect` and `consolidate` and the briefs earlier versions put beside a skill |
 | settings | `.nock/config.toml`, `.nock/local/config.toml` | — | `configuration.Configuration` |
 | the core itself | `.nock/core/nock/` | edit it | kept by `nock upgrade`'s three-way merge |
 
@@ -812,7 +812,8 @@ worktree's install is that branch's change, never the main checkout's):
 - wires `.claude/settings.json`: the hooks, an `allow` rule per command but
   `run`, and an `ask` rule per `confirm=True` command (an `allow` rule with
   `permissions.confirm = "allow"`);
-- writes the `/nock-reflect` and `/nock-triage` skills, and in a Logika
+- writes the `/nock-reflect`, `/nock-triage` and `/nock-work` skills (`/nock-work`,
+  which any harness can follow, in `.agents/skills/` too, where Codex reads it), and in a Logika
   project (`logika.json` at the root) `/nock-reflect-logika`, with their
   parts' subagent types in `.claude/agents/`.
 
@@ -858,7 +859,7 @@ the sdist and the wheel, publishes them to PyPI as `nock` through trusted
 publishing (environment `pypi`), and attaches them with their SHA-256 sums to
 a GitHub release.
 
-## Tests and evals
+## Tests
 
 - `tests/` runs the vendored `.nock/nock` in real temporary repositories,
   with real git and real processes. The dispatched agents are
@@ -867,16 +868,6 @@ a GitHub release.
   command line for a test to read, and refuses and reports a call its
   seat's rules don't allow, as Claude Code does in `dontAsk`. There are no
   mocks.
-- `evals/run.py` measures the whole loop with real Claude Code sessions:
-  1. training tasks on a seeded shop project;
-  2. one real `/nock-reflect` round, in a headless session;
-  3. different test tasks of the same kinds, with and without the landed
-     toolbox, each in a fresh clone.
-
-  It reports the pass rate, cost, turns, time, tokens and tool use per kind.
-  Its sessions run in `dontAsk` with the allowlist in `evals/permissions.py`
-  (read, edit inside the copy, Python, git, SQLite, nock). See
-  `evals/README.md`.
 
 The gates are `uv run pytest -n 4`, `uv run ruff check`,
 `uv run ruff format` and `uv run basedpyright`. The conventions are in

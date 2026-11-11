@@ -49,7 +49,7 @@ A reflection round writes a summary of how nock is doing in your project. It lea
 
 ## 6. What nock does on your machine
 
-nock's agents run under your own Claude Code (or other coding agent) account, on your machine, under your own agreement with its provider. What they read and send goes to that provider, not to us. When nock works with Logika (`nock reflect logika`), it reads your Logika project through your own `logika` CLI; that is covered by [Logika's privacy policy](https://logika.host/privacy), and nothing of it reaches nock's makers beyond the usage report above.
+nock's agents run under your own coding agent's account, on your machine, under your own agreement with its provider. What they read and send goes to that provider, not to us. When nock works with Logika (`nock reflect logika`), it reads your Logika project through your own `logika` CLI; that is covered by [Logika's privacy policy](https://logika.host/privacy), and nothing of it reaches nock's makers beyond the usage report above.
 
 ## 7. Your rights
 

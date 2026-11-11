@@ -21,12 +21,14 @@ uvx nock init
   already vendored is kept, since `nock upgrade` is what changes it);
 - writes `.nock/config.toml` and an empty `.nock/tools/`;
 - writes the primer, `.nock/context.md`, and imports it into CLAUDE.md;
-- wires Claude Code's hooks;
-- allows each `.nock/nock` command in Claude Code's permissions, one rule per
+- wires the coding agent's hooks;
+- allows each `.nock/nock` command in the agent's permissions, one rule per
   command (more on that [below](#what-nocks-agents-may-do));
 - installs the skills, and the subagents a round's parts run as. Each is its
   trigger and one line, "Run `.nock/nock docs TERM` and do what it says.", so
-  the text it follows always matches the vendored core.
+  the text it follows always matches the vendored core. `/nock-work`, how
+  you work with an orchestrating agent that hands the work to subagents, is
+  written to `.agents/skills/` too, where Codex finds it.
 
 Commit the result. From then on every session in the repository starts with
 the toolbox listed, and is recorded when it ends. nock speaks up unasked only a
@@ -116,8 +118,8 @@ machine.
 
 ## What nock's agents may do
 
-nock never bypasses Claude Code's permission checks: no code path passes Claude
-Code a flag that skips them, and nock refuses an `agent.command` that does. A
+nock never bypasses the agent's permission checks: no code path passes it a
+flag that skips them, and nock refuses an `agent.command` that does. A
 test holds the package to it.
 
 **In your sessions,** the rules `nock init` writes into
@@ -131,9 +133,9 @@ arbitrary shell:
   (it rewrites these rules), `upgrade` (it fetches and merges code; the clean
   upgrade a session start runs by itself is the exception, which
   `upgrade.auto = false` turns off), `share` and `report` (they send something
-  out). Claude Code asks about these even in bypass mode, unless
+  out). The agent asks about these even in bypass mode, unless
   `permissions.confirm = "allow"`;
-- no rule for `run`, which runs any command: Claude Code asks about it as it
+- no rule for `run`, which runs any command: the agent asks about it as it
   would about the command itself.
 
 Re-running `nock init` replaces nock's own rules and keeps everyone else's.
@@ -141,7 +143,7 @@ Re-running `nock init` replaces nock's own rules and keeps everyone else's.
 **The agents nock dispatches** (`claude -p`, no one in the session) run in
 `dontAsk`: each seat has the tools and allow rules its brief needs and nothing
 else, and anything else is refused, never prompted, so a run can't hang on a
-question. The project's Claude Code settings aren't loaded, so its allow rules
+question. The project's agent settings aren't loaded, so its allow rules
 never widen a seat; your user-level settings still apply.
 
 | seat | may |
@@ -154,7 +156,7 @@ never widen a seat; your user-level settings still apply.
 | tidier (Tidy up) | read; list, show, create, update and delete topics, update items, drop items; `docs`; `git log`, `git show` |
 
 None but the addresser can edit a file, and none can reach the network. What
-Claude Code refused comes back with the session, in its record or log.
+the agent refused comes back with the session, in its record or log.
 
 **A round's parts** are subagents of the session running the round, narrowed by
 the subagent types nock installs: the toolbox part reads, edits and runs
