@@ -1,0 +1,22 @@
+title = "Security"
+summary = "Audit who can reach what, what crosses the project's boundaries, what it keeps and logs, and what it depends on."
+relevant = "Projects that run a service, hold accounts or other people's data, take payments, or ship code others install."
+adopted = "recommended"
+
+[due]
+days = 90
+
+[material.changes]
+git = ["."]
+
+[lead]
+reads = ["changes"]
+writes = ["report.md"]
+
+[[agents]]
+name = "surface"
+reads = ["changes"]
+fan_out = "each area of the attack surface the lead maps"
+
+[end]
+kinds = ["risk", "other"]

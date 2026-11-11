@@ -553,7 +553,7 @@ def test_reflect_lists_the_protocols_and_starts_one_or_a_namespace(project: Proj
     }
     assert set(listed) == {
         "nock.toolbox", "nock.map", "nock.fit", "logika.rules", "logika.analytics",
-        "audit.performance",
+        "audit.performance", "audit.security",
     }  # fmt: skip
     assert not listed["audit.performance"]["adopted"]
     assert listed["nock.map"]["adopted"] and listed["nock.map"]["skill"] == "/nock-reflect"
