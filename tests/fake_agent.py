@@ -7,9 +7,7 @@ attempt). As the consultant it answers at once; as the studio's asker it
 answers through `topics answer` (FAKE_ANSWER, or a stock one; FAKE_ANSWER
 `slow` waits to be cancelled first); as the
 sharer it reads the authors and hands back the vetted summary (FAKE_SHARE,
-or a stock one; `nothing` hands back nothing); as an evaluation step's
-agent it writes its brief to answer.txt, when its allow rules let it write.
-As the studio's chat it streams its answer word by word (FAKE_CHAT, or what
+or a stock one; `nothing` hands back nothing). As the studio's chat it streams its answer word by word (FAKE_CHAT, or what
 it heard), holding half of it until FAKE_CHAT_GATE exists, and resumes only
 a session whose transcript is there, as Claude Code does; as the namer it
 names the chat (FAKE_NAME); as Tidy up it runs the nock commands FAKE_TIDY
@@ -152,14 +150,6 @@ def main() -> int:
         return tidy(session, prompt)
     if os.environ.get("NOCK_ROLE") == "addresser":
         return address(session, prompt)
-    if os.environ.get("NOCK_ROLE") == "evaluated":
-        write_transcript(session, prompt)
-        if "Write" in ALLOWED:
-            Path("answer.txt").write_text(prompt)
-        else:
-            DENIED.append({"tool_name": "Write", "tool_input": {"file_path": "answer.txt"}})
-        finish("answered")
-        return 0
     raise SystemExit(f"no seat for role {os.environ.get('NOCK_ROLE')!r}")
 
 

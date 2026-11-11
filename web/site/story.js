@@ -7,7 +7,7 @@
   const reduced = matchMedia("(prefers-reduced-motion: reduce)");
 
   // Tabs over panels: a tab shows its panel and hides the rest, pausing a film it hides. The page's
-  // address can name a panel (/#evaluation); else the tab the page marks selected opens.
+  // address can name a panel (/#review); else the tab the page marks selected opens.
   function tabs(group) {
     const buttons = [...group.querySelectorAll("[data-tab]")];
     const panels = [...document.querySelectorAll(`[data-panel-for="${group.dataset.tabsFor}"]`)];

@@ -204,7 +204,7 @@ class TopicDraft(TypedDict):
     """planned, active (the default): work under way, or review: built,
     only the owner's verdicts remain."""
     status: NotRequired[str]
-    """Where the work is, in a line: "eval running, about 2 h"."""
+    """Where the work is, in a line: "benchmarks running, about 2 h"."""
 
 
 class TopicChange(TypedDict):

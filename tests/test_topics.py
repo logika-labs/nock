@@ -808,7 +808,7 @@ def test_the_map_check_holds_its_citations(project: Project) -> None:
 
 
 def test_every_studio_tab_has_its_panel_and_its_routes_only(page: str) -> None:
-    assert [tab.name for tab in TABS] == ["topics", "experiment"]
+    assert [tab.name for tab in TABS] == ["topics"]
     for tab in TABS:
         assert f'studio.register("{tab.name}"' in (PAGES / f"{tab.name}.html").read_text()
     for path in ("nothing", "decisions", "review", "topics/extra", "topics/file/a/b/1/c"):

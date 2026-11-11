@@ -2,8 +2,7 @@
 nock keeps for the owner: the topics agents put their work in, each item (a
 decision, project files, something made to show part of the project) looked
 at, compared, accepted or rejected and talked over in its thread, with a bar
-to search them or ask about them; and each evaluation's scenario drawn as an
-experiment (`nock.experiments`). Local, and only while `nock studio` runs.
+to search them or ask about them. Local, and only while `nock studio` runs.
 
 A tab is a `Tab` in `TABS`: its name is its address on the page (`#NAME`) and
 its routes on the server (`/NAME/…`); its page is the fragment
@@ -38,10 +37,7 @@ from typing import Any, NotRequired, TypedDict
 from nock.chats import Chats, Kind
 from nock.commands import schema_of
 from nock.configuration import with_table_settings
-from nock.errors import ConflictError, Error, NotFoundError, PreconditionError, UsageError
-from nock.evaluation import Evaluations
-from nock.experiments import Experiment
-from nock.explorer import Explorer, Wording
+from nock.errors import ConflictError, Error, NotFoundError, UsageError
 from nock.notify import Notifications, Watching
 from nock.project import Project
 from nock.schema import validate
@@ -102,81 +98,6 @@ class Tab:
 
     def post(self, route: str, body: Any) -> Any:
         raise NotFoundError("no such page")
-
-
-class Shown(TypedDict):
-    """The outputs whose results the Experiment tab shows now."""
-
-    outputs: list[str]
-
-
-class ExperimentTab(Tab):
-    """`GET /experiment` the scenarios, each with the question it asks, which
-    the page lists to choose from; `GET /experiment/NAME` one as an
-    experiment (`experiments.Experiment`: its steps forking by parameter, repeat
-    and decision, its results and runs, the measures comparing its variants,
-    from the explorer's description and statuses); `POST
-    /experiment/NAME/results` the results of the outputs the page shows. Nothing
-    here runs a step or writes a file outside `.nock/local/`."""
-
-    name = "experiment"
-    title = "Experiment"
-
-    def __init__(self, project: Project) -> None:
-        super().__init__(project)
-        self.evaluations = Evaluations(project)
-        self.explorers: dict[str, Explorer] = {}
-
-    def fragment(self) -> str:
-        look = (PAGES / "experiment.css").read_text()
-        return f"<style>\n{look}</style>\n" + super().fragment()
-
-    def explorer(self, name: str) -> Explorer:
-        if name not in self.evaluations.names():
-            raise NotFoundError(f"no scenario {name}")
-        if name not in self.explorers:
-            self.explorers[name] = Explorer(
-                self.evaluations.scenario(name), self.project.local / "evals"
-            )
-        return self.explorers[name]
-
-    def experiment(self, name: str) -> Experiment | None:
-        explorer = self.explorer(name)
-        graph = explorer.current()
-        if graph is None:
-            return None
-        _, facts = explorer.read(graph)
-        return Experiment(explorer, graph, facts)
-
-    def get(self, route: str) -> Any:
-        if not route:
-            return {"scenarios": [self.listed(name) for name in self.evaluations.names()]}
-        name = urllib.parse.unquote(route)
-        experiment = self.experiment(name)
-        if experiment is None:
-            explorer = self.explorer(name)
-            return {"name": name, "deriving": explorer.problem is None, "problem": explorer.problem}
-        return experiment.model()
-
-    def listed(self, name: str) -> dict[str, str]:
-        """A scenario in the list: its name and its question, read from its
-        words alone, so the list costs no dry run; a scenario whose words are
-        broken is listed by its name, and says what is wrong once chosen."""
-        try:
-            question = Wording(self.evaluations.scenario(name)).words.get("question") or ""
-        except Error:
-            question = ""
-        return {"name": name, "question": question}
-
-    def post(self, route: str, body: Any) -> Any:
-        name, _, action = route.partition("/")
-        if action != "results":
-            raise NotFoundError("no such page")
-        validate(body, schema_of(Shown))
-        experiment = self.experiment(name)
-        if experiment is None:
-            raise PreconditionError(f"{name}'s steps are still being described")
-        return experiment.results(body["outputs"])
 
 
 # How much of a text file Search reads: enough for any document, not a log.
@@ -609,7 +530,7 @@ class TopicsTab(Tab):
         raise NotFoundError("no such page")
 
 
-TABS: tuple[type[Tab], ...] = (TopicsTab, ExperimentTab)
+TABS: tuple[type[Tab], ...] = (TopicsTab,)
 
 
 class Said(TypedDict):

@@ -202,21 +202,18 @@ class Dispatcher:
         directory: Path,
         variables: dict[str, str] | None = None,
         deadline: float | None = None,
-        seat: Seat | None = None,
         resume: str | None = None,
         arguments: tuple[str, ...] = (),
         listener: Callable[[bytes], None] | None = None,
         stop: threading.Event | None = None,
     ) -> Session:
-        """`seat` is the role's own when not given; an evaluation step gives
-        its agent's, since what it may do is the scenario's to say. `resume`
-        continues that session (`--resume`) instead of starting one;
+        """`resume` continues that session (`--resume`) instead of starting one;
         `arguments` go to Claude Code before the brief; `listener` and `stop`
         are the Supervisor's: the output as it comes, and a stop."""
         session = resume or str(uuid.uuid4())
         settings = self.project.configuration
         prompt, allowed = self.carried(session, brief)
-        command = [*self.command(role, allowed, seat)]
+        command = [*self.command(role, allowed)]
         command += ["--resume", session] if resume else ["--session-id", session]
         command += list(arguments)
         model = str(settings.get("agent.model") or "")
@@ -246,15 +243,13 @@ class Dispatcher:
             session, output.run, output.code, final_result(output.raw), output.log, denied
         )
 
-    def command(
-        self, role: str, allowed: tuple[str, ...] = (), seat: Seat | None = None
-    ) -> list[str]:
+    def command(self, role: str, allowed: tuple[str, ...] = ()) -> list[str]:
         """The agent's command line for a seat, up to its session and brief:
         headless, its tools and allow rules only, refusing the rest
         (`dontAsk`: nobody is there to answer a prompt). The project's and
         this checkout's Claude Code settings are not loaded, so the
         project's own allow rules never widen a seat; the user's are theirs."""
-        seat = seat or SEATS.get(role)
+        seat = SEATS.get(role)
         if seat is None:
             raise PolicyError(f"nock dispatches no agent as {role!r}: seats are {', '.join(SEATS)}")
         base = [str(part) for part in self.project.configuration.get("agent.command")]

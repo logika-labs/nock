@@ -52,7 +52,7 @@ STORY = {
 # /docs/NAME/ with its art in site/art/ (NAME.webp wide at the top, NAME-480.webp on the list, NAME.jpg
 # its link preview at 1200x630); then the reference page, /docs/terms/, the guides in REFERENCE and
 # every term an agent reads. A guide placed nowhere fails the build.
-ESSAYS = ("why", "reflection", "cli", "review", "evaluation", "logika", "setup")
+ESSAYS = ("why", "reflection", "cli", "review", "logika", "setup")
 REFERENCE = ("commands",)
 ART = "/art/"
 ART_SIZE = (1600, 900)
@@ -63,7 +63,6 @@ ART_ALT = {
     "reflection": "Black pixel creatures stacking black cubes into a staircase up terraced iridescent foil hills.",
     "cli": "Small black pixel creatures walking single file along a straight iridescent foil river to the horizon.",
     "review": "A calm iridescent foil lake at night, a large black pixel creature resting on a floating island, small ones drifting.",
-    "evaluation": "An iridescent foil river branching again and again across a dark plain, a black pixel creature at each fork.",
     "logika": "Two black pixel creatures at the rim of a glowing iridescent foil canyon, peering down, tiny creatures far below.",
     "setup": "A black pixel creature placing a first black cube in a clearing of an iridescent foil meadow.",
 }
@@ -94,7 +93,6 @@ MOVED_PAGES = {
 RENAMED = {
     "getting-started": "install",
     "reflection": "reflection-rounds",
-    "evaluation": "evaluations",
     "the-map": "the-map-and-consulting",
     "consulting": "the-map-and-consulting",
     "what-agents-see": "the-first-session",

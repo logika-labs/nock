@@ -1,8 +1,7 @@
 # nock.dev's videos
 
-Three minutes on the landing page, each from a script beside this file: `reflection.md` ("Your agents
-build the tools they need") and `review.md` ("You decide, when it suits you"), the owner's, and
-`evaluation.md` ("Choose the best way forward, from real runs"), written from the Evaluations essay.
+Two minutes on the landing page, each from a script beside this file: `reflection.md` ("Your agents
+build the tools they need") and `review.md` ("You decide, when it suits you"), the owner's.
 Captions only, burned in at the top of the frame and also served as WebVTT; no voiceover. Each opens
 and closes on the same card: the site's field and grain, "nock", `uvx nock init` and nock.dev.
 
@@ -15,9 +14,8 @@ sped up, with the speed on each card.
 
 | Path | Is |
 |---|---|
-| `src/` | the compositions (`reflection.tsx`, `review.tsx`, `evaluation.tsx`, `parts.tsx`) and `captions.json`, the opening card's length (`intro`) and each beat's time and words, which the videos burn in and `scripts/finish.mjs` writes as WebVTT |
+| `src/` | the compositions (`reflection.tsx`, `review.tsx`, `parts.tsx`) and `captions.json`, the opening card's length (`intro`) and each beat's time and words, which the videos burn in and `scripts/finish.mjs` writes as WebVTT |
 | `record/session.py` | records one Claude Code session: tmux runs `claude` in the sample repository, VHS attaches and records, the script types the prompts and waits for each turn to end (the repository's Stop hook marks it) |
-| `record/tapes/` | VHS tapes of plain shell sessions (the evaluation's `nock eval` runs) |
 | `record/shots.py`, `record/steps/` | the studio's stills: each step opens a page, clicks and types as the owner would, and saves the viewport and the boxes of what it names |
 | `record/prepare.py` | `public/data/NAME.json`, what a composition shows: its recordings and their lengths, its stills and where to look in them, and for the reflection video the sample's own telemetry and the tool its round wrote |
 | `scripts/finish.mjs` | renders, then writes `../site/videos/NAME.{mp4,webm,jpg,vtt}`, each video under 10 MB, and the review video's two stills Getting started shows (`review-work.webp`, `review-verdict.webp`) |
@@ -68,16 +66,7 @@ licence (Logika's `marketing-videos` topic has the decision).
    retired, `failures --since main`), each with what it expects by the next round, then
    `record/steps/round-cards.json`. A real round writes its changes to its report and `record.json`,
    not to Work; the script asks for them in Work, so these are staged.
-5. **The evaluation video**: the sample's eval `evals/fix` (a bug planted per `parameters/bug/*.json`, an
-   agent of each model in `MODELS` fixing it from the customer's complaint, twice, and the fix scored;
-   `studio.json` words it), its cache committed. With the sample's nock studio on 8790, `vhs
-   record/tapes/evaluation-run.tape` records the dry run and the run from an empty cache; a change to
-   `steps/scored.py`, then `record/tapes/evaluation-rerun.tape` records the rerun of the scoring alone;
-   `record/steps/evaluation.json` shoots the Experiment tab; `record/specs/evaluation-ask.json` (with
-   `record/session.py`) records an agent asked which model did better. Logika's own experiment is shot
-   from a clone of Logika's repository (`git clone --local`, its cache committed) with its studio on 8791
-   (`record/steps/evaluation-logika.json`), never the owner's.
-6. `python3 record/prepare.py NAME ~/demo/tally` for reflection, review and evaluation, `pnpm install`,
+5. `python3 record/prepare.py NAME ~/demo/tally` for reflection and review, `pnpm install`,
    `pnpm finish`; then `python3 web/build.py` at the repository's root.
 
 `pnpm studio` previews a composition; `pnpm still reflection out/f.png --frame=N` checks one frame.

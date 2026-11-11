@@ -166,9 +166,7 @@ def test_a_release_ships_the_videos_the_pages_play_and_names_the_ones_not_render
         set(re.findall(r'<source src="/videos/([^"]+)"', (staged / "index.html").read_text()))
     )
     assert played == [
-        f"{name}.{kind}"
-        for name in ("evaluation", "reflection", "review")
-        for kind in ("mp4", "webm")
+        f"{name}.{kind}" for name in ("reflection", "review") for kind in ("mp4", "webm")
     ]
     renders = tmp_path / "renders"
     renders.mkdir()
