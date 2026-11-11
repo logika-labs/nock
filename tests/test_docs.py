@@ -116,10 +116,10 @@ def test_a_term_that_breaks_a_rule_names_its_file_and_the_rule(
 def test_names_are_unique_and_a_child_has_its_parent(tmp_path: Path) -> None:
     write_term(tmp_path, "tools", "term: tools\naliases: [tool]\ndescription: Tools")
     write_term(tmp_path, "tool", "term: tool\naliases: []\ndescription: Tool")
-    write_term(tmp_path, "eval.runs", "term: eval.runs\naliases: []\ndescription: Runs")
+    write_term(tmp_path, "widgets.runs", "term: widgets.runs\naliases: []\ndescription: Runs")
     assert Docs(tmp_path).problems() == [
         "`tool` names both tool and tools",
-        "eval.runs: no term `eval` to be a child of",
+        "widgets.runs: no term `widgets` to be a child of",
     ]
 
 

@@ -76,7 +76,7 @@ src/nock/
                      `#NAME/ROUTE`; every tab's tokens, `--time` the one grey of every
                      timestamp); studio.css, its look (`--foil-ring` the verdict marks'), put in the shell;
                      NAME.html, each tab's fragment (markup, style, a script registering it);
-                     topics.css and experiment.css, the two tabs' own looks, put before their fragments;
+                     topics.css, the topics tab's own look, put before its fragment;
                      chat.css, Work's filters and Tidy up and the global chat, with topics.css
   status.py          Standing: a round due, the open items by topic, what waits on agents in
                      Topics, an unshared summary
@@ -122,21 +122,6 @@ src/nock/
   schema.py          JSON Schema subset validation
   builtin.py         nock's own commands and checks, as tools
 
-  # evaluations
-  evaluation.py      Scenario (a Snakefile run through uv's Snakemake: dry runs, summary, rule
-                     graph, materialised outputs and their states, the check), Run (the dry
-                     pass, estimates, budget, refusals; then Snakemake), Evaluations (init, prune)
-  results.py         Results: DuckDB through uv over the result files, tables loaded per call
-  explorer.py        what the studio's Experiment tab is drawn from: Graph (every job, as Snakemake
-                     describes it, kept in .nock/local/evals/ under a fingerprint), Monitor (a
-                     run's lock, log and incomplete markers), Reader (each output's facts),
-                     Wording (studio.json), Explorer (the description kept, statuses read live)
-  experiments.py     the studio's Experiment tab: Experiment (a scenario as a tree of steps forking
-                     by parameter and repeat, declared decisions under the steps they read, runs,
-                     measures, results read on demand), over the explorer's Graph and facts
-  steps.py           Step, what a rule's script wraps itself in: metrics, cost, error, state
-  comparison.py      Comparison: a rule's outputs by one parameter, bootstrap intervals, pairing
-
   # plumbing
   project.py         Project: the hub (places, configuration, git, registry, store, locks)
   configuration.py   defaults ⊕ .nock/config.toml ⊕ .nock/local/config.toml
@@ -148,9 +133,7 @@ src/nock/
 tests/               real git repositories and processes; no mocks
   conftest.py        a fresh repository with nock installed, per test; the `nock()` runner
   fake_agent.py      the scripted stand-in for the dispatched agents (consultant, asker, sharer,
-                     the studio's chatter, namer, tidier and addresser, an evaluation step's agent)
-  toy/               the toy Snakefile test_eval.py runs: a word list, a planted bug (a fork), a
-                     detector (a checkpoint), a fix when found, a score joining the arms
+                     the studio's chatter, namer, tidier and addresser)
 scripts/release.py   cut a release: checks, asks, then tags vVERSION and pushes it (standard library)
 evals/               does reflection pay? real sessions, with and without a toolbox
 web/                 nock.dev, never vendored or packaged: layout.html, home.html, legal/, site/
@@ -359,7 +342,7 @@ parent, and the tests hold every file to the rules. A miss answers the three
 closest: names it nearly spells (`difflib`), then the articles that mention
 it most, then the most alike names. The briefs name the terms their agents
 read (`.nock/nock docs TERM …`), and a test holds each name to a term. A new
-area is a new root term with its children, such as `eval.*`.
+area is a new root term with its children, such as `topics.*`.
 
 Every skill and subagent nock installs is its front matter (the trigger)
 and one line, "Run `.nock/nock docs TERM` and do what it says.": the text
@@ -568,7 +551,7 @@ environment variable the configuration names; refused while no URL is set,
 which the page shows as a faded recorder saying how to set one), and the Ask (`studio.Asking`: one `nock topics ask` process at a
 time, cancelled by stopping it; `asking.Asker` dispatches the asker seat,
 which answers through `nock topics answer`, held to naming items that
-exist), and `ExperimentTab` (below).
+exist).
 
 The global chat is no tab: `studio.ChatRoutes` answers `/chat/…` for
 `chats.Chats`, and the topics tab's fragment draws it in `#topics-global`,
@@ -600,61 +583,7 @@ lists the threads where the owner's comment waits (`pending`), quoted in the
 chat's first message (`chats.address_request`). A topic's `priority` orders the list
 (`topics.in_order`) in the studio and in `topics list`.
 
-### The Experiment tab
-
-`ExperimentTab` keeps an `explorer.Explorer` per scenario. Deriving the jobs is
-what costs (a dry run's time, half a minute on a scenario of 900 steps), so it
-happens once: `GRAPH`, a script in uv's Snakemake, loads the workflow as
-`--list-untracked` would with every target rule as a target, and prints each
-job — rule, output, the jobs before it (`first`, its main input), the input
-files no job makes, its params flattened (`node.versions.cli`), its script and
-its cache entry (Snakemake's provenance hash). The `Graph` is kept in
-`.nock/local/evals/NAME-<hash of the directory>.json` with a fingerprint of
-the scenario's files (not `results/`, `cache/`, `.snakemake/` or
-`studio.json`), the checkout's commit and uncommitted changes (a Snakefile may
-read the repository) and the checkpoints done; a background thread checks the
-fingerprint every 15 seconds, or at once when a checkpoint finishes, and
-derives again only when it changed, the page meanwhile served the kept one.
-
-Statuses are read from files on each request (shared for 2 seconds): an
-output under `results/` with `cost.json` is done — stale when the cache entry
-it links to is not the job's — with `error.json` failed; an output only in
-the cache under the job's entry is done (the next run restores it); while
-`.snakemake/locks/` holds a lock, a job the log started and did not finish, or
-with an incomplete marker (Snakemake's records are url-safe base64 of the
-path, cut into directory names), is running. The `Monitor` reads the log
-incrementally; the `Reader` re-reads an output only when its directory or the
-job's entry changed.
-
-An `experiments.Experiment` is built from the kept `Graph` and the facts read
-live. A job's parent is the job before it sharing the most of its parameter values,
-one with a value it lacks (the clean run a bug's run is read against) passed
-over, the later rule on a tie; a node is its rule under its parent's node,
-split by the values it adds to its trajectory that are neither `pooled` nor the
-`repeat` parameter (`rep` by default), both of which ride on the line into it.
-A result is an output done, stale (`outdated`), failed or running; its times
-are its `cost.json`'s time less its seconds, its dollars `cost.json`'s or its
-metrics' `usd`. `decisions` in `studio.json` add a node under each node of the
-rule they read and a result per output, the first branch its metric takes
-(`equals`, `above`, or none for the rest); a branch with a `verdict` ends the
-trajectory, and a decision with a good branch is a measure, beside the cost per
-pooled value. A run is the outputs ending a trajectory with the same values but
-the repeat's; each result belongs to the earliest run it is part of. Results
-are read only when the page shows them (`POST /experiment/NAME/results`): a
-rule's `results` words name a file and how to show it, or a prefix of its
-metrics shown as checks; without them, its metrics and `diff.patch`. The page
-draws with D3 from cdnjs (as it loads its fonts from Google). `#experiment`
-lists the scenarios to choose from (`GET /experiment`: each one's name and its
-words' `question`, read without deriving anything; `#evals`, `#evaluations` and
-`#experiments` open it too); the one chosen has its own address,
-`#experiment/NAME/RUN--ITERATIONS`, and stays drawn while the owner looks
-elsewhere.
-
 ### Dispatch
-
-An evaluation step's agent (`steps.Step.agent`) is dispatched the same way,
-as role `evaluated`, with the seat the step gives (`launch(seat=…)`): its
-tools and allow rules, which a step must state.
 
 `dispatch.Dispatcher.launch` runs `claude -p --output-format stream-json
 --session-id …` (`agent.command`, `agent.model`) for the sessions no human
@@ -824,72 +753,6 @@ the row in `reports` (`id`, `received`, `text`, `nock`, `platform`; migration
 Its spans are `report` with a `kept` (row id, character count) or `refused`
 child, never the text. The makers read the latest with `nock-api reports
 [--limit N]` (newest first, 20 by default) on the box.
-
-## Evaluations
-
-`nock eval` lives in `evaluation.py`, `results.py`, `steps.py` and
-`comparison.py`, over the working tree's `evals/NAME/` (README,
-"Evaluations"). Snakemake (`SNAKEMAKE`, pinned) runs as `uv tool run`, and
-DuckDB (`DUCKDB`, pinned) as `uv run --with`, so nock imports neither; no
-uv is exit 42.
-
-- **Memoisation.** The profile turns on Snakemake's between-workflow cache;
-  nock points `SNAKEMAKE_OUTPUT_CACHE` at the scenario's `cache/`, which is
-  committed. A cached rule's entry is named by Snakemake's provenance hash:
-  its script's source, its params (the wildcards, by convention, which the
-  hash would otherwise leave out), its input files' content and the hashes
-  of the jobs before it. A finished job's output becomes a link to its
-  entry; a restored directory, a directory of links into it. Snakemake
-  still reruns a script newer than its output (its code trigger for scripts
-  is the mtime), but such a rerun is answered from the cache, so nock
-  counts an output stale only when a dry run would not restore it from the
-  entry it is now. `benchmark:` cannot be used with the cache, so a step's
-  seconds go to its `cost.json`.
-- **States.** `Scenario.states` runs `--summary` (every output of the
-  default target) and `-n --verbose` (the jobs, their reasons and the
-  entries `exists as … in the cache`) side by side: an output under
-  `results/` missing from the summary is no longer in the workflow; one a
-  job would compute is stale, with the job's reason; one with `error.json`
-  is failed.
-- **Run.** `Run` parses the dry run into `Job`s, estimates each to compute
-  from its rule's mean `cost.json` over the outputs here (else
-  `resources: estimate_cents`), and refuses outputs restored from one entry
-  (wildcards missing from params), Git LFS pointers among the entries it
-  would restore, and an estimate past `--budget`. Then Snakemake runs under
-  a `Supervisor` with no deadline or silence bound; computed outputs are
-  those whose entry is new.
-- **Elsewhere.** `eval.cache` moves a scenario's cache out of git
-  (`Scenario.cache`, `committed`); only a committed cache is checked for Git
-  LFS pointers, since walking a large one costs minutes.
-- **Retry.** `Evaluations.retry` takes the failed outputs and what was
-  computed from them out of the cache as `prune` would, but moves each
-  failed entry to `.attempts/<hash of its output path>` in the cache, which
-  `Step.previous` finds by the same hash; a step whose input has an
-  `error.json` writes its own without running (`InputFailed`).
-- **Import.** `Scenario.entries` names each cached job's entry without
-  running it: a short script in uv's Snakemake loads the workflow as
-  `--list-untracked` would, then asks Snakemake's own `ProvenanceHashMap`
-  for every job's hash (and keeps the extension its cache adds).
-  `Evaluations.load` clones each source (`cp -c` on APFS, `--reflink=auto`
-  on Linux, a plain copy elsewhere) into a staging directory in the cache,
-  writes metrics.json, cost.json and error.json, and renames it into place.
-- **Results.** `Results.setup` loads `outputs` (the states, `cost.json`,
-  `error.json`; parameters parsed from the path), `metrics` (each key of
-  `metrics.json`, through `read_json_objects`), `diffs` (`read_text` of
-  `diff.patch`) and a table per rule (`read_json` with hive partitioning,
-  so a wildcard is a typed column; outputs whose paths name different
-  parameters are read in groups joined `UNION ALL BY NAME`, since DuckDB
-  refuses mismatched partitions), from file lists nock walks itself, since
-  DuckDB's `**` does not follow the links. Then it turns off external
-  access and locks the configuration before the query runs.
-- **Prune.** The entries kept are those current outputs link to and those
-  the dry run would restore; a failed output's entry goes, and so does
-  every output a `--forcerun` of the failed would recompute, since their
-  provenance would still match. Pruning refuses while a checkpoint is only
-  in the cache, since what follows it cannot be judged.
-- **The check.** `nock-eval` wants the profile, every rule with an output
-  `cache:`d and with `wildcards` in its params (read from the Snakefile's
-  text), and a Snakefile `--list-rules` reads.
 
 ## Extension points
 

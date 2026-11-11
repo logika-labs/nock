@@ -44,7 +44,7 @@ TOPICS = """\
 - **Keep your topic's state and status current:** when you start work, set
   it active with a status (`.nock/nock topics update TOPIC '{"state":
   "active", "status": "…"}'`); update the status at each milestone ("waiting
-  for the gate on main", "eval running, about 2 h"); set it `review` when
+  for the gate on main", "benchmarks running, about 2 h"); set it `review` when
   you have finished and only the owner's verdicts remain, `done` or
   `abandoned` when the work is over. Work you dispatch is tracked the same way, in
   the topic it serves.

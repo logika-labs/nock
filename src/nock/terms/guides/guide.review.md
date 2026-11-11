@@ -119,7 +119,7 @@ stay hidden until you show them.
 
 You don't have to keep looking. When a topic is your turn again (it moved to
 review, an agent answered you, or an item you rejected has a new version),
-nock tells you once, however many items the burst brought: "eval is ready for
+nock tells you once, however many items the burst brought: "checkout is ready for
 review: 3 decisions, 2 files", on the desktop, or in the studio while it is
 open (its settings turn on the browser's notifications for when it is away),
 and a click opens the topic. `notifications = false` turns it off.

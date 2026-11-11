@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import json
 import os
-import re
 import shlex
 import subprocess
 import sys
@@ -15,12 +14,10 @@ from typing import Annotated, Any, Literal, NotRequired, TypedDict
 from nock.asking import Answer, Asker
 from nock.checks import Checks
 from nock.commands import Group, Option, read_record, schema_of
-from nock.comparison import Comparison, Query
 from nock.configuration import Confirm
 from nock.consult import Advice, Consultant, Consultation
 from nock.docs import Docs
 from nock.errors import Error, ExitCode, Failed, PolicyError, UsageError
-from nock.evaluation import SCENARIOS, Evaluations, Import, Run, Scenario
 from nock.fixtures import Shell
 from nock.generators import Catalogs, Generators
 from nock.kinds import DEFAULT, KINDS
@@ -30,7 +27,6 @@ from nock.project import Project
 from nock.reflect import Record, Reflection, Round, tool_rows
 from nock.render import Problem
 from nock.reports import Reports
-from nock.results import Results
 from nock.schema import check_schema, validate
 from nock.sessions import Sessions
 from nock.setup import (
@@ -268,9 +264,8 @@ def studio(
     project: Project,
     options: StudioOptions = {},  # noqa: B006
 ) -> None:
-    """Serve the owner's page, a tab for each thing to look at — the topics
-    and their items, the evaluations — until stopped (port
-    `studio.port`, 8765, unless OPTIONS say otherwise)."""
+    """Serve the owner's page, the topics and their items, until stopped
+    (port `studio.port`, 8765, unless OPTIONS say otherwise)."""
     if Usage(project).ask(Moment.STUDIO):
         print(f"nock: {QUESTION} The page asks too; answer there.", flush=True)
     Studio(project, options.get("port", project.configuration.get("studio.port"))).run(
@@ -988,179 +983,3 @@ def hooks_wired(project: Project) -> list[str]:
             if rule not in allowed
         ]
     )
-
-
-# --- evaluations ---------------------------------------------------------------------------
-
-
-@command(name="init", group="eval")
-def eval_init(project: Project, scenario: str) -> list[str]:
-    """Start a scenario in `evals/SCENARIO/`: a Snakefile with one cached
-    rule, its step, nock's Snakemake profile, and the .gitignore and
-    .gitattributes that commit the cache and leave results/ to each checkout."""
-    return Evaluations(project).init(scenario)
-
-
-@command(name="run", group="eval")
-def eval_run(
-    project: Project,
-    targets: list[str] | None = None,
-    *,
-    scenario: Annotated[str | None, Option(help="The scenario; the only one by default.")] = None,
-    dry: Annotated[
-        bool, Option(help="Say what reruns and why, what the cache restores, and the estimate.")
-    ] = False,
-    budget: Annotated[
-        float | None, Option(help="Refuse to start when computing is estimated to cost more (USD).")
-    ] = None,
-    cores: Annotated[int | None, Option(help="Override the profile's cores.")] = None,
-    limit: Annotated[
-        list[str] | None,
-        Option(help="Override a resource's limit, NAME=N (repeat): `--limit stacks=6`."),
-    ] = None,
-    retry: Annotated[
-        bool,
-        Option(
-            help="Compute the failed outputs again, and what was computed from them; "
-            "each step can read its failed attempt (`step.previous`)."
-        ),
-    ] = False,
-) -> Any:
-    """Run a scenario's Snakefile with nock's profile — its default target, or
-    TARGETS (output paths or rule names) — restoring from cache/ every output
-    whose code, params and inputs match one computed anywhere, and computing
-    the rest. A dry run first: what reruns and why, and the estimate from
-    each rule's past cost.json; it refuses outputs that would share a cache
-    entry, Git LFS pointers, and an estimate past the budget. `--retry` takes
-    the failed out of the cache first (a dry run only says how many)."""
-    evaluations = Evaluations(project)
-    chosen = evaluations.scenario(scenario)
-    if limit and any(not re.fullmatch(r"[\w-]+=\d+", item) for item in limit):
-        raise UsageError("a limit is NAME=N, a resource and how much of it runs at once")
-    if retry and dry:
-        failed = [row for row in evaluations.prunable(chosen) if row["why"] == "failed"]
-        return {"retry": len(failed), "say": "without --dry, they and what follows them run again"}
-    retried = evaluations.retry(chosen) if retry else []
-    plan = Run(chosen, targets or [], budget)
-    if dry:
-        refused = plan.refusal()
-        return {
-            "jobs": plan.lines(),
-            **plan.summary(),
-            **({"refused": refused} if refused else {}),
-        }
-    summary = plan.summary()
-    if summary["to_compute"]:
-        print(
-            f"nock: {summary['to_compute']} job(s) to compute, {summary['from_cache']} from cache, "
-            f"~${summary['estimated_cost_usd']:.2f}",
-            file=sys.stderr,
-            flush=True,
-        )
-    done = plan.execute(cores, limit)
-    if retried:
-        done["retried"] = sum(1 for row in retried if row["why"] == "failed")
-    return done
-
-
-@command(name="import", group="eval")
-def eval_import(project: Project, record: Import) -> dict[str, Any]:
-    """Put outputs computed elsewhere (another pipeline's results, say) into a
-    scenario's cache, each under the entry its job would have, so a run
-    restores them rather than computing them: its files cloned from a source
-    directory, which is never moved or changed, with its metrics, cost and,
-    for a failed output, its error. Refused when an output is no cached job of
-    the targets; an output already in the cache is left as it is."""
-    return Evaluations(project).load(record)
-
-
-@command(name="show", group="eval")
-def eval_show(project: Project, name: str | None = None) -> Any:
-    """The scenarios; or one scenario's rules — outputs current, stale and
-    failed, cost, time — with why the stale are stale and what the failed said."""
-    evaluations = Evaluations(project)
-    if name is None:
-        return [
-            show_scenario(evaluations.scenario(item), summary=True) for item in evaluations.names()
-        ] or f"no scenarios yet: `nock eval init NAME` starts one in {SCENARIOS}/"
-    return show_scenario(evaluations.scenario(name), summary=False)
-
-
-def show_scenario(scenario: Scenario, summary: bool) -> dict[str, Any]:
-    results = Results(scenario)
-    rules, stale, failed = results.run(
-        [
-            "SELECT rule, count(*) AS outputs, count(*) FILTER (state = 'current') AS current,"
-            " count(*) FILTER (state = 'stale') AS stale, count(*) FILTER (state = 'failed')"
-            " AS failed, round(sum(cost_usd), 4) AS cost_usd, round(avg(seconds), 3)"
-            " AS mean_seconds FROM outputs GROUP BY rule ORDER BY rule",
-            "SELECT path, why FROM outputs WHERE state = 'stale' ORDER BY path",
-            "SELECT path, error FROM outputs WHERE state = 'failed' ORDER BY path",
-        ]
-    )
-    counts = {key: sum(row[key] for row in rules["rows"]) for key in ("current", "stale", "failed")}
-    entries = [entry for entry in scenario.cache.iterdir()] if scenario.cache.is_dir() else []
-    if summary:
-        return {
-            "scenario": scenario.name,
-            **counts,
-            "cache_entries": sum(1 for entry in entries if not entry.name.startswith(".")),
-            "cost_usd": round(sum(row["cost_usd"] or 0 for row in rules["rows"]), 4),
-        }
-    result: dict[str, Any] = {"scenario": scenario.name, "rules": rules["rows"]}
-    if stale["rows"]:
-        result["stale"] = stale["rows"]
-    if failed["rows"]:
-        result["failed"] = failed["rows"]
-    if not rules["rows"]:
-        result["say"] = (
-            "nothing under results/ yet: `nock eval run` computes it, or restores it from cache/"
-        )
-    elif stale["rows"] or failed["rows"]:
-        result["say"] = (
-            "`nock eval run` recomputes the stale; `nock eval prune` deletes the stale and failed "
-            "from the cache, so a run computes the failed again"
-        )
-    return result
-
-
-@command(name="query", group="eval")
-def eval_query(
-    project: Project,
-    sql: str,
-    *,
-    scenario: Annotated[str | None, Option(help="The scenario; the only one by default.")] = None,
-) -> list[dict[str, Any]]:
-    """Read a scenario's results with SQL (DuckDB, read-only), loaded fresh from
-    the files: outputs, metrics, diffs, and a table per rule with a column per
-    parameter and metric (`nock docs eval.query`)."""
-    return Results(Evaluations(project).scenario(scenario)).rows(sql)
-
-
-@command(name="compare", group="eval")
-def eval_compare(project: Project, query: Query) -> list[dict[str, Any]]:
-    """Compare a rule's outputs by one parameter, holding the others fixed and
-    pooling the repetitions: each mean with its bootstrap confidence interval
-    (95 in 100), and the difference from the baseline, paired when the units match."""
-    return Comparison(project).compare(query)
-
-
-@command(name="prune", group="eval")
-def eval_prune(
-    project: Project,
-    scenario: str | None = None,
-    *,
-    dry: Annotated[bool, Option(help="Say what would be deleted, and delete nothing.")] = False,
-) -> list[dict[str, Any]] | str:
-    """Delete stale and failed outputs from the cache — every scenario's, or
-    SCENARIO's: the entries no current output of the default target is, and
-    the failed, so a run computes them again."""
-    rows = Evaluations(project).prune(scenario, dry)
-    return rows or "nothing to prune"
-
-
-@check(name="nock-eval", paths=[".nock/**", "evals/**"])
-def evaluations_hold(project: Project) -> list[str]:
-    """Every scenario has nock's profile, a Snakefile Snakemake reads, and
-    rules cached by their wildcards."""
-    return Evaluations(project).problems()

@@ -63,21 +63,6 @@ and so on.
 That queue is the studio's Work tab, and the whole of it is in [Review on your
 time](#review-on-your-time).
 
-## Choosing between agents
-
-The more agents I ran, the more my questions turned into comparisons. Is the
-new skill better than the old one? Does this model catch more bugs, or just
-cost more? Before, the hard part of a project was people: programmers with
-different preferences, agendas and egos. Now I can dispatch several agents to
-explore different options, and the hard part becomes tracing what they did
-and judging it, to choose the best way forward.
-
-Agents' work takes time, costs money and isn't deterministic, so I built the
-kind of tool I needed myself: an experiment drawn as a graph of stages, every
-stage cached, so I pay only for what changed, and every run there to open up
-and look at. It's how I measure how well Logika instruments code and catches
-bugs, and it's in [Evaluations](#evaluations).
-
 ## An experiment
 
 I developed nock while developing [Logika](https://logika.host), to handle the

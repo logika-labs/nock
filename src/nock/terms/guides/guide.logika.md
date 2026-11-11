@@ -92,10 +92,5 @@ sends, writes down what must hold, and checks it against real traffic before
 anything breaks. When a bug does ship, the rule is already there, and your agent
 is woken to fix it.
 
-Whether this works is itself measured: Logika's evaluation (see
-[Evaluations](#an-experiment-by-example)) runs the rules round on a real
-application, plants bugs in it, and counts what's caught and fixed, against
-plain OpenTelemetry.
-
 Logika rounds are kept apart from nock's own, so neither moves the other's
 window.

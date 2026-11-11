@@ -5,7 +5,6 @@ stand-in process."""
 from __future__ import annotations
 
 import os
-import shutil
 import subprocess
 import sys
 from collections.abc import Iterator
@@ -92,18 +91,3 @@ def write_tool(project: Project, name: str, source: str) -> None:
     path.write_text(source)
     git(project.root, "add", "-A")
     git(project.root, "commit", "-qm", f"Add tool {name}")
-
-
-TOY = Path(__file__).with_name("toy")
-
-
-@pytest.fixture
-def toy(project: Project) -> Path:
-    """The toy scenario, scaffolded by `eval init` and filled with the toy's files, committed."""
-    assert nock(project.root, "eval", "init", "toy").returncode == 0
-    directory = project.root / "evals" / "toy"
-    (directory / "steps/example.py").unlink()
-    shutil.copytree(TOY, directory, dirs_exist_ok=True)
-    git(project.root, "add", "-A")
-    git(project.root, "commit", "-qm", "The toy scenario")
-    return directory

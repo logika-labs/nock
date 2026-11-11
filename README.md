@@ -27,8 +27,6 @@ on:
 - **every week or so a reflection round** reads the record and improves the
   toolbox: tools for the work that keeps costing turns, repairs for the ones
   that misbehave, the unused ones retired;
-- **evaluations** answer whether a change makes your agents better, with real
-  runs;
 - in a [Logika](https://logika.host) project, **the logika round** writes the
   rules that wake your agent when production breaks them.
 
@@ -46,9 +44,8 @@ terms, the short articles agents read. Both are `src/nock/terms/`.
 2. [Agents that build their own tools](https://nock.dev/docs/reflection/)
 3. [A CLI agents can use](https://nock.dev/docs/cli/)
 4. [Review on your time](https://nock.dev/docs/review/)
-5. [Evaluations](https://nock.dev/docs/evaluation/)
-6. [nock in Logika](https://nock.dev/docs/logika/)
-7. [Setting up](https://nock.dev/docs/setup/)
+5. [nock in Logika](https://nock.dev/docs/logika/)
+6. [Setting up](https://nock.dev/docs/setup/)
 
 And the [reference](https://nock.dev/docs/terms/): every command, exit code and
 term.

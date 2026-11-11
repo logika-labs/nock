@@ -113,7 +113,6 @@ machine.
 | `environment.python`, `setup`, `path`, `dotenv` | —, —, `[]`, — | what tools run in: the project's interpreter and how to make it, PATH entries, a dotenv file |
 | `pricing.fetch`, `pricing.table` | true, LiteLLM's table on GitHub | whether nock fetches the public price table (at most daily), and from where |
 | `pricing."PREFIX"` | — | dollars per million tokens, `{input, output, cache_read, cache_write}`, for models whose name starts with PREFIX |
-| `eval.cache` | — | a directory outside git for the evaluations' caches |
 
 ## What nock's agents may do
 
