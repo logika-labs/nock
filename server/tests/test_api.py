@@ -10,6 +10,7 @@ from typing import Any
 
 import psycopg
 import pytest
+from nock.prices import Prices
 from nock.project import Project
 from nock.setup import Installer
 from nock.usage import Usage
@@ -61,11 +62,11 @@ def project(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Project:
     Installer(root).install()
     local = root / ".nock" / "local"
     local.mkdir(exist_ok=True)
-    (local / "config.toml").write_text(
-        f'[upgrade]\ncheck = false\n[pricing]\ntable = "{PRICES.as_uri()}"\n'
-    )
+    (local / "config.toml").write_text("[upgrade]\ncheck = false\n")
     monkeypatch.chdir(root)
-    return Project.discover(root)
+    project = Project.discover(root)
+    Prices(project, PRICES.as_uri()).table()
+    return project
 
 
 def test_the_report_nock_builds_is_kept_as_it_arrived(

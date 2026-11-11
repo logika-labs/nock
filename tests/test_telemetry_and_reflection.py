@@ -17,7 +17,7 @@ import pytest
 
 from nock.hooks import HookRunner
 from nock.project import Project
-from nock.reflect import Reflection, Rounds, shape
+from nock.reflect import SESSIONS, Reflection, Rounds, shape
 from nock.sessions import Sessions, encoded
 from nock.share import Sharing
 
@@ -148,15 +148,15 @@ def test_the_session_hooks_list_the_tools_and_read_the_transcript(project: Proje
 
 
 def test_a_round_is_due_after_enough_sessions(project: Project) -> None:
-    local = project.root / ".nock" / "local" / "config.toml"
-    local.write_text(local.read_text() + "[reflect]\nsessions = 4\ndays = 3650\n")
-    for index in range(3):
+    for index in range(SESSIONS - 1):
         transcript(project, f"s{index}", ["work"], [])
     Sessions(project).catch_up()
     assert Reflection(project).due() == ""
-    transcript(project, "s3", ["more work"], [])
+    transcript(project, "last", ["more work"], [])
     Sessions(project).catch_up()
-    assert Reflection(project).due() == "a reflection round is due (4 sessions since the last)"
+    assert Reflection(project).due() == (
+        f"a reflection round is due ({SESSIONS} sessions since the last)"
+    )
     start = HookRunner(project, {"session_id": "s9"}).handle("SessionStart")
     assert start is not None and "`/nock-reflect`, which runs one" in start["systemMessage"]
 

@@ -24,6 +24,8 @@ if TYPE_CHECKING:
     from nock.project import Project
 
 ROLE = "consultant"
+# The longest a consultation may take, in seconds: the caller waits.
+DEADLINE = 600
 BRIEFS = Path(__file__).resolve().parent / "briefs"
 # Set in the consultant's environment: where its `nock advise` writes the advice.
 SUBMISSION_VARIABLE = "NOCK_CONSULTATION"
@@ -88,7 +90,7 @@ class Consultant:
             brief,
             self.project.here,
             variables={SUBMISSION_VARIABLE: str(submission)},
-            deadline=float(self.project.configuration.get("consult.deadline")),
+            deadline=DEADLINE,
         )
         submitted: dict[str, Any] | None = read_json(submission) if submission.is_file() else None
         if submitted is None:

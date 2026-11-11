@@ -49,7 +49,7 @@ src/nock/
   telemetry.py       Calls (start, finish, the repeated-failure note) and Cache
   sessions.py        Claude Code transcripts → sessions, prompts and events, read on as they grow
   callers.py         Callers: which of a session's agents runs a nock command (the before-tool hook's notes)
-  prices.py          Prices: LiteLLM's public table, cached daily, and `[pricing]`, for API-equivalent cost
+  prices.py          Prices: LiteLLM's public table, cached daily, for API-equivalent cost
 
   # the loop
   reflect.py         Round (a kind of round: start, finish, its checks, a round left open),
@@ -327,9 +327,9 @@ reads `CLAUDE_CODE_ENTRYPOINT` the same way, so a headless session start hears
 no standing and its end sends no report.
 
 `prices.Prices` costs a session's tokens by model and kind at LiteLLM's public
-table (`pricing.table`), fetched at most daily with a three-second timeout and
-cached, reduced, in `.nock/local/prices.json` (a failed fetch is tried again
-after an hour); `[pricing]` prefixes override it. A `cost-state` record's
+table (`prices.TABLE`; a test passes its own), fetched at most daily with a
+three-second timeout and cached, reduced, in `.nock/local/prices.json` (a
+failed fetch is tried again after an hour). A `cost-state` record's
 total wins. An unpriced session's cost is NULL; `catch_up` prices those again
 once prices can be had, and a window's `spend` sums the priced and counts the
 rest.
@@ -568,7 +568,7 @@ keeps: the Timeline and the notifications are one source.
 
 `consult.Consultant` renders `briefs/consult.md` with the caller's intent
 and context, the map, the project's tools and the checks, and dispatches a
-read-only consultant in the caller's working tree under `consult.deadline`,
+read-only consultant in the caller's working tree under `consult.DEADLINE`,
 with `NOCK_CONSULTATION` naming the file its submission goes to. The
 consultant ends with `nock advise` (`Advice`: advice, items, tools,
 checks, feedback), which only that role may run and which refuses an
@@ -746,7 +746,7 @@ different machines merge as plain files. The next round's window opens at
 the latest one's `finished`.
 
 `Reflection.due()` is the cheap check that SessionStart runs. A round is due
-after `reflect.sessions` sessions or `reflect.days` days since the last
+after `SESSIONS` (15) sessions or `DAYS` (7) days since the last
 round, whichever comes first, given at least one session.
 
 **The logika kind.** `logika.LogikaRound` keeps its rounds in
@@ -859,7 +859,7 @@ Notes:
 - **Checks** of one call run side by side, a thread per chain: checks that
   share a `chain` run one after another, in the order they are configured
   (they share a build lock or a cache). Calls take machine-wide slots
-  (`checks.concurrency`, via file locks), so parallel sessions don't pile up
+  (`checks.CONCURRENCY`, via file locks), so parallel sessions don't pile up
   test suites. A check's
   verdict is 1 (the code is wrong) or 42 (the machine is not ready). The
   first look names the cause.

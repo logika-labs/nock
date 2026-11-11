@@ -109,23 +109,18 @@ machine.
 | `branch` | `main` | the main branch, which `changed` diffs against |
 | `reminders` | true | whether nock speaks up unasked; false: silent unless asked |
 | `notifications` | true | whether nock tells you when a topic is your turn again (moved to review, an agent answered you, a rejected item reworked): on the desktop, or in the studio while it is open; once per topic per five minutes, and never without a display (CI, a headless agent). On macOS a click opens the topic with `terminal-notifier` installed (`brew install terminal-notifier`); without it, the notification names the address |
-| `output.characters`, `output.rows` | 8000, 60 | the cap on what a call prints |
 | `run.deadline`, `run.silence` | 3600, 900 | seconds before a supervised process is stopped |
 | `checks.NAME.command`, `fix`, `chain`, `directory`, `deadline`, `silence`, `failure_codes` | — | a command that is a check; the command that fixes what it finds; its chain; where it runs and its bounds; the exit codes that mean the code is wrong (`[1]`) |
-| `checks.concurrency` | 2 | checks run at once, machine-wide |
-| `reflect.sessions`, `reflect.days` | 15, 7 | when a round is due, whichever comes first |
 | `reflect.logika.days` | 30 | in a Logika project, days after a logika round before the next is offered |
 | `agent.command`, `agent.model`, `agent.deadline` | `claude`, —, 1800 | the headless agent nock dispatches (consult, Ask, share, the studio's chat and Tidy up); it may not bypass or set permissions |
 | `permissions.confirm` | `ask` | `ask`: you approve each call of a `confirm=True` command, even in bypass mode; `allow`: the agent runs it only when your request calls for it |
 | `studio.port` | 8765 | the port `nock studio` serves on, and the one a notification links to while no studio runs |
 | `studio.transcribe_url`, `transcribe_model`, `transcribe_key_variable` | —, `whisper-1`, — | the Whisper server the studio's recorder sends what you say to (OpenAI's `/v1/audio/transcriptions` form: OpenAI, whisper.cpp's server, faster-whisper-server), the model, and the name of the environment variable holding its key (never the key); set in the studio's settings too |
-| `consult.enabled`, `consult.deadline` | true, 600 | whether the consultant runs and the primer asks for it; seconds a consultation may take |
+| `consult.enabled` | true | whether the consultant runs and the primer asks for it |
 | `upgrade.check`, `upgrade.auto`, `upgrade.index` | true, true, PyPI's `nock` | whether a session start looks for a newer nock; whether it upgrades by itself when the merge is clean; where releases are looked up |
 | `share` | — (unanswered) | your answer on the weekly usage report: unset or false sends nothing |
 | `endpoints.reflections`, `endpoints.usage`, `endpoints.reports` | `https://api.nock.dev/…` | where a summary, the usage reports and `nock report` go |
 | `environment.python`, `setup`, `path`, `dotenv` | —, —, `[]`, — | what tools run in: the project's interpreter and how to make it, PATH entries, a dotenv file |
-| `pricing.fetch`, `pricing.table` | true, LiteLLM's table on GitHub | whether nock fetches the public price table (at most daily), and from where |
-| `pricing."PREFIX"` | — | dollars per million tokens, `{input, output, cache_read, cache_write}`, for models whose name starts with PREFIX |
 
 ## What nock's agents may do
 
