@@ -1,22 +1,23 @@
 """Topics and items: what agents put before the owner. A topic is a piece of
 work — a name, why it exists, a thread — holding items; an item is bare: a
-title, a description under it, and, in each of its versions, one of: a
-decision (nock's own JSON: the answer, the alternatives weighed, done or todo,
-with the project files it concerns) or one asset — a project file (copied
-when the version is made, so versions compare) or a derived file (something
-made to show part of the project, with what it comes from, when it applies
-and how to make it again). An asset may hold several variants, takes on one
+title, a description under it, and, in each of its versions, a decision
+(nock's own JSON: the answer, the alternatives weighed, done or todo, with
+the project files it concerns), one asset — a project file (linked at the
+commit it was at, or kept by content when it had uncommitted changes) or a
+derived file (something made to show part of the project, with what it comes
+from, when it applies and how to make it again) — or a decision with the
+asset that shows it. An asset may hold several variants, takes on one
 thing of one type, of which the owner prefers one before accepting it, and
 views, HTML pages laying out its variants with nock's look. The owner alone gives an item its
 verdict (accepted; rejected, to be reworked; dropped, rejected with nothing
 to rework, closed; open until then), on the page or with `/nock-triage`;
 both sides talk in the threads, a chat: the owner's message waits for the
-agent's one answer (`pending`), and is withdrawn until it comes. Everything lives in the main
-checkout's `.nock/topics/TOPIC/` (a file over `LARGE` bytes under
-`.nock/local/topics/` instead, uncommitted), committed as it is written,
-whichever worktree writes it, so the owner sees it at once. The files the
-owner attaches to a message are kept beside its thread, in the topic's or the
-item's `attachments/MOMENT/`, the message naming each (`attachments`).
+agent's one answer (`pending`), and is withdrawn until it comes. Everything
+lives in the store (`nock.shared`), the main checkout's `.nock/shared/`, as
+events folded into these records (`nock.fold`): each change here is a few
+event files (a version a folder), settled and committed at once, whichever
+worktree writes it, so the owner sees it at once. Media — and every file a
+message carries — is kept in `.nock/shared/media/` by sha256.
 
 A topic's progress is its own: a `state` (planned, active, review, done, abandoned)
 and a `status`, a line its agent keeps current as it works; each change is a
@@ -34,27 +35,30 @@ import hashlib
 import json
 import re
 import shutil
+import subprocess
 from collections import Counter
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from enum import StrEnum
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, NotRequired, TypedDict
+from typing import TYPE_CHECKING, Any, NotRequired, TypedDict, cast
 
 from nock.errors import ConflictError, NotFoundError, PolicyError, UsageError
+from nock.fold import ASSETS, EVENTS, ITEMS, STATUS, VERSIONS
 from nock.notify import Notifications, Reason
+from nock.records import ASSETS_FILE, DECISION_FILE, NEXT
 from nock.render import Problem
+from nock.shared import Settled, Shared, by_for
+from nock.shared import unpreferred as asset_unpreferred
 from nock.utils import now, read_json, write_json
 
 if TYPE_CHECKING:
     from nock.project import Project
 
-TOPIC_FILE = "topic.json"
-ITEM_FILE = "item.json"
-# What the prompt and edit hooks look for in every item, in `local/`, each with
-# its item file's stamp: they read one file, and an item file only once it changed.
-SUMMARIES_FILE = "item-summaries.json"
-DECISION_FILE = "decision.json"
 PROJECT_FILES = "project"
+# What the prompt and edit hooks look for in every decision, in `local/`, each with
+# its event folders' stamps: they fold a decision again only once it changed.
+SUMMARIES_FILE = "item-summaries.json"
 # The folder beside a thread holding the files its messages carry: no item's slug.
 ATTACHMENTS = "attachments"
 MAP = "map.md"
@@ -112,8 +116,6 @@ class State(StrEnum):
 CLOSED = (State.DONE, State.ABANDONED)
 # The states in which an agent's work in a topic is finished, as the stop hook counts it.
 FINISHED = (State.REVIEW, *CLOSED)
-# A thread's entry recording a change of the topic's state or status.
-STATUS = "status"
 # The studio's Tidy up: its writes are not committed one by one; the studio
 # commits them together when it ends, so one revert undoes them.
 TIDIER = "tidier"
@@ -141,6 +143,9 @@ class Decision(TypedDict):
     """What you seriously weighed instead, and why not; none is a fine answer."""
     status: NotRequired[Status]
     """done (the default) or todo: should be done, and is not yet."""
+    assets: NotRequired[list[str]]
+    """The asset items that show what it decided, by ref (`topic/slug`): a
+    decision holds no file of its own but the project files it concerns."""
 
 
 class Recipe(TypedDict):
@@ -195,8 +200,12 @@ class Content(TypedDict):
     """The files are variants: takes on one asset (three versions of one
     picture), of one type, for the owner to prefer one; never unrelated files,
     which are items of their own."""
+    set: NotRequired[bool]
+    """The files are a set shown together, as one asset (before and after,
+    desktop and phone): nothing to prefer."""
     views: NotRequired[list[View]]
-    """HTML pages laying out the variants (each favicon at several sizes)."""
+    """HTML pages laying out the files: the variants (each favicon at several
+    sizes) or the set."""
 
 
 class ItemDraft(Content):
@@ -331,54 +340,60 @@ def talk(thread: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 class Topics:
+    """The topics and items, read from the store's fold and written to it as
+    events: each change a few event files (a version a folder), settled —
+    validated, completed and committed — at once."""
+
     def __init__(self, project: Project) -> None:
         self.project = project
+        self.shared = Shared(project)
+        self.fold = self.shared.fold
+        self.drafted: list[Path] = []
 
     @property
     def directory(self) -> Path:
         """The main checkout's, whichever worktree writes: the owner looks there."""
-        return self.project.root / ".nock" / "topics"
-
-    @property
-    def large(self) -> Path:
-        return self.project.local / "topics"
+        return self.shared.topics
 
     @property
     def map(self) -> Path:
-        return self.directory / MAP
+        return self.shared.map
 
     # --- reading ----------------------------------------------------------------
 
     def names(self) -> list[str]:
-        if not self.directory.is_dir():
-            return []
-        return sorted(path.parent.name for path in self.directory.glob(f"*/{TOPIC_FILE}"))
+        return self.fold.names()
 
     def topic(self, name: str) -> dict[str, Any]:
-        path = self.directory / name / TOPIC_FILE
-        if not NAME.match(name) or not path.is_file():
+        record = self.fold.topic(name) if NAME.match(name) else None
+        if record is None:
+            renamed = [
+                other
+                for other in self.names()
+                if name in (self.fold.topic(other) or {}).get("aliases", [])
+            ]
+            if renamed:
+                record = self.fold.topic(renamed[0])
+        if record is None:
             close = [other for other in self.names() if name in other or other in name]
             hint = f" — did you mean {', '.join(close[:3])}?" if close else ""
             raise NotFoundError(f"no topic {name!r}{hint} (`.nock/nock topics list`)")
-        return read_json(path)
+        return record
 
     def items(self, name: str) -> list[dict[str, Any]]:
         """A topic's items, the newest first."""
-        found = [read_json(path) for path in (self.directory / name).glob(f"*/{ITEM_FILE}")]
-        for item in found:
-            item["topic"] = name
-            item["ref"] = f"{name}/{item['slug']}"
-        return sorted(found, key=lambda item: moment(item["created"]), reverse=True)
+        return self.fold.items(name)
 
     def every(self) -> list[dict[str, Any]]:
         return [item for name in self.names() for item in self.items(name)]
 
     def summaries(self) -> list[dict[str, Any]] | None:
-        """Every item as `every` lists it, in its order, but only what the
-        hooks look for in it (`summary`, with `file`, `topic` and `ref`): an
-        item file is read again only once it changed (its modification time,
-        size and inode). None when an item cannot be summed up, so the caller
-        reads them all as before and fails as it would have."""
+        """Every decision as `every` lists it, in its order, but only what the
+        hooks look for in it (`summary`, with `topic` and `ref`): a decision is
+        folded again only once one of its event folders changed (each folder's
+        modification time, which a new event file moves). None when one
+        cannot be summed up, so the caller reads them all and fails as it would
+        have."""
         path = self.project.local / SUMMARIES_FILE
         try:
             kept = json.loads(path.read_text())
@@ -387,27 +402,24 @@ class Topics:
         kept = kept if isinstance(kept, dict) else {}
         current: dict[str, Any] = {}
         listed: list[dict[str, Any]] = []
-        for name in self.names():
+        if not self.directory.is_dir():
+            return []
+        for topic in sorted(path.name for path in self.directory.iterdir() if path.is_dir()):
             found = []
-            for file in (self.directory / name).glob(f"*/{ITEM_FILE}"):
-                status = file.stat()
-                stamp = [status.st_mtime_ns, status.st_size, status.st_ino]
-                key = str(file.relative_to(self.directory))
+            for folder in sorted((self.directory / topic / ITEMS).glob("*/")):
+                stamp = folder_stamp(folder)
+                key = f"{topic}/{folder.name}"
                 entry = kept.get(key)
                 if not isinstance(entry, dict) or entry.get("stamp") != stamp:
                     try:
-                        entry = {"stamp": stamp, "summary": summary(read_json(file))}
+                        item = self.fold.item(topic, folder.name)
+                        if item is None:
+                            continue
+                        entry = {"stamp": stamp, "summary": summary(item)}
                     except Exception:
                         return None
                 current[key] = entry
-                found.append(
-                    {
-                        **entry["summary"],
-                        "file": str(file),
-                        "topic": name,
-                        "ref": f"{name}/{entry['summary']['slug']}",
-                    }
-                )
+                found.append({**entry["summary"], "topic": topic, "ref": key})
             listed += sorted(found, key=lambda item: item["created"], reverse=True)
         if current != kept:
             with contextlib.suppress(OSError):
@@ -415,17 +427,14 @@ class Topics:
         return listed
 
     def whole(self, summed: dict[str, Any]) -> dict[str, Any]:
-        """The item a summary is of, as `every` lists it."""
-        item = read_json(Path(summed["file"]))
-        item["topic"] = summed["topic"]
-        item["ref"] = summed["ref"]
-        return item
+        """The decision a summary is of, as `every` lists it."""
+        return self.item(summed["ref"])
 
     def resolve(self, ref: str) -> tuple[str, str]:
         """A ref's topic and slug: `topic/slug`, or a ref it had before it moved."""
         ref = ref.strip().strip("/")
         topic, _, slug = ref.rpartition("/")
-        if topic and (self.directory / topic / slug / ITEM_FILE).is_file():
+        if topic and NAME.match(topic) and NAME.match(slug) and self.fold.item(topic, slug):
             return topic, slug
         for item in self.every():
             if ref in item.get("aliases", []):
@@ -436,24 +445,27 @@ class Topics:
 
     def item(self, ref: str) -> dict[str, Any]:
         topic, slug = self.resolve(ref)
-        item = read_json(self.directory / topic / slug / ITEM_FILE)
-        item["topic"] = topic
-        item["ref"] = f"{topic}/{slug}"
+        item = self.fold.item(topic, slug)
+        assert item is not None
         return item
 
     def recipes(self, ref: str) -> list[str]:
-        """The commands that make an item's derived files again: the recipes
-        of its latest version not written by Address my comments, so what
-        `items remake` runs is always a recipe the item's author wrote."""
+        """The commands that make a decision's derived assets again: the
+        recipes of each asset's latest version not written by Address my
+        comments, so what `items remake` runs is always a recipe its author
+        wrote."""
         item = self.item(ref)
-        authored = [version for version in item["versions"] if version.get("role") != ADDRESSER]
         commands: list[str] = []
-        for entry in authored[-1]["files"] if authored else []:
-            command = (
-                (entry.get("recipe") or {}).get("command") if entry["kind"] == "derived" else None
-            )
-            if command and command not in commands:
-                commands.append(command)
+        for asset in item["assets"]:
+            authored = [v for v in asset["versions"] if v.get("role") != ADDRESSER]
+            for entry in authored[-1]["files"] if authored else []:
+                command = (
+                    (entry.get("recipe") or {}).get("command")
+                    if entry["kind"] == "derived"
+                    else None
+                )
+                if command and command not in commands:
+                    commands.append(command)
         if not commands:
             raise NotFoundError(
                 f"{item['ref']} has no recipe command to make it again: follow its recipe's"
@@ -462,7 +474,11 @@ class Topics:
         return commands
 
     def folder(self, topic: str, slug: str, version: int) -> Path:
-        return self.directory / topic / slug / str(version)
+        """A decision's version."""
+        return self.shared.item_folder(topic, slug) / VERSIONS / str(version)
+
+    def asset_folder(self, topic: str, slug: str, asset: str, version: int) -> Path:
+        return self.shared.item_folder(topic, slug) / ASSETS / asset / VERSIONS / str(version)
 
     def decision(self, item: dict[str, Any], version: dict[str, Any]) -> dict[str, Any] | None:
         if not any(entry["kind"] == "decision" for entry in version["files"]):
@@ -471,30 +487,49 @@ class Topics:
             self.folder(item["topic"], item["slug"], version["version"]) / DECISION_FILE
         )
 
-    # --- where files are: the one layer that reads and writes them ----------------
+    def asset(self, item: dict[str, Any], name: str) -> dict[str, Any]:
+        found = next((asset for asset in item["assets"] if asset["name"] == name), None)
+        if found is None:
+            raise NotFoundError(f"{item['ref']} has no asset {name!r}")
+        return found
 
-    def located(self, topic: str, slug: str, version: int, entry: dict[str, Any]) -> Path:
-        """Where a version's file is kept: in its version's folder, or under
-        `.nock/local/topics/` when it is large (`"local": true`)."""
-        base = self.large if entry.get("local") else self.directory
-        return base / topic / slug / str(version) / stored(entry)
+    # --- where files are: the one layer that reads them -------------------------
 
-    def write_file(
-        self, topic: str, slug: str, version: int, entry: dict[str, Any], data: bytes
-    ) -> dict[str, Any]:
-        """Keep a version's file where `located` finds it: the entry, with its size and place."""
-        local = len(data) > LARGE
-        kept = {**entry, "bytes": len(data), "local": local}
-        target = self.located(topic, slug, version, kept)
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_bytes(data)
-        return kept
+    def located(
+        self, topic: str, slug: str, asset: str, version: int, entry: dict[str, Any]
+    ) -> Path:
+        """Where an asset version's file is: in media by its sha256, beside its
+        version, or — a project file linked at a commit — as it was then."""
+        if entry.get("sha256"):
+            return self.shared.blob(entry["sha256"])
+        if entry["kind"] == "project" and entry.get("commit"):
+            return self.at_commit(entry["path"], entry["commit"])
+        return self.asset_folder(topic, slug, asset, version) / entry_name(entry)
 
-    def file(self, topic: str, slug: str, version: int, name: str) -> Path:
-        """Where one of a version's files is: only a file its record names, a
-        video's captions or poster, or one of its views."""
+    def at_commit(self, path: str, commit: str) -> Path:
+        """A project file as it was at a commit, kept on this machine to be read."""
+        target = self.project.local / "cache" / commit / path
+        if not target.is_file():
+            try:
+                data = subprocess.run(
+                    ["git", "show", f"{commit}:{path}"],
+                    cwd=self.project.root,
+                    capture_output=True,
+                    check=True,
+                ).stdout
+            except subprocess.CalledProcessError:
+                return target
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(data)
+        return target
+
+    def file(self, topic: str, slug: str, asset: str, version: int, name: str) -> Path:
+        """Where one of an asset version's files is: only a file its record
+        names, a video's captions or poster, or one of its views."""
         item = self.item(f"{topic}/{slug}")
-        record = next((entry for entry in item["versions"] if entry["version"] == version), None)
+        record = next(
+            (v for v in self.asset(item, asset)["versions"] if v["version"] == version), None
+        )
         listed = record and next(
             (entry for entry in record["files"] if entry_name(entry) == name), None
         )
@@ -502,50 +537,52 @@ class Topics:
             beside = any(name in companions(entry).values() for entry in record["files"])
             viewed = any(view["name"] == name for view in record.get("views", []))
             if beside or viewed:
-                return self.folder(topic, slug, version) / name
+                blob = (record.get("blobs") or {}).get(name)
+                folder = self.asset_folder(topic, slug, asset, version)
+                return self.shared.blob(blob) if blob else folder / name
         if not listed:
-            raise NotFoundError(f"item {topic}/{slug} has no file {name} in version {version}")
-        return self.located(topic, slug, version, listed)
+            raise NotFoundError(
+                f"{topic}/{slug} has no file {name} in version {version} of asset {asset}"
+            )
+        return self.located(topic, slug, asset, version, listed)
 
     def shown(self, item: dict[str, Any]) -> dict[str, Any]:
-        """An item with each version's decision read, each file's path and its views."""
-        versions = []
-        for version in item["versions"]:
-            number = version["version"]
-            folder = self.folder(item["topic"], item["slug"], number)
-            files = []
-            for entry in version["files"]:
-                if entry["kind"] == "decision":
-                    continue
-                path = self.located(item["topic"], item["slug"], number, entry)
-                beside = {
-                    f"{role}_where": str(folder / name) for role, name in companions(entry).items()
-                }
-                files.append({**entry, "name": entry_name(entry), "where": str(path), **beside})
-            views = [
-                {**view, "where": str(folder / view["name"])} for view in version.get("views", [])
-            ]
-            versions.append(
-                {
-                    **version,
-                    "decision": self.decision(item, version),
-                    "files": files,
-                    "views": views,
-                }
-            )
+        """A decision with each version's decision read, and each asset with
+        each version's files where they are, and its views."""
+        versions = [
+            {**version, "decision": self.decision(item, version)} for version in item["versions"]
+        ]
+        assets = []
+        for asset in item["assets"]:
+            shown_versions = []
+            for version in asset["versions"]:
+                number = version["version"]
+                folder = self.asset_folder(item["topic"], item["slug"], asset["name"], number)
+                blobs = version.get("blobs") or {}
+                files = []
+                for entry in version["files"]:
+                    path = self.located(item["topic"], item["slug"], asset["name"], number, entry)
+                    beside = {
+                        f"{role}_where": str(
+                            self.shared.blob(blobs[name]) if name in blobs else folder / name
+                        )
+                        for role, name in companions(entry).items()
+                    }
+                    files.append({**entry, "name": entry_name(entry), "where": str(path), **beside})
+                views = [
+                    {**view, "where": str(folder / view["name"])}
+                    for view in version.get("views", [])
+                ]
+                shown_versions.append({**version, "files": files, "views": views})
+            assets.append({**asset, "versions": shown_versions})
         thread = self.thread_shown(item["thread"], item["topic"], item["slug"])
-        return {**item, "versions": versions, "thread": thread}
+        return {**item, "versions": versions, "assets": assets, "thread": thread}
 
     # --- attachments ------------------------------------------------------------
 
-    def beside(self, base: Path, topic: str, slug: str | None) -> Path:
-        """A thread's own folder under `base`: its topic's, or its item's."""
-        return base / topic / slug if slug else base / topic
-
     def where(self, entry: dict[str, Any], topic: str, slug: str | None = None) -> Path:
-        """Where an attachment is kept: beside its thread, or on this machine when large."""
-        base = self.large if entry.get("local") else self.directory
-        return self.beside(base, topic, slug) / entry["path"]
+        """Where an attachment is: in media, by its sha256."""
+        return self.shared.blob(entry["sha256"])
 
     def attached(self, said: dict[str, Any], topic: str, slug: str | None = None) -> list[str]:
         return [str(self.where(entry, topic, slug)) for entry in said.get("attachments", [])]
@@ -577,20 +614,9 @@ class Topics:
         where = f"{topic}/{slug}" if slug else topic
         raise NotFoundError(f"{where} has no attachment {path}")
 
-    def attach(
-        self, topic: str, slug: str | None, files: list[Path], stamp: str
-    ) -> list[dict[str, Any]]:
-        """Keep these files (moved, each under its own name) beside a thread,
-        in a folder of their message's own: what the message records of them."""
-        if not files:
-            return []
-        label = stamp.replace("-", "").replace(":", "")
-        folder, number = label, 2
-        while any(
-            (self.beside(base, topic, slug) / ATTACHMENTS / folder).exists()
-            for base in (self.directory, self.large)
-        ):
-            folder, number = f"{label}-{number}", number + 1
+    def attach(self, files: list[Path]) -> list[dict[str, Any]]:
+        """What a message's draft says of the files it carries: each read and
+        kept in media when the message is settled."""
         entries, names = [], set()
         for source in files:
             if not source.is_file():
@@ -600,38 +626,10 @@ class Topics:
             while name in names:
                 name, number = f"{base}-{number}{suffix}", number + 1
             names.add(name)
-            size = source.stat().st_size
-            with source.open("rb") as handle:
-                kind = kind_of(name, handle.read(65536))
-            entry = {
-                "name": name,
-                "type": kind,
-                "bytes": size,
-                "path": f"{ATTACHMENTS}/{folder}/{name}",
-                "local": size > LARGE,
-            }
-            target = self.where(entry, topic, slug)
-            target.parent.mkdir(parents=True, exist_ok=True)
-            shutil.move(source, target)
-            entries.append(entry)
+            entries.append({"path": str(source.resolve()), "name": name})
         return entries
 
-    def unattach(
-        self,
-        said: dict[str, Any],
-        topic: str,
-        slug: str | None,
-        keep: Callable[[Path, dict[str, Any]], None] | None,
-    ) -> None:
-        """A withdrawn message's files, handed to `keep` (which may move them
-        away) and removed with their folder."""
-        for entry in said.get("attachments", []):
-            path = self.where(entry, topic, slug)
-            if keep is not None and path.is_file():
-                keep(path, entry)
-            path.unlink(missing_ok=True)
-            with contextlib.suppress(OSError):
-                path.parent.rmdir()
+    # --- rows -------------------------------------------------------------------
 
     def current_description(self, topic: dict[str, Any]) -> str:
         """The latest revival note, once the topic came back; its description before."""
@@ -734,16 +732,23 @@ class Topics:
         }
 
     def item_row(self, item: dict[str, Any]) -> dict[str, Any]:
-        latest = item["versions"][-1]
-        kinds = sorted({entry["kind"] for entry in latest["files"]})
+        latest = item["versions"][-1] if item["versions"] else {"files": []}
+        kinds = sorted(
+            {entry["kind"] for entry in latest["files"]}
+            | {entry["kind"] for asset in item["assets"] for entry in latest_files(asset)}
+        )
+        preferred = {
+            asset["name"]: asset["preferred"] for asset in item["assets"] if asset.get("preferred")
+        }
         return {
             "ref": item["ref"],
             "title": item["title"],
             "verdict": item["verdict"],
             "kinds": kinds,
             **({"description": item["description"]} if item.get("description") else {}),
+            **({"assets": len(item["assets"])} if item["assets"] else {}),
             **({"variants": len(variants_of(item))} if has_variants(item) else {}),
-            **({"preferred": item["preferred"]} if item.get("preferred") else {}),
+            **({"preferred": preferred} if preferred else {}),
             "versions": len(item["versions"]),
             "updated": item["updated"],
         }
@@ -754,13 +759,14 @@ class Topics:
         """An item's title, and the rest of what it says, for search."""
         parts = [item.get("description") or "", *(entry["text"] for entry in item["thread"])]
         parts += [file["name"] for entry in item["thread"] for file in entry.get("attachments", [])]
-        latest = item["versions"][-1]
-        decision = self.decision(item, latest)
+        decision = self.decision(item, item["versions"][-1]) if item["versions"] else None
         if decision:
             parts.append(decision["answer"])
             parts += [f"{entry['option']} {entry['why_not']}" for entry in decision["alternatives"]]
-        for entry in latest["files"]:
-            parts += [entry_name(entry), *entry.get("from", []), entry.get("when") or ""]
+        for asset in item["assets"]:
+            parts += [asset["title"], asset.get("description") or ""]
+            for entry in latest_files(asset):
+                parts += [entry_name(entry), *entry.get("from", []), entry.get("when") or ""]
         parts += item.get("aliases", [])
         return item["title"], " ".join(parts)
 
@@ -813,7 +819,52 @@ class Topics:
         found.sort(key=lambda pair: -pair[0])
         return [name for _, name in found]
 
-    # --- topics -----------------------------------------------------------------
+    # --- writing ----------------------------------------------------------------
+
+    def by(self, author: Author = Author.AGENT) -> dict[str, Any]:
+        return by_for(self.project, str(author))
+
+    def settle(
+        self,
+        written: list[Path],
+        author: Author = Author.AGENT,
+        removing: list[Path] | None = None,
+    ) -> Settled:
+        """Settle what nock just wrote: refused as a whole, its files gone, when
+        the store finds a problem with it."""
+        settled = self.shared.settle(self.by(author), only=written, removing=removing)
+        if settled.problems:
+            raise UsageError("; ".join(settled.problems))
+        return settled
+
+    def draft(self, folder: Path, record: dict[str, Any]) -> Path:
+        path = self.shared.draft(folder, record)
+        self.drafted.append(path)
+        return path
+
+    @contextmanager
+    def drafting(self) -> Iterator[None]:
+        """What a change drafts, all gone again — and any folder it left
+        empty — when the change fails before it is settled."""
+        self.drafted = []
+        try:
+            yield
+        except BaseException:
+            for path in reversed(self.drafted):
+                if path.is_dir():
+                    shutil.rmtree(path, ignore_errors=True)
+                else:
+                    path.unlink(missing_ok=True)
+                for parent in path.parents:
+                    if parent == self.directory or not parent.is_relative_to(self.directory):
+                        break
+                    try:
+                        parent.rmdir()
+                    except OSError:
+                        break
+            raise
+        finally:
+            self.drafted = []
 
     def standing(self, topic: dict[str, Any]) -> State:
         return state_of(topic, None if topic.get("state") else self.items(topic["name"]))
@@ -831,12 +882,6 @@ class Topics:
                 {"session": stamp["session"], "parent": stamp.get("parent"), "topic": topic},
             )
 
-    def save_topic(self, topic: dict[str, Any]) -> Path:
-        topic["updated"] = now()
-        path = self.directory / topic["name"] / TOPIC_FILE
-        write_json(path, topic)
-        return path
-
     def create_topic(self, draft: TopicDraft) -> tuple[dict[str, Any], str | None]:
         name = check_name(draft["name"])
         if not draft["description"].strip():
@@ -848,28 +893,37 @@ class Topics:
             raise UsageError(
                 "a topic opens planned, active or review: done and abandoned are for finished work"
             )
-        with self.project.lock("topics"):
-            if (self.directory / name / TOPIC_FILE).is_file():
+        with self.project.lock("topics"), self.drafting():
+            existing = self.fold.topic(name)
+            if existing is not None:
+                standing = self.standing(existing)
                 again = (
-                    f" — it is {self.standing(self.topic(name))}; revive it:"
+                    f" — it is {standing}; revive it:"
                     f' `.nock/nock topics update {name} --revive "why it is back"`'
-                    if self.standing(self.topic(name)) in CLOSED
+                    if standing in CLOSED
                     else ": submit into it"
                 )
                 raise ConflictError(f"topic {name} exists{again}")
-            topic: dict[str, Any] = {
-                "name": name,
-                "description": draft["description"].strip(),
-                "state": str(state),
-                "status": "",
-                "created": self.recorded(),
-                "thread": [],
-            }
-            if str(draft.get("status") or "").strip():
-                self.set_standing(topic, {"status": draft.get("status")}, None)
-            path = self.save_topic(topic)
-            self.worked(name, topic["created"])
-            return topic, self.commit([path], f"Topic {name}: {topic['description'][:80]}")
+            folder = self.shared.topic_folder(name)
+            written = [
+                self.draft(
+                    folder,
+                    {
+                        "kind": "created",
+                        "description": draft["description"].strip(),
+                        "state": str(state),
+                    },
+                )
+            ]
+            status = " ".join(str(draft.get("status") or "").split())
+            if status:
+                written.append(
+                    self.draft(folder, {"kind": "state", "state": str(state), "status": status})
+                )
+            settled = self.settle(written)
+            topic = self.topic(name)
+            self.worked(name, self.recorded())
+            return topic, settled.note
 
     def update_topic(
         self,
@@ -884,77 +938,84 @@ class Topics:
             raise UsageError(
                 "nothing to do: give a change (`state`, `status`, …), `--reply`, or `--revive`"
             )
-        with self.project.lock("topics"):
+        with self.project.lock("topics"), self.drafting():
             topic = self.topic(name)
-            touched = [self.directory / name]
-            said = []
+            name = topic["name"]
+            folder = self.shared.topic_folder(name)
             was = self.standing(topic)
             owner_last = owner_wrote_last(topic["thread"])
+            written: list[Path] = []
             if "description" in change:
                 if not change["description"].strip():
                     raise UsageError("`description` is empty")
-                topic["description"] = change["description"].strip()
-                said.append("updated")
+                written.append(
+                    self.draft(
+                        folder, {"kind": "described", "description": change["description"].strip()}
+                    )
+                )
+            standing: dict[str, Any] = {}
             if "priority" in change:
                 priority = int(change["priority"])
                 if priority < 0:
                     raise UsageError("`priority` is 1 or more (1 first), or 0 to take it away")
-                if priority:
-                    topic["priority"] = priority
-                else:
-                    topic.pop("priority", None)
-                said.append(f"priority {priority}" if priority else "no priority")
-            standing: dict[str, Any] = {
-                key: value for key, value in change.items() if key in ("state", "status")
-            }
+                standing["priority"] = priority
             if revive is not None:
-                if self.standing(topic) not in CLOSED:
+                if was not in CLOSED:
                     raise ConflictError(
-                        f"topic {name} is {self.standing(topic)}, not done or abandoned: submit into"
+                        f"topic {name} is {was}, not done or abandoned: submit into"
                         " it, no need to revive it"
                     )
-                if State(standing.get("state") or State.ACTIVE) in CLOSED:
+                if State(change.get("state") or State.ACTIVE) in CLOSED:
                     raise UsageError("a revived topic is planned or active")
-            if standing or revive is not None:
-                self.set_standing(topic, standing, revive)
-                said.append("revived" if revive is not None else str(self.standing(topic)))
+                note = revive.strip()
+                if not note:
+                    raise UsageError("`--revive` says why the topic is back")
+                standing |= {
+                    "state": str(State(change.get("state") or State.ACTIVE)),
+                    "revived": True,
+                    "note": note,
+                }
+            if "state" in change or "status" in change or revive is not None:
+                # Each change of standing says the whole of it, as the thread keeps it:
+                # a change of state without a status clears the status.
+                state = State(change.get("state") or standing.get("state") or was)
+                if "status" in change:
+                    status = " ".join(str(change["status"] or "").split())
+                elif state is not was:
+                    status = ""
+                else:
+                    status = topic.get("status") or ""
+                standing |= {"state": str(state), "status": status}
+            if standing:
+                written.append(self.draft(folder, {"kind": "state", **standing}))
             if reply is not None:
-                said_now = said_in(
-                    topic["thread"], author, reply, self.writer(), files=bool(attachments)
-                )
+                said_in(topic["thread"], author, reply, self.writer(), files=bool(attachments))
+                said: dict[str, Any] = {"kind": "message", "text": reply.strip()}
                 if attachments:
-                    said_now["attachments"] = self.attach(
-                        name, None, attachments, said_now["moment"]
-                    )
-                topic["thread"].append(said_now)
-                said.append("replied")
-                if author == Author.AGENT:
-                    self.worked(topic["name"], topic["thread"][-1])
+                    said["attachments"] = self.attach(attachments)
+                written.append(self.draft(folder, said))
+            renamed = None
             if "name" in change and change["name"] != name:
                 renamed = check_name(change["name"])
                 if (self.directory / renamed).exists():
                     raise ConflictError(f"topic {renamed} exists")
-                (self.directory / name).rename(self.directory / renamed)
-                if (self.large / name).is_dir():
-                    (self.large / name).rename(self.large / renamed)
-                topic["name"] = renamed
+                written.append(self.draft(folder, {"kind": "renamed", "name": renamed}))
+            settled = self.settle(written, author)
+            if renamed:
+                name = renamed
                 with self.project.store.connection() as connection:
                     connection.execute(
-                        "UPDATE wrote SET topic = ? WHERE topic = ?", (renamed, name)
+                        "UPDATE wrote SET topic = ? WHERE topic = ?", (renamed, topic["name"])
                     )
-                touched.append(self.directory / renamed)
-                said.append(f"renamed from {name}")
-            self.save_topic(topic)
-            line = f": {topic['status']}" if standing and topic.get("status") else ""
-            commit = self.commit(
-                touched, f"Topic {topic['name']}, {', '.join(said or ['updated'])}{line}"
-            )
+            topic = self.topic(name)
+            if author is Author.AGENT and (reply is not None or standing):
+                self.worked(name, self.recorded())
         if author is Author.AGENT:
             if was is not State.REVIEW and self.standing(topic) is State.REVIEW:
-                self.owners_turn(topic["name"], Reason.REVIEW)
+                self.owners_turn(name, Reason.REVIEW)
             elif reply is not None and owner_last:
-                self.owners_turn(topic["name"], Reason.ANSWERED)
-        return topic, commit
+                self.owners_turn(name, Reason.ANSWERED)
+        return topic, settled.note
 
     def writer(self) -> dict[str, str | None]:
         return self.project.writer()
@@ -969,29 +1030,6 @@ class Topics:
 
         event = Timeline(self.project).latest(name, TURNS[reason])
         Notifications(self.project).tell(name, reason, self.items(name), event=event)
-
-    def set_standing(
-        self, topic: dict[str, Any], change: dict[str, Any], revived: str | None
-    ) -> None:
-        """A new state or status, kept in the topic and recorded as a status
-        entry in its thread; a revival sets it active with its note. A change
-        of state without a status clears the status."""
-        state = State(change.get("state") or (State.ACTIVE if revived else self.standing(topic)))
-        if "status" in change:
-            status = " ".join(str(change["status"] or "").split())
-        elif state is not self.standing(topic):
-            status = ""
-        else:
-            status = topic.get("status") or ""
-        note = (revived or "").strip()
-        if revived is not None and not note:
-            raise UsageError("`--revive` says why the topic is back")
-        topic["state"], topic["status"] = str(state), status
-        entry = message(Author.AGENT, note or status or str(state), self.writer(), kind=STATUS)
-        entry.update({"state": str(state), "status": status})
-        if revived is not None:
-            entry["revived"] = True
-        topic["thread"].append(entry)
 
     def unstated(self, session: str) -> list[str]:
         """The planned or active topics this session (or a subagent of it)
@@ -1019,22 +1057,27 @@ class Topics:
         return found
 
     def delete_topic(self, name: str) -> str | None:
-        with self.project.lock("topics"):
+        with self.project.lock("topics"), self.drafting():
             self.topic(name)
             if self.items(name):
                 raise ConflictError(f"topic {name} holds items: only an empty topic is deleted")
-            shutil.rmtree(self.directory / name)
-            shutil.rmtree(self.large / name, ignore_errors=True)
-            return self.commit([self.directory / name], f"Topic {name}, deleted")
+            folder = self.shared.topic_folder(name)
+            shutil.rmtree(folder)
+            return self.settle([], removing=[folder]).note
 
     # --- items ------------------------------------------------------------------
 
     def create_item(self, topic: str, draft: ItemDraft) -> tuple[dict[str, Any], str | None]:
+        """A decision, with the assets that show it: its `decision` (or, for
+        files that need review with no natural choice, a plain "Review"
+        decision), each project file an asset, the derived files one asset
+        (several only as its variants)."""
         title = draft["title"].strip()
         if not title:
             raise UsageError("`title` is empty")
-        with self.project.lock("topics"):
+        with self.project.lock("topics"), self.drafting():
             record = self.topic(topic)
+            topic = record["name"]
             items = self.items(topic)
             if self.standing(record) in CLOSED:
                 raise ConflictError(
@@ -1045,41 +1088,31 @@ class Topics:
             taken = {item["slug"] for item in items}
             if "slug" in draft and slug in taken:
                 raise ConflictError(f"{topic}/{slug} exists: update it, or give another slug")
-            if "slug" in draft and slug == ATTACHMENTS:
-                raise UsageError(
-                    f"{ATTACHMENTS} is the folder of a topic's attachments: give another slug"
-                )
             base, number = slug, 2
-            while slug in taken or slug.isdigit() or slug == ATTACHMENTS:
+            while slug in taken or slug.isdigit() or self.shared.item_folder(topic, slug).exists():
                 slug, number = f"{base}-{number}", number + 1
-            stamp = self.recorded()
-            item: dict[str, Any] = {
-                "slug": slug,
-                "title": title,
-                "description": " ".join(str(draft.get("description") or "").split()),
-                "aliases": [],
-                "verdict": str(Verdict.OPEN),
-                "decided": None,
-                "created": stamp,
-                "updated": stamp["moment"],
-                "thread": [],
-                "versions": [],
+            description = " ".join(str(draft.get("description") or "").split())
+            if not draft.get("decision") and not draft.get("files") and not draft.get("derived"):
+                raise UsageError(
+                    "an item holds something: give `decision`, `files`, `derived`, or several"
+                )
+            item = {"topic": topic, "slug": slug, "title": title, "assets": [], "versions": []}
+            folder = self.shared.item_folder(topic, slug)
+            created: dict[str, Any] = {"kind": "created", "title": title}
+            if description:
+                created["description"] = description
+            self.draft(folder, created)
+            decision = draft.get("decision") or {
+                "answer": description or f"Review: {title}.",
             }
-            self.add_version(topic, item, draft, None)
-            path = self.save_item(topic, item)
-            self.worked(topic, stamp)
-            return self.with_ref(topic, item), self.commit(
-                [path.parent], f"Item {topic}/{slug}: {title}"
-            )
+            self.decision_version(item, decision)
+            self.asset_versions(item, draft, renew=False)
+            settled = self.settle(list(self.drafted))
+            self.worked(topic, self.recorded())
+            return self.item(f"{topic}/{slug}"), settled.note
 
     def with_ref(self, topic: str, item: dict[str, Any]) -> dict[str, Any]:
         return {**item, "topic": topic, "ref": f"{topic}/{item['slug']}"}
-
-    def save_item(self, topic: str, item: dict[str, Any]) -> Path:
-        item["updated"] = now()
-        path = self.directory / topic / item["slug"] / ITEM_FILE
-        write_json(path, {key: value for key, value in item.items() if key not in ("topic", "ref")})
-        return path
 
     def update_item(
         self,
@@ -1094,54 +1127,49 @@ class Topics:
             raise UsageError("nothing to do: give a change, `--version`, or `--reply`")
         change = ItemChange(**change) if change else None
         moving = change.pop("topic", None) if change else None
-        with self.project.lock("topics"):
+        with self.project.lock("topics"), self.drafting():
             item = self.item(ref)
-            said = []
-            touched = [self.directory / item["topic"] / item["slug"]]
+            topic, slug = item["topic"], item["slug"]
+            folder = self.shared.item_folder(topic, slug)
             rejected = item["verdict"] == Verdict.REJECTED
             owner_last = owner_wrote_last(item["thread"])
-            if moving is not None:
-                said.append(self.move(item, moving))
-            topic = item["topic"]
             if change:
                 if item["verdict"] != Verdict.OPEN:
                     raise ConflictError(
                         f"{item['ref']} is {item['verdict']}: it is not changed in place — "
                         f"give the change as a new version, `.nock/nock items update {item['ref']} --version '{{…}}'`"
                     )
-                if "title" in change:
-                    if not change["title"].strip():
-                        raise UsageError("`title` is empty")
-                    item["title"] = change["title"].strip()
-                if "description" in change:
-                    item["description"] = " ".join(str(change["description"] or "").split())
+                self.retitled(folder, change)
                 content = {
                     key: value
                     for key, value in change.items()
                     if key not in ("title", "description")
                 }
-                if content:
-                    latest = item["versions"].pop()
-                    self.add_version(topic, item, content, latest)
-                said.append("updated")
-                self.worked(topic, self.recorded())
+                if content.get("decision"):
+                    self.decision_version(item, cast("Decision", content["decision"]))
+                self.asset_versions(item, content, renew=False)
             if version is not None:
-                if "title" in version:
-                    item["title"] = version["title"].strip() or item["title"]
-                if "description" in version:
-                    item["description"] = " ".join(str(version["description"] or "").split())
+                self.retitled(folder, version)
                 given = {
                     key: value
                     for key, value in version.items()
                     if key not in ("title", "description")
                 }
-                self.add_version(topic, item, given, item["versions"][-1])
-                item["verdict"] = str(Verdict.OPEN)
-                item["decided"] = None
-                said.append(f"version {item['versions'][-1]['version']}")
-                self.worked(topic, item["versions"][-1])
+                if (
+                    not given.get("files")
+                    and not given.get("derived")
+                    and not given.get("decision")
+                ):
+                    # A new version of what it holds, as it is now: the decision again, its
+                    # project files linked afresh.
+                    self.decision_version(item, self.decision(item, item["versions"][-1]) or {})
+                    self.asset_versions(item, {}, renew=True)
+                else:
+                    if given.get("decision"):
+                        self.decision_version(item, cast("Decision", given["decision"]))
+                    self.asset_versions(item, given, renew=False)
             if reply is not None:
-                said_now = said_in(
+                said_in(
                     item["thread"],
                     author,
                     reply,
@@ -1149,175 +1177,197 @@ class Topics:
                     item.get("decided"),
                     files=bool(attachments),
                 )
+                said: dict[str, Any] = {"kind": "message", "text": reply.strip()}
                 if attachments:
-                    said_now["attachments"] = self.attach(
-                        topic, item["slug"], attachments, said_now["moment"]
-                    )
-                item["thread"].append(said_now)
-                said.append("answered" if "answers" in said_now else "replied")
-                if author == Author.AGENT:
-                    self.worked(topic, said_now)
-            path = self.save_item(topic, item)
-            commit = self.commit(
-                [*touched, path.parent, self.large / topic / item["slug"]],
-                f"Item {topic}/{item['slug']}, {', '.join(said)}: {item['title']}",
-            )
+                    said["attachments"] = self.attach(attachments)
+                self.draft(folder, said)
+            moved = None
+            if moving is not None:
+                moved = self.move(item, moving)
+                self.draft(folder, {"kind": "moved", "to": moved[0]})
+            settled = self.settle(list(self.drafted), author)
+            if moved:
+                old = f"{topic}/{slug}"
+                topic, slug = moved
+                with self.project.store.connection() as connection:
+                    for table in ("told", "shown_items"):
+                        connection.execute(
+                            f"UPDATE {table} SET item = ? WHERE item = ?", (f"{topic}/{slug}", old)
+                        )
+            if author is Author.AGENT and (change or version is not None or reply is not None):
+                self.worked(topic, self.recorded())
         if author is Author.AGENT:
             if reply is not None and owner_last:
                 self.owners_turn(topic, Reason.ANSWERED)
             elif version is not None and rejected:
                 self.owners_turn(topic, Reason.REWORKED)
-        return self.with_ref(topic, item), commit
+        return self.item(f"{topic}/{slug}"), settled.note
 
-    def move(self, item: dict[str, Any], target: str) -> str:
-        """Re-file an item in another topic, whatever its verdict: its folders
-        (and large files) moved, its slug kept unless taken there, its old ref
-        an alias, so citations of it still resolve."""
+    def retitled(self, folder: Path, change: ItemChange) -> None:
+        fields: dict[str, Any] = {}
+        if "title" in change:
+            if not str(change["title"] or "").strip():
+                raise UsageError("`title` is empty")
+            fields["title"] = change["title"].strip()
+        if "description" in change:
+            fields["description"] = " ".join(str(change["description"] or "").split())
+        if fields:
+            self.draft(folder, {"kind": "titled", **fields})
+
+    def move(self, item: dict[str, Any], target: str) -> tuple[str, str]:
+        """Where a decision re-filed in another topic goes: its slug kept unless
+        taken there; its old ref becomes an alias, so citations of it still resolve."""
         source, slug = item["topic"], item["slug"]
         target = target.strip()
         if target == source:
             raise UsageError(f"{item['ref']} is in {target} already")
         self.topic(target)
-        taken = {other["slug"] for other in self.items(target)}
         moved, number = slug, 2
-        while moved in taken or moved == ATTACHMENTS:
+        while self.shared.item_folder(target, moved).exists():
             moved, number = f"{slug}-{number}", number + 1
-        (self.directory / target).mkdir(parents=True, exist_ok=True)
-        (self.directory / source / slug).rename(self.directory / target / moved)
-        if (self.large / source / slug).is_dir():
-            (self.large / target).mkdir(parents=True, exist_ok=True)
-            (self.large / source / slug).rename(self.large / target / moved)
-        old, new = item["ref"], f"{target}/{moved}"
-        item["aliases"] = [*item.get("aliases", []), old]
-        item["slug"], item["topic"], item["ref"] = moved, target, new
-        with self.project.store.connection() as connection:
-            for table in ("told", "shown_items"):
-                connection.execute(f"UPDATE {table} SET item = ? WHERE item = ?", (new, old))
-        return f"moved from {old}"
+        return target, moved
 
-    def add_version(
-        self,
-        topic: str,
-        item: dict[str, Any],
-        content: Content | dict[str, Any],
-        previous: dict[str, Any] | None,
+    def decision_version(self, item: dict[str, Any], decision: Decision | dict[str, Any]) -> None:
+        """A new version of the decision, in `versions/next/`."""
+        folder = self.shared.item_folder(item["topic"], item["slug"]) / VERSIONS / NEXT
+        if folder.exists():
+            raise ConflictError(f"{item['topic']}/{item['slug']} has a version being written")
+        data = checked_decision(decision)
+        folder.mkdir(parents=True)
+        self.drafted.append(folder)
+        (folder / DECISION_FILE).write_bytes(data)
+
+    def asset_versions(
+        self, item: dict[str, Any], content: Content | dict[str, Any], renew: bool
     ) -> None:
-        """Write a version from the content given, what it leaves out carried
-        from `previous` (project files copied again as they are now). When
-        `previous` is the latest version it is replaced in place."""
-        if "variants" in content:
-            item["variants"] = bool(content["variants"])
-        in_place = previous is not None and (
-            not item["versions"] or item["versions"][-1] is not previous
-        )
-        number = previous["version"] if in_place and previous else len(item["versions"]) + 1
-        if not in_place and item["versions"]:
-            number = item["versions"][-1]["version"] + 1
-        old_folder = (
-            self.folder(topic, item["slug"], previous["version"]) if previous is not None else None
-        )
-        decision = content.get("decision")
-        if decision is None and previous is not None:
-            decision = self.decision({"topic": topic, "slug": item["slug"]}, previous)
-        files = content.get("files")
-        if files is None and previous is not None:
-            files = [entry["path"] for entry in previous["files"] if entry["kind"] == "project"]
+        """The assets a change holds, each a new version of the asset it is (by
+        its project path or its derived files' names) or a new asset: each
+        project file an asset, the derived files one, several only as its
+        variants. `renew`: every project-file asset again, linked as it is now."""
+        assets = list(item.get("assets", []))
+        for path in content.get("files") or []:
+            entry = self.project_file(path)
+            existing = next(
+                (
+                    asset
+                    for asset in assets
+                    if any(e.get("path") == entry["path"] for e in latest_files(asset))
+                ),
+                None,
+            )
+            name = existing["name"] if existing else self.asset_name(item, entry["path"])
+            self.asset_version(item, name, entry["path"], [entry], [], [], False, existing is None)
+        if renew:
+            for asset in assets:
+                files = latest_files(asset)
+                if files and all(entry["kind"] == "project" for entry in files):
+                    entries = [self.project_file(entry["path"]) for entry in files]
+                    self.asset_version(
+                        item, asset["name"], asset["title"], entries, [], [], False, False
+                    )
         derived = content.get("derived")
-        carried: list[tuple[dict[str, Any], bytes, dict[str, bytes]]] = []
-        if derived is None and previous is not None and old_folder is not None:
-            for entry in previous["files"]:
-                if entry["kind"] == "derived":
-                    source = self.located(topic, item["slug"], previous["version"], entry)
-                    kept = {
-                        name: (old_folder / name).read_bytes()
-                        for name in companions(entry).values()
-                    }
-                    carried.append((entry, source.read_bytes(), kept))
-        views: list[tuple[dict[str, Any], bytes]] = []
-        if content.get("views") is not None:
-            views = [self.view_file(dict(given)) for given in content.get("views") or []]
-        elif previous is not None and old_folder is not None:
-            views = [
-                (dict(view), (old_folder / view["name"]).read_bytes())
-                for view in previous.get("views", [])
+        if not derived:
+            if content.get("views"):
+                raise UsageError("views lay out an asset's files: give its `derived` files too")
+            return
+        made = [self.derived_file(dict(given)) for given in derived]
+        views = [self.view_file(dict(given)) for given in content.get("views") or []]
+        names = {entry["name"] for entry, _, _ in made}
+        existing = next(
+            (
+                asset
+                for asset in assets
+                if names & {entry_name(e) for e in latest_files(asset) if e["kind"] == "derived"}
+            ),
+            None,
+        )
+        if existing is None:
+            derived_assets = [
+                asset
+                for asset in assets
+                if any(e["kind"] == "derived" for e in latest_files(asset))
             ]
-        if not decision and not files and not derived and not carried:
-            raise UsageError(
-                "an item holds something: give `decision`, `files`, `derived`, or several"
-            )
-        made: list[tuple[dict[str, Any], bytes, dict[str, bytes]]] = []
-        if decision:
-            made.append(
-                ({"kind": "decision", "name": DECISION_FILE}, checked_decision(decision), {})
-            )
-        for path in files or []:
-            made.append(self.project_file(path))
-        for given in derived or []:
-            made.append(self.derived_file(dict(given)))
-        made += carried
-        self.check_assets(item, [entry for entry, _, _ in made], bool(views))
+            existing = derived_assets[0] if len(derived_assets) == 1 else None
+        variants = (
+            bool(content["variants"])
+            if "variants" in content
+            else bool(existing and existing.get("variants"))
+        )
+        self.check_assets({"variants": variants}, [entry for entry, _, _ in made], bool(views))
+        name = existing["name"] if existing else self.asset_name(item, item.get("title") or "asset")
+        title = existing["title"] if existing else (item.get("title") or name)
+        self.asset_version(item, name, title, [], made, views, variants, existing is None)
+
+    def asset_name(self, item: dict[str, Any], words: str) -> str:
+        taken = {asset["name"] for asset in item.get("assets", [])} | set(
+            item.setdefault("planned", [])
+        )
+        base = slugged(words)
+        name, number = base, 2
+        while name in taken:
+            name, number = f"{base}-{number}", number + 1
+        item["planned"].append(name)
+        return name
+
+    def asset_version(
+        self,
+        item: dict[str, Any],
+        name: str,
+        title: str,
+        projects: list[dict[str, Any]],
+        made: list[tuple[dict[str, Any], bytes, dict[str, bytes]]],
+        views: list[tuple[dict[str, Any], bytes]],
+        variants: bool,
+        new: bool,
+    ) -> None:
+        """A new version of one asset, in `assets/<name>/versions/next/`; a
+        new asset's `created` first."""
+        base = self.shared.item_folder(item["topic"], item["slug"]) / ASSETS / name
         names = (
-            [stored(entry) for entry, _, _ in made]
-            + [name for _, _, beside in made for name in beside]
+            [entry["name"] for entry, _, _ in made]
+            + [file for _, _, beside in made for file in beside]
             + [view["name"] for view, _ in views]
         )
-        doubled = sorted({name for name in names if names.count(name) > 1})
+        doubled = sorted({file for file in names if names.count(file) > 1})
         if doubled:
             raise UsageError(f"two files named {', '.join(doubled)}: rename one")
-        folder = self.folder(topic, item["slug"], number)
-        if in_place and old_folder is not None:
-            shutil.rmtree(old_folder, ignore_errors=True)
-            shutil.rmtree(self.large / topic / item["slug"] / str(number), ignore_errors=True)
-        entries = []
+        if new:
+            self.draft(base, {"kind": "created", "title": title})
+        folder = base / VERSIONS / NEXT
+        if folder.exists():
+            raise ConflictError(
+                f"{item['topic']}/{item['slug']} has an asset version being written"
+            )
+        folder.mkdir(parents=True)
+        self.drafted.append(folder)
         for entry, data, beside in made:
-            for name, kept in beside.items():
-                (folder / name).parent.mkdir(parents=True, exist_ok=True)
-                (folder / name).write_bytes(kept)
-            written = self.write_file(topic, item["slug"], number, entry, data)
-            entries.append(entry if entry["kind"] == "decision" else written)
-        folder.mkdir(parents=True, exist_ok=True)
-        laid_out = []
+            (folder / entry["name"]).write_bytes(data)
+            for file, kept in beside.items():
+                (folder / file).write_bytes(kept)
         for view, data in views:
             (folder / view["name"]).write_bytes(data)
-            laid_out.append(
-                {"name": view["name"], "title": view.get("title") or "", "bytes": len(data)}
-            )
-        stamp = self.recorded()
-        record = {"version": number, **stamp, "files": entries}
-        if laid_out:
-            record["views"] = laid_out
-        item["versions"].append(record)
+        record: dict[str, Any] = {"files": [*projects, *(entry for entry, _, _ in made)]}
+        if variants:
+            record["variants"] = True
+        if views:
+            record["views"] = [view for view, _ in views]
+        write_json(folder / ASSETS_FILE, record)
 
     def check_assets(
         self, item: dict[str, Any], entries: list[dict[str, Any]], views: bool = False
     ) -> None:
-        """One asset per item: a decision (with the project files it
-        concerns), or one file; several only as variants of one type."""
-        files = [entry for entry in entries if entry["kind"] != "decision"]
-        if len(files) < len(entries):
-            if has_variants(item):
-                raise UsageError(
-                    "a decision has no variants: its alternatives say what else was weighed"
-                )
-            if views:
-                raise UsageError("a decision has no views: views lay out an asset's variants")
-            derived = [entry["name"] for entry in files if entry["kind"] == "derived"]
-            if derived:
-                raise UsageError(
-                    f"a decision holds no derived file: submit {derived[0]} as an item of its"
-                    " own, and cite it in the answer"
-                )
-            return
-        if len(files) > 1 and not has_variants(item):
+        """An asset holds one file, or variants of one type."""
+        if len(entries) > 1 and not has_variants_flag(item):
             raise UsageError(
-                "an item holds one asset: submit each file as an item of its own — several only"
-                ' as variants, takes on one asset for the owner to prefer one (`"variants": true`)'
+                "an asset holds one file: before and after are versions of one asset, and"
+                " files shown with a decision are each an asset of it — several only as"
+                ' variants, takes on one asset for the owner to prefer one (`"variants": true`)'
             )
-        types = sorted({entry["type"] for entry in files})
-        if has_variants(item) and len(types) > 1:
+        types = sorted({entry["type"] for entry in entries})
+        if has_variants_flag(item) and len(types) > 1:
             raise UsageError(
                 f"variants are takes on one asset, of one type — not {' and '.join(types)}:"
-                " unrelated files are items of their own"
+                " unrelated files are assets of their own"
             )
 
     def view_file(self, given: dict[str, Any]) -> tuple[dict[str, Any], bytes]:
@@ -1337,7 +1387,7 @@ class Topics:
             raise UsageError(f"{name or 'a view'}: a view is an HTML file, named `sizes.html`")
         return {"name": name, "title": str(given.get("title") or "").strip()}, data
 
-    def project_file(self, given: str) -> tuple[dict[str, Any], bytes, dict[str, bytes]]:
+    def project_file(self, given: str) -> dict[str, Any]:
         here = self.project.here.resolve()
         path = Path(given).expanduser()
         path = (path if path.is_absolute() else here / path).resolve()
@@ -1347,14 +1397,9 @@ class Topics:
                 ' something made to show part of it goes in `derived` (`{"path": …, "from": […]}`)'
             )
         relative = str(path.relative_to(here))
-        data = path.read_bytes()
-        entry: dict[str, Any] = {
-            "kind": "project",
-            "path": relative,
-            "type": kind_of(relative, data),
-        }
-        beside = video_companions(entry, path.name, path, None, None)
-        return entry, data, beside
+        with path.open("rb") as handle:
+            head = handle.read(65536)
+        return {"kind": "project", "path": relative, "type": kind_of(relative, head)}
 
     def derived_file(self, given: dict[str, Any]) -> tuple[dict[str, Any], bytes, dict[str, bytes]]:
         source = None
@@ -1373,14 +1418,14 @@ class Topics:
             source = path
         else:
             raise UsageError("a derived file gives `path` (a file to copy) or `text` with `name`")
-        if "/" in name or name in (DECISION_FILE, ITEM_FILE, PROJECT_FILES):
+        if "/" in name or name in (DECISION_FILE, ASSETS_FILE):
             raise UsageError(f"{name}: not a file name to keep")
         recipe = {
             field: str(value).strip()
             for field, value in dict(given.get("recipe") or {}).items()
             if str(value).strip()
         }
-        entry = {
+        entry: dict[str, Any] = {
             "kind": "derived",
             "name": name,
             "type": kind_of(name, data),
@@ -1392,7 +1437,7 @@ class Topics:
         return entry, data, beside
 
     def delete_item(self, ref: str) -> str | None:
-        with self.project.lock("topics"):
+        with self.project.lock("topics"), self.drafting():
             item = self.item(ref)
             if item["verdict"] != Verdict.OPEN or any(
                 entry["author"] == Author.OWNER for entry in item["thread"]
@@ -1401,75 +1446,78 @@ class Topics:
                     f"{item['ref']} has the owner's word on it: only an open item the owner has not"
                     " written on is deleted — give a new version instead"
                 )
-            folder = self.directory / item["topic"] / item["slug"]
+            folder = self.shared.item_folder(item["topic"], item["slug"])
             shutil.rmtree(folder)
-            shutil.rmtree(self.large / item["topic"] / item["slug"], ignore_errors=True)
-            return self.commit([folder], f"Item {item['ref']}, deleted: {item['title']}")
+            return self.settle([], removing=[folder]).note
 
     # --- the owner's word -------------------------------------------------------
 
-    def prefer(self, ref: str, version: int, name: str | None) -> tuple[dict[str, Any], str | None]:
-        """The owner's preferred variant in a version of an item with variants,
-        or none (`name` None): recorded and shown; only an item whose latest
-        version's variant is preferred is accepted."""
-        with self.project.lock("topics"):
+    def prefer(
+        self, ref: str, version: int, name: str | None, asset: str | None = None
+    ) -> tuple[dict[str, Any], str | None]:
+        """The owner's preferred variant in a version of an asset with
+        variants, or none (`name` None): recorded and shown; a decision is
+        accepted only once each asset with variants has one preferred. The
+        asset is the one named, else the one with variants."""
+        with self.project.lock("topics"), self.drafting():
             item = self.item(ref)
-            if not has_variants(item):
+            candidates = [
+                found
+                for found in item["assets"]
+                if (asset is None or found["name"] == asset) and found.get("variants")
+            ]
+            if not candidates:
                 raise UsageError(f"{item['ref']} has no variants to prefer one of")
-            if name is None:
-                item["preferred"] = None
-            else:
-                record = next(
-                    (entry for entry in item["versions"] if entry["version"] == version), None
-                )
-                names = [
-                    entry_name(entry)
-                    for entry in (record or {}).get("files", [])
-                    if entry["kind"] != "decision"
-                ]
-                if name not in names:
+            chosen = candidates[0]
+            if name is not None:
+                for found in candidates:
+                    record = next((v for v in found["versions"] if v["version"] == version), None)
+                    names = [entry_name(entry) for entry in (record or {}).get("files", [])]
+                    if name in names:
+                        chosen = found
+                        break
+                else:
                     raise NotFoundError(f"{item['ref']} has no variant {name} in version {version}")
-                item["preferred"] = {"version": version, "name": name}
-            path = self.save_item(item["topic"], item)
-            said = (
-                f"variant {name} of version {version} preferred" if name else "no variant preferred"
-            )
-            return item, self.commit([path], f"Item {item['ref']}, {said}: {item['title']}")
+            folder = self.shared.item_folder(item["topic"], item["slug"]) / ASSETS / chosen["name"]
+            path = self.draft(folder, {"kind": "preferred", "version": version, "name": name})
+            settled = self.settle([path], Author.OWNER)
+            return self.item(item["ref"]), settled.note
 
     def judge(self, ref: str, word: Word) -> tuple[dict[str, Any], str | None]:
-        with self.project.lock("topics"):
+        with self.project.lock("topics"), self.drafting():
             item = self.item(ref)
-            self.give(item, word)
-            path = self.save_item(item["topic"], item)
-            return item, self.commit(
-                [path], f"Item {item['ref']}, {item['verdict']}: {item['title']}"
-            )
+            verdict = verdict_of(word)
+            if verdict is Verdict.ACCEPTED and unpreferred(item):
+                raise ConflictError(
+                    f"{item['ref']} has {len(variants_of(item))} variants: prefer one before accepting it"
+                )
+            path = self.verdict_draft(item, verdict, word)
+            settled = self.settle([path], self.judging())
+            return self.item(item["ref"]), settled.note
 
-    def give(self, item: dict[str, Any], word: Word) -> None:
-        verdict = verdict_of(word)
-        if verdict is Verdict.ACCEPTED and unpreferred(item):
-            raise ConflictError(
-                f"{item['ref']} has {len(variants_of(item))} variants: prefer one before accepting it"
-            )
-        item["verdict"] = str(verdict)
-        item["decided"] = {"moment": now(), **self.writer()}
-        comment = str(word.get("comment") or "").strip()
+    def judging(self) -> Author:
+        """Who gives a verdict: the owner, through the studio or `/nock-triage`;
+        Tidy up's drops are its own."""
+        return Author.AGENT if self.project.current_role() == TIDIER else Author.OWNER
+
+    def verdict_draft(self, item: dict[str, Any], verdict: Verdict, word: Word | None) -> Path:
+        record: dict[str, Any] = {"kind": "verdict", "verdict": str(verdict)}
+        comment = str((word or {}).get("comment") or "").strip()
         if comment:
-            item["thread"].append(
-                message(Author.OWNER, comment, self.writer(), verdict=str(verdict))
-            )
+            record["comment"] = comment
+        return self.draft(self.shared.item_folder(item["topic"], item["slug"]), record)
 
     def judge_topic(self, name: str, word: Word) -> tuple[list[str], str | None]:
         """The verdict on every open item of a topic; the comment in the topic's thread."""
-        with self.project.lock("topics"):
+        with self.project.lock("topics"), self.drafting():
             topic = self.topic(name)
+            name = topic["name"]
             verdict = verdict_of(word)
-            judged, paths = [], []
+            judged, written = [], []
             for item in self.items(name):
                 # Accepting all leaves out what cannot be accepted yet: variants with none preferred.
                 if awaits_owner(item) and not (verdict is Verdict.ACCEPTED and unpreferred(item)):
-                    self.give(item, Word(verdict=verdict))
-                    paths.append(self.save_item(name, item))
+                    written.append(self.verdict_draft(item, verdict, None))
                     judged.append(item["ref"])
             if not judged:
                 if any(awaits_owner(item) for item in self.items(name)):
@@ -1479,11 +1527,14 @@ class Topics:
                 raise ConflictError(f"topic {name} has nothing open")
             comment = str(word.get("comment") or "").strip()
             if comment:
-                topic["thread"].append(
-                    message(Author.OWNER, comment, self.writer(), verdict=str(verdict))
+                written.append(
+                    self.draft(
+                        self.shared.topic_folder(name),
+                        {"kind": "message", "text": comment, "verdict": str(verdict)},
+                    )
                 )
-                paths.append(self.save_topic(topic))
-            return judged, self.commit(paths, f"Topic {name}, {verdict}: {len(judged)} item(s)")
+            settled = self.settle(written, self.judging())
+            return judged, settled.note
 
     def withdraw(
         self,
@@ -1493,32 +1544,28 @@ class Topics:
     ) -> str:
         """Take back the owner's message still waiting for its answer, in an
         item's thread (`ref`) or a topic's: its text, to write again; each
-        file it carried is handed to `keep` first, then removed."""
-        with self.project.lock("topics"):
+        file it carried is handed to `keep` first."""
+        with self.project.lock("topics"), self.drafting():
             if ref is not None:
                 record = self.item(ref)
                 where = record["ref"]
+                folder = self.shared.item_folder(record["topic"], record["slug"])
             elif topic is not None:
                 record = self.topic(topic)
-                where = topic
+                where = record["name"]
+                folder = self.shared.topic_folder(record["name"])
             else:
                 raise UsageError("give `ref` or `topic`")
             if not pending(record["thread"], record.get("decided")):
                 raise ConflictError(f"{where} has no message of yours waiting: nothing to withdraw")
             waiting = talk(record["thread"])[-1]
-            record["thread"].remove(waiting)
-            text = waiting["text"]
-            if ref is not None:
-                self.unattach(waiting, record["topic"], record["slug"], keep)
-                path = self.save_item(record["topic"], record)
-            else:
-                self.unattach(waiting, record["name"], None, keep)
-                path = self.save_topic(record)
-            self.commit(
-                [path.parent],
-                f"{'Item' if ref is not None else 'Topic'} {where}, a message withdrawn",
-            )
-            return text
+            for entry in waiting.get("attachments", []):
+                path = self.where(entry, "")
+                if keep is not None and path.is_file():
+                    keep(path, entry)
+            path = self.draft(folder, {"kind": "message", "withdraws": waiting["id"]})
+            self.settle([path], Author.OWNER)
+            return waiting["text"]
 
     def reply(
         self, ref: str, text: str, author: Author, attachments: list[Path] | None = None
@@ -1564,7 +1611,7 @@ class Topics:
         for item in self.every():
             if item["verdict"] == Verdict.DROPPED:
                 continue
-            if not any(by(version, {session}) for version in item["versions"]):
+            if not any(by(version, {session}) for version in every_version(item)):
                 continue
             said = owner_word(item)
             if not said or (item["ref"], said) in told or (item["ref"], owner_moment(item)) in told:
@@ -1590,7 +1637,7 @@ class Topics:
                 continue
             sessions = {
                 version[key]
-                for version in item["versions"]
+                for version in every_version(item)
                 for key in ("session", "parent")
                 if version.get(key)
             }
@@ -1619,8 +1666,8 @@ class Topics:
                 )
 
     def governing(self, session: str, path: str) -> list[dict[str, Any]]:
-        """The items neither rejected nor dropped whose latest version holds
-        this project file or was derived from it, not yet shown this session; showing them is
+        """The decisions neither rejected nor dropped with an asset whose latest
+        version holds this project file or was derived from it, not yet shown this session; showing them is
         recorded."""
         shown = {
             row["item"]
@@ -1633,7 +1680,11 @@ class Topics:
         for item in summed if summed is not None else self.every():
             if item["verdict"] in (Verdict.REJECTED, Verdict.DROPPED) or item["ref"] in shown:
                 continue
-            latest = item["latest"] if summed is not None else item["versions"][-1]["files"]
+            latest = (
+                item["latest"]
+                if summed is not None
+                else [entry for asset in item["assets"] for entry in latest_files(asset)]
+            )
             if any(
                 entry.get("path") == path
                 or any(fnmatch.fnmatchcase(path, source) for source in entry.get("from", []))
@@ -1659,26 +1710,32 @@ class Topics:
                     problems.append(Problem(f"[{match.group(0)[1:-1]}] is no item", place, line))
         return problems
 
-    def commit(self, paths: list[Path], message: str) -> str | None:
-        if self.project.current_role() == TIDIER:
-            return None
-        root = self.project.root
-        relative = [
-            str(path.relative_to(root)) for path in paths if path.is_relative_to(self.directory)
-        ]
-        return committed(self.project, relative, message) if relative else None
+
+def folder_stamp(folder: Path) -> list[list[Any]]:
+    """What changes when a decision gains an event or an asset does: the
+    modification time of each of its event folders and of its assets' folder."""
+    places = [folder / EVENTS, folder / ASSETS, *sorted((folder / ASSETS).glob(f"*/{EVENTS}"))]
+    stamp = []
+    for place in places:
+        try:
+            status = place.stat()
+        except OSError:
+            continue
+        stamp.append([str(place.relative_to(folder)), status.st_mtime_ns])
+    return stamp
 
 
 def summary(item: dict[str, Any]) -> dict[str, Any]:
-    """What `news_for` and `governing` look for in an item: who wrote its
-    versions (`by`), the owner's word on it, and its latest version's files."""
+    """What `news_for` and `governing` look for in a decision: who wrote its
+    versions and its assets', the owner's word on it, and its assets' latest
+    files."""
     return {
         "slug": item["slug"],
         "created": moment(item["created"]),
         "verdict": item["verdict"],
         "writers": [
             stamp[key]
-            for stamp in item["versions"]
+            for stamp in every_version(item)
             for key in ("session", "parent")
             if key in stamp
         ],
@@ -1686,7 +1743,8 @@ def summary(item: dict[str, Any]) -> dict[str, Any]:
         "moment": owner_moment(item),
         "latest": [
             {key: entry[key] for key in ("path", "from") if key in entry}
-            for entry in item["versions"][-1]["files"]
+            for asset in item["assets"]
+            for entry in latest_files(asset)
         ],
     }
 
@@ -1778,26 +1836,36 @@ def occurrences(word: str, text: str) -> list[str]:
     return re.findall(rf"(?<![a-z0-9]){re.escape(word.lower())}", text.lower())
 
 
+def has_variants_flag(item: dict[str, Any]) -> bool:
+    return bool(item.get("variants") or item.get("options"))
+
+
+def every_version(item: dict[str, Any]) -> list[dict[str, Any]]:
+    """A decision's versions and its assets', each with who made it."""
+    return [*item["versions"], *(v for asset in item.get("assets", []) for v in asset["versions"])]
+
+
+def latest_files(asset: dict[str, Any]) -> list[dict[str, Any]]:
+    return asset["versions"][-1]["files"] if asset["versions"] else []
+
+
 def has_variants(item: dict[str, Any]) -> bool:
-    """Whether an item's files are variants of one asset."""
-    return bool(item.get("variants"))
+    """Whether one of a decision's assets holds variants in its latest version."""
+    return any(asset.get("variants") for asset in item.get("assets", []))
 
 
 def variants_of(item: dict[str, Any]) -> list[dict[str, Any]]:
-    """The latest version's files, when they are an asset's variants."""
-    files = [entry for entry in item["versions"][-1]["files"] if entry["kind"] != "decision"]
-    return files if has_variants(item) else files[:1]
+    """The variants of a decision's first asset that has them."""
+    for asset in item.get("assets", []):
+        if asset.get("variants"):
+            return latest_files(asset)
+    return []
 
 
 def unpreferred(item: dict[str, Any]) -> bool:
-    """Several variants, none of the latest version's preferred: not to accept yet."""
-    found = variants_of(item)
-    preferred = item.get("preferred") or {}
-    latest = item["versions"][-1]["version"]
-    return len(found) > 1 and not (
-        preferred.get("version") == latest
-        and any(entry_name(entry) == preferred.get("name") for entry in found)
-    )
+    """An asset with variants, none of its latest version's preferred: the
+    decision is not to accept yet."""
+    return any(asset_unpreferred(asset) for asset in item.get("assets", []))
 
 
 def owner_moment(item: dict[str, Any]) -> str:
@@ -1915,9 +1983,11 @@ def checked_decision(decision: Decision | dict[str, Any]) -> bytes:
         for entry in decision.get("alternatives") or []
     ]
     status = str(Status(decision.get("status") or Status.DONE))
+    refs = [str(ref) for ref in decision.get("assets") or []]
+    cited = {"assets": refs} if refs else {}
     return (
         json.dumps(
-            {"answer": answer, "alternatives": alternatives, "status": status},
+            {"answer": answer, "alternatives": alternatives, "status": status, **cited},
             indent=2,
             ensure_ascii=False,
         )

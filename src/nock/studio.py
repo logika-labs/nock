@@ -52,6 +52,7 @@ from nock.topics import (
     entry_name,
     in_order,
     kind_of,
+    latest_files,
     occurrences,
     state_of,
 )
@@ -246,11 +247,13 @@ class Where(TypedDict):
 
 
 class Preferred(TypedDict):
-    """The owner's preferred option of an item's version; without `name`, none."""
+    """The owner's preferred variant of a decision's asset, in one of its
+    versions; without `name`, none."""
 
     ref: str
     version: int
     name: NotRequired[str]
+    asset: NotRequired[str]
 
 
 class Question(TypedDict):
@@ -390,11 +393,13 @@ class TopicsTab(Tab):
             return self.search("/".join(parts[1:]))
         if parts[0] == "view.css":
             return Raw(VIEW_LOOK)
-        if parts[0] == "view" and len(parts) >= 5 and parts[3].isdigit():
-            return self.view(parts[1], parts[2], int(parts[3]), "/".join(parts[4:]))
-        if parts[0] != "file" or len(parts) < 5 or not parts[3].isdigit():
+        if parts[0] == "view" and len(parts) >= 6 and parts[4].isdigit():
+            return self.view(parts[1], parts[2], parts[3], int(parts[4]), "/".join(parts[5:]))
+        if parts[0] != "file" or len(parts) < 6 or not parts[4].isdigit():
             raise NotFoundError("no such page")
-        return Raw(self.topics.file(parts[1], parts[2], int(parts[3]), "/".join(parts[4:])))
+        return Raw(
+            self.topics.file(parts[1], parts[2], parts[3], int(parts[4]), "/".join(parts[5:]))
+        )
 
     def search(self, query: str) -> dict[str, Any]:
         """What the Search field finds, in what the owner sees: a topic by its
@@ -443,14 +448,15 @@ class TopicsTab(Tab):
         """An item's words as the owner sees them, lowercased; the text files
         of its latest version read once per change."""
         shown = self.topics.shown(item)
-        latest = shown["versions"][-1]
-        decision = latest.get("decision") or {}
+        decision = (shown["versions"][-1].get("decision") or {}) if shown["versions"] else {}
         parts = [item["title"], item.get("description") or "", *talk_of(item["thread"])]
         if decision:
             parts.append(decision.get("answer") or "")
             for entry in decision.get("alternatives") or []:
                 parts += [entry.get("option") or "", entry.get("why_not") or ""]
-        for file in latest["files"]:
+        latest = [file for asset in shown["assets"] for file in latest_files(asset)]
+        parts += [asset["title"] for asset in shown["assets"]]
+        for file in latest:
             parts.append(file["name"])
             if file.get("type") == "text":
                 parts.append(self.text_of(Path(file["where"])))
@@ -470,26 +476,26 @@ class TopicsTab(Tab):
             self.texts[path] = kept
         return kept[1]
 
-    def view(self, topic: str, slug: str, version: int, name: str) -> Any:
-        """A version's view, with nock's look and the item's files named for it
-        (`window.nock.assets`); any other name, the version's file beside it,
-        so a view reaches them by relative addresses."""
+    def view(self, topic: str, slug: str, asset: str, version: int, name: str) -> Any:
+        """An asset version's view, with nock's look and the asset's files
+        named for it (`window.nock.assets`); any other name, the version's
+        file beside it, so a view reaches them by relative addresses."""
         item = self.topics.item(f"{topic}/{slug}")
-        record = next((entry for entry in item["versions"] if entry["version"] == version), None)
+        held = self.topics.asset(item, asset)
+        record = next((entry for entry in held["versions"] if entry["version"] == version), None)
         views = (record or {}).get("views", [])
         if not any(entry["name"] == name for entry in views):
-            return Raw(self.topics.file(topic, slug, version, name))
-        page = self.topics.file(topic, slug, version, name).read_text(errors="replace")
+            return Raw(self.topics.file(topic, slug, asset, version, name))
+        page = self.topics.file(topic, slug, asset, version, name).read_text(errors="replace")
         assets = [
             {
                 "name": entry_name(entry),
                 "type": entry["type"],
-                "title": item["title"],
+                "title": held["title"],
                 "address": urllib.parse.quote(entry_name(entry)),
-                "preferred": (item.get("preferred") or {}).get("name") == entry_name(entry),
+                "preferred": (held.get("preferred") or {}).get("name") == entry_name(entry),
             }
             for entry in (record or {}).get("files", [])
-            if entry["kind"] != "decision"
         ]
         given = json.dumps({"assets": assets, "title": item["title"]}).replace("</", "<\\/")
         head = (
@@ -589,8 +595,19 @@ class TopicsTab(Tab):
             return {"seen": where}
         if route == "prefer":
             validate(body, schema_of(Preferred))
-            item, _ = self.topics.prefer(body["ref"], body["version"], body.get("name"))
-            return {"preferred": item["preferred"]}
+            item, _ = self.topics.prefer(
+                body["ref"], body["version"], body.get("name"), body.get("asset")
+            )
+            held = next(
+                (
+                    asset
+                    for asset in item["assets"]
+                    if asset["name"] == body.get("asset")
+                    or (body.get("asset") is None and asset.get("variants"))
+                ),
+                None,
+            )
+            return {"preferred": (held or {}).get("preferred")}
         if route == "ask":
             validate(body, schema_of(Question))
             return self.asking.start(body["question"])

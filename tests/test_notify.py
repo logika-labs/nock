@@ -57,7 +57,7 @@ def test_a_topic_moving_to_review_tells_the_owner_once_with_what_waits(project: 
         {
             "topic": "orders",
             "reason": "review",
-            "text": "orders is ready for review: 2 decisions, 1 file",
+            "text": "orders is ready for review: 3 decisions",
             "shown": "nowhere",
         }
     ]
@@ -89,7 +89,7 @@ def test_it_is_the_owners_turn_when_an_agent_answers_them_or_reworks_what_they_r
         (
             "rejected",
             "reworked",
-            "rejected is your turn again: a new version of an item you rejected; 1 file open",
+            "rejected is your turn again: a new version of an item you rejected; 1 decision open",
         ),
         ("talked", "answered", "talked is your turn again: an agent answered you; 1 decision open"),
     ]

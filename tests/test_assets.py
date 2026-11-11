@@ -95,12 +95,13 @@ def test_a_view_is_served_with_nock_s_look_and_the_item_s_files_named_for_it(
             "views": [{"text": view, "name": "sizes.html", "title": "At three sizes"}],
         },
     )
-    shown = run(project.root, "items", "show", ref)["versions"][0]
+    (asset,) = run(project.root, "items", "show", ref)["assets"]
+    shown = asset["versions"][0]
     assert (
         shown["views"][0]["name"] == "sizes.html" and shown["views"][0]["title"] == "At three sizes"
     )
     slug = ref.split("/")[1]
-    served = fetch(page, f"topics/view/orders/{slug}/1/sizes.html").decode()
+    served = fetch(page, f"topics/view/orders/{slug}/favicon/1/sizes.html").decode()
     assert served.index('<link rel="stylesheet" href="/topics/view.css">') > served.index("<head>")
     given = json.loads(served.split("window.nock = ")[1].split(";</script>")[0])
     assert given["assets"] == [
@@ -112,7 +113,7 @@ def test_a_view_is_served_with_nock_s_look_and_the_item_s_files_named_for_it(
             "preferred": False,
         }
     ]
-    assert fetch(page, f"topics/view/orders/{slug}/1/icon.svg") == icon.read_bytes()
+    assert fetch(page, f"topics/view/orders/{slug}/favicon/1/icon.svg") == icon.read_bytes()
     assert b".grid" in fetch(page, "topics/view.css")
     decided = nock(
         project.root,
@@ -127,7 +128,7 @@ def test_a_view_is_served_with_nock_s_look_and_the_item_s_files_named_for_it(
             }
         ),
     )
-    assert decided.returncode != 0 and "a decision has no views" in decided.stderr
+    assert decided.returncode != 0 and "views lay out an asset's files" in decided.stderr
 
 
 def test_the_timeline_is_read_from_the_topics_and_a_notification_is_one_of_its_events(

@@ -237,6 +237,32 @@ class Timeline:
                     version=version["version"],
                 )
             )
+        first = item["versions"][0]["moment"] if item["versions"] else ""
+        for asset in item.get("assets", []):
+            for version in asset["versions"]:
+                if version["moment"] <= first:
+                    continue
+                number = version["version"]
+                files = version["files"]
+                found.append(
+                    self.event(
+                        Event.VERSION,
+                        f"asset:{ref}:{asset['name']}:{number}",
+                        version["moment"],
+                        topic,
+                        ref,
+                        f"{asset['title']}: version {number} for review"
+                        if number > 1
+                        else f"New asset for review: {asset['title']}",
+                        asset.get("description") or "",
+                        f"#topics/{ref}",
+                        title=item["title"],
+                        what="asset",
+                        type=files[0]["type"] if files else None,
+                        file=entry_name(files[0]) if files else None,
+                        version=number,
+                    )
+                )
         for entry in item["thread"]:
             if not entry.get("kind"):
                 found += self.said(entry, item["thread"], topic, ref, item["title"])

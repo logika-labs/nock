@@ -45,7 +45,7 @@ BRIEFS = Path(__file__).resolve().parent / "briefs"
 CHATTER = "chatter"
 NAMER = "namer"
 # The topics, as the main checkout keeps them: what Tidy up commits.
-TOPICS = ".nock/topics"
+TOPICS = ".nock/shared"
 # What the owner's first message in a Tidy up chat says.
 TIDY_REQUEST = "Tidy up the topics: regroup the items, set the topics' states, drop what is stale, and put the topics in order."
 # How much of one comment the request to address them quotes; the agent reads the rest.

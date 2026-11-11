@@ -58,14 +58,22 @@ src/nock/
   logika.py          the `logika` kind: Ledger (logika.json read and counted), LogikaRound,
                      and what its two parts read: Material (rules), Analytics
   kinds.py           KINDS: the kinds of round, the default first; adding one is an entry here
-  topics.py          Topics: topics and their items (a decision, or an asset: a project or a
-                     derived file, its variants and views, by version), where their files are
-                     (`located`, `write_file`: the one layer reading and writing them), the
-                     owner's verdicts, the threads, search, what waits on an agent, what an
-                     edited file's items are, the map's problems
+  records.py         the file kinds of `.nock/shared/`: each event's schema by where it lives
+                     (topic, decision, asset), decision.json, assets.json, event file names
+  shared.py          Shared, the store: its root, media and committer; `settle`, the write
+                     path (validate, complete, commit with trailers) every writer goes through
+  fold.py            Fold: the store's events read as topics, decisions and their assets
+  topics.py          Topics: topics and their decisions (each holding its assets, a project or
+                     a derived file, its variants and views, by version), read from the fold
+                     and written as events; where files are (`located`: the one layer
+                     reading them), the owner's verdicts, the threads, search, what waits on
+                     an agent, what an edited file's decisions are, the map's problems
+  legacy.py          LegacyTopics: the topics as an earlier nock kept them in `.nock/topics/`,
+                     read only by the migrations
   timeline.py        Timeline: what happened in the topics, read from them as events, newest
                      first; the notifications are these events
-  migration.py       Migration: an earlier nock's decisions and review items into topics, once; Splitting: one asset per item
+  migration.py       Migration: an earlier nock's decisions and review items into topics, once;
+                     Splitting: one asset per item; Storing: `.nock/topics/` into the store
   asking.py          Asker: the studio's Ask, a fresh agent answering through `topics answer`
   chats.py           Chats: the studio's chat with a headless agent (a session per chat,
                      streamed, resumed or re-briefed with its transcript, named on leaving),
@@ -426,10 +434,11 @@ re-execution; the project's modules are left as the variable says).
      wants every tool, shows the items not rejected whose latest version holds
      the edited file or was derived `from` it, once per session (the
      `shown_items` table). It and the prompt's handler read every item
-     through `Topics.summaries`: what they look for in each (`topics.summary`)
-     kept in `.nock/local/item-summaries.json` beside its item file's stamp
-     (modification time, size, inode), so an item file is read again only
-     once it changed, and the items they tell of are read whole;
+     through `Topics.summaries`: what they look for in each decision
+     (`topics.summary`) kept in `.nock/local/item-summaries.json` beside its
+     event folders' modification times (`folder_stamp`), so a decision is
+     folded again only once it gained an event, and the decisions they tell
+     of are read whole;
    - **SessionEnd** ingests the transcript and, for a session the human
      started, sends the usage statistics when due (`usage.Usage.send`);
 3. runs the project's `@nock.hook`s for the event, each in a fixture
@@ -479,61 +488,80 @@ still has one), or a command has no allow rule yet.
 
 ### Topics
 
-`topics.Topics` keeps, in the main checkout's `.nock/topics/`, a directory
-per topic (`topic.json`: name, description, state, status, created, thread) holding a
-directory per item (`SLUG/item.json`: title, description, aliases, verdict,
-decided, created, the thread, `variants`, `preferred`, and the versions'
-records, each its `files` and `views`) and its versions' files (`SLUG/N/`:
-`decision.json`, project files under `project/PATH`, derived files and views
-by name); a file over `LARGE` goes under `.nock/local/topics/` instead,
-`"local": true`. Where a version's file is read and written is one layer,
-`located` and `write_file`, so the storage can change behind it.
-Every change is committed there with
-`git commit --only` (`topics.committed`), so a worktree's item lands on the
-main branch at once; it skips the commit, and says so, when the main
-checkout is mid-merge or mid-rebase. A ref is `topic/slug`; `resolve` also
-takes a ref an item had before it moved.
+The store (`shared.Shared`) is the main checkout's `.nock/shared/`, committed
+in the project's repository whichever worktree writes it: a directory per
+topic (`topics/NAME/events/`), its decisions (`decisions/SLUG/events/` and
+`versions/N/decision.json`), each decision's assets (`assets/NAME/events/`
+and `versions/N/assets.json` with the small text beside it), media by sha256
+in `media/`, and `map.md`. Each event is one immutable file,
+`<stamp>-<id>.json` (`records.EVENT_FILE`), holding its `kind`, its fields
+and its envelope (`moment`, `id`, `by`: author, on behalf of whom, user,
+sessions, role, host); `records` has each kind's schema by where it lives.
+`fold.Fold` reads the events in name order into the records the rest of nock
+reads: a topic with its thread, a decision (`item`) with its versions,
+verdict, thread and assets, each asset with its versions and preferred
+variant. A decision's verdict stands only while no version of it or of one
+of its assets came after it.
+
+Every write — an agent's own files, `Topics`' methods, the studio, a
+migration's — goes through `Shared.settle`: it reads `git status` under the
+root, groups the changes by topic and by decision (a topic's first, so a
+decision may come with its new topic), checks each group whole (no committed
+event changed, every draft fitting its kind, a new decision or asset with
+its first version, an asset version one file or variants of one type, an
+acceptance only once every asset with variants has one preferred), and
+completes the groups that hold no problem: the envelope filled in, drafts
+renamed, `versions/next/` numbered with its `version` event, a project file
+linked at the last commit that changed it (or kept by content when it has
+uncommitted changes), media moved to `media/`. It commits only those paths,
+with `git commit --only` and the trailers `Nock-User`, `Nock-On-Behalf`,
+`Nock-Session`, `Nock-Parent-Session`, `Nock-Host`; it skips the commit, and
+says so, when the main checkout is mid-merge or mid-rebase, and for Tidy up,
+whose writes `Chats.gather` commits together. A group with a problem is left
+uncommitted and its problems returned. `Topics` writes its changes as drafts
+(`Topics.draft`, `decision_version`, `asset_version`), settles only those
+(`only`), and discards them, and any folder they leave empty, when the change
+fails. A ref is `topic/slug`; `resolve` also takes a ref it had before it moved,
+or an asset item's that the migration made its asset.
 
 A topic's `state` (`State`: planned, active, review, done, abandoned) and `status`
-change through `update_topic` → `set_standing`, which keeps them in
-`topic.json` and appends a status entry (`kind: "status"`, the state and
-status, the writer) to its thread; `talk` leaves status entries out wherever
+change through `update_topic`, which writes a `state` event with both (a
+change of state without a status clears it), read into the thread as a
+status entry (`kind: "status"`); `talk` leaves status entries out wherever
 the thread is a conversation (`pending`, `said_in`, `chat_state`,
 `awaiting`, `withdraw`). `create_item` refuses a done or abandoned topic
-(`CLOSED`): `update_topic --revive` sets it active with a status entry
-marked `revived`, and `current_description` reads the latest one (or an
-older `kind: "revival"` note) as the description. Every record's stamp is
-`Project.writer()`: `session`, `role`, and `parent` for a subagent or a
-dispatched session.
-`add_version` writes a version from `Content` (decision, files, derived,
-views), carrying over what it leaves out from the previous one, project files
-copied again from the working tree, and `check_assets` holds it to one asset: a
-decision (with the project files it concerns, no derived file, no view) or one
-file; several only when the item has variants (of one type, of which the
-owner's `prefer` records `preferred`, its version and name; `give` accepts
-such an asset only once one of its latest version's is preferred, and
-`judge_topic` accepting all leaves it out); `update_item` does it in place for an open item
-(the latest version rewritten) or as `--version` (a new one, reopening the
-item), refusing an in-place change to a decided item (`ConflictError`). The
-owner's word is `judge` and `judge_topic` (a `Word`: verdict and comment, the
-comment an owner message in the thread), from the studio or from the `judge`
-commands, which are `confirm=True`; studio messages are the owner's, CLI ones
-an agent's. A thread is a chat: `said_in` refuses the owner a second
-message while their last is `pending` (no answer yet, no verdict since) and
-marks an agent's reply to it `answers`; `withdraw` pops a pending message.
-A message may carry files (`attachments`: name, type, bytes, path, local):
-`attach` moves them beside its thread, into the topic's or the item's
-`attachments/MOMENT/` (`ATTACHMENTS`, a name no slug takes; a large one under
-`.nock/local/topics/` the same way), committed with the thread; `path` is
-relative to the thread's folder, so a moved item or renamed topic keeps them,
-and `thread_shown` adds `where`, the absolute path an agent reads;
-`withdraw` hands a pending message's files to its `keep` and removes them.
+(`CLOSED`): `update_topic --revive` writes a `state` event setting it active,
+`revived` with its `note`, which `current_description` reads (or an older
+`kind: "revival"` note) as the description. Every event's `by` is
+`shared.by_for`: `Project.writer()` (`session`, `role`, and `parent` for a
+subagent or a dispatched session), the author, on behalf of whom, the user
+and the host.
+`create_item` maps an item draft onto a decision and its assets: its
+`decision` (or, for files to review with no choice in them, a plain
+"Review: TITLE." answer) a decision version, each project file an asset of
+its own, the derived files one asset (`check_assets`: several only as
+variants of one type); `update_item` with `--version` writes new versions of
+the decision and of the assets the change names (by project path or derived
+file name), or, given nothing, the decision again and every project-file
+asset linked afresh; an in-place change (open items only) writes `titled`
+and new versions likewise. `prefer` writes an asset's `preferred`; `judge`
+and `judge_topic` (a `Word`: verdict and comment, the comment in the
+decision's thread) write `verdict` events, refusing an acceptance while an
+asset's variants have none preferred (`judge_topic` accepting all leaves
+those out), from the studio (the owner) or the `judge` commands
+(`confirm=True`); Tidy up's drops are its own. A thread is a chat: `said_in`
+refuses the owner a second message while their last is `pending` (no answer
+yet, no verdict since), and an agent's message after it answers it
+(`answers`, its id); `withdraw` writes a message withdrawing the pending one.
+A message may carry files (`attachments`: name, type, bytes, sha256), kept
+in `media/` and addressed as `attachments/SHA256/NAME`; `thread_shown` adds
+`where`, the absolute path an agent reads.
 `summary` is the open items by topic and `awaiting` (threads where
 the owner wrote last, with `attachments`, the paths their last message
 carries, when it carries any; rejected items), for the lists and `status.Standing`;
 `search_items` and `search_topics` rank plain full text. `news_for` and
 `governing` are the prompt and edit hooks'. `citation_problems` is the
-`nock-map` check, on `[topic/slug]` and `[D7]` citations. `nock init` writes
+`nock-map` check, on `[topic/slug]` citations. `nock init` writes
 an empty `map.md`.
 
 `migration.Migration` moves an earlier nock's `.nock/decisions/*.json` and
@@ -654,7 +682,7 @@ the Chats list's search: the chats holding every word in their title,
 summary or messages (`Chats.search`), the page marking the words as the topics'
 search does. Tidy up is a chat whose
 agent is the `tidier`: `Topics.commit` commits nothing for that role, and
-when it ends `Chats.gather` commits `.nock/topics` once; Undo is `git
+when it ends `Chats.gather` commits `.nock/shared` once; Undo is `git
 revert` of that commit, aborted when it conflicts. `items judge` refuses the
 tidier anything but a drop (`"rework": false`). Address my comments is a chat
 whose agent is the `addresser` (Edit and Write inside the project, nock's

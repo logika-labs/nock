@@ -393,8 +393,10 @@ def test_address_my_comments_makes_a_screenshot_again_by_its_own_recipe(
     assert "Bash(.nock/nock items remake:*)" in SEATS["addresser"].allowed
     answered(page, post(page, "address", {})[1]["id"])
     item = Topics(project).item(ref)
-    assert [entry["role"] for entry in item["versions"]] == ["interactive", "addresser"]
-    assert Topics(project).file(item["topic"], item["slug"], 2, "shot.txt").read_text() == "big\n"
+    (asset,) = item["assets"]
+    assert [entry["role"] for entry in asset["versions"]] == ["interactive", "addresser"]
+    shown = Topics(project).file(item["topic"], item["slug"], asset["name"], 2, "shot.txt")
+    assert shown.read_text() == "big\n"
     # The recipe the addresser wrote into its version never runs: the author's does.
     assert Topics(project).recipes(ref) == [recipe["command"]]
     refused = nock(project.root, "items", "remake", ref)

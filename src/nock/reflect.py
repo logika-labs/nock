@@ -7,7 +7,7 @@ and `nock reflect [KIND] finish JSON` checks it and commits it.
 nock's own kind, `Reflection`, the default: an agent following the
 `/nock-reflect` skill has three subagents look at what the work has been
 since the last round — one improves the toolbox (`.nock/tools/`), one keeps
-the map of topics (`.nock/topics/map.md`), one weighs how well nock
+the map of topics (`.nock/shared/map.md`), one weighs how well nock
 itself is serving the project — and writes the owner a report, and a summary
 abstract enough to share. Each round keeps its numbers, so the next holds its
 changes to them, and the first is the baseline."""
@@ -289,7 +289,7 @@ def commit(project: Project, message: str, also: tuple[str, ...] = ()) -> None:
     checkout's topics when the round ran in a worktree; nothing else in either."""
     places = [(project.here, [".nock", *also])]
     if project.root != project.here:
-        places.append((project.root, [".nock/topics"]))
+        places.append((project.root, [".nock/shared"]))
     for root, paths in places:
         git = Git(root)
         git("add", "--all", "--", *paths)

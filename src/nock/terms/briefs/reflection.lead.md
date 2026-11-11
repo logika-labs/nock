@@ -19,7 +19,7 @@ material, not from memory.
    | part | subagent type | brief | material | may change |
    |---|---|---|---|---|
    | toolbox | `nock-reflect-toolbox` | `reflection.toolbox` | `process` | `.nock/`, not the topics |
-   | map | `nock-reflect-map` | `reflection.map` | `knowledge` | `.nock/topics/map.md` |
+   | map | `nock-reflect-map` | `reflection.map` | `knowledge` | `.nock/shared/map.md` |
    | nock | `nock-reflect-nock` | `reflection.nock` | `nock` | nothing (it has no editing tool) |
 
    If one fails, say so in the report; don't do its part yourself.

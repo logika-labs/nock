@@ -406,10 +406,10 @@ def test_a_session_cannot_end_its_turn_with_the_round_it_started_open(
     assert stop("s2") is None
     for path, text in zip(started["write"], ("# Report\n", "Early days.\n"), strict=True):
         (project.root / path).write_text(text)
-    (project.root / ".nock" / "topics" / "map.md").write_text("- [orders/nothing-here] holds.\n")
+    (project.root / ".nock" / "shared" / "map.md").write_text("- [orders/nothing-here] holds.\n")
     reason = str((stop("s1") or {})["reason"])
     assert "report.md" not in reason and "[orders/nothing-here] is no item" in reason
-    (project.root / ".nock" / "topics" / "map.md").write_text("# The map\n")
+    (project.root / ".nock" / "shared" / "map.md").write_text("# The map\n")
     assert finish(project, RECORD).returncode == 0
     assert stop("s1") is None
 

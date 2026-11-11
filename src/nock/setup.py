@@ -22,8 +22,8 @@ from nock.migration import migrate_in
 from nock.primer import AGENTS, MARK_START, PRIMER, refresh, with_section
 from nock.project import NOCK_DIRECTORY, Project
 from nock.releases import PYPI, VERSION, Releases
+from nock.shared import MAP
 from nock.templates import Library
-from nock.topics import MAP
 from nock.utils import read_json, write_atomic, write_json
 
 PACKAGE = Path(__file__).resolve().parent
@@ -369,7 +369,7 @@ class Installer:
         if (self.root / NOCK_DIRECTORY / "decisions" / MAP).exists():
             return
         self.start(
-            f"{NOCK_DIRECTORY}/topics/{MAP}", MAP_STUB, "the map of topics, empty until a round"
+            f"{NOCK_DIRECTORY}/shared/{MAP}", MAP_STUB, "the map of topics, empty until a round"
         )
 
     def migrate(self) -> None:

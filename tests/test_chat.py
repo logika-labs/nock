@@ -79,19 +79,19 @@ def test_the_owner_s_files_go_with_their_message_beside_its_thread_for_agents_to
     assert status == 200
     (said,) = Topics(project).item(ref)["thread"]
     attached = said["attachments"]
-    assert [(entry["name"], entry["type"], entry["local"]) for entry in attached] == [
-        ("shot.png", "image", False),
-        ("notes.txt", "text", False),
-        ("film.webm", "video", True),
+    assert [(entry["name"], entry["type"]) for entry in attached] == [
+        ("shot.png", "image"),
+        ("notes.txt", "text"),
+        ("film.webm", "video"),
     ]
     folder = attached[0]["path"].rsplit("/", 1)[0]
     assert folder.startswith("attachments/") and attached[0]["bytes"] == 208
-    kept = project.root / ".nock" / "topics" / "orders" / slug
-    assert (kept / attached[0]["path"]).read_bytes() == PICTURE
-    assert (project.local / "topics" / "orders" / slug / attached[2]["path"]).is_file()
-    assert not (kept / attached[2]["path"]).exists()
+    # Every file a message carries is media, kept by its content.
+    media = project.root / ".nock" / "shared" / "media"
+    assert (media / attached[0]["sha256"]).read_bytes() == PICTURE
+    assert (media / attached[2]["sha256"]).stat().st_size == 2000
     assert git(project.root, "status", "--porcelain") == ""
-    assert f".nock/topics/orders/{slug}/{attached[1]['path']}" in git(project.root, "ls-files")
+    assert f".nock/shared/media/{attached[1]['sha256']}" in git(project.root, "ls-files")
     assert not any((project.local / "studio" / "uploads").iterdir())
     status, served = fetch(page, f"attachment/orders/{slug}/{attached[1]['path']}")
     assert status == 200 and served == b"Use Postgres.\n"
@@ -144,7 +144,6 @@ def test_a_withdrawn_message_s_files_come_back_to_be_sent_again(
     project: Project, page: str
 ) -> None:
     ref = submit(project.root)
-    slug = ref.split("/")[1]
     shot = upload(page, "shot.png", PICTURE)
     post(page, "reply", {"ref": ref, "text": "Look.", "attachments": [shot["token"]]})
     path = Topics(project).item(ref)["thread"][0]["attachments"][0]["path"]
@@ -152,21 +151,21 @@ def test_a_withdrawn_message_s_files_come_back_to_be_sent_again(
     assert status == 200 and taken["text"] == "Look."
     (back,) = taken["attachments"]
     assert back["name"] == "shot.png" and back["token"] != shot["token"]
-    assert not (project.root / ".nock" / "topics" / "orders" / slug / path).exists()
+    assert Topics(project).item(ref)["thread"] == []
     assert git(project.root, "status", "--porcelain") == ""
     status, _ = post(
         page, "reply", {"ref": ref, "text": "Look again.", "attachments": [back["token"]]}
     )
     assert status == 200
     again = Topics(project).item(ref)["thread"][0]["attachments"][0]
-    assert (project.root / ".nock" / "topics" / "orders" / slug / again["path"]).read_bytes() == (
-        PICTURE
-    )
+    assert again["path"] == path
+    assert (project.root / ".nock" / "shared" / "media" / again["sha256"]).read_bytes() == PICTURE
 
 
-def test_no_item_takes_the_slug_of_a_topic_s_attachments(project: Project) -> None:
+def test_an_item_may_be_called_attachments(project: Project) -> None:
+    # Items live under `items/`, beside nothing else of their topic's.
     ref = submit(project.root, {**DECISION, "title": "Attachments"})
-    assert ref == "orders/attachments-2"
+    assert ref == "orders/attachments"
 
 
 class Whisper(BaseHTTPRequestHandler):

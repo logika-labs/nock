@@ -25,6 +25,7 @@ import pytest
 
 from nock.chats import Kind, Turn
 from nock.hooks import HookRunner
+from nock.legacy import LegacyTopics
 from nock.migration import Migration
 from nock.project import Project
 from nock.studio import PAGES, TABS, Studio
@@ -54,9 +55,23 @@ def open_topic(directory: Path, topic: dict[str, str] = TOPIC) -> str:
 
 def submit(directory: Path, item: dict[str, Any] = DECISION, topic: str = "orders") -> str:
     main = Path(git(directory, "rev-parse", "--path-format=absolute", "--git-common-dir")).parent
-    if not (main / ".nock" / "topics" / topic).is_dir():
+    if not (main / ".nock" / "shared" / "topics" / topic / "events").is_dir():
         open_topic(directory, {**TOPIC, "name": topic})
     return run(directory, "items", "create", topic, json.dumps(item))["ref"]
+
+
+def legacy_items(legacy: LegacyTopics, names: tuple[str, ...]) -> list[str]:
+    """Items as an earlier nock kept them, one per topic, in `.nock/topics/`."""
+    refs = []
+    for name in names:
+        legacy.create_topic({**TOPIC, "name": name})  # type: ignore[typeddict-item]
+        refs.append(legacy.create_item(name, DECISION)[0]["ref"])  # type: ignore[arg-type]
+    return refs
+
+
+def item_folder(project: Project, ref: str) -> Path:
+    topic, slug = ref.split("/")
+    return project.root / ".nock" / "shared" / "topics" / topic / "decisions" / slug
 
 
 def judge(directory: Path, ref: str, verdict: str, comment: str = "") -> Any:
@@ -102,13 +117,14 @@ def test_an_item_submitted_in_a_worktree_is_committed_on_the_main_checkout(
     monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "s1")
     ref = submit(worktree)
     assert ref == "orders/orders-live-in-sqlite"
-    assert not (worktree / ".nock" / "topics" / "orders").exists()
-    folder = project.root / ".nock" / "topics" / "orders" / "orders-live-in-sqlite"
-    decision = json.loads((folder / "1" / "decision.json").read_text())
+    assert not (worktree / ".nock" / "shared" / "topics" / "orders").exists()
+    folder = item_folder(project, ref)
+    decision = json.loads((folder / "versions" / "1" / "decision.json").read_text())
     assert decision["status"] == "done" and decision["alternatives"][0]["option"] == "Postgres"
     assert git(project.root, "log", "-1", "--format=%s") == (
-        "Item orders/orders-live-in-sqlite: Orders live in SQLite"
+        "nock: orders/orders-live-in-sqlite created; orders/orders-live-in-sqlite version 1"
     )
+    assert "Nock-Session: s1" in git(project.root, "log", "-1", "--format=%B")
     assert git(project.root, "status", "--porcelain") == ""
     shown = run(project.root, "items", "show", ref)
     assert shown["verdict"] == "open" and shown["versions"][0]["session"] == "s1"
@@ -136,7 +152,7 @@ def test_an_item_holds_something_and_a_project_file_is_in_the_repository(
     assert nowhere.returncode == 44 and "no topic 'nowhere'" in nowhere.stderr
 
 
-def test_a_new_version_copies_project_files_as_they_are_now_and_reopens_the_item(
+def test_a_new_version_links_project_files_as_they_are_now_and_reopens_the_item(
     project: Project, tmp_path: Path
 ) -> None:
     shot = tmp_path / "email.png"
@@ -154,7 +170,13 @@ def test_a_new_version_copies_project_files_as_they_are_now_and_reopens_the_item
     }
     drawn = submit(project.root, picture)
     run(project.root, "items", "update", drawn, "--version", "{}")
-    carried = run(project.root, "items", "show", drawn)["versions"][1]["files"][0]
+    shown = run(project.root, "items", "show", drawn)
+    # A file to review with no choice in it is the asset of a plain decision.
+    assert shown["title"] == "The lapsed payment email" and len(shown["versions"]) == 2
+    assert shown["versions"][0]["decision"]["answer"] == "Review: The lapsed payment email."
+    (asset,) = shown["assets"]
+    (kept,) = asset["versions"]
+    carried = kept["files"][0]
     assert carried["name"] == "email.png" and carried["when"] == "the payment lapsed"
     assert Path(carried["where"]).read_bytes() == b"\x89PNG one"
     ref = submit(project.root, {"title": "The README", "files": ["README.md"]})
@@ -166,7 +188,9 @@ def test_a_new_version_copies_project_files_as_they_are_now_and_reopens_the_item
     updated = run(project.root, "items", "update", ref, "--version", "{}")
     assert updated == {"ref": ref, "verdict": "open", "versions": 2}
     shown = run(project.root, "items", "show", ref)
-    first, second = (version["files"] for version in shown["versions"])
+    # Before and after: two versions of the README asset.
+    (readme,) = shown["assets"]
+    first, second = (version["files"] for version in readme["versions"])
     assert Path(first[0]["where"]).read_text() == "# demo\n"
     assert Path(second[0]["where"]).read_text() == "# demo, changed\n"
     assert shown["thread"][0] == {
@@ -187,7 +211,7 @@ def test_only_an_open_item_the_owner_has_not_written_on_is_deleted(project: Proj
     refused = nock(project.root, "items", "delete", keep)
     assert refused.returncode == 43 and "the owner's word" in refused.stderr
     run(project.root, "items", "delete", ref)
-    assert not (project.root / ".nock" / "topics" / "orders" / "orders-live-in-sqlite").exists()
+    assert not item_folder(project, ref).exists()
     not_empty = nock(project.root, "topics", "delete", "orders")
     assert not_empty.returncode == 49 and "holds items" in not_empty.stderr
     open_topic(project.root, {"name": "spare", "description": "Nothing yet."})
@@ -196,37 +220,48 @@ def test_only_an_open_item_the_owner_has_not_written_on_is_deleted(project: Proj
 
 
 def test_an_item_moves_to_another_topic_whatever_its_verdict_and_its_old_refs_resolve(
-    project: Project, monkeypatch: pytest.MonkeyPatch
+    project: Project,
 ) -> None:
-    ref = submit(
-        project.root, {"title": DECISION["title"], "derived": [{"text": "big", "name": "big.txt"}]}
+    open_topic(project.root)
+    folder = item_folder(project, "orders/orders-live-in-sqlite")
+    (folder / "events").mkdir(parents=True)
+    (folder / "events" / "a.json").write_text(
+        json.dumps({"kind": "created", "title": DECISION["title"]})
     )
+    (folder / "versions" / "next").mkdir(parents=True)
+    (folder / "versions" / "next" / "decision.json").write_text(json.dumps({"answer": "One file."}))
+    asset = folder / "assets" / "notes"
+    (asset / "events").mkdir(parents=True)
+    (asset / "events" / "a.json").write_text(json.dumps({"kind": "created", "title": "Notes"}))
+    (asset / "versions" / "next").mkdir(parents=True)
+    (asset / "versions" / "next" / "big.txt").write_text("big")
+    (asset / "versions" / "next" / "assets.json").write_text(
+        json.dumps({"files": [{"kind": "derived", "name": "big.txt"}]})
+    )
+    topics = Topics(project)
+    assert not topics.shared.settle(topics.by()).problems
+    ref = "orders/orders-live-in-sqlite"
     run(project.root, "items", "update", ref, "--reply", "Why not Postgres?")
     judge(project.root, ref, "accepted")
     open_topic(project.root, {"name": "storage", "description": "Where data is kept."})
     taken = submit(project.root, DECISION, topic="storage")
     assert taken == "storage/orders-live-in-sqlite"
-    (project.root / ".nock" / "topics" / "map.md").write_text(f"- [{ref}] holds.\n")
+    topics.map.write_text(f"- [{ref}] holds.\n")
     git(project.root, "add", "-A")
     git(project.root, "commit", "-qm", "The map")
-    topics = Topics(project)
-    monkeypatch.setattr("nock.topics.LARGE", 2)
     topics.update_item(ref, None, version={"derived": [{"text": "bigger", "name": "big.txt"}]})
-    large = project.local / "topics" / "orders" / "orders-live-in-sqlite" / "2" / "big.txt"
-    assert large.is_file()
     moved = run(project.root, "items", "update", ref, json.dumps({"topic": "storage"}))
     assert moved["ref"] == "storage/orders-live-in-sqlite-2"
     record = topics.item(moved["ref"])
     assert record["verdict"] == "open" and record["thread"][0]["text"] == "Why not Postgres?"
-    assert [version["version"] for version in record["versions"]] == [1, 2]
+    assert [version["version"] for version in record["assets"][0]["versions"]] == [1, 2]
     assert record["aliases"] == [ref]
     assert topics.item(ref)["ref"] == moved["ref"]
-    assert (
-        project.local / "topics" / "storage" / "orders-live-in-sqlite-2" / "2" / "big.txt"
-    ).is_file()
-    assert topics.file("storage", "orders-live-in-sqlite-2", 1, "big.txt").read_text() == "big"
+    moved_slug = "orders-live-in-sqlite-2"
+    assert topics.file("storage", moved_slug, "notes", 1, "big.txt").read_text() == "big"
+    assert topics.file("storage", moved_slug, "notes", 2, "big.txt").read_text() == "bigger"
     assert topics.citation_problems() == []
-    assert not (project.root / ".nock" / "topics" / "orders" / "orders-live-in-sqlite").exists()
+    assert not folder.exists()
     assert git(project.root, "status", "--porcelain") == ""
     judge(project.root, moved["ref"], "accepted")
     again = run(project.root, "items", "update", moved["ref"], json.dumps({"topic": "orders"}))
@@ -508,8 +543,10 @@ def test_only_an_agents_own_work_in_a_topic_asks_for_its_status(
     project: Project, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "author")
-    ref = submit(project.root)
-    directory = Topics(project).directory
+    legacy = LegacyTopics(project)
+    legacy.create_topic(TOPIC)  # type: ignore[arg-type]
+    ref = legacy.create_item("orders", DECISION)[0]["ref"]  # type: ignore[arg-type]
+    directory = legacy.directory
     record = json.loads((directory / "orders" / "topic.json").read_text())
     del record["state"], record["status"]
     (directory / "orders" / "topic.json").write_text(json.dumps(record))
@@ -805,7 +842,7 @@ def test_an_edit_to_a_file_an_item_holds_shows_the_item_once(project: Project) -
 
 def test_the_map_check_holds_its_citations(project: Project) -> None:
     ref = submit(project.root)
-    (project.root / ".nock" / "topics" / "map.md").write_text(
+    (project.root / ".nock" / "shared" / "map.md").write_text(
         f"- [{ref}] holds; [orders/gone] not.\n"
     )
     result = nock(project.root, "check", "nock-map")
@@ -834,7 +871,11 @@ def test_a_version_s_files_are_served_as_they_are(
     git(project.root, "commit", "-qm", "A guide")
     ref = submit(project.root, {"title": "The guide", "files": ["docs/guide.md"]})
     slug = ref.split("/")[1]
-    with urllib.request.urlopen(f"{page}topics/file/orders/{slug}/1/docs/guide.md") as response:
+    # Each project file is an asset of the decision, named by its path.
+    (asset,) = run(project.root, "items", "show", ref)["assets"]
+    assert asset["name"] == "docs-guide-md"
+    address = f"{page}topics/file/orders/{slug}/docs-guide-md/1/docs/guide.md"
+    with urllib.request.urlopen(address) as response:
         assert response.read() == b"# Guide\n"
 
 
@@ -856,16 +897,12 @@ def test_search_finds_what_the_owner_sees_and_not_what_nock_keeps_aside(
     ref = submit(project.root, shown)
     decided = submit(project.root)
     topics = Topics(project)
-    item = topics.item(decided)
-    item["thread"].append(
-        {
-            "author": "agent",
-            "moment": "2020-01-01T00:00:00Z",
-            "text": "Split from a ledger item.",
-            "kind": "split",
-        }
+    # nock's own note on a decision, as a migration writes it.
+    folder = item_folder(project, decided)
+    topics.shared.draft(
+        folder, {"kind": "message", "text": "Split from a ledger item.", "note": "split"}
     )
-    topics.save_item("orders", item)
+    assert not topics.shared.settle(topics.by()).problems
     topics.reply(decided, "Is postgres ever worth it?", Author.OWNER)
 
     def search(query: str) -> Any:
@@ -922,7 +959,8 @@ def test_a_video_keeps_its_captions_and_poster_beside_it_and_search_reads_the_ca
             "derived": [{"path": str(video), "poster": str(tmp_path / "poster.png")}],
         },
     )
-    shown = run(project.root, "items", "show", ref)["versions"][0]["files"][0]
+    (asset,) = run(project.root, "items", "show", ref)["assets"]
+    shown = asset["versions"][0]["files"][0]
     assert (shown["type"], shown["captions"], shown["poster"]) == (
         "video",
         "run.vtt",
@@ -931,14 +969,15 @@ def test_a_video_keeps_its_captions_and_poster_beside_it_and_search_reads_the_ca
     assert Path(shown["captions_where"]).read_text().startswith("WEBVTT")
     assert Path(shown["poster_where"]).is_file()
     slug = ref.split("/")[1]
-    with urllib.request.urlopen(f"{page}topics/file/orders/{slug}/1/run.vtt") as response:
+    address = f"{page}topics/file/orders/{slug}/{asset['name']}/1/run.vtt"
+    with urllib.request.urlopen(address) as response:
         assert b"opens the ledger page" in response.read()
     with urllib.request.urlopen(
         f"{page}topics/search/{urllib.parse.quote('opens the ledger')}"
     ) as response:
         assert json.loads(response.read())["items"] == [ref]
     run(project.root, "items", "update", ref, "--version", json.dumps({"title": "The run, again"}))
-    again = run(project.root, "items", "show", ref)["versions"][1]["files"][0]
+    again = run(project.root, "items", "show", ref)["assets"][0]["versions"][-1]["files"][0]
     assert Path(again["captions_where"]).read_text() == Path(shown["captions_where"]).read_text()
     (tmp_path / "notes.md").write_text("# Notes\n")
     result = nock(
@@ -1071,22 +1110,27 @@ def test_an_earlier_nock_s_decisions_and_review_items_move_into_topics_once(
     assert outcome["topics"] == {"emails": 1, "general": 1, "storage": 1}
     topics = Topics(project)
     seven = topics.item("storage/orders-live-in-sqlite")
-    assert seven["ref"] == "storage/orders-live-in-sqlite" and seven["verdict"] == "accepted"
-    assert seven["thread"][0]["author"] == "owner" and seven["thread"][0]["text"] == "Fine for now."
+    # The report illustrated decision 7: it is its asset now, and the owner's
+    # rejection of it asks for rework of the decision.
+    assert seven["ref"] == "storage/orders-live-in-sqlite" and seven["verdict"] == "rejected"
+    (noted,) = [entry for entry in seven["thread"] if entry["text"] == "Fine for now."]
+    assert noted["author"] == "owner"
     answer = topics.decision(seven, seven["versions"][0])
     assert answer is not None and "Applies to `README.md`." in answer["answer"]
     assert topics.item("general/keep-it-short")["verdict"] == "open"
-    report = topics.item("emails/email-report")
-    assert report["verdict"] == "rejected" and report["versions"][0]["files"][0]["recipe"] == {
-        "command": "make report"
-    }
-    assert [entry["text"] for entry in report["thread"]] == [
+    assert topics.item("emails/email-report")["ref"] == seven["ref"]
+    (report,) = seven["assets"]
+    assert report["versions"][0]["files"][0]["recipe"] == {"command": "make report"}
+    # One thread now, in the order it was said.
+    assert [entry["text"] for entry in seven["thread"]] == [
         "Version 1: The first cut.",
         "Version 1 illustrates [storage/orders-live-in-sqlite].",
+        "Fine for now.",
         "On version 1: Shorter.",
     ]
     assert not decisions.exists() and not (project.root / ".nock" / "review").exists()
-    assert (project.root / ".nock" / "topics" / "map.md").read_text() == "- [D7] holds.\n"
+    assert topics.map.read_text() == "- [D7] holds.\n"
+    assert not (project.root / ".nock" / "topics").exists()
     assert topics.citation_problems() == []
     assert git(project.root, "status", "--porcelain") == ""
     assert Migration(project).run() == {"migrated": False}
@@ -1117,25 +1161,25 @@ def test_a_project_migrated_before_marks_what_the_owner_said_as_told_once(
 def test_a_topic_not_yet_given_a_state_reads_as_the_migration_will_set_it(
     project: Project,
 ) -> None:
-    decided, waiting = submit(project.root), submit(project.root, topic="pricing")
-    judge(project.root, decided, "accepted")
-    directory = Topics(project).directory
+    legacy = LegacyTopics(project)
+    decided, waiting = legacy_items(legacy, ("orders", "pricing"))
+    legacy.judge(decided, {"verdict": "accepted"})  # type: ignore[typeddict-item]
+    directory = legacy.directory
     for name in ("orders", "pricing"):
         record = json.loads((directory / name / "topic.json").read_text())
         del record["state"], record["status"]
         (directory / name / "topic.json").write_text(json.dumps(record))
-    states = {
-        row["name"]: row["state"] for row in run(project.root, "topics", "list", "--full")["rows"]
-    }
+    states = {name: legacy.row(name)["state"] for name in legacy.names()}
     assert states == {"orders": "done", "pricing": "active"}
     assert waiting.startswith("pricing/")
 
 
 def test_topics_get_their_state_once_and_task_items_become_notes(project: Project) -> None:
-    decided, waiting = submit(project.root), submit(project.root, topic="pricing")
-    judge(project.root, decided, "accepted")
-    open_topic(project.root, {"name": "empty", "description": "Nothing yet."})
-    directory = Topics(project).directory
+    legacy = LegacyTopics(project)
+    decided, waiting = legacy_items(legacy, ("orders", "pricing"))
+    legacy.judge(decided, {"verdict": "accepted"})  # type: ignore[typeddict-item]
+    legacy.create_topic({"name": "empty", "description": "Nothing yet."})  # type: ignore[typeddict-item]
+    directory = legacy.directory
     for name in ("orders", "pricing", "empty"):
         record = json.loads((directory / name / "topic.json").read_text())
         del record["state"], record["status"]
@@ -1170,7 +1214,7 @@ def test_topics_get_their_state_once_and_task_items_become_notes(project: Projec
     assert git(project.root, "status", "--porcelain") == ""
 
 
-def test_an_item_holds_one_asset_or_variants_of_one_the_owner_may_prefer(
+def test_a_decision_holds_its_assets_each_one_file_or_variants_the_owner_prefers_one_of(
     project: Project, page: str
 ) -> None:
     def text(name: str, words: str = "x") -> dict[str, str]:
@@ -1181,12 +1225,12 @@ def test_an_item_holds_one_asset_or_variants_of_one_the_owner_may_prefer(
         project.root, "items", "create", "orders",
         json.dumps({"title": "Two", "derived": [text("a.md"), text("b.md")]}),
     )  # fmt: skip
-    assert two.returncode == 40 and "an item holds one asset" in two.stderr
-    pictured = nock(
-        project.root, "items", "create", "orders",
-        json.dumps({**DECISION, "derived": [text("a.md")]}),
-    )  # fmt: skip
-    assert pictured.returncode == 40 and "a decision holds no derived file" in pictured.stderr
+    assert two.returncode == 40 and "an asset holds one file" in two.stderr
+    # A decision shows what it decided: its screenshot is its asset.
+    pictured = submit(project.root, {**DECISION, "slug": "pictured", "derived": [text("a.md")]})
+    shown = run(project.root, "items", "show", pictured)
+    assert shown["versions"][0]["decision"]["answer"].startswith("One file")
+    assert [asset["versions"][0]["files"][0]["name"] for asset in shown["assets"]] == ["a.md"]
     mixed = nock(
         project.root, "items", "create", "orders",
         json.dumps({"title": "Mixed", "variants": True, "derived": [text("a.md"), text("b.svg", "<svg/>")]}),
@@ -1203,13 +1247,15 @@ def test_an_item_holds_one_asset_or_variants_of_one_the_owner_may_prefer(
     )
     row = next(row for row in run(project.root, "items", "list")["rows"] if row["ref"] == ref)
     assert row["variants"] == 3 and "preferred" not in row
+    assert post(page, "judge", {"ref": ref, "verdict": "accepted"})[0] == 400
     assert post(page, "prefer", {"ref": ref, "version": 1, "name": "b.md"}) == (
         200,
         {"preferred": {"version": 1, "name": "b.md"}},
     )
-    assert run(project.root, "items", "show", ref)["preferred"] == {"version": 1, "name": "b.md"}
+    (banner,) = run(project.root, "items", "show", ref)["assets"]
+    assert banner["preferred"] == {"version": 1, "name": "b.md"}
     row = next(row for row in run(project.root, "items", "list")["rows"] if row["ref"] == ref)
-    assert row["preferred"] == {"version": 1, "name": "b.md"}
+    assert row["preferred"] == {"the-banner": {"version": 1, "name": "b.md"}}
     assert post(page, "prefer", {"ref": ref, "version": 1, "name": "z.md"})[0] == 404
     assert post(page, "prefer", {"ref": "orders/orders-live-in-sqlite", "version": 1})[0] != 200
     assert post(page, "prefer", {"ref": ref, "version": 1}) == (200, {"preferred": None})
@@ -1219,41 +1265,47 @@ def test_an_item_holds_one_asset_or_variants_of_one_the_owner_may_prefer(
 def test_an_item_holding_several_files_splits_into_one_item_per_file_once(
     project: Project,
 ) -> None:
-    ref = submit(
-        project.root,
-        {
+    legacy = LegacyTopics(project)
+    legacy.create_topic(TOPIC)  # type: ignore[arg-type]
+    ref = legacy.create_item(
+        "orders",
+        {  # type: ignore[typeddict-item]
             "title": "Texts",
             "variants": True,
             "derived": [{"text": n, "name": f"{n}.md"} for n in "ab"],
         },
+    )[0]["ref"]
+    legacy.update_item(
+        ref,
+        None,
+        version={"derived": [{"text": n, "name": f"{n}.md"} for n in "abc"]},  # type: ignore[typeddict-item]
     )
+    legacy.reply(ref, "Shorter, all of them.", Author.OWNER)
+    legacy.judge(ref, {"verdict": "rejected"})  # type: ignore[typeddict-item]
     topics = Topics(project)
-    topics.update_item(
-        ref, None, version={"derived": [{"text": n, "name": f"{n}.md"} for n in "abc"]}
-    )
-    topics.reply(ref, "Shorter, all of them.", Author.OWNER)
-    judge(project.root, ref, "rejected")
     path = project.root / ".nock" / "topics" / "orders" / "texts" / "item.json"
     record = json.loads(path.read_text())
     del record["variants"]
     path.write_text(json.dumps(record))
     git(project.root, "commit", "-qam", "An item from before one asset per item")
-    assert Migration(project).run() == {"migrated": False, "split": {"items": 1, "into": 3}}
+    outcome = Migration(project).run()
+    assert outcome["split"] == {"items": 1, "into": 3} and outcome["stored"]["items"] == 3
     pieces = [topics.item(f"orders/texts{suffix}") for suffix in ("", "-b", "-c")]
-    assert [piece["title"] for piece in pieces] == ["Texts", "Texts — b.md", "Texts — c.md"]
-    assert [[version["version"] for version in piece["versions"]] for piece in pieces] == [
-        [1, 2],
-        [1, 2],
-        [2],
+    # Each piece a file to review: its asset, under a "Review" decision.
+    assert [piece["title"] for piece in pieces] == [
+        "Review: Texts",
+        "Review: Texts — b.md",
+        "Review: Texts — c.md",
     ]
     for piece, name in zip(pieces, "abc", strict=True):
         assert piece["verdict"] == "rejected"
-        assert {entry["name"] for version in piece["versions"] for entry in version["files"]} == {
+        (asset,) = piece["assets"]
+        assert {entry["name"] for version in asset["versions"] for entry in version["files"]} == {
             f"{name}.md"
         }
         note, *thread = piece["thread"]
         assert note["kind"] == "split" and "[orders/texts-c]" in note["text"]
         assert [entry["text"] for entry in thread] == ["Shorter, all of them."]
-    assert topics.file("orders", "texts-c", 2, "c.md").read_text() == "c"
+    assert topics.file("orders", "texts-c", "texts-c", 1, "c.md").read_text() == "c"
     assert git(project.root, "status", "--porcelain") == ""
     assert Migration(project).run() == {"migrated": False}

@@ -93,9 +93,11 @@ while you are away, is submitted as the answer the agent proposes ("Refunds
 never exceed the charge"), the others as its alternatives, and the agent
 carries on with it.
 
-Everything is kept in the main checkout's `.nock/topics/`, committed whichever
-worktree wrote it, so you see it at once; a file over 20 MB stays on the
-machine, uncommitted. Every record keeps who wrote it, down to the subagent.
+Everything is kept in the main checkout's `.nock/shared/`, one file per
+event, committed whichever worktree wrote it, so you see it at once; pictures,
+videos and other media go in `.nock/shared/media/` by their content, which
+the project may commit, put under git LFS or ignore. Every event keeps who
+wrote it, down to the subagent.
 
 ## Reviewing in Topics
 
@@ -204,7 +206,7 @@ topics a priority, a reason in each status. Its changes land as one commit,
 A queue of verdicts is also a record: what was chosen, what was rejected, and
 why. nock turns it into the project's memory.
 
-**The map**, `.nock/topics/map.md`, says what the topics and items mean for
+**The map**, `.nock/shared/map.md`, says what the topics and items mean for
 the work: when each matters and how they bear on each other. Each reflection
 round rewrites it, within three rules: triggers, not facts ("if you touch X,
 then Y, because Z [charge-sweep/dead-charges-only]"); a rejected option comes
