@@ -27,6 +27,8 @@ if TYPE_CHECKING:
 
 # Seconds a streamed child gets to stop on an interrupt before it is killed.
 INTERRUPT_GRACE = 5
+# A dot on stderr per this many seconds of silence, so a watcher knows the process is alive.
+HEARTBEAT = 60
 # Exit codes that say the command could not be run at all, not that it said no.
 NOT_RUNNABLE = (126, 127)
 
@@ -115,7 +117,6 @@ class Supervisor:
         self.streaming = stream
         self.listener = listener
         self.stop = stop
-        self.heartbeat = float(settings.get("run.heartbeat"))
 
     def run(self) -> Output:
         """Spawn, stream, bound and record."""
@@ -236,8 +237,7 @@ class Supervisor:
             if (
                 self.echo
                 and not self.streaming
-                and self.heartbeat > 0
-                and moment - max(last_output, last_dot) >= self.heartbeat
+                and moment - max(last_output, last_dot) >= HEARTBEAT
             ):
                 last_dot = moment
                 sys.stderr.write(f".[{int(moment - started)}s]")

@@ -23,7 +23,7 @@ from nock.fixtures import Call, Scope
 from nock.processes import Output
 from nock.project import Project
 from nock.releases import VERSION
-from nock.render import PACKAGE_INTERNAL, as_json, capped, crash, plain, render
+from nock.render import CHARACTERS, PACKAGE_INTERNAL, ROWS, as_json, capped, crash, plain, render
 from nock.telemetry import UNRECORDED_VARIABLE, Cache, Calls, digest, tree_state
 from nock.tools import BUILT_IN_SOURCE, CONFIRM_NOTES, Registry, Tool
 
@@ -288,7 +288,7 @@ class Invocation:
                 return "", full
             if options.get(FULL_FLAG):
                 return full, full
-            return result.excerpt(self.characters()), full
+            return result.excerpt(CHARACTERS), full
         full = render(result)
         if (
             options.get(FULL_FLAG)
@@ -298,14 +298,10 @@ class Invocation:
         ):
             return full, full
         project = self.project
-        rows = int(project.configuration.get("output.rows")) if project else 60
-        text, cut = capped(full, self.characters(), rows)
+        text, cut = capped(full, CHARACTERS, ROWS)
         if cut and project:
             path = project.local / "outputs" / f"call-{call or 'unrecorded'}.txt"
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(full + "\n")
             text += f"\n(all of it: {path.relative_to(project.here) if path.is_relative_to(project.here) else path}, or --full)"
         return text, full
-
-    def characters(self) -> int:
-        return int(self.project.configuration.get("output.characters")) if self.project else 8000

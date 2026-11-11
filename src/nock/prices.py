@@ -1,8 +1,7 @@
 """What a session would have cost at the API's list prices — API-equivalent
 cost, which a subscription does not pay per token. The prices are LiteLLM's
 public table, fetched with a plain GET at most once a day and cached in
-`.nock/local/prices.json`; `[pricing]` overrides them by model-name prefix. A
-model in neither, or no table at all, is unpriced: its cost is unknown, never 0."""
+`.nock/local/prices.json`. A model not in it, or no table at all, is unpriced: its cost is unknown, never 0."""
 
 from __future__ import annotations
 
@@ -22,6 +21,10 @@ if TYPE_CHECKING:
     from nock.project import Project
 
 CACHE = "prices.json"
+# LiteLLM's public table of model prices.
+TABLE = (
+    "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json"
+)
 # Seconds a fetched table stands, and how long after a failed fetch the next is tried.
 REFRESH = 86400
 RETRY = 3600
@@ -38,26 +41,22 @@ DATED = re.compile(r"-\d{8}$")
 
 
 class Prices:
-    def __init__(self, project: Project) -> None:
+    def __init__(self, project: Project, table: str = TABLE) -> None:
         self.project = project
         self.path = project.local / CACHE
-        self.overrides = {
-            prefix: rates
-            for prefix, rates in project.configuration.section("pricing").items()
-            if isinstance(rates, dict)
-        }
+        self.url = table
         self.loaded: dict[str, dict[str, float]] | None = None
 
     def table(self) -> dict[str, dict[str, float]]:
         """Model → dollars per token by kind: the cached table, fetched again
-        when a day old (and fetching is on); empty when there is none."""
+        when a day old; empty when there is none."""
         if self.loaded is not None:
             return self.loaded
         cached = self.cached()
         moment = time.time()
         fresh = moment - float(cached.get("fetched") or 0) < REFRESH
         tried = moment - float(cached.get("tried") or 0) < RETRY
-        if not fresh and not tried and self.project.configuration.get("pricing.fetch") is not False:
+        if not fresh and not tried:
             cached = self.fetch(cached, moment)
         loaded: dict[str, dict[str, float]] = cached.get("models") or {}
         self.loaded = loaded
@@ -70,10 +69,9 @@ class Prices:
             return {}
 
     def fetch(self, cached: dict[str, Any], moment: float) -> dict[str, Any]:
-        """The table from `pricing.table`, reduced to the prices nock uses;
-        the cache as it was, marked tried, when it cannot be had."""
-        url = str(self.project.configuration.get("pricing.table"))
-        request = urllib.request.Request(url, headers={"User-Agent": f"nock/{VERSION}"})
+        """The table, reduced to the prices nock uses; the cache as it was,
+        marked tried, when it cannot be had."""
+        request = urllib.request.Request(self.url, headers={"User-Agent": f"nock/{VERSION}"})
         try:
             with urllib.request.urlopen(request, timeout=TIMEOUT) as response:
                 raw = json.loads(response.read())
@@ -94,13 +92,8 @@ class Prices:
         write_atomic(self.path, json.dumps(cached, separators=(",", ":")))
 
     def rates(self, model: str) -> dict[str, float] | None:
-        """Dollars per token by kind for `model`: `[pricing]`'s longest
-        matching prefix (dollars per million), else the table's entry for the
+        """Dollars per token by kind for `model`: the table's entry for the
         model, its undated name or its `anthropic/` name."""
-        matching = [prefix for prefix in self.overrides if model.startswith(prefix)]
-        if matching:
-            rates = self.overrides[max(matching, key=len)]
-            return {kind: float(rates.get(kind, 0)) / 1_000_000 for kind in KINDS}
         table = self.table()
         for name in (model, DATED.sub("", model), f"anthropic/{model}"):
             if name in table:

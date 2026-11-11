@@ -29,6 +29,7 @@ from nock.errors import (
 )
 from nock.git import Git
 from nock.processes import NOT_RUNNABLE, Output, Supervisor
+from nock.render import CHARACTERS
 from nock.tools import fixture
 from nock.utils import now
 
@@ -183,7 +184,7 @@ class Shell:
             raise SubjectFailedError(
                 f"`{text}` exited {output.code}; its output is above (log: {output.log})"
             )
-        raise CommandFailed(text, output, int(self.project.configuration.get("output.characters")))
+        raise CommandFailed(text, output, CHARACTERS)
 
 
 class Log:

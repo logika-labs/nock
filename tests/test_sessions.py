@@ -7,12 +7,14 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import time
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
 import pytest
 
+from nock.prices import Prices
 from nock.project import Project
 from nock.reflect import Material, Reflection
 from nock.sessions import Sessions, encoded
@@ -208,25 +210,18 @@ def test_a_session_costs_its_tokens_at_the_table_s_api_prices(project: Project) 
     assert metrics["api_cost"] == pytest.approx(0.002) and metrics["unpriced_sessions"] == 0
 
 
-def test_pricing_overrides_the_table_by_prefix_and_a_dated_name_matches(project: Project) -> None:
-    local = project.root / ".nock" / "local" / "config.toml"
-    local.write_text(local.read_text() + '[pricing."claude-opus"]\ninput = 1_000_000\noutput = 0\n')
-    project.__dict__.pop("configuration", None)
-    transcript(project, "opus", ["work"], [("a", 1, False)], model="claude-opus-5-5")
+def test_a_dated_model_name_is_priced_as_its_undated_one(project: Project) -> None:
     transcript(project, "haiku", ["work"], [("a", 1, False)], model="claude-haiku-4-5-20991231")
     Sessions(project).catch_up()
-    costs = {row["id"]: row["cost"] for row in project.store.rows("SELECT id, cost FROM sessions")}
-    assert costs["opus"] == pytest.approx(100.0)
-    assert costs["haiku"] == pytest.approx(100 * 1e-6 + 20 * 5e-6 + 1000 * 1e-7)
+    (row,) = project.store.rows("SELECT cost FROM sessions")
+    assert row["cost"] == pytest.approx(100 * 1e-6 + 20 * 5e-6 + 1000 * 1e-7)
 
 
 def test_an_unpriced_session_is_unknown_never_zero_and_priced_once_it_can_be(
     project: Project,
 ) -> None:
-    local = project.root / ".nock" / "local" / "config.toml"
-    missing = (project.root / "nowhere.json").as_uri()
-    local.write_text(local.read_text().replace(PRICES.as_uri(), missing))
-    project.__dict__.pop("configuration", None)
+    offline = {"tried": time.time()}
+    (project.local / "prices.json").write_text(json.dumps(offline))
     transcript(project, "offline", ["work"], [("a", 1, False)], model="claude-opus-5-5")
     transcript(project, "unknown", ["work"], [("a", 1, False)], model="claude-test")
     Sessions(project).catch_up()
@@ -239,24 +234,13 @@ def test_an_unpriced_session_is_unknown_never_zero_and_priced_once_it_can_be(
     listed = json.loads(nock(project.root, "sessions", "--json").stdout)
     assert {row["api_cost"] for row in listed} == {"unknown"}
     # Back online: the cache and its failed try are gone, the table is fetched.
-    local.write_text(local.read_text().replace(missing, PRICES.as_uri()))
-    project.__dict__.pop("configuration", None)
     (project.local / "prices.json").unlink()
+    Prices(project, PRICES.as_uri()).table()
     Sessions(project).catch_up()
     window = Reflection(project).window()
     assert Reflection(project).metrics(window)["unpriced_sessions"] == 1
     overview = Material(project, window, None).overview()
     assert "at API prices, 1 session(s) unpriced" in overview
-
-
-def test_with_fetching_off_nothing_is_fetched(project: Project) -> None:
-    local = project.root / ".nock" / "local" / "config.toml"
-    local.write_text(local.read_text().replace("[pricing]\n", "[pricing]\nfetch = false\n"))
-    project.__dict__.pop("configuration", None)
-    transcript(project, "opus", ["work"], [("a", 1, False)], model="claude-opus-5-5")
-    Sessions(project).catch_up()
-    assert project.store.rows("SELECT cost FROM sessions") == [{"cost": None}]
-    assert not (project.local / "prices.json").exists()
 
 
 def test_a_transcript_replaced_by_a_shorter_one_is_read_afresh(project: Project) -> None:

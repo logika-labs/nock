@@ -23,6 +23,11 @@ from typing import Any
 
 from nock.condense import excerpt
 
+# The most characters, and table rows, a call prints before the rest goes to a file. Claude Code
+# shows a failed command only ~10k characters, middle cut, no path.
+CHARACTERS = 8000
+ROWS = 60
+
 # nock's own code, left out of a crash report when the project's own frames are there.
 PACKAGE_INTERNAL = Path(__file__).resolve().parent
 SCALARS = (str, int, float, bool, type(None))

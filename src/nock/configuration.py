@@ -26,21 +26,11 @@ DEFAULTS: dict[str, Any] = {
     # on the desktop, or in the studio's page while it is open. Nothing shows
     # without a display (CI, a headless agent).
     "notifications": True,
-    "output": {
-        # The most characters a call prints before the rest goes to a file. Claude
-        # Code shows a failed command only ~10k characters, middle cut, no path.
-        "characters": 8000,
-        # The most rows of a table a call prints before the rest goes to a file.
-        "rows": 60,
-    },
     "run": {
         # Bounds on a supervised process (`sh`, `nock run`), in seconds; silence
         # is how long it may print nothing before it counts as hung.
         "deadline": 3600,
         "silence": 900,
-        # A dot on stdout per this many seconds of silence, so a watcher knows
-        # the process is alive.
-        "heartbeat": 60,
     },
     "environment": {
         # What the project's tools, checks, generators and hooks run in. `python`
@@ -63,17 +53,11 @@ DEFAULTS: dict[str, Any] = {
         "confirm": "ask",
     },
     "checks": {
-        # How many check suites may run at once on this machine.
-        "concurrency": 2,
         # Globs of paths no check depends on (prose, records), so that
         # `check` does not run everything when only they change.
         "unaffected": [],
     },
     "reflect": {
-        # A round is due after this many sessions since the last one, or this
-        # many days — whichever comes first, given a session to look at.
-        "sessions": 15,
-        "days": 7,
         # In a Logika project, a logika round is offered this many days after
         # the last one, once the ledger has changed since.
         "logika": {"days": 30},
@@ -106,12 +90,12 @@ DEFAULTS: dict[str, Any] = {
     "consult": {
         # Whether the consultant runs, and the primer asks agents to consult.
         "enabled": True,
-        # The longest a consultation may take, in seconds: the caller waits.
-        "deadline": 600,
     },
     "upgrade": {
         # Whether a session the human starts says when a newer nock is out
-        # (PyPI is asked at most once a day), and where releases are looked up.
+        # (PyPI is asked at most once a day), and where releases are looked up:
+        # tests point it at a local index, since a hook or `nock upgrade` runs as
+        # its own process.
         "check": True,
         # Whether that session upgrades a core vendored from PyPI to it by
         # itself, once per release, when the merge is clean; off, it only says so.
@@ -130,15 +114,6 @@ DEFAULTS: dict[str, Any] = {
         "usage": "https://api.nock.dev/usage",
         # Where `nock report` sends what the user wrote, on their word.
         "reports": "https://api.nock.dev/reports",
-    },
-    "pricing": {
-        # Sessions are costed at API prices (API-equivalent: a subscription does
-        # not pay per token) from LiteLLM's public table, fetched with a plain GET
-        # at most daily and cached in .nock/local/; false never fetches it.
-        "fetch": True,
-        "table": "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json",
-        # Any other key is a model-name prefix whose prices override the table's:
-        # dollars per million tokens, {input, output, cache_read, cache_write}.
     },
 }
 

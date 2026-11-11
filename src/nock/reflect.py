@@ -49,6 +49,10 @@ TWO_WORDS = {
 # Where an agent cut a command's output down by hand.
 TRIMMERS = re.compile(r"\|\s*(head|tail|grep|sed -n|awk|cut|wc)\b")
 SECTION_ROWS = 25
+# A round is due after this many sessions since the last one, or this many days, whichever
+# comes first, given a session to look at.
+SESSIONS = 15
+DAYS = 7
 # What the round's lead writes beside its record.
 REPORT = "report.md"
 SHARE = "share.md"
@@ -505,15 +509,14 @@ class Reflection(Round):
     def due(self) -> str:
         """Why a round is due, or nothing when it is not: enough sessions or
         enough days since the last one, and at least one session to look at."""
-        settings = self.project.configuration
         window = self.window()
         count = len(window.sessions)
         if not count:
             return ""
-        if count >= int(settings.get("reflect.sessions")):
+        if count >= SESSIONS:
             return f"a reflection round is due ({count} sessions since the last)"
         days = self.days(window)
-        if days >= float(settings.get("reflect.days")):
+        if days >= DAYS:
             return f"a reflection round is due ({count} sessions over {days:.0f} days)"
         return ""
 
