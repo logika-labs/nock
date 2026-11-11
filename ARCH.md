@@ -95,7 +95,7 @@ src/nock/
                      timeline.css, the Timeline's (on the topics' look); view.css, the look a
                      view is served with; icon.png, nock's logo, shown with every notification
   status.py          Standing: a round due, the open items by topic, what waits on agents in
-                     Topics, an unshared summary
+                     Topics, an unshared summary; `nock status`'s nudges (consult, record, gen)
   share.py           Sharing: a round's summary, held to naming nothing, sent on the owner's word
   usage.py           Usage: the report shared with nock's makers on the owner's yes (`share`),
                      the question asked once, the project's random id, the weekly send

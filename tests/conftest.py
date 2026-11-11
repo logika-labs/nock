@@ -5,7 +5,6 @@ stand-in process."""
 from __future__ import annotations
 
 import os
-import shutil
 import subprocess
 import sys
 from collections.abc import Iterator
@@ -18,7 +17,6 @@ from nock.project import Project
 from nock.setup import Installer
 
 FAKE_AGENT = Path(__file__).with_name("fake_agent.py")
-TOPICS_TOOL = Path(__file__).with_name("topics_tool.py")
 # A copy of a few entries of LiteLLM's price table, so no test reaches the network.
 PRICES = Path(__file__).with_name("prices.json")
 
@@ -69,11 +67,7 @@ def repository(tmp_path: Path) -> Path:
 
 @pytest.fixture
 def project(repository: Path, monkeypatch: pytest.MonkeyPatch) -> Project:
-    """A repository with nock installed and committed, the agent a stand-in;
-    its toolbox holds the topics and items commands the tests drive `Topics`
-    with (`topics_tool.py`)."""
-    Installer(repository).install()
-    shutil.copy(TOPICS_TOOL, repository / ".nock" / "tools" / "topics_cli.py")
+    """A repository with nock installed and committed, the agent a stand-in."""
     Installer(repository).install()
     local = repository / ".nock" / "local"
     local.mkdir(exist_ok=True)
@@ -108,10 +102,3 @@ def write_tool(project: Project, name: str, source: str) -> None:
     path.write_text(source)
     git(project.root, "add", "-A")
     git(project.root, "commit", "-qm", f"Add tool {name}")
-
-
-def drop_topics_tool(project: Project) -> None:
-    """For a test that counts or lists the project's own tools: the tests'
-    topics commands taken out of its toolbox, once its setup is done."""
-    git(project.root, "rm", "-q", ".nock/tools/topics_cli.py")
-    git(project.root, "commit", "-qm", "Only the project's own tools")

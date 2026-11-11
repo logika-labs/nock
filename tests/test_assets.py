@@ -13,15 +13,16 @@ from typing import Any
 
 import pytest
 
+from nock.errors import ConflictError, UsageError
 from nock.notify import ICON, Notifications, Reason, desktop_command
 from nock.project import Project
 from nock.timeline import Timeline
 from nock.topics import Author, Topics
 
-from .conftest import nock
+from . import store
 from .test_chats import answered
 from .test_chats import post as chat_post
-from .test_topics import item_folder, open_topic, page, post, run, submit
+from .test_topics import item_folder, judge, open_topic, page, post, submit
 
 __all__ = ["page"]
 
@@ -46,7 +47,7 @@ def test_an_item_keeps_the_description_it_was_submitted_with(project: Project) -
             "derived": [{"text": name, "name": f"{name}.md"} for name in "ab"],
         },
     )
-    shown = run(project.root, "items", "show", ref)
+    shown = store.shown(project.root, ref)
     assert shown["description"] == "Three takes on the landing banner"
 
 
@@ -58,21 +59,17 @@ def test_an_asset_with_variants_is_accepted_only_once_one_is_preferred(
         paths.append(tmp_path / name)
         paths[-1].write_text(f"<svg xmlns='http://www.w3.org/2000/svg'><title>{name}</title></svg>")
     open_topic(project.root)
-    many = nock(
-        project.root,
-        "items",
-        "create",
-        "orders",
-        json.dumps({"title": "Favicon", "derived": [{"path": str(path)} for path in paths]}),
-    )
-    assert many.returncode == 40 and '"variants": true' in many.stderr
+    with pytest.raises(UsageError, match='"variants": true'):
+        submit(
+            project.root, {"title": "Favicon", "derived": [{"path": str(path)} for path in paths]}
+        )
     ref = submit(
         project.root,
         {"title": "Favicon", "variants": True, "derived": [{"path": str(path)} for path in paths]},
     )
     single = submit(project.root, {"title": "Logo", "derived": [{"path": str(paths[0])}]})
-    refused = nock(project.root, "items", "judge", ref, '{"verdict": "accepted"}')
-    assert refused.returncode != 0 and "prefer one before accepting it" in refused.stderr
+    with pytest.raises(ConflictError, match="prefer one before accepting it"):
+        judge(project.root, ref, "accepted")
     assert post(page, "judge", {"topic": "orders", "verdict": "accepted"}) == (
         200,
         {"judged": [single]},
@@ -95,7 +92,7 @@ def test_a_view_is_served_with_nock_s_look_and_the_item_s_files_named_for_it(
             "views": [{"text": view, "name": "sizes.html", "title": "At three sizes"}],
         },
     )
-    (asset,) = run(project.root, "items", "show", ref)["assets"]
+    (asset,) = store.shown(project.root, ref)["assets"]
     shown = asset["versions"][0]
     assert (
         shown["views"][0]["name"] == "sizes.html" and shown["views"][0]["title"] == "At three sizes"
@@ -115,42 +112,26 @@ def test_a_view_is_served_with_nock_s_look_and_the_item_s_files_named_for_it(
     ]
     assert fetch(page, f"topics/view/orders/{slug}/favicon/1/icon.svg") == icon.read_bytes()
     assert b".grid" in fetch(page, "topics/view.css")
-    decided = nock(
-        project.root,
-        "items",
-        "create",
-        "orders",
-        json.dumps(
+    with pytest.raises(UsageError, match="views lay out an asset's files"):
+        submit(
+            project.root,
             {
                 "title": "D",
                 "decision": {"answer": "Yes."},
                 "views": [{"text": view, "name": "v.html"}],
-            }
-        ),
-    )
-    assert decided.returncode != 0 and "views lay out an asset's files" in decided.stderr
+            },
+        )
 
 
 def test_the_timeline_is_read_from_the_topics_and_a_notification_is_one_of_its_events(
     project: Project, page: str
 ) -> None:
-    run(
-        project.root,
-        "topics",
-        "create",
-        json.dumps({**{"name": "orders", "description": "Orders."}, "status": "starting"}),
-    )
+    open_topic(project.root, {**{"name": "orders", "description": "Orders."}, "status": "starting"})
     ref = submit(project.root)
     topics = Topics(project)
     topics.reply(ref, "Why not Postgres?", Author.OWNER)
-    run(project.root, "items", "update", ref, "--reply", "One file is enough.")
-    run(
-        project.root,
-        "topics",
-        "update",
-        "orders",
-        json.dumps({"state": "review", "status": "built"}),
-    )
+    store.update_item(project.root, ref, reply="One file is enough.")
+    store.update_topic(project.root, "orders", change={"state": "review", "status": "built"})
     events = Timeline(project).events()
     # Written within one second, the review and the answer may come in either order.
     kinds = [event["kind"] for event in events]
@@ -278,8 +259,7 @@ def test_search_ranks_what_holds_every_word_first_then_all_but_one_and_so_on(
         ("pair", "nock docs, the essays."),
     ]:
         open_topic(project.root, {"name": name, "description": description})
-    listed = run(project.root, "topics", "list", "--query", "nock cli docs")
-    names = [row["name"] for row in listed["rows"]]
+    names = Topics(project).search_topics("nock cli docs")
     assert names == ["twice", "complete", "pair", "partial"]
     found = get(page, "topics/search/nock%20cli%20docs")
     # Shown whole, only the topics holding every word; the strongest first.

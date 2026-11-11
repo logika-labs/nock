@@ -22,7 +22,7 @@ from nock.project import Project
 from nock.studio import Studio
 from nock.usage import IDENTITY, QUESTION, QUESTION_VERSION, UNMADE, Moment, Usage
 
-from .conftest import drop_topics_tool, git, nock, write_tool
+from .conftest import git, nock, write_tool
 from .test_telemetry_and_reflection import transcript
 from .test_topics import judge, submit
 
@@ -136,7 +136,6 @@ def test_unanswered_is_asked_once_and_sends_nothing(
 def test_the_command_writes_a_yes_and_a_report_goes_a_week_later_counts_only(
     project: Project, receiver: list[dict[str, object]]
 ) -> None:
-    drop_topics_tool(project)
     write_tool(
         project, "secret", "import nock\n\n@nock.command\ndef acme_payroll():\n    '''Pay.'''\n"
     )

@@ -68,16 +68,16 @@ def test_a_bad_edit_is_refused_in_the_same_turn_and_nothing_of_it_is_committed(
 
 def test_what_no_hook_saw_is_swept_up_by_the_next_command_or_hook(project: Project) -> None:
     write(project, "topics/orders/events/a.json", {"kind": "created", "description": "Orders."})
-    listed = nock(project.root, "topics", "list", "--json")
+    listed = nock(project.root, "search", "orders", "--json")
     assert listed.returncode == 0, listed.stderr
     assert "Nock-Session: unknown" in git(project.root, "log", "-1", "--format=%B")
-    assert [row["name"] for row in json.loads(listed.stdout)["rows"]] == ["orders"]
+    assert [topic["name"] for topic in json.loads(listed.stdout)["topics"]] == ["orders"]
     write(project, "topics/orders/events/b.json", {"kind": "message", "text": "Hello."})
     HookRunner(project, {"session_id": "s2"}).handle("SessionStart")
     assert git(project.root, "status", "--porcelain") == ""
     # What does not hold stays, named on the command's stderr.
     write(project, "topics/orders/events/c.json", {"kind": "nonsense"})
-    shown = nock(project.root, "topics", "show", "orders")
+    shown = nock(project.root, "status")
     assert shown.returncode == 0 and "don't hold and stay uncommitted" in shown.stderr
 
 

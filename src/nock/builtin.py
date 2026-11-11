@@ -239,9 +239,11 @@ def status(project: Project) -> dict[str, Any]:
     """Where the project stands with nock: whether a reflection round is due,
     the open decisions by topic, what waits on an agent (threads where the
     owner wrote last, rejected decisions, and `nock inbox` by kind), changes
-    in `.nock/shared/` that don't hold, a round summary not yet shared, and
-    whether a newer nock is out."""
-    return Standing(project).collect()
+    in `.nock/shared/` that don't hold, a round summary not yet shared,
+    whether a newer nock is out, and its nudges for the session asking: files
+    changed with no consultation, commits with nothing recorded in the
+    topics, generated files edited by hand."""
+    return Standing(project).collect(nudging=True)
 
 
 @command

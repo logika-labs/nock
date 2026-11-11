@@ -25,8 +25,9 @@ from nock.sessions import find_transcript
 from nock.studio import Studio
 from nock.topics import Author, Topics
 
+from . import store
 from .conftest import git
-from .test_topics import item_folder, run, submit
+from .test_topics import item_folder, submit
 
 DEADLINE = 60
 
@@ -232,10 +233,10 @@ def test_tidy_up_writes_events_that_land_as_one_commit_and_undo_reverts_it(
     )
     submit(project.root, {"title": "Billing is monthly", "decision": {"answer": "Yes."}}, "billing")
     head = git(project.root, "rev-parse", "HEAD")
-    store = project.root / ".nock" / "shared" / "topics"
+    shared = project.root / ".nock" / "shared" / "topics"
 
     def event(where: str, record: dict[str, Any]) -> list[str]:
-        return ["write", str(store / where / "events" / "tidy.json"), json.dumps(record)]
+        return ["write", str(shared / where / "events" / "tidy.json"), json.dumps(record)]
 
     slug = misplaced.split("/")[1]
     monkeypatch.setenv(
@@ -284,7 +285,7 @@ def test_tidy_up_writes_events_that_land_as_one_commit_and_undo_reverts_it(
         listed = json.loads(response.read())["topics"]
     assert [topic["name"] for topic in listed] == ["billing", "orders"]
     assert listed[0]["priority"] == 1 and listed[0]["status"] == "first"
-    assert [row["name"] for row in run(project.root, "topics", "list", "--full")["rows"]] == [
+    assert [row["name"] for row in store.rows(project.root)] == [
         "billing",
         "orders",
     ]
@@ -339,7 +340,7 @@ def test_address_my_comments_sends_the_waiting_comments_and_each_gets_its_answer
 
     # What the page counts for its button: the two comments waiting.
     assert waiting() == 2
-    store = project.root / ".nock" / "shared" / "topics"
+    shared = project.root / ".nock" / "shared" / "topics"
     said = {"kind": "message", "text": "One file is enough at today's load."}
     monthly = {"kind": "message", "text": "Monthly only, for now."}
     monkeypatch.setenv(
@@ -347,7 +348,7 @@ def test_address_my_comments_sends_the_waiting_comments_and_each_gets_its_answer
         json.dumps(
             [
                 ["write", str(item_folder(project, ref) / "events" / "a.json"), json.dumps(said)],
-                ["write", str(store / "billing" / "events" / "a.json"), json.dumps(monthly)],
+                ["write", str(shared / "billing" / "events" / "a.json"), json.dumps(monthly)],
             ]
         ),
     )
@@ -444,14 +445,14 @@ def test_the_chat_reads_as_the_consultant_does_and_tidy_up_writes_only_in_the_st
 def test_a_topic_s_priority_orders_the_list_and_zero_takes_it_away(project: Project) -> None:
     submit(project.root)
     submit(project.root, {"title": "Billing is monthly", "decision": {"answer": "Yes."}}, "billing")
-    names = lambda: [row["name"] for row in run(project.root, "topics", "list", "--full")["rows"]]  # noqa: E731
+    names = lambda: [row["name"] for row in store.rows(project.root)]  # noqa: E731
     newest = names()
     assert newest == ["billing", "orders"]
-    run(project.root, "topics", "update", "orders", json.dumps({"priority": 1}))
+    store.update_topic(project.root, "orders", change={"priority": 1})
     assert names() == ["orders", "billing"]
-    assert run(project.root, "topics", "show", "orders")["priority"] == 1
-    run(project.root, "topics", "update", "orders", json.dumps({"priority": 0}))
-    assert "priority" not in run(project.root, "topics", "show", "orders")
+    assert store.topic_shown(project.root, "orders")["priority"] == 1
+    store.update_topic(project.root, "orders", change={"priority": 0})
+    assert "priority" not in store.topic_shown(project.root, "orders")
 
 
 def test_the_recorder_s_server_is_set_in_the_settings_on_this_machine_only(

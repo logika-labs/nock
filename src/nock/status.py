@@ -3,17 +3,20 @@ is due, the open items by topic (new to the owner), what waits on an agent in
 the topics (threads where the owner wrote last, items they rejected), a round
 summary not yet shared, a newer nock, and whether another kind of round (a
 logika round, in a Logika project) is worth offering. `nock status` prints
-it; a session the human starts begins with it."""
+it, with its nudges for the session asking (`nudges`); a session the human
+starts begins with the standing alone."""
 
 from __future__ import annotations
 
 from collections import Counter
 from typing import TYPE_CHECKING, Any
 
+from nock.generators import Generators
 from nock.inbox import Inbox
 from nock.kinds import offered
 from nock.reflect import Reflection
 from nock.releases import Updates
+from nock.sessions import Sessions
 from nock.share import Sharing
 from nock.shared import Shared
 from nock.topics import Topics
@@ -24,13 +27,84 @@ if TYPE_CHECKING:
 
 # The most items of a kind the session start lists; `nock status` has them all.
 SHOWN = 3
+# Claude Code's tools that change a file.
+EDITING = ("Edit", "MultiEdit", "Write", "NotebookEdit")
+# How many commits since the session last recorded anything ask it to record.
+UNRECORDED_COMMITS = 3
+
+
+def consult_nudge(project: Project, session: str | None) -> str:
+    """Files this session changed, and no `nock consult` run in it."""
+    if not session:
+        return ""
+    Sessions(project).catch_up()
+    placeholders = ", ".join("?" for _ in EDITING)
+    edited = {
+        row["input"]
+        for row in project.store.rows(
+            f"SELECT input FROM events WHERE session = ? AND tool IN ({placeholders})",
+            (session, *EDITING),
+        )
+        if row["input"]
+    }
+    consulted = project.store.rows(
+        "SELECT 1 FROM calls WHERE session = ? AND tool = 'consult' LIMIT 1", (session,)
+    )
+    if not edited or consulted:
+        return ""
+    return (
+        f"nock: this session changed {len(edited)} file(s) and consulted on none —"
+        ' `.nock/nock consult "what you are about to do"` when unsure, or touching something'
+        " with history."
+    )
+
+
+def record_nudge(project: Project, session: str | None) -> str:
+    """Commits since this session's last write to the topics (the last commit
+    nock made for it, by its `Nock-Session` trailer), none of them nock's own;
+    nothing for a session that wrote nothing yet."""
+    if not session:
+        return ""
+    last = project.git(
+        "log", "-1", "--format=%H", "--fixed-strings", f"--grep=Nock-Session: {session}",
+        "HEAD", check=False,
+    ).strip()  # fmt: skip
+    if not last:
+        return ""
+    subjects = project.git("log", "--format=%s", f"{last}..HEAD", check=False)
+    commits = [line for line in subjects.splitlines() if line and not line.startswith("nock:")]
+    if len(commits) < UNRECORDED_COMMITS:
+        return ""
+    return (
+        f"nock: {len(commits)} commit(s) since this session last recorded anything in Topics —"
+        " a choice a later reader would ask about is a decision to record, and what you made"
+        " to show the work an asset of it (`.nock/nock docs topics.items`)."
+    )
+
+
+def gen_nudge(project: Project) -> str:
+    """Generated files edited by hand: out of step with their generator."""
+    drifted = Generators(project).drifted(project.here)
+    if not drifted:
+        return ""
+    return (
+        f"nock: {', '.join(drifted[:SHOWN])} {'is' if len(drifted) == 1 else 'are'} generated"
+        " and out of step with the generator — the change belongs in the generator;"
+        " `.nock/nock gen` writes them again."
+    )
+
+
+def nudges(project: Project, session: str | None) -> list[str]:
+    """What the session asking `nock status` might do next, each when it applies."""
+    found = [consult_nudge(project, session), record_nudge(project, session), gen_nudge(project)]
+    return [text for text in found if text]
 
 
 class Standing:
     def __init__(self, project: Project) -> None:
         self.project = project
 
-    def collect(self) -> dict[str, Any]:
+    def collect(self, nudging: bool = False) -> dict[str, Any]:
         reflection = Reflection(self.project)
         window = reflection.window()
         topics = Topics(self.project)
@@ -51,6 +125,8 @@ class Standing:
             "uncommitted": [path for _, path in Shared(self.project).changes()],
             "unshared": Sharing(self.project).unshared(),
             "newer_nock": Updates(self.project).newer(),
+            # What the session asking might do next: only `nock status` asks.
+            **({"nudges": nudges(self.project, self.project.current_session())} if nudging else {}),
             # The other kinds of round that can run here, each offered when due.
             "rounds": {
                 kind.kind: {
@@ -101,6 +177,7 @@ class Standing:
             lines += [f"- rework {ref} (a new version)" for ref in rejected[:SHOWN]]
             if len(threads) > SHOWN or len(rejected) > SHOWN:
                 lines.append("- and more — `.nock/nock inbox` has them all")
+        lines += standing.get("nudges") or []
         if standing.get("uncommitted"):
             lines.append(
                 f"nock: {len(standing['uncommitted'])} change(s) in .nock/shared/ don't hold and"

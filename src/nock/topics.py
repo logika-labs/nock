@@ -43,7 +43,7 @@ from enum import StrEnum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, NotRequired, TypedDict, cast
 
-from nock.errors import ConflictError, NotFoundError, PolicyError, UsageError
+from nock.errors import ConflictError, NotFoundError, UsageError
 from nock.fold import ASSETS, EVENTS, ITEMS, STATUS, VERSIONS
 from nock.notify import Notifications, Reason
 from nock.records import ASSETS_FILE, DECISION_FILE, NEXT
@@ -1063,15 +1063,6 @@ class Topics:
             found.append(name)
         return found
 
-    def delete_topic(self, name: str) -> str | None:
-        with self.project.lock("topics"), self.drafting():
-            self.topic(name)
-            if self.items(name):
-                raise ConflictError(f"topic {name} holds items: only an empty topic is deleted")
-            folder = self.shared.topic_folder(name)
-            shutil.rmtree(folder)
-            return self.settle([], removing=[folder]).note
-
     # --- items ------------------------------------------------------------------
 
     def create_item(self, topic: str, draft: ItemDraft) -> tuple[dict[str, Any], str | None]:
@@ -1442,20 +1433,6 @@ class Topics:
         }
         beside = video_companions(entry, name, source, given.get("captions"), given.get("poster"))
         return entry, data, beside
-
-    def delete_item(self, ref: str) -> str | None:
-        with self.project.lock("topics"), self.drafting():
-            item = self.item(ref)
-            if item["verdict"] != Verdict.OPEN or any(
-                entry["author"] == Author.OWNER for entry in item["thread"]
-            ):
-                raise PolicyError(
-                    f"{item['ref']} has the owner's word on it: only an open item the owner has not"
-                    " written on is deleted — give a new version instead"
-                )
-            folder = self.shared.item_folder(item["topic"], item["slug"])
-            shutil.rmtree(folder)
-            return self.settle([], removing=[folder]).note
 
     # --- the owner's word -------------------------------------------------------
 

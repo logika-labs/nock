@@ -213,7 +213,7 @@ def test_init_allows_each_command_but_run_and_asks_for_the_owner_s(project: Proj
     allowed = permissions["allow"]
     assert "Bash(.nock/nock:*)" not in allowed
     assert not [rule for rule in allowed if "nock run" in rule]
-    assert {"Bash(.nock/nock)", "Bash(.nock/nock check:*)", "Bash(.nock/nock items create:*)"} <= {
+    assert {"Bash(.nock/nock)", "Bash(.nock/nock check:*)", "Bash(.nock/nock search:*)"} <= {
         *allowed
     }
     assert all(rule.startswith("Bash(.nock/nock") for rule in allowed)

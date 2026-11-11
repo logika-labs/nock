@@ -23,8 +23,9 @@ from nock.project import Project
 from nock.status import Standing
 from nock.topics import Topics
 
+from . import store
 from .conftest import git
-from .test_topics import DECISION, page, post, run, submit
+from .test_topics import DECISION, page, post, submit
 
 __all__ = ["page"]
 
@@ -99,12 +100,12 @@ def test_the_owner_s_files_go_with_their_message_beside_its_thread_for_agents_to
     status, refused = post(page, "reply", {"ref": ref, "text": "x", "attachments": ["0" * 16]})
     assert status == 404 and "drop the file again" in refused["error"]
 
-    shown = run(project.root, "items", "show", ref)["thread"][0]["attachments"]
+    shown = store.shown(project.root, ref)["thread"][0]["attachments"]
     assert [Path(entry["where"]).read_bytes()[:4] for entry in shown[:2]] == [
         PICTURE[:4],
         b"Use ",
     ]
-    awaiting = run(project.root, "topics", "list")["summary"]["awaiting_you"]
+    awaiting = Topics(project).summary()["awaiting_you"]
     assert awaiting["owner_wrote_last"] == [ref]
     assert awaiting["attachments"] == {ref: [entry["where"] for entry in shown]}
 
@@ -125,7 +126,7 @@ def test_the_owner_s_files_go_with_their_message_beside_its_thread_for_agents_to
         page, "reply", {"topic": "orders", "text": "", "attachments": [sheet["token"]]}
     )
     assert status == 200
-    thread = run(project.root, "topics", "show", "orders")["thread"]
+    thread = store.topic_shown(project.root, "orders")["thread"]
     (entry,) = [entry for entry in thread if entry.get("attachments")]
     assert entry["text"] == "" and Path(entry["attachments"][0]["where"]).read_text() == (
         "The plan.\n"

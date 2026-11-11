@@ -21,7 +21,7 @@ from nock.reflect import SESSIONS, Reflection, Rounds, shape
 from nock.sessions import Sessions, encoded
 from nock.share import Sharing
 
-from .conftest import drop_topics_tool, git, nock, write_tool
+from .conftest import git, nock, write_tool
 
 
 def transcript(
@@ -162,7 +162,6 @@ def test_a_round_is_due_after_enough_sessions(project: Project) -> None:
 
 
 def test_the_material_starts_from_the_work_and_names_the_waste(project: Project) -> None:
-    drop_topics_tool(project)
     write_tool(
         project, "work", "import nock\n\n@nock.command\ndef unused():\n    '''Never called.'''\n"
     )
