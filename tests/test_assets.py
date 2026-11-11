@@ -166,6 +166,31 @@ def test_the_timeline_is_read_from_the_topics_and_a_notification_is_one_of_its_e
     assert get(page, "timeline?query=postgres%20sqlite")["events"][0]["ref"] == ref
 
 
+def test_an_asset_s_event_carries_the_face_of_each_of_its_pictures(
+    project: Project, tmp_path: Path
+) -> None:
+    paths = []
+    for name in ("a.svg", "b.svg"):
+        paths.append(tmp_path / name)
+        paths[-1].write_text(f"<svg xmlns='http://www.w3.org/2000/svg'><title>{name}</title></svg>")
+    open_topic(project.root)
+    pictures = submit(
+        project.root,
+        {
+            "title": "Favicon",
+            "variants": True,
+            "derived": [{"path": str(path)} for path in paths],
+        },
+    )
+    text = submit(project.root, {"title": "Notes", "derived": [{"text": "x", "name": "x.md"}]})
+    events = {event.get("ref"): event for event in Timeline(project).events()}
+    assert events[pictures]["faces"] == [
+        {"file": "a.svg", "type": "image"},
+        {"file": "b.svg", "type": "image"},
+    ]
+    assert "faces" not in events[text]
+
+
 def test_the_notifications_show_nock_s_logo(project: Project, page: str) -> None:
     command = desktop_command("nock", "text", "http://x/#topics/a", "a", "linux")
     assert command is None or f"--icon={ICON}" in command
