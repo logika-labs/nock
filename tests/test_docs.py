@@ -193,7 +193,8 @@ def test_every_skill_and_subagent_nock_installs_points_at_its_brief() -> None:
 def test_every_shipped_protocol_has_its_lead_s_brief_and_one_for_each_agent() -> None:
     manifests = rounds.manifests(None)
     assert set(manifests) == {
-        "nock.toolbox", "nock.map", "nock.fit", "logika.rules", "logika.analytics"
+        "nock.toolbox", "nock.map", "nock.fit", "logika.rules", "logika.analytics",
+        "audit.performance",
     }  # fmt: skip
     for manifest in manifests.values():
         assert (manifest.folder / rounds.LEAD).read_text().startswith("# "), manifest.name

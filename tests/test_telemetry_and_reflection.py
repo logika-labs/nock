@@ -552,8 +552,10 @@ def test_reflect_lists_the_protocols_and_starts_one_or_a_namespace(project: Proj
         row["protocol"]: row for row in json.loads(nock(project.root, "reflect", "--json").stdout)
     }
     assert set(listed) == {
-        "nock.toolbox", "nock.map", "nock.fit", "logika.rules", "logika.analytics"
+        "nock.toolbox", "nock.map", "nock.fit", "logika.rules", "logika.analytics",
+        "audit.performance",
     }  # fmt: skip
+    assert not listed["audit.performance"]["adopted"]
     assert listed["nock.map"]["adopted"] and listed["nock.map"]["skill"] == "/nock-reflect"
     assert listed["nock.map"]["unavailable"] is None and listed["nock.map"]["last"] is None
     assert "not a Logika project" in listed["logika.rules"]["unavailable"]
