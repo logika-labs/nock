@@ -21,6 +21,9 @@ if TYPE_CHECKING:
 # How much of a message or a description an event's preview holds.
 PREVIEW = 280
 
+# The files an asset's event shows the face of: its pictures and videos.
+FACES = ("image", "video")
+
 
 class Event(StrEnum):
     TOPIC = "topic"
@@ -157,8 +160,12 @@ class Timeline:
                     address,
                     title=item["title"],
                     what=what,
-                    type=files[0]["type"] if files and not decision else None,
-                    file=entry_name(files[0]) if files and not decision else None,
+                    faces=[
+                        {"file": entry_name(entry), "type": entry["type"]}
+                        for entry in files
+                        if entry["type"] in FACES
+                    ]
+                    or None,
                     version=version["version"],
                 )
             )
@@ -228,7 +235,8 @@ class Timeline:
         scored = []
         for event in events:
             heading = f"{event['topic']} {event.get('title') or ''}"
-            body = f"{event['text']} {event['preview']} {event.get('file') or ''}"
+            faces = " ".join(face["file"] for face in event.get("faces") or [])
+            body = f"{event['text']} {event['preview']} {faces}"
             points = self.topics.score(words, heading, body)
             if points:
                 scored.append((points, event))

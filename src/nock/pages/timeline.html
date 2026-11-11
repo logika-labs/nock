@@ -53,7 +53,7 @@
     answered: '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M8 5 3.5 9.5 8 14M3.5 9.5H11c3 0 5.5 2.3 5.5 5.5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>',
     message: '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 4.5h12a1.5 1.5 0 0 1 1.5 1.5v7a1.5 1.5 0 0 1-1.5 1.5H9l-3.5 3v-3H4A1.5 1.5 0 0 1 2.5 13V6A1.5 1.5 0 0 1 4 4.5z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>',
   };
-  const fileUrl = event => `topics/file/${[event.topic, event.ref.split("/")[1], event.version, ...event.file.split("/")].map(encodeURIComponent).join("/")}`;
+  const fileUrl = (event, face) => `topics/file/${[event.topic, event.ref.split("/")[1], event.version, ...face.file.split("/")].map(encodeURIComponent).join("/")}`;
 
   // A day's heading: Today, Yesterday, or the date.
   function day(moment) {
@@ -65,17 +65,20 @@
     return when.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", ...(when.getFullYear() !== today.getFullYear() ? { year: "numeric" } : {}) });
   }
 
-  // A notification: what happened, where, a preview, its time; a picture's or a video's own face.
+  // A notification: what happened, its time, where, a preview; an asset's pictures and videos by
+  // their own faces, one in a column at the right, several in a row under the rest. The topic's name
+  // is a pill that opens the topic; the rest of the card, the event's own place.
   function card(event) {
     const fresh = state.seen && event.moment > state.seen;
-    const where = event.ref ? `<span class="place"><span class="topic">${escape(event.topic)}</span><span class="title">${studio.render.titled(event.title || "")}</span></span>`
-      : `<span class="place"><span class="topic">${escape(event.topic)}</span>${event.state ? `<span class="state">${escape(event.state)}</span>` : ""}</span>`;
-    const face = event.file && ["image", "video"].includes(event.type)
-      ? `<span class="still">${event.type === "image" ? `<img src="${fileUrl(event)}" alt="" loading="lazy">` : `<video src="${fileUrl(event)}#t=0.1" preload="metadata" muted playsinline tabindex="-1"></video>`}</span>` : "";
+    const topic = `<span class="topic" role="link" tabindex="0" data-topic-link="#topics/${escape(event.topic)}">${escape(event.topic)}</span>`;
+    const where = event.ref ? `<span class="place">${topic}<span class="title">${studio.render.titled(event.title || "")}</span></span>`
+      : `<span class="place">${topic}${event.state ? `<span class="state">${escape(event.state)}</span>` : ""}</span>`;
+    const faces = (event.faces || []).map(face => `<span class="still">${face.type === "image" ? `<img src="${fileUrl(event, face)}" alt="" loading="lazy">` : `<video src="${fileUrl(event, face)}#t=0.1" preload="metadata" muted playsinline tabindex="-1"></video>`}</span>`);
+    const shown = faces.length === 1 ? faces[0] : faces.length ? `<span class="stills">${faces.join("")}</span>` : "";
     const preview = event.preview ? `<span class="gist">${studio.render.inline(event.preview)}</span>` : "";
-    return `<a class="event ${escape(event.kind)}${fresh ? " new" : ""}" data-key="${escape(event.key)}" href="${escape(event.address)}">
+    return `<a class="event ${escape(event.kind)}${fresh ? " new" : ""}${faces.length === 1 ? " faced" : ""}" data-key="${escape(event.key)}" href="${escape(event.address)}">
       <span class="sign" aria-hidden="true">${ICONS[event.kind] || ICONS.message}</span>
-      <span class="body"><span class="headline"><strong>${escape(event.text)}</strong>${studio.render.time(event.moment)}</span>${where}${preview}</span>${face}</a>`;
+      <span class="headline"><strong>${escape(event.text)}</strong>${studio.render.time(event.moment)}</span>${where}${preview}${shown}</a>`;
   }
 
   function drawList() {
@@ -166,6 +169,8 @@
   const root = $("timeline-tab");
   root.addEventListener("click", event => {
     const target = event.target;
+    const topic = target.closest("[data-topic-link]");
+    if (topic) { event.preventDefault(); location.hash = topic.dataset.topicLink; return; }
     const mode = target.closest("[data-timeline-mode]");
     if (mode) { state.mode = mode.dataset.timelineMode; state.query = state.mode === "search" ? $("timeline-input").value : ""; state.raw = ""; load(); drawBar(); $("timeline-input").focus(); return; }
     const filter = target.closest("[data-timeline-filter]");
@@ -182,6 +187,7 @@
     drawBar();
   });
   document.addEventListener("keydown", event => {
+    if (state.shown && event.key === "Enter" && event.target.matches?.("[data-topic-link]")) { event.preventDefault(); location.hash = event.target.dataset.topicLink; return; }
     if (!state.shown || event.target.id !== "timeline-input") return;
     if (event.key === "Enter" && state.mode === "ask") { event.preventDefault(); ask(); }
     else if (event.key === "Escape") { event.target.value = ""; state.query = ""; state.raw = ""; load(); drawBar(); event.target.blur(); }

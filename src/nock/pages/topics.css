@@ -793,16 +793,11 @@
 .topics .verdict-mark.starred { color: #fff; background: #111116; box-shadow: 1px 1px 0 0 var(--cyan), -1px -1px 0 0 var(--pink); }
 .topics .verdict-mark.starred svg { width: 12px; height: 12px; color: #ffe27a; }
 .topics .asset .banner { display: flex; align-items: center; gap: 10px; min-width: 0; }
-.topics .asset .meta { display: inline-flex; align-items: center; gap: 6px; flex: none; }
-.topics .asset .words { display: flex; align-items: baseline; gap: 8px; min-width: 0; overflow: hidden; white-space: nowrap; }
+.topics .asset .meta { display: inline-flex; align-items: center; gap: 8px; flex: none; }
+.topics .asset .words { flex: 1 1 auto; display: flex; align-items: baseline; gap: 8px; min-width: 0; overflow: hidden; white-space: nowrap; }
 .topics .asset .words .title { flex: none; max-width: 100%; overflow: hidden; text-overflow: ellipsis; font: 600 13px/18px var(--display); letter-spacing: -.01em; }
 .topics .asset .words .description { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--muted); font: 400 12.5px/18px var(--sans); }
 .topics .asset .words code { font: 600 .9em var(--mono); background: #f1eefa; padding: 0 4px; border-radius: 4px; }
-.topics .card-chat { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; color: var(--muted); }
-.topics .card-chat svg { width: 15px; height: 15px; }
-.topics .card-chat.unseen { color: var(--foreground); }
-/* Yours is the last word, waiting for its answer: the mark in the foil. */
-.topics .card-chat.mine { color: #111116; background: var(--holo-conic); box-shadow: inset 0 0 0 1px rgb(255 255 255 / .6); }
 
 /* The grid: a card of one shape, the face over all of it, the verdict at its top right, the banner on glass at its foot. */
 .topics .asset.grid {

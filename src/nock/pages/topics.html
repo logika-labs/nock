@@ -410,7 +410,7 @@
     return `<span class="verdict-mark ${item.verdict}" aria-label="${escape(said)}" role="img" ${tipped(said, means)}>${ICONS[item.verdict]}</span>`;
   }
   // A decision is done unless it says otherwise: only a todo one shows its status, a chip under its corner.
-  const todoPill = `<span class="todo-pill" aria-label="To do" ${tipped("To do", "Decided; the work it calls for is still to do")}>Todo</span>`;
+  const todoPill = '<span class="todo-pill" aria-label="To do">Todo</span>';
   // Where a topic's work stands, beside its time: active a turning foil spinner, planned a foil
   // ring, done and abandoned a full foil circle with a tick or a cross. A topic in review (built,
   // only the owner's verdicts remain) shows none: waiting on the owner needs no mark.
@@ -440,11 +440,11 @@
     tip.style.left = `${Math.max(8, Math.min(anchor.right - tip.offsetWidth + 10, innerWidth - tip.offsetWidth - 8))}px`;
   }
 
-  function chatButton(key, standing) {
-    const open = state.chats.has(key);
+  function chatButton(key, standing, opens = "data-chat") {
+    const open = opens === "data-chat" && state.chats.has(key);
     const mark = standing?.unseen ? (standing.answered ? "a reply" : `${standing.unseen} new`) : "";
     const title = open ? "Close the chat" : mark ? `Chat: ${mark}` : standing?.pending ? "Chat: waiting for the agent's answer" : "Chat";
-    return `<button type="button" class="chat-toggle${standing?.unseen ? " unseen" : ""}${standing?.pending ? " pending" : ""}" data-chat="${escape(key)}" aria-pressed="${open}" aria-label="${escape(title)}" title="${escape(title)}">${ICONS.chat}<span class="swirl" aria-hidden="true"><span></span></span><span class="mark" aria-hidden="true"></span></button>`;
+    return `<button type="button" class="chat-toggle${standing?.unseen ? " unseen" : ""}${standing?.pending ? " pending" : ""}" ${opens}="${escape(key)}" aria-pressed="${open}" aria-label="${escape(title)}" title="${escape(title)}">${ICONS.chat}<span class="swirl" aria-hidden="true"><span></span></span><span class="mark" aria-hidden="true"></span></button>`;
   }
   // The chat's icon, and the chat itself floating from it over what is under it: the icon stays
   // where it is, on the chat's corner, whether it is open or not.
@@ -609,33 +609,17 @@
     if (count > 1) return `<span class="verdict-mark starred" role="img" aria-label="A variant preferred">${ICONS.star}</span>`;
     return "";
   }
-  // What a card's hover says, in plain words: its verdict and when, or what it waits for.
-  function cardTip(item) {
-    const count = variantsOf(item).length;
-    if (item.verdict !== "open") {
-      const [word, means] = VERDICTS[item.verdict] || ["", ""];
-      return tipped(decidedOn(word, item.decided?.moment), means);
-    }
-    if (count > 1 && !preferredOf(item)) return tipped(`${count} variants, none preferred`, "Prefer one to accept it");
-    if (count > 1) return tipped(`${preferredOf(item).name} preferred`, "Not accepted yet");
-    return tipped("Open", "Waiting for your verdict");
-  }
-  // The chat's mark on a card, once its thread holds a word: in the foil while yours waits for its answer.
-  function cardChat(item) {
-    if (!item.thread.some(entry => !entry.kind)) return "";
-    const standing = item.chat || {};
-    const said = standing.pending ? "Your message waits for its answer" : standing.unseen ? "New in the chat" : "Chat";
-    return `<span class="card-chat${standing.pending ? " mine" : ""}${standing.unseen ? " unseen" : ""}" role="img" aria-label="${said}">${ICONS.chat}</span>`;
-  }
+  // The chat's icon on a card, as on a decision's row: a click opens the asset with its chat.
+  const cardChat = item => chatButton(item.ref, item.chat, "data-view-chat");
   // An asset as a card (the grid) or a row (the list): its face, its state at the top right, and a
-  // banner of its time and chat, then as much of its title and description as fits. A click opens it
-  // with its chat.
+  // banner of as much of its title and description as fits, then its time and chat, as a decision's
+  // row has them; its hover holds the whole title and description. A click opens it, without its chat.
   function assetCard(item, layout) {
     const { version, file } = cover(item);
     const description = item.description ? `<span class="description">${titled(item.description)}</span>` : "";
-    return `<div class="asset ${layout}${file?.type === "video" ? " video" : ""}${hitClass(item)}" role="button" tabindex="0" data-key="${escape(item.ref)}" id="item-${escape(item.ref)}" data-view="${escape(item.ref)}" ${cardTip(item)} aria-label="${escape(item.title)}">
+    return `<div class="asset ${layout}${file?.type === "video" ? " video" : ""}${hitClass(item)}" role="button" tabindex="0" data-key="${escape(item.ref)}" id="item-${escape(item.ref)}" data-view="${escape(item.ref)}" ${tipped(item.title, item.description || "")} aria-label="${escape(item.title)}">
       <span class="frame">${face(item, version, file)}</span>${badge(item)}
-      <span class="banner"><span class="meta">${time(item.updated)}${cardChat(item)}</span><span class="words"><span class="title">${titled(item.title)}</span>${description}</span></span></div>`;
+      <span class="banner"><span class="words"><span class="title">${titled(item.title)}</span>${description}</span><span class="meta">${time(item.updated)}${cardChat(item)}</span></span></div>`;
   }
   // A variant's star: grey; the preferred one's filled in the foil. A click prefers it, or takes the
   // preference back.
@@ -1446,6 +1430,8 @@
     if (target.closest("#topics-send")) { ask(); return; }
     if (target.closest("[data-ask-cancel]")) { post("topics/ask/cancel", {}).then(found => { state.ask = found; draw(); }); return; }
     if (target.closest("[data-ask-dismiss]")) { state.dismissed = state.ask?.started; draw(); return; }
+    const opening = target.closest("[data-view-chat]");
+    if (opening) { const item = itemAt(opening.dataset.viewChat); if (item) { view(item); state.chats.add(item.ref); draw(); } return; }
     const chatting = target.closest("[data-chat]");
     if (chatting) { toggleChat(chatting.dataset.chat); return; }
     const sending = target.closest("[data-send]");
@@ -1499,7 +1485,7 @@
     const addressing = target.closest("[data-address-now]");
     if (addressing) { addressNowFor(addressing.dataset.addressNow); return; }
     const viewing = target.closest("[data-view]");
-    if (viewing) { const item = itemAt(viewing.dataset.view); if (item) { view(item); state.chats.add(item.ref); draw(); } return; }
+    if (viewing) { const item = itemAt(viewing.dataset.view); if (item) { view(item); state.chats.delete(item.ref); draw(); } return; }
     const going = target.closest("[data-go]");
     if (going) { state.arrived = null; state.route = itemAt(going.dataset.go)?.ref ?? going.dataset.go; address(state.route); state.arrived = null; draw(); return; }
     if (target.closest(".chat, a, textarea")) return;
