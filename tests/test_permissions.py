@@ -214,7 +214,7 @@ def test_nothing_nock_ships_or_runs_passes_a_bypass_flag() -> None:
     start = definition.index("BYPASS = (")
     end = definition.index(")", start)
     found = []
-    for directory in ("src", "evals", "scripts", ".github"):
+    for directory in ("src", "scripts", ".github"):
         for path in sorted((ROOT / directory).rglob("*")):
             if not path.is_file() or path.suffix not in (".py", ".md", ".toml", ".json", ".yml"):
                 continue

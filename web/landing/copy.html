@@ -89,7 +89,7 @@ Getting started
   <div class="text">
     <span class="label">Step 1</span>
     <h2>Install it in your repository</h2>
-    <p>Inside the repository, run <code>uvx nock init</code> (or <code>pipx run nock init</code>). It vendors nock into <code>.nock/core/</code>, writes <code>.nock/config.toml</code>, a primer CLAUDE.md imports, Claude Code's hooks and permissions, and the skills.</p>
+    <p>Inside the repository, run <code>uvx nock init</code> (or <code>pipx run nock init</code>). It vendors nock into <code>.nock/core/</code>, writes <code>.nock/config.toml</code>, a primer CLAUDE.md imports, the agent's hooks and permissions, and the skills.</p>
   </div>
   <figure class="shot">
     <div class="terminal"><span class="prompt">uvx nock init</span><span class="out">wrote: .nock/core/, .nock/nock, .nock/.gitignore,
@@ -97,6 +97,8 @@ Getting started
 CLAUDE.md, .claude/settings.json,
 .claude/skills/nock-reflect/SKILL.md,
 .claude/skills/nock-triage/SKILL.md,
+.claude/skills/nock-work/SKILL.md,
+.agents/skills/nock-work/SKILL.md,
 .claude/agents/nock-reflect-toolbox.md, …,
 .nock/topics/map.md</span></div>
     <figcaption>What <code>nock init</code> writes, in a fresh repository.</figcaption>
@@ -109,7 +111,7 @@ CLAUDE.md, .claude/settings.json,
     <p>nock is your project's own code now, so it goes in git. Telemetry stays out: <code>.nock/local/</code> is ignored, and never leaves your machine.</p>
   </div>
   <figure class="shot">
-    <div class="terminal"><span class="prompt">git add .nock .claude CLAUDE.md</span><span class="prompt">git commit -m "Add nock"</span><span class="out">[main 3f2a1c9] Add nock</span></div>
+    <div class="terminal"><span class="prompt">git add .nock .claude .agents CLAUDE.md</span><span class="prompt">git commit -m "Add nock"</span><span class="out">[main 3f2a1c9] Add nock</span></div>
     <figcaption>The toolbox is committed; the record of sessions is not.</figcaption>
   </figure>
 </li>
@@ -134,7 +136,7 @@ CLAUDE.md, .claude/settings.json,
   <div class="text">
     <span class="label">Step 4</span>
     <h2>Work as you always do</h2>
-    <p>Start Claude Code and ask for something. Every session reads nock's primer through CLAUDE.md, starts with the project's tools listed once it has some, and is recorded: what you asked, each tool call, what failed, what it cost.</p>
+    <p>Start your coding agent and ask for something. Every session reads nock's primer through CLAUDE.md, starts with the project's tools listed once it has some, and is recorded: what you asked, each tool call, what failed, what it cost.</p>
   </div>
   <figure class="shot">
     <div class="terminal"><span class="who">CLAUDE.md</span><span class="out">@.nock/context.md</span><span class="who">.nock/context.md, the primer</span><span class="out">## nock

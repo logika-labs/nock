@@ -181,7 +181,7 @@ def test_every_skill_and_subagent_nock_installs_points_at_its_brief() -> None:
         for path in PACKAGE.joinpath("briefs").rglob("*.md")
         if path.name == "SKILL.md" or path.parent.name == "agents"
     ]
-    assert len(installed) == 8
+    assert len(installed) == 9
     for path in installed:
         front, _, body = path.read_text()[4:].partition("\n---\n")
         name = path.parent.name if path.name == "SKILL.md" else path.stem
