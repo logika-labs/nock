@@ -88,36 +88,48 @@ filtered by hand every time, are each a tool waiting to be written.
 
 ## Reflection rounds
 
-When a round is due, by default after 15 sessions or 7 days, whichever comes
-first, the session start says so, to the agent and to you. The round is the
-`/nock-reflect` skill, which `nock init` installs, run in a session like any
-other:
+A round is one protocol run once. nock ships three of its own, and a project
+can have more (see [Protocols](#protocols)):
 
-1. **`nock reflect`** starts it, named by its date, and writes what its parts
-   will read into `.nock/local/reflections/DATE/`. Run again while the round
-   is open, it picks that round up and rewrites nothing; a round started
-   after one finished the same day is `DATE-2`.
-2. **Three subagents** run at once:
-   - **the toolbox** reads the work and the telemetry: what you asked for,
-     where the code is going, each tool's calls and failures, the commands
-     agents tried that don't exist, the raw shell work that recurs, and what
-     the last round expected. It adds, changes or retires tools, checks and
-     generators, or changes nothing, when nothing earns a change;
-   - **the map** reads the items submitted and decided since the last round,
-     and every topic, and rewrites the map that consulting reads (see [The map
-     and consulting](#the-map-and-consulting));
-   - **nock** reads the window's numbers beside every earlier round's (the
-     first round's are the baseline), looks behind them, and forms an opinion:
-     what works, what doesn't, what nock should change.
-3. **The report**, `.nock/reflections/DATE/report.md`: what needs you, what
-   changed in the toolbox and the map, and how nock is doing here.
-4. **The summary to share**, `share.md` beside it: the same, abstractly enough
-   that nobody could tell which project it is.
-5. **`nock reflect finish JSON`** requires both and runs nock's checks: the
-   tools load and their examples run, the map's citations hold, and the
-   summary names nothing of the project (no paths, file names, names of the
-   project or its authors, addresses or links). It records the round and
-   commits `.nock/`.
+- **`nock.toolbox`** reads the work and the telemetry: what you asked for,
+  where the code is going, each tool's calls and failures, the commands
+  agents tried that don't exist, the raw shell work that recurs, and what the
+  last round expected. It adds, changes or retires tools, checks and
+  generators, or changes nothing, when nothing earns a change;
+- **`nock.map`** reads the items submitted and decided since its last round,
+  and every topic, and rewrites the map that consulting reads (see [The map
+  and consulting](#the-map-and-consulting));
+- **`nock.fit`** reads the window's numbers beside every earlier round's (the
+  first round's are the baseline), looks behind them, and forms an opinion:
+  what works, what doesn't, what nock should change, and which other rounds
+  would serve the project.
+
+When they are due, by default after 15 sessions or 7 days, whichever comes
+first, the session start says so, to the agent and to you. The
+`/nock-reflect` skill, which `nock init` installs, runs all three at once in
+a session like any other:
+
+1. **`nock reflect nock`** starts a round of each, named by its date, and
+   writes what its agents will read into `.nock/local/reflections/`. Run
+   again while a round is open, it picks it up and rewrites nothing; a round
+   started after one finished the same day is `DATE-2`. It prints, for each,
+   what the lead does: its brief, its agent with its brief and material, the
+   files to write and how to submit.
+2. **Three subagents** run at once, one per round.
+3. **The reports**, `.nock/shared/rounds/<protocol>/DATE/report.md`: what
+   changed in the toolbox and the map, what needs you, and how nock is doing
+   here.
+4. **The summary to share**, the fit round's `share.md`: the same, abstractly
+   enough that nobody could tell which project it is.
+5. **`nock reflect --submit JSON`**, once per round, requires its files and
+   runs its checks: the tools load and their examples run, the map's
+   citations hold, and the summary names nothing of the project (no paths,
+   file names, names of the project or its authors, addresses or links). It
+   records the round beside its files and commits them, with the toolbox or
+   the map it changed.
+
+`nock reflect` alone lists every protocol: whether it can run here, whether
+it is adopted, whether it is due and why, its last round and its skill.
 
 A session that started a round can't end its turn while the round is open:
 nock refuses the stop once, naming what is still missing, and lets the next
@@ -149,10 +161,24 @@ Each change is code, so it is live on the next call, and it is held to the
 same gate as everything else: its examples run in `nock check`, so a tool that
 breaks fails the gate instead of quietly misleading the next agent.
 
-Rounds come in kinds. nock's own is the default; a [Logika](https://logika.host)
-project has a second, which writes the rules that catch bugs (see [nock in
-Logika](#nock-in-logika)). Each kind keeps its rounds apart, so neither moves
-the other's window.
+## Protocols
+
+A protocol is a folder, `rounds/<namespace>/<protocol>/`: `round.toml` says
+what it is for, when it is due, what its lead and agents read (each material
+from a command, a topic, the commits that touched some paths, or a function
+in `material.py`), what they write and what its end checks and commits;
+`lead.md` is the lead's brief and `agents/NAME.md` each agent's. nock ships
+its own and Logika's (see [nock in Logika](#nock-in-logika)); a project adds
+its own, or overrides a shipped one by name, in `.nock/rounds/`. `nock init`
+installs a skill for each adopted one outside nock's (`/team-docs` runs
+`nock reflect team.docs`) and one for a namespace with two or more.
+
+A protocol is adopted always, where its files are, or once you accept the
+fit round's recommendation of it, a decision in the topic `rounds`. Its due
+rules (`sessions`, `days`, `changed` files, `first`) are its manifest's, and
+`reflect.<namespace>.<key>` or `reflect.<namespace>.<protocol>.<key>` in the
+settings override them. Each protocol keeps its own rounds, so none moves
+another's window.
 
 ## What nock shares
 
@@ -179,8 +205,9 @@ round, opening the studio, or your first verdict on an item. Your answer is
 next one would carry, even before you answer, so you see what you are asked
 about.
 
-A round's summary goes only with `nock share` and your yes. A fresh agent first
-vets it: it reads the project to learn its names, people, partners and
+A round's summary goes only with your yes: submitting the fit round sends it
+when `share = true`, and otherwise `nock share` sends it once you say so. A
+fresh agent first vets it: it reads the project to learn its names, people, partners and
 customers, and rewrites whatever would identify it. nock scrubs the result
 again and shows exactly what would be sent. The makers alone read it; nothing
 is published.

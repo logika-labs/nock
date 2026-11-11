@@ -62,7 +62,7 @@ def test_only_claude_code_is_wired_where_no_other_harness_is_found(repository: P
         "CLAUDE.md",
         ".claude/settings.json",
         ".claude/skills/nock-work/SKILL.md",
-        ".claude/agents/nock-reflect-toolbox.md",
+        ".claude/agents/nock-toolbox.md",
     } <= listed
     assert not any(path.startswith((".agents", ".codex", ".cursor", "AGENTS")) for path in listed)
     assert "(updated)" not in "\n".join(said), "everything is new"

@@ -15,12 +15,13 @@ from typing import Any
 import pytest
 
 from nock.hooks import HookRunner
-from nock.logika import LogikaRound
 from nock.project import Project
-from nock.reflect import Reflection, Rounds
+from nock.reflect import Reflection
+from nock.rounds import Protocol, named
 
 from .conftest import git, nock
-from .test_topics import judge, submit
+from .test_topics import judge
+from .test_topics import submit as decide
 
 LEDGER: dict[str, Any] = {
     "ledger": "shop",
@@ -44,6 +45,7 @@ LEDGER: dict[str, Any] = {
     "map": {"components": [{"name": "shop", "paths": ["src"], "instrumented": True}]},
 }
 RECORD = {
+    "protocol": "logika.rules",
     "summary": "Refunds are positive.",
     "changes": [
         {
@@ -97,20 +99,27 @@ def write_ledger(project: Project, ledger: dict[str, Any]) -> None:
     (project.root / "logika.json").write_text(json.dumps(ledger, indent=2) + "\n")
 
 
-def start(project: Project) -> dict[str, Any]:
-    result = nock(project.root, "reflect", "logika", "--json")
+def start(project: Project, name: str = "logika") -> dict[str, Any]:
+    """Start the logika rounds (or the one NAME names): each by its protocol."""
+    result = nock(project.root, "reflect", name, "--json")
     assert result.returncode == 0, result.stderr
-    return json.loads(result.stdout)
+    started = json.loads(result.stdout)
+    return {begun["protocol"]: begun for begun in started.get("rounds", [started])}
 
 
-def finish(project: Project, record: dict[str, Any]) -> subprocess.CompletedProcess[str]:
-    return nock(project.root, "reflect", "logika", "finish", json.dumps(record))
+def submit(project: Project, record: dict[str, Any]) -> subprocess.CompletedProcess[str]:
+    return nock(project.root, "reflect", "--submit", json.dumps(record))
+
+
+def protocol(project: Project, name: str) -> Protocol:
+    (found,) = named(Project.discover(project.root), name)
+    return found
 
 
 def test_a_logika_round_needs_a_ledger_and_the_logika_cli(project: Project, on_path: Path) -> None:
     refused = nock(project.root, "reflect", "logika")
     assert refused.returncode == 42 and "not a Logika project" in refused.stderr
-    assert not (project.root / ".claude" / "skills" / "nock-reflect-logika").exists()
+    assert not (project.root / ".claude" / "skills" / "logika").exists()
     assert json.loads(nock(project.root, "status", "--json").stdout)["rounds"] == {}
     write_ledger(project, LEDGER)
     on_path.unlink()
@@ -118,18 +127,31 @@ def test_a_logika_round_needs_a_ledger_and_the_logika_cli(project: Project, on_p
     assert refused.returncode == 42 and "`logika` is not on PATH" in refused.stderr
 
 
-def test_init_installs_the_logika_skill_in_a_logika_project(logika: Project) -> None:
-    skill = logika.root / ".claude" / "skills" / "nock-reflect-logika"
-    lead = (skill / "SKILL.md").read_text()
-    assert lead.startswith("---\nname: nock-reflect-logika\n")
-    assert lead.endswith("Run `.nock/nock docs reflection.logika.lead` and do what it says.\n")
-    assert {path.name for path in skill.iterdir()} == {"SKILL.md"}
-    rules = (logika.root / ".claude" / "agents" / "nock-logika-rules.md").read_text()
+def test_init_installs_the_logika_skills_in_a_logika_project(logika: Project) -> None:
+    skills = logika.root / ".claude" / "skills"
+    for name, target in (
+        ("logika", "logika"),
+        ("logika-rules", "logika.rules"),
+        ("logika-analytics", "logika.analytics"),
+    ):
+        lead = (skills / name / "SKILL.md").read_text()
+        assert lead.startswith(f"---\nname: {name}\n")
+        assert lead.endswith(f"Run `.nock/nock reflect {target}` and do what it says.\n")
+        assert {path.name for path in (skills / name).iterdir()} == {"SKILL.md"}
+    assert not (skills / "nock-reflect-logika").exists()
+    agents = logika.root / ".claude" / "agents"
+    rules = (agents / "logika-rules.md").read_text()
+    assert rules.startswith("---\nname: logika-rules\n")
     assert rules.endswith("Run `.nock/nock docs reflection.logika.rules` and do what it says.\n")
+    analytics = (agents / "logika-analytics.md").read_text()
+    assert analytics.endswith(
+        "Run `.nock/nock docs reflection.logika.analytics` and do what it says.\n"
+    )
+    assert "reflect --submit" in nock(logika.root, "docs", "reflection.logika.lead").stdout
 
 
 def test_the_material_says_what_the_ledger_holds_and_what_was_decided(logika: Project) -> None:
-    ref = submit(
+    ref = decide(
         logika.root,
         {
             "title": "Refunds never exceed the charge",
@@ -138,7 +160,11 @@ def test_the_material_says_what_the_ledger_holds_and_what_was_decided(logika: Pr
         topic="logika",
     )
     judge(logika.root, ref, "rejected", "110%")
-    started = start(logika)
+    begun = start(logika)
+    assert set(begun) == {"logika.rules", "logika.analytics"}
+    started = begun["logika.rules"]
+    assert started["agents"][0]["type"] == "logika-rules"
+    assert started["agents"][0]["one per"] == "each directory logika map shows gaps in"
     material = Path(started["material"]["rules"]).read_text()
     assert "3 events (1 spans; 1 with `validate`, 0 with paths, 1 with a timeout)" in material
     assert 'checkout,span,order_id amount,"amount > 0",-,2m,on,-,-' in material
@@ -154,8 +180,10 @@ def test_the_material_says_what_the_ledger_holds_and_what_was_decided(logika: Pr
     assert (
         f"- [{ref}] done, rejected: Refunds never exceed the charge — the owner: 110%" in material
     )
-    assert started["write"] == [".nock/reflections/logika/" + started["round"] + "/report.md"]
-    analytics = Path(started["material"]["analytics"]).read_text()
+    assert started["write"] == [
+        ".nock/shared/rounds/logika.rules/" + started["round"] + "/report.md"
+    ]
+    analytics = Path(begun["logika.analytics"]["material"]["analytics"]).read_text()
     assert "3 events, 3 params (0 identities, 0 dimensions), 0 funnels" in analytics
     assert "order_id,str,-,-,-,checkout refund" in analytics
     assert "Instrument the shop" in analytics and "Refunds never exceed the charge" in analytics
@@ -175,7 +203,8 @@ def test_the_analytics_part_reads_what_is_measured(logika: Project) -> None:
     ]
     ledger["views"] = [{"name": "Checkout", "panels": [{"event": "checkout", "by": "plan"}]}]
     write_ledger(logika, ledger)
-    analytics = Path(start(logika)["material"]["analytics"]).read_text()
+    started = start(logika, "logika.analytics")["logika.analytics"]
+    analytics = Path(started["material"]["analytics"]).read_text()
     assert "(1 identities, 1 dimensions), 1 funnels, 1 milestones, 1 views" in analytics
     assert "user_id,str,yes,-,yes,checkout signup" in analytics
     assert "plan,str,-,yes,-,checkout" in analytics
@@ -187,31 +216,33 @@ def test_the_analytics_part_reads_what_is_measured(logika: Project) -> None:
 def test_a_logika_round_finishes_and_commits_the_ledger_apart_from_nock_s_rounds(
     logika: Project,
 ) -> None:
-    assert finish(logika, RECORD).returncode == 42
-    started = start(logika)
-    refused = finish(logika, RECORD)
+    assert submit(logika, RECORD).returncode == 42
+    started = start(logika)["logika.rules"]
+    refused = submit(logika, RECORD)
     assert refused.returncode == 42 and "write report.md" in refused.stderr
     (logika.root / started["write"][0]).write_text("# The round\n\nRefunds are positive.\n")
     (logika.root / "logika.json").write_text("{ not json")
-    broken = finish(logika, RECORD)
+    broken = submit(logika, RECORD)
     assert broken.returncode == 1 and "logika.json does not parse" in broken.stdout
     ledger = copy.deepcopy(LEDGER)
     ledger["events"][1]["validate"] = "amount > 0"
     write_ledger(logika, ledger)
-    finished = finish(logika, RECORD)
+    finished = submit(logika, RECORD)
     assert finished.returncode == 0, finished.stdout + finished.stderr
     assert git(logika.root, "status", "--porcelain") == ""
     assert git(logika.root, "log", "-1", "--format=%s") == (
-        f"Logika round {started['round']}: Refunds are positive."
+        f"logika.rules round {started['round']}: Refunds are positive."
     )
     assert "logika.json" in git(logika.root, "show", "--name-only", "--format=", "HEAD")
-    (record,) = LogikaRound(logika).rounds.all()
+    (record,) = protocol(logika, "logika.rules").rounds.all()
     assert record["ledger_before"]["validated"] == 1 and record["ledger"]["validated"] == 2
     assert record["changes"][0]["tested"].startswith("quiet in the noise check")
     assert "tested" not in record["changes"][1]
-    assert Rounds(logika).all() == [] and Reflection(logika).window().since is None
+    assert protocol(logika, "logika.analytics").rounds.all() == []
+    assert protocol(logika, "nock.fit").rounds.all() == []
+    assert Reflection(logika).window().since is None
 
-    again = start(logika)
+    again = start(logika, "logika.rules")["logika.rules"]
     assert again["round"] == f"{started['round']}-2"
     material = Path(again["material"]["rules"]).read_text()
     assert "# The last logika round" in material
@@ -227,18 +258,18 @@ def test_a_logika_round_is_offered_once_a_week_never_run(
 
     first = said("s1")
     assert "no logika round has run, and the ledger declares 3 events" in first
-    assert "`/nock-reflect-logika`" in first and "never start it unasked" in first
+    assert "`/logika`" in first and "never start it unasked" in first
     assert "logika" not in said("s2")
     standing = json.loads(nock(logika.root, "status", "--json").stdout)["rounds"]["logika"]
     assert standing["due"].startswith("no logika round has run") and standing["skill"]
 
-    started = start(logika)
+    started = start(logika, "logika.rules")["logika.rules"]
     (logika.root / started["write"][0]).write_text("# The round\n")
-    assert finish(logika, RECORD).returncode == 0
-    assert LogikaRound(logika).due() == ""
+    assert submit(logika, RECORD).returncode == 0
+    assert protocol(logika, "logika.rules").due() == ""
     local = logika.root / ".nock" / "local" / "config.toml"
     local.write_text(local.read_text() + "[reflect.logika]\ndays = 0\n")
-    assert LogikaRound(Project.discover(logika.root)).due() == ""
+    assert protocol(logika, "logika.rules").due() == ""
     ledger = copy.deepcopy(LEDGER)
     ledger["params"]["reason"] = {"type": "str"}
     write_ledger(logika, ledger)
@@ -246,7 +277,7 @@ def test_a_logika_round_is_offered_once_a_week_never_run(
     monkeypatch.setenv("GIT_COMMITTER_DATE", "2099-01-01T00:00:00Z")
     git(logika.root, "commit", "-qam", "Declare the refund's reason")
     assert (
-        LogikaRound(Project.discover(logika.root))
+        protocol(logika, "logika.rules")
         .due()
         .startswith("a logika round is due (1 commits changed")
     )

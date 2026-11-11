@@ -15,12 +15,13 @@ from nock.chats import ADDRESSER, CHATTER, NAMER
 from nock.consult import ROLE as CONSULTANT
 from nock.dispatch import ARGUMENT_LIMIT, BYPASS, SEATS, Dispatcher
 from nock.project import Project
-from nock.reflect import Reflection
+from nock.rounds import named
 from nock.share import ROLE as SHARER
 from nock.topics import TIDIER
 
 from .conftest import FAKE_AGENT, nock, write_tool
-from .test_telemetry_and_reflection import RECORD, finish
+from .test_telemetry_and_reflection import RECORD
+from .test_telemetry_and_reflection import submit as submit_round
 from .test_topics import submit
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -243,12 +244,14 @@ def test_a_round_s_parts_are_subagents_with_only_the_tools_they_need(project: Pr
         for path in agents.glob("*.md")
     }
     assert {name: found and found.group(1) for name, found in tools.items()} == {
-        "nock-reflect-toolbox": "Read, Grep, Glob, Edit, Write, Bash",
-        "nock-reflect-map": "Read, Grep, Glob, Edit, Bash",
-        "nock-reflect-nock": "Read, Grep, Glob, Bash",
+        "nock-toolbox": "Read, Grep, Glob, Edit, Write, Bash",
+        "nock-map": "Read, Grep, Glob, Edit, Bash",
+        "nock-fit": "Read, Grep, Glob, Bash",
     }
-    lead = nock(project.root, "docs", "reflection.lead").stdout
-    assert all(f"`{name}`" in lead for name in tools)
+    started = json.loads(nock(project.root, "reflect", "nock", "--json").stdout)
+    for begun in started["rounds"]:
+        (agent,) = begun["agents"]
+        assert agent["type"] in tools and f"`{agent['type']}`" in begun["brief"]
 
 
 @pytest.mark.parametrize("option", ["--output=leak.txt", "--outp=leak.txt", "--ou=leak.txt"])
@@ -266,10 +269,11 @@ def test_git_that_would_write_a_file_is_refused(
 def test_a_sharer_refused_its_way_says_what_was_refused(
     project: Project, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    started = Reflection(project).start()
+    (fit,) = named(project, "nock.fit")
+    started = fit.start()
     for path, text in zip(started["write"], ("# Report\n", "Early days.\n"), strict=True):
         (project.root / path).write_text(text)
-    assert finish(project, RECORD).returncode == 0
+    assert submit_round(project, RECORD).returncode == 0
     monkeypatch.setenv("FAKE_SHARE", "nothing")
     monkeypatch.setenv("FAKE_TRY", json.dumps(["curl", "https://example.com"]))
     result = nock(project.root, "share")

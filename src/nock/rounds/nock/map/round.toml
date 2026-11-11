@@ -1,0 +1,26 @@
+title = "Map"
+summary = "Keep the map of topics, .nock/shared/map.md."
+relevant = "Every project with nock."
+adopted = "always"
+
+[due]
+sessions = 15
+days = 7
+
+[material.knowledge]
+python = "knowledge"
+
+[lead]
+reads = ["knowledge"]
+writes = ["report.md"]
+
+[[agents]]
+name = "map"
+reads = ["knowledge"]
+changes = [".nock/shared/map.md"]
+
+[end]
+checks = ["nock-map"]
+quick = ["nock-map"]
+commit = [".nock/shared/map.md"]
+kinds = ["change", "other"]

@@ -13,9 +13,9 @@ from typing import TYPE_CHECKING, Any
 
 from nock.generators import Generators
 from nock.inbox import Inbox
-from nock.kinds import offered
 from nock.reflect import Reflection
 from nock.releases import Updates
+from nock.rounds import Protocol, protocols, skill_of
 from nock.sessions import Sessions
 from nock.share import Sharing
 from nock.shared import Shared
@@ -100,6 +100,31 @@ def nudges(project: Project, session: str | None) -> list[str]:
     return [text for text in found if text]
 
 
+def offered(project: Project, every: list[Protocol]) -> dict[str, Any]:
+    """The other namespaces' rounds that can run here and are adopted, each
+    offered when one of its protocols is due: never run unasked."""
+    found: dict[str, Any] = {}
+    for protocol in every:
+        namespace = protocol.manifest.namespace
+        if namespace == "nock" or protocol.unavailable() or not protocol.adopted():
+            continue
+        skill = skill_of(namespace)
+        offer = found.setdefault(
+            namespace,
+            {
+                "due": None,
+                "last": None,
+                "title": f"{namespace} round",
+                "skill_name": skill,
+                "skill": (project.here / ".claude" / "skills" / skill / "SKILL.md").is_file(),
+            },
+        )
+        offer["due"] = offer["due"] or protocol.due() or None
+        last = protocol.since
+        offer["last"] = max(filter(None, [offer["last"], last]), default=None)
+    return found
+
+
 class Standing:
     def __init__(self, project: Project) -> None:
         self.project = project
@@ -108,9 +133,12 @@ class Standing:
         reflection = Reflection(self.project)
         window = reflection.window()
         topics = Topics(self.project)
+        every = protocols(self.project)
+        own = [protocol for protocol in every if protocol.manifest.namespace == "nock"]
+        why = next((reason for protocol in own if (reason := protocol.due())), "")
         return {
             "reflection": {
-                "due": reflection.due() or None,
+                "due": f"a reflection round is due ({why})" if why else None,
                 "last": window.since,
                 "sessions_since": len(window.sessions),
                 "days_since": round(reflection.days(window), 1),
@@ -128,14 +156,7 @@ class Standing:
             # What the session asking might do next: only `nock status` asks.
             **({"nudges": nudges(self.project, self.project.current_session())} if nudging else {}),
             # The other kinds of round that can run here, each offered when due.
-            "rounds": {
-                kind.kind: {
-                    **(kind.standing() or {}),
-                    "title": kind.title,
-                    "skill_name": kind.skill,
-                }
-                for kind in offered(self.project)
-            },
+            "rounds": offered(self.project, every),
         }
 
     def lines(self, standing: dict[str, Any]) -> list[str]:

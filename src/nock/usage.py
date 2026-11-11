@@ -24,10 +24,10 @@ from typing import TYPE_CHECKING, Any
 from nock.checks import Checks
 from nock.errors import PreconditionError
 from nock.git import Git, GitError
-from nock.kinds import kinds
 from nock.logika import LEDGER
 from nock.reflect import Reflection, Window, tool_rows
 from nock.releases import VERSION
+from nock.rounds import protocols
 from nock.sessions import Sessions
 from nock.shared import SETTINGS, Shared, by_for
 from nock.tools import BUILT_IN_SOURCE
@@ -270,7 +270,9 @@ class Usage:
                 ),
                 "load_failures": len(registry.failures),
             },
-            "rounds": {kind.kind: len(kind.rounds.all()) for kind in kinds(project)},
+            "rounds": {
+                protocol.name: len(protocol.rounds.all()) for protocol in protocols(project)
+            },
         }
 
     def due(self) -> bool:

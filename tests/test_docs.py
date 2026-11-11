@@ -11,6 +11,7 @@ from pathlib import Path
 
 import pytest
 
+from nock import rounds
 from nock.docs import (
     BRIEF_LIMIT,
     BRIEFS,
@@ -174,22 +175,32 @@ def test_the_briefs_point_only_at_terms_and_the_toolbox_brief_at_the_framework()
 def test_every_skill_and_subagent_nock_installs_points_at_its_brief() -> None:
     """Their text lives in `nock docs`, so it always matches the vendored core
     and an upgrade never rewrites a skill: each keeps only its front matter
-    and one line."""
+    and one line. A round's agents are its protocol's, named when installed."""
     docs = Docs()
-    installed = [
-        path
-        for path in PACKAGE.joinpath("briefs").rglob("*.md")
-        if path.name == "SKILL.md" or path.parent.name == "agents"
-    ]
-    assert len(installed) == 9
-    for path in installed:
+    skills = list(PACKAGE.joinpath("briefs").rglob("SKILL.md"))
+    agents = list(PACKAGE.joinpath("rounds").glob("*/*/agents/*.md"))
+    assert (len(skills), len(agents)) == (2, 5)
+    for path in skills + agents:
         front, _, body = path.read_text()[4:].partition("\n---\n")
-        name = path.parent.name if path.name == "SKILL.md" else path.stem
-        assert front.startswith(f"name: {name}\ndescription: "), path
+        named = f"name: {path.parent.name}\n" if path.name == "SKILL.md" else ""
+        assert front.startswith(f"{named}description: "), path
         pointer = re.fullmatch(
             r"Run `\.nock/nock docs ([a-z.-]+)` and do what it says\.", body.strip()
         )
         assert pointer and docs.find(pointer.group(1)), path
+
+
+def test_every_shipped_protocol_has_its_lead_s_brief_and_one_for_each_agent() -> None:
+    manifests = rounds.manifests(None)
+    assert set(manifests) == {
+        "nock.toolbox", "nock.map", "nock.fit", "logika.rules", "logika.analytics"
+    }  # fmt: skip
+    for manifest in manifests.values():
+        assert (manifest.folder / rounds.LEAD).read_text().startswith("# "), manifest.name
+        names = {agent["name"] for agent in manifest.data["agents"]}
+        assert {path.stem for path in (manifest.folder / "agents").glob("*.md")} == names
+        for source in manifest.data.get("material", {}).values():
+            assert len(source) == 1 and set(source) <= {"python", "command", "topic", "git"}
 
 
 def test_a_brief_is_printed_whole_however_long(project: Project) -> None:

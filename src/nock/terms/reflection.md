@@ -1,7 +1,7 @@
 ---
 term: reflection
 aliases: [reflect, round, rounds]
-description: A reflection round: the toolbox, the map and nock, judged and improved
+description: Rounds: protocols that judge and improve the project, one at a time or a namespace at once
 ---
 
-A round is the `/nock-reflect` skill, due after 15 sessions or 7 days, whichever comes first. `.nock/nock reflect` writes its material (again, it picks up the round under way, rewriting nothing; a later one that day is `DATE-2`); three subagents improve the toolbox, keep the map and judge nock; the lead writes `report.md` and `share.md`; `reflect finish JSON` runs nock's checks and records the round. Each change says what it should do by the next round, which holds it to that.
+A round is one protocol run once (`.nock/nock docs reflection.protocols`). `.nock/nock reflect` lists them: available here, adopted, due and why, the last run, the skill. nock's own, `nock.toolbox`, `nock.map` and `nock.fit`, are due after 15 sessions or 7 days; `/nock-reflect` runs them at once (`reflect nock`). Each start prints the lead's brief, its agents and the files to write; `reflect --submit JSON` records it. Each change says what it should do by the next round, which holds it to that.

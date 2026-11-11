@@ -378,9 +378,11 @@ class HookRunner:
         session = self.payload.get("session_id")
         if not isinstance(session, str) or self.payload.get("stop_hook_active") is True:
             return []
-        from nock.kinds import kinds
+        from nock.rounds import protocols
 
-        return [said for kind in kinds(self.project) if (said := kind.left_open(session))]
+        return [
+            said for protocol in protocols(self.project) if (said := protocol.left_open(session))
+        ]
 
     def topics_unstated(self) -> list[str]:
         """Once a session: the topics it wrote to (itself or through its

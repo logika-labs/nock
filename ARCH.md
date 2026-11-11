@@ -52,12 +52,16 @@ src/nock/
   prices.py          Prices: LiteLLM's public table, cached daily, for API-equivalent cost
 
   # the loop
-  reflect.py         Round (a kind of round: start, finish, its checks, a round left open),
-                     Rounds; Reflection, nock's own kind (due, metrics), and what each part
-                     reads: Material (the toolbox), Knowledge (the map), Evidence (nock itself)
-  logika.py          the `logika` kind: Ledger (logika.json read and counted), LogikaRound,
-                     and what its two parts read: Material (rules), Analytics
-  kinds.py           KINDS: the kinds of round, the default first; adding one is an entry here
+  rounds.py          the registry of protocols (shipped, then `.nock/rounds/`), Protocol: whether
+                     it can run and is adopted, when it is due, its materials, a round started,
+                     picked up, left open and submitted; the round's commit
+  rounds/            the shipped protocols, a folder each: nock/toolbox, nock/map, nock/fit,
+                     logika/rules, logika/analytics (round.toml, lead.md, agents/, material.py)
+  reflect.py         Rounds (a protocol's records and scratch), the Record schema, Reflection
+                     (nock's window and its metrics, over nock.fit's rounds), and the material
+                     builders: Material (the toolbox), Knowledge (the map), Evidence (fit)
+  logika.py          Ledger (logika.json read and counted), Logika (where its rounds can run,
+                     when due, the ledger's problems), and its rounds' material: Material, Analytics
   records.py         the file kinds of `.nock/shared/`: each event's schema by where it lives
                      (topic, decision, asset), decision.json, assets.json, event file names
   shared.py          Shared, the store: its root, media and committer; `settle`, the write
@@ -112,19 +116,14 @@ src/nock/
   docs.py            Docs: the terms of `nock docs`, parsed and validated; the closest to a miss
   terms/             one article per term (`tools.caching.md`): front matter term, aliases,
                      description; at most 500 characters. The briefs point at the terms
-    briefs/          the long texts the installed skills and subagents follow:
-                     reflection.lead and its parts reflection.toolbox, .map, .nock;
-                     reflection.logika.lead and its parts .rules, .analytics;
+    briefs/          the long texts the installed skills and subagents follow: the
+                     rounds' agents reflection.toolbox, .map, .nock (fit's); the logika
+                     rounds' lead reflection.logika.lead and agents .rules, .analytics;
                      topics.triage; work and work.subagent (the orchestrator, and what it dispatches)
     guides/          the documentation for people: a few long essays (guide.why, guide.review, …)
                      and the reference (guide.commands), nock.dev's docs built from them; at most
                      16,000 characters, printed whole
   briefs/
-    nock-reflect/    the `/nock-reflect` skill (SKILL.md) and its three parts' subagent
-                     types (agents/): each its front matter and one line pointing at
-                     its brief in `nock docs`
-    nock-reflect-logika/  the `/nock-reflect-logika` skill and its two parts' subagent types,
-                     installed in Logika projects only; pointers likewise
     nock-triage/     the `/nock-triage` skill, a pointer to `topics.triage`
     nock-work/       the `/nock-work` skill, a pointer to `work`, in `.agents/skills/` too
                      where Codex is found
@@ -745,82 +744,90 @@ with only the tools its part needs.) It:
 
 ### Reflection
 
-Rounds come in kinds: `kinds.KINDS` maps each name to a `reflect.Round`
-subclass, which says its skill, whether its skill is installed in a
-repository (`wanted`), where it can run (`unavailable`) and when it is due,
-what its lead reads (`begin`), the files the lead writes, the nock checks
-its end runs (`checks`, and the `quick` ones for a round left open) and its
-record's own (`problems`), what the record keeps (`kept`), and what is
-committed beside `.nock/` (`also`). `Round.start` and `Round.finish` do the
-rest the same for every kind: name the round by date, keep `round.json`
-(with the sessions that started it), require the files, run the checks,
-write `record.json`, commit. `builtin` makes the commands from the
-registry: `reflect` (the default kind) and `reflect finish`, and for each
-other kind `reflect KIND` and `reflect KIND finish` — a command named like
-its group is the group's default (`commands.Group.default`), and `finish`
-is reserved. The Stop hook refuses, once (never when `stop_hook_active`),
-the end of a turn of a session that started a round still open, with
-`Round.left_open`: the files unwritten, else what the quick checks find,
-and the finish to run.
+A round is one protocol run once. A protocol is a folder
+`rounds/<namespace>/<protocol>/` (`rounds.manifests`: the shipped ones in
+`nock/rounds/`, then the project's `.nock/rounds/`, which override by name):
+`round.toml` (title, summary, relevant, `requires` files and commands,
+`adopted` — always, `when-files`, or recommended — `[due]`,
+`[material.NAME]` with one source of python, command, topic or git, `[lead]`
+reads, writes and `share`, `[[agents]]` with name, reads, changes and
+`fan_out`, `[end]` checks, quick, commit and kinds), `lead.md`,
+`agents/NAME.md`, and `material.py` for material no command gives. Its
+functions are the `python` materials and, where a protocol needs them,
+hooks `rounds.Protocol` calls: `unavailable`, `due`, `begun` (kept in
+`round.json`), `kept` (kept in the record) and `problems` (the end's own).
 
-nock's own kind is the `/nock-reflect` skill in an ordinary session. `nock init`
-renders `briefs/nock-reflect/` into `.claude/skills/nock-reflect/`, a pointer
-at `reflection.lead`; each part's subagent points at its brief
-(`reflection.toolbox`, `reflection.map`, `reflection.nock`), and the
-toolbox brief names the `nock docs` terms the part reads before writing.
+`rounds.Protocol` does the rest the same for every protocol. `unavailable`
+names a required file or command missing; `adopted` reads the manifest, or
+for a recommended protocol an accepted decision in the topic `rounds`
+titled with its name (the fit round's lead records them). `setting(key)`
+reads `reflect.<namespace>.<protocol>.<key>`, then
+`reflect.<namespace>.<key>`, then the manifest's `[due]`; `due` says why:
+never run (`first`), `days` since the last with `changed` paths committed
+since, or `sessions` or `days` over the sessions since the last. `start`
+names the round by date (`Rounds.new_name`, or picks up `Rounds.current`),
+writes each material into `.nock/local/reflections/<name>/DATE/` with
+`round.json` (the sessions that started it), and returns what the lead
+does: its brief, each agent's subagent type (`<namespace>-<protocol>` for a
+protocol's one agent, else with `-<agent>` after it), brief and material,
+the files to write in `.nock/shared/rounds/<name>/DATE/`, and the submit.
+`submit` checks the changes' kinds, requires the files, runs the end's
+checks, writes `record.json` beside them, and commits the manifest's
+`commit` paths in the working tree and the record in the main checkout.
 
-1. **Start.** `nock reflect` catches up on transcripts
-   (`Sessions.catch_up`), names the round by date (`Rounds.new_name`, or the
-   unfinished `Rounds.current`), computes `Reflection.metrics` for the
-   window, and writes `round.json` and three material files in
-   `.nock/local/reflections/DATE/`:
-   - `process.md`, `reflect.Material`: the human's prompts, the commits and
-     the areas they touch, the last round's `expect` lines beside each
-     tool's numbers now and in its snapshot; then per-tool calls, failures by
-     kind, duration, bytes, capping, caching and retire candidates below
-     ½·log₁₀(total calls), unknown commands, Bash commands grouped by
-     `shape()`, the files read most, the sessions;
-   - `knowledge.md`, `reflect.Knowledge`: the items changed since the
-     window opened, every topic with its items in a line, the map;
-   - `nock.md`, `reflect.Evidence`: the window's metrics beside every
-     earlier round's, the first being the baseline.
-2. **The parts.** The lead runs three subagents on them, and writes
-   `report.md` and `share.md` in `.nock/reflections/DATE/`.
-3. **Finish.** `nock reflect finish JSON` is checked against the `Record`
-   TypedDict (summary, changes, verdicts, notes); requires both files; runs
-   `ROUND_CHECKS` (`nock-tools`, `nock-generators`, `nock-map`,
-   `nock-share`); writes `record.json` with the window, the metrics, the
-   per-tool snapshot and `shared: null`; and commits `.nock/` (and the main
-   checkout's topics, from a worktree).
+`builtin.reflect` is one command: bare, every protocol's `standing`; NAME
+starts a protocol, or every adopted one of a namespace at once; `--submit
+JSON` checks the record against the `Record` TypedDict (protocol, summary,
+changes, verdicts, notes) and hands it to its protocol, then sends the fit
+round's summary when `share` is true (`share_with_makers`; a send that
+fails leaves the round recorded and says so). The Stop hook refuses, once
+(never when `stop_hook_active`), the end of a turn of a session that
+started a round still open, with `Protocol.left_open`: the files unwritten,
+else what the quick checks find, and the submit to run.
 
-`Rounds` reads `.nock/reflections/*/record.json`. Rounds are directories named by date, so records from
-different machines merge as plain files. The next round's window opens at
-the latest one's `finished`.
+`setup.Installer.install_rounds` installs a skill per namespace of nock's
+(`/nock-reflect`, `reflect nock`), per other namespace with two or more
+adopted protocols (`/logika`) and per adopted protocol outside nock's
+(`/logika-rules`), each a single line naming its `reflect`, and each
+adopted protocol's agents into `.claude/agents/`, their name added to the
+front matter; it removes the skills and subagents of the kinds of round
+that came before.
 
-`Reflection.due()` is the cheap check that SessionStart runs. A round is due
-after `SESSIONS` (15) sessions or `DAYS` (7) days since the last
-round, whichever comes first, given at least one session.
+nock's own protocols are `nock.toolbox` (material `process`,
+`reflect.Material`: the human's prompts, the commits and the areas they
+touch, the last round's `expect` lines beside each tool's numbers now and in
+its snapshot; then per-tool calls, failures by kind, duration, bytes,
+capping, caching and retire candidates below ½·log₁₀(total calls), unknown
+commands, Bash commands grouped by `shape()`, the files read most, the
+sessions; its record keeps the per-tool snapshot; its end runs `nock-tools`
+and `nock-generators`), `nock.map` (`knowledge`, `reflect.Knowledge`: the
+items changed since its last round, every topic with its items in a line,
+the map; `nock-map`) and `nock.fit` (`evidence`, `reflect.Evidence`: the
+window's metrics beside every earlier fit round's, the first being the
+baseline; `catalogue`, every protocol with its standing; its record keeps
+the metrics and `shared`; `nock-share`). Each is due after 15 sessions or 7
+days, given at least one session. nock's window (`Reflection.window`, for
+the metrics, `nock query stats` and the usage report) opens at the latest
+fit round's `finished`. Rounds are directories named by date, so records
+from different machines merge as plain files.
 
-**The logika kind.** `logika.LogikaRound` keeps its rounds in
-`.nock/reflections/logika/` (and `.nock/local/reflections/logika/`), where
-nock's `*/record.json` never sees them. It can run only when `logika.json`
-is in the working tree and `logika` on PATH, and its skill is installed
-only where `logika.json` is. Its `due` — never run while the ledger
-declares events, or `reflect.logika.days` after the last with commits to
-`logika.json` since — goes into `status.Standing` as an offer (`rounds`),
-and the session start says it at most once a week (`nudged` keys
-`KIND:LAST:WEEK`), as for any kind other than the default. `begin` writes
-its two parts' material from the ledger, git and the items of the
-`logika` topic: `rules.md` (`logika.Material`) and `analytics.md`
-(`logika.Analytics`: params and their flags, funnels, milestones, views);
-the `reflection.logika.rules` and `reflection.logika.analytics` terms are
-the parts' briefs. The rules
+**The logika protocols.** `logika.rules` and `logika.analytics` require
+`logika.json` in the working tree and `logika` on PATH (`Logika.unavailable`),
+are adopted where the ledger is, and are due (`Logika.due`) when never run
+while the ledger declares events, or `reflect.logika.days` (30) after the
+last with commits to `logika.json` since; `status.Standing` offers them
+(`rounds`), and the session start says so at most once a week (`nudged`
+keys `KIND:LAST:WEEK`). Their material comes from the ledger, git and the
+items of the `logika` topic: `rules.md` (`logika.Material`) and
+`analytics.md` (`logika.Analytics`: params and their flags, funnels,
+milestones, views); `reflection.logika.lead` is the lead's guide and
+`reflection.logika.rules` and `.analytics` the agents' briefs. The rules
 material lists each event's `risks` (`concern.risk` by its evidence params,
 or ruled out); the round's work list is `logika map`, and the lead
-dispatches a rules part per directory with gaps. Its end requires
-`report.md` and a parsing ledger (`tested` is optional), and commits
-`logika.json` too. The round itself reads Logika's docs through the
-`logika` CLI rather than copying them.
+dispatches a rules agent per directory with gaps. Each end requires
+`report.md` and a parsing ledger (`tested` is optional), keeps the ledger's
+counts before and after, and commits `logika.json`. The rounds read Logika's
+docs through the `logika` CLI rather than copying them.
 
 `usage.Usage` keeps `.nock/local/usage.json`: when this machine asked the
 owner whether nock shares (`ask`, called by a round's start, `studio` and
@@ -854,8 +861,8 @@ dispatches the sharer (`briefs/share.md`) to vet the summary, scrubs its
 answer the same way, and keeps it in the round's scratch directory, keyed
 by the summary, so a preview and the send that follows vet once. It
 returns the text and where it would go; with `send`, it posts it to
-`endpoints.reflections`, records `shared` in the round's record, and
-commits; it refuses to send, before vetting, when `share` is false.
+`endpoints.reflections`, records `shared` in the fit round's record, and
+commits it in the store; it refuses to send, before vetting, when `share` is false.
 
 `reports.Reports` builds what `nock report` sends: the text (the argument,
 else stdin when it is not a terminal), stripped, non-empty and at most
@@ -896,7 +903,7 @@ Everything a project adds lives in `.nock/` and is committed:
 | generated file | `.nock/tools/*.py` | `@nock.generator(path)` | `generators.Generators` |
 | catalog | `.nock/generators/NAME/` | its files, written by hand | `generators.Catalog` |
 | brief | `.nock/briefs/NAME.md` (consult, ask) | the file's presence | `templates.Library`, before the packaged briefs |
-| skill | `.claude/skills/nock-reflect/`, `.claude/skills/nock-triage/`, `.claude/skills/nock-work/` (and `.agents/skills/nock-work/` where Codex is found), `.claude/skills/nock-reflect-logika/` (Logika projects) | `nock init` | Claude Code and Cursor, and Codex for `/nock-work`; `nock init` rewrites them |
+| skill | `.claude/skills/nock-reflect/`, `.claude/skills/nock-triage/`, `.claude/skills/nock-work/` (and `.agents/skills/nock-work/` where Codex is found), a skill per other adopted round (`.claude/skills/logika/`, `logika-rules/`, `logika-analytics/` in Logika projects), and the rounds' agents in `.claude/agents/` | `nock init` | Claude Code and Cursor, and Codex for `/nock-work`; `nock init` rewrites them |
 | settings | `.nock/config.toml`, `.nock/local/config.toml` | — | `configuration.Configuration` |
 | the core itself | `.nock/core/nock/` | edit it | kept by `nock upgrade`'s three-way merge |
 
@@ -951,8 +958,9 @@ worktree's install is that branch's change, never the main checkout's):
   per command but `run`, and an `ask` rule per `confirm=True` command (an
   `allow` rule with `permissions.confirm = "allow"`);
 - writes the `/nock-reflect`, `/nock-triage` and `/nock-work` skills into
-  `.claude/skills/`, and in a Logika project (`logika.json` at the root)
-  `/nock-reflect-logika`, with their parts' subagent types in
+  `.claude/skills/`, and each other adopted round's (`/logika`,
+  `/logika-rules`, `/logika-analytics` in a Logika project), with their
+  agents' subagent types in
   `.claude/agents/`. `/nock-work`, which any harness can follow, goes also
   into each found harness's skills directory that no directory written
   before is one it reads (`harnesses.skill_installs`): `.agents/skills/` for

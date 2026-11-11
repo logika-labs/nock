@@ -11,13 +11,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from nock import harnesses
+from nock import harnesses, rounds
 from nock.configuration import Confirm
 from nock.errors import ConflictError, NotFoundError, PreconditionError
 from nock.git import Git, GitError
 from nock.harnesses import NATIVE_EVENTS, Event, Harness
 from nock.hooks import EDIT_TOOLS, NOCK_COMMANDS
-from nock.kinds import KINDS
 from nock.migration import migrate_in
 from nock.primer import AGENTS, MARK_START, PRIMER, refresh, with_section
 from nock.project import NOCK_DIRECTORY, Project
@@ -100,13 +99,20 @@ writes it; until then, `.nock/local/views/index.md` lists the topics.
 """
 
 IMPORT_LINE = "@.nock/context.md"
-# Claude Code skills, from `briefs/NAME/`, besides each kind of round's where it is
-# wanted. Each SKILL.md and subagent (`agents/`) is its trigger and one line pointing
-# at its brief in `nock docs`, so the text always matches the vendored core and an
-# upgrade never rewrites a skill.
+# Claude Code skills, from `briefs/NAME/`, besides the rounds' (`install_rounds`).
+# Each SKILL.md is its trigger and one line pointing at its brief in `nock docs`,
+# so the text always matches the vendored core and an upgrade never rewrites a skill.
 SKILLS = ("nock-triage", "nock-work")
 # Skills any harness can follow, written to `.agents/skills/` too, where Codex reads them.
 PORTABLE_SKILLS = ("nock-work",)
+RETIRED_ROUND_FILES = (
+    ".claude/skills/nock-reflect-logika/SKILL.md",
+    ".claude/agents/nock-reflect-toolbox.md",
+    ".claude/agents/nock-reflect-map.md",
+    ".claude/agents/nock-reflect-nock.md",
+    ".claude/agents/nock-logika-rules.md",
+    ".claude/agents/nock-logika-analytics.md",
+)
 HOOK_COMMAND = '"$CLAUDE_PROJECT_DIR"/.nock/nock hook {event}'
 # Codex and Cursor give a hook no project directory, and may run it in a subdirectory.
 OTHER_HOOK_COMMAND = '"$(git rev-parse --show-toplevel)"/.nock/nock hook {event} {harness}'
@@ -326,22 +332,23 @@ class Installer:
         self.changes.append(Change(relative, what, "removed"))
 
     def install_skills(self) -> None:
-        """`/nock-triage`, `/nock-work` and each kind of round's skill where it
-        is wanted (`/nock-reflect`; `/nock-reflect-logika` in a Logika project),
-        with the subagents its parts run as, for Claude Code; `/nock-work`,
-        which any harness can follow, also in the skills directory of each
-        other harness found that reads none written already (Codex's), and
-        taken out of a directory no harness found reads. Kept in step with the
-        core like the primer."""
+        """`/nock-triage`, `/nock-work` and the rounds' skills from the
+        registry (`rounds`): `/nock-reflect` for nock's, `/<namespace>` for
+        another namespace with two or more adopted protocols and
+        `/<namespace>-<protocol>` for each adopted one outside nock, each
+        saying only which `reflect` to run, with each protocol's agents as
+        Claude Code subagents; `/nock-work`, which any harness can follow,
+        also in the skills directory of each other harness found that reads
+        none written already (Codex's), and taken out of a directory no
+        harness found reads. Kept in step with the core like the primer."""
         briefs = PACKAGE / "briefs"
         library = Library(briefs)
-        rounds = tuple(kind.skill for kind in KINDS.values() if kind.wanted(self.root))
         portable = [
             harness
             for harness in harnesses.skill_installs(self.harnesses)
             if harness is not Harness.CLAUDE_CODE
         ]
-        for name in (*rounds, *SKILLS):
+        for name in SKILLS:
             for source in sorted((briefs / name).glob("*.md")):
                 text = library.render(f"{name}/{source.name}")
                 self.put(
@@ -357,13 +364,51 @@ class Installer:
                         self.put(relative, text, f"the /{name} skill, for {harness.label}")
                     elif harness is not Harness.CLAUDE_CODE and self.ours(relative, text):
                         self.remove(relative, f"the /{name} skill: no harness found reads it here")
-            # The round's parts as Claude Code subagents, each with only the tools its part needs.
-            for source in sorted((briefs / name / "agents").glob("*.md")):
-                self.put(
-                    f".claude/agents/{source.name}",
-                    library.render(f"{name}/agents/{source.name}"),
-                    f"the {source.stem} subagent, for Claude Code",
+        self.install_rounds()
+
+    def install_rounds(self) -> None:
+        project = Project(self.root)
+        wanted = [
+            protocol
+            for protocol in rounds.protocols(project)
+            if protocol.adopted() and not protocol.unavailable()
+        ]
+        namespaces: dict[str, list[rounds.Protocol]] = {}
+        for protocol in wanted:
+            namespaces.setdefault(protocol.manifest.namespace, []).append(protocol)
+        skills: dict[str, tuple[str, str]] = {}
+        for namespace, members in namespaces.items():
+            titles = ", ".join(protocol.title.lower() for protocol in members)
+            if namespace == "nock" or len(members) > 1:
+                skills[rounds.skill_of(namespace)] = (
+                    namespace,
+                    f"Run the {namespace} rounds at once: {titles}. Use when nock says a round"
+                    " is due, or when asked to reflect.",
                 )
+            if namespace == "nock":
+                continue
+            for protocol in members:
+                skills[rounds.skill_of(namespace, protocol.manifest.protocol)] = (
+                    protocol.name,
+                    f"Run the {protocol.name} round: {protocol.manifest.data['summary']}"
+                    " Use when the owner asks, or agrees when nock says it is due.",
+                )
+        for skill, (target, description) in skills.items():
+            self.put(
+                f".claude/skills/{skill}/SKILL.md",
+                f"---\nname: {skill}\ndescription: {description}\n---\n\n"
+                f"Run `.nock/nock reflect {target}` and do what it says.\n",
+                f"the /{skill} skill, for Claude Code",
+            )
+        for protocol in wanted:
+            for agent in protocol.manifest.data.get("agents", []):
+                kind = rounds.agent_type(protocol.manifest, agent["name"])
+                source = protocol.manifest.folder / "agents" / f"{agent['name']}.md"
+                text = source.read_text().replace("---\n", f"---\nname: {kind}\n", 1)
+                self.put(f".claude/agents/{kind}.md", text, f"the {kind} subagent, for Claude Code")
+        for relative in RETIRED_ROUND_FILES:
+            if (self.root / relative).is_file():
+                self.remove(relative, "an earlier nock's round skill or subagent")
 
     def ours(self, relative: str, text: str) -> bool:
         path = self.root / relative

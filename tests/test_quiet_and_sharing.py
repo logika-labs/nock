@@ -114,10 +114,10 @@ def test_unanswered_is_asked_once_and_sends_nothing(
     before = usage(project)
     assert before["share"] == "unanswered" and before["next"] is None
     assert before["question"] == QUESTION and before["would_send"]["project"] == UNMADE
-    started = json.loads(nock(project.root, "reflect", "--json").stdout)
+    started = json.loads(nock(project.root, "reflect", "nock.fit", "--json").stdout)
     assert started["ask_the_owner"].startswith(QUESTION)
     assert "`.nock/nock config share true`" in started["ask_the_owner"]
-    again = json.loads(nock(project.root, "reflect", "--json").stdout)
+    again = json.loads(nock(project.root, "reflect", "nock.fit", "--json").stdout)
     assert "ask_the_owner" not in again
     assert "ask_the_owner" not in judge(project.root, submit(project.root), "accepted")
     path = project.root / ".nock" / "local" / "usage.json"
@@ -147,7 +147,9 @@ def test_the_command_writes_a_yes_and_a_report_goes_a_week_later_counts_only(
     assert "\nshare = true\n" in config and "# share = false" not in config
     assert git(project.root, "status", "--porcelain") == ""
     assert "share = true" in git(project.root, "log", "-1", "--format=%s")
-    assert "ask_the_owner" not in json.loads(nock(project.root, "reflect", "--json").stdout)
+    assert "ask_the_owner" not in json.loads(
+        nock(project.root, "reflect", "nock.fit", "--json").stdout
+    )
     end_session(project, "s1")
     assert receiver == [], "the first report goes a week after the answer"
 
@@ -188,7 +190,9 @@ def test_a_no_never_sends_and_a_later_yes_replaces_it(
     end_session(project, "s1")
     assert receiver == []
     assert not (project.root / ".nock" / IDENTITY).exists()
-    assert "ask_the_owner" not in json.loads(nock(project.root, "reflect", "--json").stdout)
+    assert "ask_the_owner" not in json.loads(
+        nock(project.root, "reflect", "nock.fit", "--json").stdout
+    )
     nock(project.root, "config", "share", "true")
     config = (project.root / ".nock" / "shared" / "settings.toml").read_text()
     assert config.count("share = ") == 1 and "\nshare = true\n" in config
@@ -199,7 +203,7 @@ def test_an_explicit_share_true_already_in_the_config_is_respected(
     project: Project, receiver: list[dict[str, object]]
 ) -> None:
     yes = shared(project, "true")
-    assert "ask_the_owner" not in json.loads(nock(yes.root, "reflect", "--json").stdout)
+    assert "ask_the_owner" not in json.loads(nock(yes.root, "reflect", "nock.fit", "--json").stdout)
     assert usage(yes)["share"] == "yes"
     end_session(yes, "s1")
     assert receiver == [], "counting starts when the yes is first seen"
@@ -212,7 +216,9 @@ def test_with_share_false_nothing_is_asked_made_or_sent(
     project: Project, receiver: list[dict[str, object]]
 ) -> None:
     silent = shared(project, "false")
-    assert "ask_the_owner" not in json.loads(nock(silent.root, "reflect", "--json").stdout)
+    assert "ask_the_owner" not in json.loads(
+        nock(silent.root, "reflect", "nock.fit", "--json").stdout
+    )
     shown = usage(silent)
     assert shown["share"] == "no" and shown["would_send"] is None and shown["to"] is None
     end_session(silent, "s1")

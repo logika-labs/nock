@@ -1,0 +1,26 @@
+title = "Analytics"
+summary = "Propose what the owner wants measured: identities, dimensions, funnels, milestones, views."
+relevant = "Logika projects: logika.json at the root."
+requires = { files = ["logika.json"], commands = ["logika"] }
+adopted = "when-files"
+
+[due]
+first = true
+days = 30
+changed = ["logika.json"]
+
+[material.analytics]
+python = "analytics"
+
+[lead]
+reads = ["analytics"]
+writes = ["report.md"]
+
+[[agents]]
+name = "analytics"
+reads = ["analytics"]
+
+
+[end]
+commit = ["logika.json"]
+kinds = ["identity", "dimension", "funnel", "milestone", "view", "instrumentation", "other"]

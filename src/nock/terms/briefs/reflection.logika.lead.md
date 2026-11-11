@@ -1,12 +1,13 @@
 ---
 term: reflection.logika.lead
-aliases: [nock-reflect-logika]
-description: /nock-reflect-logika: how the lead runs a logika round, step by step
+aliases: [logika-rounds]
+description: /logika: how the lead runs the logika rounds, rules and analytics, step by step
 ---
 
-# A logika round
+# The logika rounds
 
-The owner asked for this round. Its job is to write down in `logika.json`
+The owner asked for these rounds: `logika.rules` and `logika.analytics`,
+run together (`/logika`) or one alone (`/logika-rules`, `/logika-analytics`). Their job is to write down in `logika.json`
 what must hold, so that Logika wakes an agent when the system breaks it, and
 what is worth measuring, so that Logika's analytics answer the owner's
 questions from real captures. You decide what lands, from the code, the
@@ -28,11 +29,12 @@ reason it gets none; `logika map` shows where that stands.
 Done when: the rules and declarations you decided on are in `logika.json`;
 `logika map` leaves no risk at "no rule yet" that a rule could guard; the
 instrumentation they need is in the code; the noise check fires on nothing
-normal; `logika check` passes; and `.nock/nock reflect logika finish` has
-recorded the round.
+normal; `logika check` passes; and `.nock/nock reflect --submit` has
+recorded each round.
 
-1. `.nock/nock reflect logika` prints the round's two material files and
-   the report you write. The material shows what the ledger already says
+1. `.nock/nock reflect logika` starts both rounds (`reflect logika.rules`
+   or `reflect logika.analytics` one) and prints each one's material and
+   the report you write for it. The material shows what the ledger already says
    and measures, per component, event (with its risks) and param, what
    changed since the last round, and the decisions earlier rounds left in the
    `logika` topic.
@@ -57,8 +59,8 @@ recorded the round.
 
    | part | subagent type | brief | material | brings back |
    |---|---|---|---|---|
-   | rules, one per directory | `nock-logika-rules` | `reflection.logika.rules` | `rules` | for each risk, its rule over its evidence or the reason it gets none; risks an event lacks; the fields a rule needs |
-   | analytics | `nock-logika-analytics` | `reflection.logika.analytics` | `analytics` | identities, dimensions, funnels, milestones, views |
+   | rules, one per directory | `logika-rules` | `reflection.logika.rules` | `rules` | for each risk, its rule over its evidence or the reason it gets none; risks an event lacks; the fields a rule needs |
+   | analytics | `logika-analytics` | `reflection.logika.analytics` | `analytics` | identities, dimensions, funnels, milestones, views |
 
    If a part fails, say so in the report rather than doing its part
    yourself: its brief is what makes it careful.
@@ -97,7 +99,9 @@ recorded the round.
    code is fixed), since loosening it would encode the bug. Keep the rest:
    a little noise is calibrated in production, and a missing rule never
    fires.
-9. Write the report for the owner, as what you decided, for them to review:
+9. Write each round's report for the owner, as what you decided, for them to
+   review (the rules round's the rules, risks and their instrumentation; the
+   analytics round's what is now measured):
    - the rules you added or changed, each with its risk, its evidence and
      the margin behind its threshold;
    - the risks you ruled out, and why;
@@ -107,9 +111,9 @@ recorded the round.
    - the directions and ambiguities you settled, the answers you got or
      the ones you chose;
    - the known issues today's behaviour breaks.
-10. Finish:
+10. Submit each round:
 
-        .nock/nock reflect logika finish '{"summary": "the round in a sentence or two",
+        .nock/nock reflect --submit '{"protocol": "logika.rules", "summary": "the round in a sentence or two",
           "changes": [{"kind": "validate", "target": "refund", "why": "refunds.overpaid, by amount and charged",
                        "expect": "what it should catch, and that it stays quiet otherwise",
                        "tested": "quiet in the noise check over a week of production refunds"},
@@ -117,20 +121,24 @@ recorded the round.
                        "expect": "no rule while ids come from the provider"},
                       {"kind": "instrumentation", "target": "refund", "why": "the rule it made possible",
                        "expect": "the field filled on every sighting", "tested": "the capture that shows it"},
-                      {"kind": "funnel", "target": "activation", "why": "the question it answers",
-                       "expect": "what it should show", "tested": "the captures that carry it"}],
+                      ],
           "verdicts": [{"expectation": "…", "held": true, "evidence": "…"}],
           "notes": "what the next round should look at"}'
 
-    The kinds are validate, path, timeout, rule, invariant and error (the
-    rules), risk (a risk declared or ruled out), instrumentation, identity,
-    dimension, funnel, milestone and view (the analytics), and other.
+    and `"protocol": "logika.analytics"` with its own changes, such as
+    `{"kind": "funnel", "target": "activation", "why": "the question it
+    answers", "expect": "what it should show", "tested": "the captures that
+    carry it"}`. The rules round's kinds are validate, path, timeout, rule,
+    invariant and error (the rules), risk (a risk declared or ruled out),
+    instrumentation and other; the analytics round's identity, dimension,
+    funnel, milestone, view, instrumentation and other.
     `tested`, what showed a change (the noise check, a capture), is
-    optional. The verdicts cover the last round's expectations. Finishing
-    commits `.nock/` and `logika.json`; nock says what a round left open
-    still needs (`.nock/nock docs reflection.kinds`).
+    optional. The verdicts cover the last round's expectations. Submitting
+    requires the ledger to parse and commits `logika.json` and the round's
+    record; nock says what a round left open still needs (`.nock/nock docs
+    reflection.protocols`).
 11. Tell the owner in a few lines what changed, what you decided that they
-    may want to look at, and where the report is. If `reflect logika` gave
+    may want to look at, and where the report is. If `reflect` gave
     `ask_the_owner`, ask them that too, in its words, and record exactly
     their answer with `.nock/nock config share true` or `false` (nothing if they
     don't answer). Production is judged against the new rules, and measured

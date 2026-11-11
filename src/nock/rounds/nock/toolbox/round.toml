@@ -1,0 +1,25 @@
+title = "Toolbox"
+summary = "Improve the project's .nock/ toolbox from its telemetry."
+relevant = "Every project with nock."
+adopted = "always"
+
+[due]
+sessions = 15
+days = 7
+
+[material.process]
+python = "process"
+
+[lead]
+reads = ["process"]
+writes = ["report.md"]
+
+[[agents]]
+name = "toolbox"
+reads = ["process"]
+changes = [".nock/tools/", ".nock/config.toml", ".nock/generators/"]
+
+[end]
+checks = ["nock-tools", "nock-generators"]
+commit = [".nock/tools", ".nock/config.toml", ".nock/generators"]
+kinds = ["add", "change", "retire", "check", "generator", "other"]

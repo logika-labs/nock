@@ -22,12 +22,13 @@ from nock.fixtures import Shell
 from nock.generators import Catalogs, Generators
 from nock.harnesses import NATIVE_EVENTS
 from nock.inbox import Inbox
-from nock.kinds import DEFAULT, KINDS
 from nock.processes import Output
 from nock.project import Project
-from nock.reflect import Record, Reflection, Round, tool_rows
+from nock.reflect import FIT, Reflection, tool_rows
 from nock.render import Problem
 from nock.reports import Reports
+from nock.rounds import named, protocols
+from nock.rounds import submit as submit_round
 from nock.sessions import Sessions
 from nock.setup import (
     PERMISSION,
@@ -49,7 +50,7 @@ from nock.topics import (
     SHORT,
     Topics,
 )
-from nock.usage import QUESTION, Moment, Usage
+from nock.usage import QUESTION, Answer, Moment, Usage, sharing
 from nock.utils import payload
 
 EXAMPLE_DEADLINE = 300
@@ -440,52 +441,54 @@ def toml_value(text: str) -> Any:
 
 
 @command(name="reflect")
-def reflect(project: Project) -> dict[str, Any]:
-    """Start nock's own reflection round (the `/nock-reflect` skill), or pick
-    up the one under way: writes what its three parts read, and says where
-    the report and the shareable summary go. `nock reflect KIND` starts
-    another kind (`nock docs reflection.kinds`)."""
-    return started(project, DEFAULT(project))
-
-
-@command(name="finish", group="reflect")
-def reflect_finish(project: Project, record: Record) -> dict[str, Any]:
-    """Finish nock's round: requires its report and summary, nock's checks to
-    pass, then records what the toolbox part changed and what each change
-    should do by the next round, and commits `.nock/`."""
-    return DEFAULT(project).finish(record)
-
-
-def started(project: Project, kind: Round) -> dict[str, Any]:
-    begun = kind.start()
-    ask(project, begun, Moment.ROUND)
-    return begun
-
-
-def kind_commands(kind: type[Round]) -> None:
-    """`nock reflect KIND` and `nock reflect KIND finish JSON`, for a kind other than nock's."""
-
-    def start_kind(project: Project) -> dict[str, Any]:
-        return started(project, kind(project))
-
-    def finish_kind(project: Project, record: Record) -> dict[str, Any]:
-        return kind(project).finish(record)
-
-    start_kind.__doc__ = (
-        f"Start a {kind.title} (the `/{kind.skill}` skill), or pick up the one under way: "
-        "writes what it reads, and says where its report goes."
+def reflect(
+    project: Project,
+    name: str | None = None,
+    *,
+    submit: Annotated[
+        str | None, Option(help="A round's result, as JSON: its protocol, summary and changes.")
+    ] = None,
+) -> Any:
+    """Reflection rounds. Bare, the catalogue: every protocol, whether it can
+    run here and is adopted, when it is due and why, its last round and its
+    skill. NAME starts a round (`nock.toolbox`), or every adopted one of a
+    namespace at once (`nock`, `logika`), or picks up the one under way: what
+    its lead does, its agents and their material, the files to write, the
+    submit. `--submit JSON` checks a round's result and records it
+    (`nock docs reflection.record`)."""
+    if submit is not None:
+        result = submit_round(project, payload(submit))
+        shared = share_with_makers(project, result)
+        if shared:
+            result["shared"] = shared
+        ask(project, result, Moment.ROUND)
+        return result
+    if name is None:
+        return [protocol.standing() for protocol in protocols(project)]
+    begun = [protocol.start() for protocol in named(project, name)]
+    result: dict[str, Any] = (
+        begun[0]
+        if len(begun) == 1
+        else {
+            "do": f"{len(begun)} rounds at once: dispatch all their agents in one message, then"
+            " write each round's files and submit each",
+            "rounds": begun,
+        }
     )
-    finish_kind.__doc__ = (
-        f"Finish the {kind.title}: requires its report and its checks to pass, records it, "
-        "and commits it."
-    )
-    command(name=kind.kind, group="reflect")(start_kind)
-    command(name="finish", group=f"reflect {kind.kind}")(finish_kind)
+    ask(project, result, Moment.ROUND)
+    return result
 
 
-for _kind in KINDS.values():
-    if not _kind.default:
-        kind_commands(_kind)
+def share_with_makers(project: Project, result: dict[str, Any]) -> dict[str, Any] | None:
+    """A round whose protocol names a shareable summary, sent to nock's
+    makers when the owner said yes: vetted first, as `nock share` does."""
+    if result["protocol"] != FIT or sharing(project) is not Answer.YES:
+        return None
+    try:
+        return Sharing(project).share({"round": result["round"], "send": True})
+    except Error as error:
+        # The round stands recorded; its summary waits for `nock share`.
+        return {"not_sent": str(error), "send": "`.nock/nock share` once that is fixed"}
 
 
 @command(confirm=True)

@@ -1,14 +1,14 @@
 ---
 term: guide.logika
 aliases: []
-description: In a Logika project, the reflection round that writes the rules which catch bugs before they happen
+description: In a Logika project, the rounds that write the rules which catch bugs before they happen
 ---
 
 # nock in Logika
 
 nock grew up inside [Logika](https://logika.host), and in a Logika project it
-has a second kind of reflection round: the one that catches bugs before they
-happen.
+has two more rounds: the ones that catch bugs before they happen, and say
+what is worth measuring.
 
 ## Tests pass, and the bug ships anyway
 
@@ -28,30 +28,33 @@ writing rules is exactly the kind of work that gets skipped: it isn't a
 feature, nothing fails without it, and its value shows only on the day it
 catches something. So nock makes it a round.
 
-## The logika round
+
+## The logika rounds
 
 In a project with a `logika.json` at its root and the `logika` CLI on PATH,
-`nock init` installs a second skill, `/nock-reflect-logika`. Its round has two
-parts, run as subagents while the session works with you:
+two more protocols are adopted, and `nock init` installs their skills:
+`/logika` runs both at once, `/logika-rules` and `/logika-analytics` one
+each. Each round's agents run as subagents while the session works with you:
 
-- **rules**, a subagent per directory, turns the risks the ledger declares on
+- **`logika.rules`**, a subagent per directory, turns the risks the ledger declares on
   each event into what must hold: validations, paths, timeouts, invariants,
   error marking. For each risk, the rule over its evidence, or the reason it
   gets none, each rule with a one-sentence description that becomes the
   anomaly's title when it fires;
-- **analytics** declares what you want to measure: which params are identities
+- **`logika.analytics`** declares what you want to measure: which params are identities
   and dimensions, the funnels, milestones and views, so that Logika's analytics
   fill from real captures.
 
-It is never automatic: it runs only when you ask. When one is due, the session
-start offers it, at most once a week: when no logika round has run yet and the
-ledger declares events, or 30 days after the last one
-(`reflect.logika.days`), once `logika.json` has changed since. `nock status`
-always says.
+They are never automatic: they run only when you ask. When one is due, the
+session start offers it, at most once a week: when it hasn't run yet and the
+ledger declares events, or 30 days after its last round (`reflect.logika.days`,
+or `reflect.logika.rules.days` for one), once `logika.json` has changed since.
+`nock status` always says.
 
 ## How a round goes
 
-1. **`nock reflect logika`** writes each part's material: for rules, what the
+1. **`nock reflect logika`** starts both rounds and writes each one's
+   material: for rules, what the
    ledger already says per event and per component, with the commits that
    touched each component since the last round; for analytics, each param with
    the events that carry it, and what's already declared; for both, the
@@ -76,21 +79,20 @@ always says.
 5. **You settle only directions and genuine ambiguities**, asked in the session
    with the answer the session proposes and carries on with; a question for
    later becomes a decision item in the `logika` topic. The rest you review in
-   the round's report.
-6. **`nock reflect logika finish JSON`** requires the report and a
-   `logika.json` that parses, records the rules, risks and declarations changed,
+   each round's report.
+6. **`nock reflect --submit JSON`**, once per round, requires its report and
+   a `logika.json` that parses, records the rules, risks and declarations changed,
    each with what showed it, and the ledger's numbers before and after, and
-   commits `.nock/` and `logika.json`. Deploying the ledger (`logika sync`) is
+   commits the record and `logika.json`. Deploying the ledger (`logika sync`) is
    left to your word.
 
-## Why it's a round
+## Why they are rounds
 
-The same idea as nock's own round, applied to a different kind of tool. A rule
+The same idea as nock's own rounds, applied to a different kind of tool. A rule
 in a ledger is code, not prose: it fires or it doesn't, and the next round can
 see which. The round reads what the code does and what production actually
 sends, writes down what must hold, and checks it against real traffic before
 anything breaks. When a bug does ship, the rule is already there, and your agent
 is woken to fix it.
 
-Logika rounds are kept apart from nock's own, so neither moves the other's
-window.
+Each protocol keeps its own rounds, so none moves another's window.

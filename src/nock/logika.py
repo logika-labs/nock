@@ -1,17 +1,13 @@
-"""The `logika` kind of reflection round. In a Logika project — a
-`logika.json` ledger, and the `logika` CLI on PATH — the owner runs a round
-with the `/nock-reflect-logika` skill, in two parts: **rules**, a subagent
-per directory, gives each event's `risks` (a `concern.risk` key mapped to its
-evidence params, or to why it doesn't apply) its rule over that evidence, or
-the reason it gets none, from what `logika map` shows; **analytics** declares
-what is worth measuring (identities, dimensions, funnels, milestones,
-views). The session decides them itself, asks the owner only general
-directions and genuine ambiguities, adds the instrumentation they need, and
-ends with one `logika replay` noise check. `nock reflect logika` writes what
-it reads, and `nock reflect logika finish` requires the ledger to parse,
-records the round and commits `.nock/` and `logika.json`.
-Its rounds are kept apart from nock's own, so neither moves the other's
-window."""
+"""What a Logika project's rounds read (the `logika.rules` and
+`logika.analytics` protocols in `nock.rounds`). In a Logika project — a
+`logika.json` ledger, and the `logika` CLI on PATH — the owner runs them
+with the `/logika` skill: **rules**, a subagent per directory, gives each
+event's `risks` (a `concern.risk` key mapped to its evidence params, or to
+why it doesn't apply) its rule over that evidence, or the reason it gets
+none, from what `logika map` shows; **analytics** declares what is worth
+measuring (identities, dimensions, funnels, milestones, views). `Material`
+and `Analytics` are what each reads; `Logika`, the ledger and when a round
+is worth offering."""
 
 from __future__ import annotations
 
@@ -23,7 +19,6 @@ from typing import TYPE_CHECKING, Any
 
 from nock.errors import Failed, PreconditionError
 from nock.git import Git, GitError
-from nock.reflect import Record, Round
 from nock.topics import Author, Topics, Verdict
 from nock.utils import parse_moment, read_json
 
@@ -32,11 +27,9 @@ if TYPE_CHECKING:
 
 LEDGER = "logika.json"
 PROGRAM = "logika"
-SKILL = "nock-reflect-logika"
 # What a round decides, and suggests, goes in this topic so the next round finds it.
 TOPIC = "logika"
 # The round's parts: each a brief in `nock docs` (`reflection.logika.PART`), and a material file.
-PARTS = ("rules", "analytics")
 SECTION_ROWS = 40
 
 
@@ -126,38 +119,27 @@ class Ledger:
         }
 
 
-class LogikaRound(Round):
-    """The ledger's rules, from the instrumented code and its captures, with the owner."""
-
-    kind = "logika"
-    title = "logika round"
-    skill = SKILL
-    also = (LEDGER,)
+class Logika:
+    """A Logika project as its rounds read it: the ledger, the commits that
+    changed it, and when a round is worth offering."""
 
     def __init__(self, project: Project) -> None:
-        super().__init__(project)
+        self.project = project
         self.ledger = Ledger(project)
-
-    @classmethod
-    def wanted(cls, root: Path) -> bool:
-        return (root / LEDGER).is_file()
 
     def unavailable(self) -> str:
         return self.ledger.unavailable()
 
-    # --- when -------------------------------------------------------------------------
-
-    def due(self) -> str:
+    def due(self, last: dict[str, Any] | None, days_needed: float) -> str:
         """Why a logika round is worth offering, or nothing: never run while the
-        ledger declares events, or `reflect.logika.days` since the last one with
-        the ledger changed since. It is only ever offered, never run."""
+        ledger declares events, or `days_needed` since the last one with the
+        ledger changed since. It is only ever offered, never run unasked."""
         if self.ledger.unavailable():
             return ""
         try:
             ledger = self.ledger.read()
         except Failed:
             return ""
-        last = self.rounds.last()
         if last is None:
             events = self.ledger.counts(ledger)["events"]
             return (
@@ -169,7 +151,7 @@ class LogikaRound(Round):
         if since is None:
             return ""
         days = (datetime.now(UTC) - since).total_seconds() / 86400
-        if days < float(self.project.configuration.get("reflect.logika.days", 30)):
+        if days < days_needed:
             return ""
         changes = self.changes(last.get("finished"))
         return (
@@ -196,25 +178,7 @@ class LogikaRound(Round):
             return []
         return output.splitlines()
 
-    # --- a round ------------------------------------------------------------------------
-
-    def begin(self, name: str, scratch: Path) -> dict[str, Any]:
-        """What the ledger already says, the commits since, what earlier rounds left."""
-        ledger = self.ledger.read()
-        last = self.rounds.last()
-        written = {
-            "rules": Material(self, ledger, last).render(),
-            "analytics": Analytics(self, ledger, last).render(),
-        }
-        for part, text in written.items():
-            (scratch / f"{part}.md").write_text(text)
-        return {
-            "since": last.get("finished") if last else None,
-            "material": {part: str(scratch / f"{part}.md") for part in PARTS},
-            "kept": {"ledger": self.ledger.counts(ledger)},
-        }
-
-    def problems(self, record: Record | None) -> list[str]:
+    def problems(self) -> list[str]:
         """The ledger parses."""
         try:
             self.ledger.read()
@@ -222,21 +186,13 @@ class LogikaRound(Round):
             return [f"{error}: {error.value}" if error.value else str(error)]
         return []
 
-    def kept(self, name: str, started: dict[str, Any]) -> dict[str, Any]:
-        return {
-            "ledger_before": started["ledger"],
-            "ledger": self.ledger.counts(self.ledger.read()),
-        }
-
 
 class Material:
     """What the rules part reads, computed: what the ledger already says must
     hold, per component and per event; what changed since the last round; and
     the decisions and suggestions earlier rounds left."""
 
-    def __init__(
-        self, logika: LogikaRound, ledger: dict[str, Any], last: dict[str, Any] | None
-    ) -> None:
+    def __init__(self, logika: Logika, ledger: dict[str, Any], last: dict[str, Any] | None) -> None:
         self.logika = logika
         self.ledger = ledger
         self.last = last

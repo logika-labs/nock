@@ -21,8 +21,8 @@ description: Every nock command, and the exit codes that tell an agent what to d
 | `nock studio [--port N] [--open]` | your page: the topics, their decisions and assets, the Timeline, a chat with a headless agent, and Tidy up |
 | `nock config [KEY [VALUE]] [--local]` | the team's and this machine's settings: listed, read, set (`share` too: your answer on sharing the usage report) |
 | `nock query SQL\|calls\|stats\|sessions` | the telemetry: read-only SQL, or one of its views |
-| `nock reflect [KIND]`, `nock reflect [KIND] finish JSON` | a reflection round: nock's own (`/nock-reflect`), or another kind, `logika` (`/nock-reflect-logika`) |
-| `nock share [JSON]` | a round's summary as it would be sent, and sending it (asks you) |
+| `nock reflect [NAME]`, `nock reflect --submit JSON` | the rounds: listed; one protocol's started (`nock.toolbox`), or a namespace's at once (`nock`: `/nock-reflect`; `logika`: `/logika`); a round's result recorded |
+| `nock share [JSON]` | the fit round's summary as it would be sent, and sending it (asks you) |
 | `nock report [TEXT] [--yes]` | send nock's makers what you need from nock or what is wrong with it (shows it and asks; with no terminal, only with `--yes`) |
 | `nock gen [--list]` | render the generated files and write those out of step |
 | `nock init`, `nock upgrade` | install (or re-wire), and upgrade the vendored core to the latest release, with a three-way merge, moving earlier topics into the store once (each asks you) |

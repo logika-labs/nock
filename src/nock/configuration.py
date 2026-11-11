@@ -57,11 +57,10 @@ DEFAULTS: dict[str, Any] = {
         # `check` does not run everything when only they change.
         "unaffected": [],
     },
-    "reflect": {
-        # In a Logika project, a logika round is offered this many days after
-        # the last one, once the ledger has changed since.
-        "logika": {"days": 30},
-    },
+    # A round's due rules are its protocol's manifest's (`rounds/*/*/round.toml`);
+    # `reflect.<namespace>.<key>` and `reflect.<namespace>.<protocol>.<key>`
+    # override them.
+    "reflect": {},
     "agent": {
         # The headless agent nock dispatches (consult, the studio's Ask) and its model
         # ("" is Claude Code's default); bounds in seconds.

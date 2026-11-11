@@ -16,8 +16,9 @@ from typing import TYPE_CHECKING, Any, NotRequired, TypedDict
 from nock.dispatch import Dispatcher
 from nock.errors import ExternalError, Failed, NotFoundError, PolicyError
 from nock.git import GitError
-from nock.reflect import SHARE, Reflection, commit
+from nock.reflect import SHARE, Reflection
 from nock.render import Problem
+from nock.rounds import commit
 from nock.templates import Library
 from nock.usage import Answer, sharing
 from nock.utils import now, read_json, write_json
@@ -121,7 +122,12 @@ class Sharing:
             raise ExternalError(f"could not reach {endpoint}: {error}") from error
         shared = {"moment": now(), "id": answer.get("id")}
         self.reflection.record_shared(name, shared)
-        commit(self.project, f"Reflection round {name}: shared")
+        commit(
+            self.project,
+            f"nock.fit round {name}: shared",
+            [],
+            self.reflection.rounds.directory / name,
+        )
         return {"round": name, **shared}
 
     # --- what the summary may not say -------------------------------------------
@@ -159,7 +165,7 @@ class Sharing:
         path = self.reflection.rounds.directory / name / SHARE
         if not path.is_file():
             return []
-        return self.problems_in(path.read_text(), str(path.relative_to(self.project.here)))
+        return self.problems_in(path.read_text(), str(path.relative_to(self.project.root)))
 
     def problems_in(self, text: str, place: str) -> list[Problem]:
         loose, exact = self.identifiers()
