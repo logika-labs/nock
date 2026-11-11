@@ -1,6 +1,6 @@
 ---
 term: guide.review
-aliases: [guide.work, guide.reviewing, guide.topics, guide.items, guide.chat, guide.chatting, guide.threads, guide.tidy, guide.tidy-up, guide.tidier, guide.consult, guide.map, guide.consulting]
+aliases: []
 description: Agents put their work before you in topics and never wait; you review it when it suits you
 ---
 

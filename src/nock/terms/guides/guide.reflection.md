@@ -1,6 +1,6 @@
 ---
 term: guide.reflection
-aliases: [guide.rounds, guide.telemetry, guide.sharing, guide.share, guide.privacy, guide.session, guide.first-session, guide.what-agents-see]
+aliases: []
 description: Your sessions recorded on your machine, and the rounds in which your agent turns them into tools
 ---
 

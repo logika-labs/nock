@@ -1,6 +1,6 @@
 ---
 term: topics.triage
-aliases: [triage, nock-triage, decisions.triage]
+aliases: [triage, nock-triage]
 description: /nock-triage: going through the open items in Topics with the owner, one at a time
 ---
 

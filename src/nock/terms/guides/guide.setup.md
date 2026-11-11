@@ -1,6 +1,6 @@
 ---
 term: guide.setup
-aliases: [guide.install, guide.installing, guide.getting-started, guide.upgrading, guide.settings, guide.config, guide.configuration, guide.permissions, guide.agents]
+aliases: []
 description: Install nock in a repository, make your tests its gate, keep it upgraded, and every setting
 ---
 

@@ -1,6 +1,6 @@
 ---
 term: guide.logika
-aliases: [guide.logika-round]
+aliases: []
 description: In a Logika project, the reflection round that writes the rules which catch bugs before they happen
 ---
 
