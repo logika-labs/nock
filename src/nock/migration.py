@@ -716,8 +716,14 @@ class Storing:
             self.user = self.project.git("config", "user.email", check=False) or None
             told = self.told()
             self.ties()
-            for name in self.topics.names():
-                self.topic(name, counts)
+            try:
+                for name in self.topics.names():
+                    self.topic(name, counts)
+            finally:
+                if hasattr(self, "reader"):
+                    assert self.reader.stdin is not None
+                    self.reader.stdin.close()
+                    self.reader.wait()
             if self.topics.map.is_file():
                 self.store.map.parent.mkdir(parents=True, exist_ok=True)
                 shutil.move(self.topics.map, self.store.map)
@@ -1237,20 +1243,43 @@ class Storing:
             write_json(path, record)
 
     def made_by(self, folder: Path) -> str | None:
-        """The commit that made a version's folder in the old layout."""
-        relative = folder.relative_to(self.project.root).as_posix()
-        found = self.project.git(
-            "log", "--diff-filter=A", "--format=%H", "-1", "--", relative, check=False
-        )
-        return found.strip() or None
+        """The commit that made a version's folder in the old layout: every
+        folder's read from one `git log` the first time one is asked for."""
+        if not hasattr(self, "added"):
+            self.added: dict[str, str] = {}
+            output = self.project.git(
+                "log", "--diff-filter=A", "--name-only", "--format=commit %H", "--",
+                ".nock/topics", check=False,
+            )  # fmt: skip
+            commit = ""
+            for line in output.splitlines():
+                if line.startswith("commit "):
+                    commit = line.removeprefix("commit ")
+                elif line.strip():
+                    parts = Path(line.strip()).parts
+                    # .nock/topics/TOPIC/SLUG/N/…: the oldest commit adding it wins.
+                    if len(parts) > 5:
+                        self.added["/".join(parts[:5])] = commit
+        return self.added.get(folder.relative_to(self.project.root).as_posix())
 
     def at(self, commit: str, path: str) -> bytes | None:
-        result = subprocess.run(
-            ["git", "show", f"{commit}:{path}"],
-            cwd=self.project.root,
-            capture_output=True,
-        )
-        return result.stdout if result.returncode == 0 else None
+        """A file as it was at a commit, through one `git cat-file --batch`."""
+        if not hasattr(self, "reader"):
+            self.reader = subprocess.Popen(
+                ["git", "cat-file", "--batch"],
+                cwd=self.project.root,
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+            )
+        assert self.reader.stdin is not None and self.reader.stdout is not None
+        self.reader.stdin.write(f"{commit}:{path}\n".encode())
+        self.reader.stdin.flush()
+        header = self.reader.stdout.readline().decode().split()
+        if len(header) < 3 or header[1] != "blob":
+            return None
+        data = self.reader.stdout.read(int(header[2]))
+        self.reader.stdout.read(1)
+        return data
 
 
 # A decision's message naming the asset items that show it, and an asset item's naming its decision.
