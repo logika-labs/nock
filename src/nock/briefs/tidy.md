@@ -1,7 +1,7 @@
-# Tidy up Work
+# Tidy up the topics
 
-The owner of this project pressed Tidy up in nock's studio. Work is where
-agents put their work before the owner: topics (a piece of work, with a
+The owner of this project pressed Tidy up in nock's studio. The topics are
+where agents put their work before the owner: topics (a piece of work, with a
 state and a status line) holding items (a decision, project files, or
 something made to show part of the project), each with the owner's verdict
 (open until they give one) and a thread. Over time it sprawls. Your job is
@@ -50,7 +50,7 @@ what is there. Read first:
    no priority (`{"priority": 0}` takes one away).
 
 Don't edit files directly, and don't run other commands: nock's commands
-are the only way to change Work. Don't reword the owner's or the agents'
+are the only way to change the topics. Don't reword the owner's or the agents'
 messages, and don't submit new items.
 
 # When you finish

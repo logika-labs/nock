@@ -1,0 +1,53 @@
+/* nock's look for a view: an HTML page an agent writes to lay out an asset's variants, served
+   with this sheet and `window.nock` (`assets`: each of the version's files by name, type, title,
+   address and whether it is preferred; `title`: the item's). Plain HTML gets nock's type and
+   colours; the classes below are the parts a view is made of (`nock docs topics.views`). */
+@import url("https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Unbounded:wght@600;800&display=swap");
+:root {
+  --background: #ffffff;
+  --foreground: #111116;
+  --muted: #474756;
+  --border: rgb(17 17 22 / .12);
+  --tint: #f3f0fa;
+  --sans: "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --display: "Unbounded", var(--sans);
+  --pink: #ff9ad5;
+  --cyan: #8fe9ff;
+  --holo: linear-gradient(115deg, #ff9ad5 0%, #c3b2ff 22%, #8fe9ff 45%, #d9ffd0 62%, #fff2a0 78%, #ffb0d6 100%);
+  color-scheme: light;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--background); color: var(--foreground); }
+body { padding: 24px; font: 400 15px/1.6 var(--sans); -webkit-font-smoothing: antialiased; }
+h1, h2, h3 { margin: 0 0 12px; font-family: var(--display); letter-spacing: -.02em; line-height: 1.25; }
+h1 { font-size: 24px; font-weight: 800; }
+h2 { font-size: 18px; font-weight: 600; }
+h3 { font-size: 15px; font-weight: 600; }
+p { margin: 0 0 12px; }
+code { font: 13px var(--mono); background: var(--tint); padding: 1px 5px; border-radius: 5px; }
+img, video, svg { max-width: 100%; }
+
+/* A label: small mono caps, for a size or a name under a picture. */
+.label { font: 500 11px/16px var(--mono); letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
+/* A grid of cards, as many to a row as fit; `.grid.tight` closer. */
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr)); gap: 16px; }
+.grid.tight { grid-template-columns: repeat(auto-fill, minmax(7rem, 1fr)); gap: 10px; }
+/* A row of things side by side, wrapping, aligned on their feet. */
+.row { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 16px; }
+/* A card: a white tile on a hairline, its picture over its caption. */
+.card { display: grid; gap: 8px; align-content: start; padding: 12px; border: 1px solid var(--border); border-radius: 14px; background: #fff; }
+.card > img, .card > video { display: block; width: 100%; height: auto; border-radius: 8px; }
+.card.preferred { border: 2px solid #111116; box-shadow: 3px 3px 0 0 var(--cyan), -3px -3px 0 0 var(--pink); }
+/* A caption under a picture: its name, then what it shows. */
+.caption { display: grid; gap: 2px; font-size: 13px; line-height: 1.4; }
+.caption strong { font-weight: 600; }
+/* A checkerboard behind a transparent picture; `.dark` a dark ground, to see it on one. */
+.checker { background: repeating-conic-gradient(#ececf2 0 25%, #fff 0 50%) 0 0 / 16px 16px; border-radius: 8px; }
+.dark { background: #111116; color: #fff; border-radius: 8px; }
+/* A picture kept crisp at its own pixels, for icons drawn small. */
+.pixels { image-rendering: pixelated; }
+/* A table of values. */
+table { border-collapse: collapse; font-size: 13.5px; }
+th, td { padding: 6px 10px; border-bottom: 1px solid var(--border); text-align: left; }
+th { font: 500 11px/16px var(--mono); letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }

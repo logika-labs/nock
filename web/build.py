@@ -74,7 +74,7 @@ REFERENCE_PAGE = (
 MOVED_PAGES = {
     "install": "install",
     "session": "the-first-session",
-    "work": "reviewing-in-work",
+    "work": "reviewing-in-topics",
     "chat": "chatting",
     "tidy": "tidy-up",
     "topics": "topics",

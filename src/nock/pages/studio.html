@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>nock studio</title>
+<title>nock</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M8 25V11h5.2v2.2c1.2-1.7 3-2.6 5.3-2.6 3.8 0 5.5 2.4 5.5 6.3V25h-5.3v-7.3c0-1.9-.8-2.8-2.4-2.8-1.8 0-3.1 1.2-3.1 3.6V25z' fill='%23ff9ad5' transform='translate(-2 -2)'/%3E%3Cpath d='M8 25V11h5.2v2.2c1.2-1.7 3-2.6 5.3-2.6 3.8 0 5.5 2.4 5.5 6.3V25h-5.3v-7.3c0-1.9-.8-2.8-2.4-2.8-1.8 0-3.1 1.2-3.1 3.6V25z' fill='%238fe9ff' transform='translate(2 2)'/%3E%3Cpath d='M8 25V11h5.2v2.2c1.2-1.7 3-2.6 5.3-2.6 3.8 0 5.5 2.4 5.5 6.3V25h-5.3v-7.3c0-1.9-.8-2.8-2.4-2.8-1.8 0-3.1 1.2-3.1 3.6V25z' fill='%23111116'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -74,6 +74,7 @@ button:not(:disabled), label[for] { cursor: pointer; }
   -webkit-mask: var(--icon) center / contain no-repeat; mask: var(--icon) center / contain no-repeat;
 }
 .menu a[data-tab-link="topics"] { --icon: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><path d='M2 2h12v3H2zM2 6.5h12v3H2zM2 11h8v3H2z'/></svg>"); }
+.menu a[data-tab-link="timeline"] { --icon: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><path d='M3 1.5h2v13H3z'/><circle cx='4' cy='4' r='2.5'/><circle cx='4' cy='11.5' r='2.5'/><path d='M8 3h6v2H8zM8 10.5h6v2H8z'/></svg>"); }
 .top { display: flex; flex: none; align-items: center; gap: 8px; }
 .menu a:focus-visible, .notice button:focus-visible, .gear:focus-visible, .switch:focus-visible, .popover summary:focus-visible {
   outline: 2px solid var(--ring); outline-offset: 3px;
@@ -107,6 +108,23 @@ button:not(:disabled), label[for] { cursor: pointer; }
 .popover .state { margin-left: auto; font: 500 12px/1 var(--mono); color: var(--muted); }
 .popover .hint { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.45; }
 .popover summary { cursor: pointer; width: max-content; font-size: 13px; text-decoration: underline; text-underline-offset: 2px; }
+/* Each group of settings folds: its name and where it stands on one line, the rest under it. */
+.popover details.group { display: grid; gap: 8px; }
+.popover details.group + details.group { padding-top: 10px; border-top: 1px solid var(--border); }
+.popover details.group > summary {
+  width: auto; display: flex; align-items: center; gap: 8px; list-style: none; text-decoration: none;
+  font: 600 14px/20px var(--sans);
+}
+.popover details.group > summary::-webkit-details-marker { display: none; }
+.popover details.group > summary::before {
+  content: ""; width: 7px; height: 7px; flex: none; margin: 0 3px 0 1px; border: solid currentColor; border-width: 0 1.6px 1.6px 0;
+  transform: rotate(-45deg); transition: transform .15s;
+}
+.popover details.group[open] > summary::before { transform: rotate(45deg); }
+.popover details.group > summary .state { margin-left: auto; }
+.popover details.group .setting { font-weight: 500; }
+.popover details.group .setting .switch { margin-left: auto; }
+.popover details.group .fields { margin-top: 0; padding-top: 0; border-top: 0; }
 .popover details p { margin: 6px 0 0; font-size: 12px; line-height: 1.5; color: var(--muted); max-height: 14rem; overflow: auto; }
 /* The recorder's server: labelled fields and Save, under the sharing switch. */
 .popover .fields { display: grid; gap: 8px; margin-top: 4px; padding-top: 12px; border-top: 1px solid var(--border); }
@@ -117,7 +135,7 @@ button:not(:disabled), label[for] { cursor: pointer; }
 }
 .popover .fields input:focus-visible { border-color: var(--ring); }
 .popover .fields input:invalid { border-color: var(--error); }
-.popover .fields .save {
+.popover .save {
   justify-self: end; padding: 4px 14px; border-radius: 999px; border: 1px solid var(--selection);
   background: var(--selection); color: var(--selection-foreground); font: 500 12px/18px var(--sans);
 }
@@ -292,7 +310,7 @@ const studio = {
     row.classList.toggle("more-after", row.scrollLeft + row.clientWidth < row.scrollWidth - 2);
   },
   // Other names an address may use for a tab.
-  aliases: { decisions: "topics", review: "topics", work: "topics" },
+  aliases: { decisions: "topics", review: "topics", work: "topics", feed: "timeline" },
   route() {
     const hash = decodeURIComponent(location.hash.slice(1));
     const [said, ...rest] = hash.split("/");
@@ -320,8 +338,7 @@ const studio = {
       else link.removeAttribute("aria-current");
     }
     const title = document.querySelector(`[data-tab-link="${name}"]`).textContent;
-    document.getElementById("title").textContent = title;
-    document.title = `nock studio — ${title}`;
+    document.title = `nock — ${title}`;
     document.getElementById("summary").textContent = this.summaries.get(name) ?? "…";
     if (switching) scrollTo({ top: this.scrolls.get(name) ?? 0, behavior: "instant" });
     this.tabs.get(name).show(route);
@@ -406,7 +423,7 @@ function morphElement(element, next) {
 <header class="band">
   <div class="frame">
     <div class="heading">
-      <div class="titles"><h1 id="title"></h1><p id="summary">…</p></div>
+      <div class="titles"><h1 id="title">nock</h1><p id="summary">…</p></div>
       <div class="top">
       <nav class="menu" aria-label="Studio">
 <!-- nock:tabs -->
@@ -452,7 +469,8 @@ for (const button of document.querySelectorAll("#usage [data-share]")) {
 document.querySelector("[data-settings]")?.addEventListener("click", event => {
   event.stopPropagation();
   settings.open(true);
-  settings.panel.querySelector("details").open = true;
+  document.getElementById("sharing").open = true;
+  settings.panel.querySelector("details.holds").open = true;
 });
 settings.gear.addEventListener("click", event => { event.stopPropagation(); settings.open(settings.panel.hidden); });
 // The recorder's Whisper server, saved to this machine's config.
@@ -547,7 +565,7 @@ const alerts = {
       return;
     }
     if (told.shown !== "studio" || !this.supported || Notification.permission !== "granted") return;
-    const shown = new Notification("nock", { body: told.text, tag: `nock-${told.topic}` });
+    const shown = new Notification("nock", { body: told.text, tag: `nock-${told.topic}`, icon: "/icon.png" });
     shown.onclick = () => { focus(); location.hash = told.address; shown.close(); };
   },
   async poll() {

@@ -455,7 +455,7 @@ class Splitting:
     def pieces(self, item: dict[str, Any]) -> list[str]:
         """What it splits into, by file name: the item itself first (`""`
         for a decision), then each file of its own."""
-        if item.get("task") or item.get("options"):
+        if item.get("task") or item.get("options") or item.get("variants"):
             return [""]
         decided = any(
             entry["kind"] == "decision"

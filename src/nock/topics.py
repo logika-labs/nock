@@ -1,12 +1,13 @@
 """Topics and items: what agents put before the owner. A topic is a piece of
 work — a name, why it exists, a thread — holding items; an item is bare: a
-title and, in each of its versions, one of: a decision (nock's own JSON: the
-answer, the alternatives weighed, done or todo, with the project files it
-concerns), a project file (copied when the version is made, so versions
-compare) or a derived file (something made to show part of the project, with
-what it comes from, when it applies and how to make it again). One asset per
-item; several only as options, variants of one asset side by side, of which
-the owner may prefer one. The owner alone gives an item its
+title, a description under it, and, in each of its versions, one of: a
+decision (nock's own JSON: the answer, the alternatives weighed, done or todo,
+with the project files it concerns) or one asset — a project file (copied
+when the version is made, so versions compare) or a derived file (something
+made to show part of the project, with what it comes from, when it applies
+and how to make it again). An asset may hold several variants, takes on one
+thing of one type, of which the owner prefers one before accepting it, and
+views, HTML pages laying out its variants with nock's look. The owner alone gives an item its
 verdict (accepted; rejected, to be reworked; dropped, rejected with nothing
 to rework, closed; open until then), on the page or with `/nock-triage`;
 both sides talk in the threads, a chat: the owner's message waits for the
@@ -166,30 +167,48 @@ WebVTT file (by default `NAME.vtt` beside its `path`, when there is one), and
 a `poster`, a picture shown before it plays."""
 
 
+class View(TypedDict):
+    """An HTML page laying out an asset's variants: `path` (a file to copy) or
+    `text` with a `name` (`sizes.html`), and its `title`. It is shown with
+    nock's look (`docs topics.views`) and reaches the version's files by
+    their names, as relative addresses (`<img src="favicon-a.svg">`)."""
+
+    path: NotRequired[str]
+    text: NotRequired[str]
+    name: NotRequired[str]
+    title: NotRequired[str]
+
+
 class Content(TypedDict):
     """What a version holds: a decision (with the project files it concerns),
-    or one file, project or derived; several files only as options."""
+    or one asset, a project or a derived file; several files only as variants."""
 
     decision: NotRequired[Decision]
     files: NotRequired[list[str]]
     """Project files, by their path in the repository, copied as they are now:
     one, or with a decision those it concerns."""
     derived: NotRequired[list[Derived]]
-    options: NotRequired[bool]
-    """The files are options: variants of one asset (three takes on one
-    picture), of one type, shown side by side for the owner to prefer one;
-    never unrelated files, which are items of their own."""
+    variants: NotRequired[bool]
+    """The files are variants: takes on one asset (three versions of one
+    picture), of one type, for the owner to prefer one; never unrelated files,
+    which are items of their own."""
+    views: NotRequired[list[View]]
+    """HTML pages laying out the variants (each favicon at several sizes)."""
 
 
 class ItemDraft(Content):
     title: str
-    """What it is, in a line; for a decision, what was decided, as a statement."""
+    """What it is, in a few words: "Checkout email", "Favicon"; for a decision,
+    what was decided, as a statement. The details go in `description`."""
+    description: NotRequired[str]
+    """What the title leaves out, in a sentence or two, shown under it."""
     slug: NotRequired[str]
     """Its name in the topic (`topic/slug`); made from the title when left out."""
 
 
 class ItemChange(Content):
     title: NotRequired[str]
+    description: NotRequired[str]
     topic: NotRequired[str]
     """Move it to this existing topic: re-filing, whatever its verdict; its slug
     kept (suffixed if taken there), its old ref kept as an alias."""
@@ -406,9 +425,28 @@ class Topics:
             self.folder(item["topic"], item["slug"], version["version"]) / DECISION_FILE
         )
 
+    # --- where files are: the one layer that reads and writes them ----------------
+
+    def located(self, topic: str, slug: str, version: int, entry: dict[str, Any]) -> Path:
+        """Where a version's file is kept: in its version's folder, or under
+        `.nock/local/topics/` when it is large (`"local": true`)."""
+        base = self.large if entry.get("local") else self.directory
+        return base / topic / slug / str(version) / stored(entry)
+
+    def write_file(
+        self, topic: str, slug: str, version: int, entry: dict[str, Any], data: bytes
+    ) -> dict[str, Any]:
+        """Keep a version's file where `located` finds it: the entry, with its size and place."""
+        local = len(data) > LARGE
+        kept = {**entry, "bytes": len(data), "local": local}
+        target = self.located(topic, slug, version, kept)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(data)
+        return kept
+
     def file(self, topic: str, slug: str, version: int, name: str) -> Path:
-        """Where one of a version's files is: only a file its record names,
-        or a video's captions or poster."""
+        """Where one of a version's files is: only a file its record names, a
+        video's captions or poster, or one of its views."""
         item = self.item(f"{topic}/{slug}")
         record = next((entry for entry in item["versions"] if entry["version"] == version), None)
         listed = record and next(
@@ -416,29 +454,39 @@ class Topics:
         )
         if not listed and record:
             beside = any(name in companions(entry).values() for entry in record["files"])
-            if beside:
-                return self.directory / topic / slug / str(version) / name
+            viewed = any(view["name"] == name for view in record.get("views", []))
+            if beside or viewed:
+                return self.folder(topic, slug, version) / name
         if not listed:
             raise NotFoundError(f"item {topic}/{slug} has no file {name} in version {version}")
-        base = self.large if listed.get("local") else self.directory
-        return base / topic / slug / str(version) / stored(listed)
+        return self.located(topic, slug, version, listed)
 
     def shown(self, item: dict[str, Any]) -> dict[str, Any]:
-        """An item with each version's decision read and each file's path."""
+        """An item with each version's decision read, each file's path and its views."""
         versions = []
         for version in item["versions"]:
+            number = version["version"]
+            folder = self.folder(item["topic"], item["slug"], number)
             files = []
             for entry in version["files"]:
                 if entry["kind"] == "decision":
                     continue
-                base = self.large if entry.get("local") else self.directory
-                path = base / item["topic"] / item["slug"] / str(version["version"]) / stored(entry)
-                folder = self.directory / item["topic"] / item["slug"] / str(version["version"])
+                path = self.located(item["topic"], item["slug"], number, entry)
                 beside = {
                     f"{role}_where": str(folder / name) for role, name in companions(entry).items()
                 }
                 files.append({**entry, "name": entry_name(entry), "where": str(path), **beside})
-            versions.append({**version, "decision": self.decision(item, version), "files": files})
+            views = [
+                {**view, "where": str(folder / view["name"])} for view in version.get("views", [])
+            ]
+            versions.append(
+                {
+                    **version,
+                    "decision": self.decision(item, version),
+                    "files": files,
+                    "views": views,
+                }
+            )
         thread = self.thread_shown(item["thread"], item["topic"], item["slug"])
         return {**item, "versions": versions, "thread": thread}
 
@@ -647,7 +695,8 @@ class Topics:
             "title": item["title"],
             "verdict": item["verdict"],
             "kinds": kinds,
-            **({"options": True} if item.get("options") else {}),
+            **({"description": item["description"]} if item.get("description") else {}),
+            **({"variants": len(variants_of(item))} if has_variants(item) else {}),
             **({"preferred": item["preferred"]} if item.get("preferred") else {}),
             "versions": len(item["versions"]),
             "updated": item["updated"],
@@ -657,7 +706,7 @@ class Topics:
 
     def item_text(self, item: dict[str, Any]) -> tuple[str, str]:
         """An item's title, and the rest of what it says, for search."""
-        parts = [entry["text"] for entry in item["thread"]]
+        parts = [item.get("description") or "", *(entry["text"] for entry in item["thread"])]
         parts += [file["name"] for entry in item["thread"] for file in entry.get("attachments", [])]
         latest = item["versions"][-1]
         decision = self.decision(item, latest)
@@ -670,12 +719,17 @@ class Topics:
         return item["title"], " ".join(parts)
 
     def score(self, words: list[str], heading: str, body: str) -> float:
-        heading, body = heading.lower(), body.lower()
-        matched = [word for word in words if word in heading or word in body]
+        """How strongly a heading and a body match the words searched for: by
+        how many of the words they hold (each found where a word starts), then
+        how often, the heading's three times — so what holds every word always
+        comes first, then what holds all but one, and so on down."""
+        found = [
+            len(occurrences(word, heading)) * 3 + len(occurrences(word, body)) for word in words
+        ]
+        matched = sum(1 for count in found if count)
         if not matched:
             return 0
-        weight = sum(3 * heading.count(word) + body.count(word) for word in matched)
-        return len(matched) * 1000 + min(weight, 999)
+        return matched * 1000 + min(sum(found), 999)
 
     def search_items(self, query: str, topic: str | None = None) -> list[dict[str, Any]]:
         words = query.lower().split()
@@ -862,8 +916,13 @@ class Topics:
     def owners_turn(self, name: str, reason: Reason) -> None:
         """Tell the owner it is their turn in this topic (`nock.notify`);
         never for Tidy up, which the owner started and watches."""
-        if self.project.current_role() != TIDIER:
-            Notifications(self.project).tell(name, reason, self.items(name))
+        if self.project.current_role() == TIDIER:
+            return
+        # A genuine cycle: the timeline reads the topics.
+        from nock.timeline import TURNS, Timeline
+
+        event = Timeline(self.project).latest(name, TURNS[reason])
+        Notifications(self.project).tell(name, reason, self.items(name), event=event)
 
     def set_standing(
         self, topic: dict[str, Any], change: dict[str, Any], revived: str | None
@@ -951,6 +1010,7 @@ class Topics:
             item: dict[str, Any] = {
                 "slug": slug,
                 "title": title,
+                "description": " ".join(str(draft.get("description") or "").split()),
                 "aliases": [],
                 "verdict": str(Verdict.OPEN),
                 "decided": None,
@@ -1007,7 +1067,13 @@ class Topics:
                     if not change["title"].strip():
                         raise UsageError("`title` is empty")
                     item["title"] = change["title"].strip()
-                content = {key: value for key, value in change.items() if key != "title"}
+                if "description" in change:
+                    item["description"] = " ".join(str(change["description"] or "").split())
+                content = {
+                    key: value
+                    for key, value in change.items()
+                    if key not in ("title", "description")
+                }
                 if content:
                     latest = item["versions"].pop()
                     self.add_version(topic, item, content, latest)
@@ -1016,7 +1082,14 @@ class Topics:
             if version is not None:
                 if "title" in version:
                     item["title"] = version["title"].strip() or item["title"]
-                self.add_version(topic, item, version, item["versions"][-1])
+                if "description" in version:
+                    item["description"] = " ".join(str(version["description"] or "").split())
+                given = {
+                    key: value
+                    for key, value in version.items()
+                    if key not in ("title", "description")
+                }
+                self.add_version(topic, item, given, item["versions"][-1])
                 item["verdict"] = str(Verdict.OPEN)
                 item["decided"] = None
                 said.append(f"version {item['versions'][-1]['version']}")
@@ -1086,8 +1159,8 @@ class Topics:
         """Write a version from the content given, what it leaves out carried
         from `previous` (project files copied again as they are now). When
         `previous` is the latest version it is replaced in place."""
-        if "options" in content:
-            item["options"] = bool(content["options"])
+        if "variants" in content:
+            item["variants"] = bool(content["variants"])
         in_place = previous is not None and (
             not item["versions"] or item["versions"][-1] is not previous
         )
@@ -1105,16 +1178,23 @@ class Topics:
             files = [entry["path"] for entry in previous["files"] if entry["kind"] == "project"]
         derived = content.get("derived")
         carried: list[tuple[dict[str, Any], bytes, dict[str, bytes]]] = []
-        if derived is None and previous is not None:
+        if derived is None and previous is not None and old_folder is not None:
             for entry in previous["files"]:
                 if entry["kind"] == "derived":
-                    base = self.large if entry.get("local") else self.directory
-                    source = base / topic / item["slug"] / str(previous["version"]) / entry["name"]
-                    beside = self.directory / topic / item["slug"] / str(previous["version"])
+                    source = self.located(topic, item["slug"], previous["version"], entry)
                     kept = {
-                        name: (beside / name).read_bytes() for name in companions(entry).values()
+                        name: (old_folder / name).read_bytes()
+                        for name in companions(entry).values()
                     }
                     carried.append((entry, source.read_bytes(), kept))
+        views: list[tuple[dict[str, Any], bytes]] = []
+        if content.get("views") is not None:
+            views = [self.view_file(dict(given)) for given in content.get("views") or []]
+        elif previous is not None and old_folder is not None:
+            views = [
+                (dict(view), (old_folder / view["name"]).read_bytes())
+                for view in previous.get("views", [])
+            ]
         if not decision and not files and not derived and not carried:
             raise UsageError(
                 "an item holds something: give `decision`, `files`, `derived`, or several"
@@ -1129,10 +1209,12 @@ class Topics:
         for given in derived or []:
             made.append(self.derived_file(dict(given)))
         made += carried
-        self.check_assets(item, [entry for entry, _, _ in made])
-        names = [stored(entry) for entry, _, _ in made] + [
-            name for _, _, beside in made for name in beside
-        ]
+        self.check_assets(item, [entry for entry, _, _ in made], bool(views))
+        names = (
+            [stored(entry) for entry, _, _ in made]
+            + [name for _, _, beside in made for name in beside]
+            + [view["name"] for view, _ in views]
+        )
         doubled = sorted({name for name in names if names.count(name) > 1})
         if doubled:
             raise UsageError(f"two files named {', '.join(doubled)}: rename one")
@@ -1145,28 +1227,34 @@ class Topics:
             for name, kept in beside.items():
                 (folder / name).parent.mkdir(parents=True, exist_ok=True)
                 (folder / name).write_bytes(kept)
-            local = len(data) > LARGE
-            target = (self.large if local else self.directory) / topic / item["slug"] / str(number)
-            target = target / stored(entry)
-            target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_bytes(data)
-            if entry["kind"] != "decision":
-                entry = {**entry, "bytes": len(data), "local": local}
-            entries.append(entry)
+            written = self.write_file(topic, item["slug"], number, entry, data)
+            entries.append(entry if entry["kind"] == "decision" else written)
         folder.mkdir(parents=True, exist_ok=True)
+        laid_out = []
+        for view, data in views:
+            (folder / view["name"]).write_bytes(data)
+            laid_out.append(
+                {"name": view["name"], "title": view.get("title") or "", "bytes": len(data)}
+            )
         stamp = self.recorded()
         record = {"version": number, **stamp, "files": entries}
+        if laid_out:
+            record["views"] = laid_out
         item["versions"].append(record)
 
-    def check_assets(self, item: dict[str, Any], entries: list[dict[str, Any]]) -> None:
+    def check_assets(
+        self, item: dict[str, Any], entries: list[dict[str, Any]], views: bool = False
+    ) -> None:
         """One asset per item: a decision (with the project files it
-        concerns), or one file; several only as options of one type."""
+        concerns), or one file; several only as variants of one type."""
         files = [entry for entry in entries if entry["kind"] != "decision"]
         if len(files) < len(entries):
-            if item.get("options"):
+            if has_variants(item):
                 raise UsageError(
-                    "a decision has no options: its alternatives say what else was weighed"
+                    "a decision has no variants: its alternatives say what else was weighed"
                 )
+            if views:
+                raise UsageError("a decision has no views: views lay out an asset's variants")
             derived = [entry["name"] for entry in files if entry["kind"] == "derived"]
             if derived:
                 raise UsageError(
@@ -1174,17 +1262,34 @@ class Topics:
                     " own, and cite it in the answer"
                 )
             return
-        if len(files) > 1 and not item.get("options"):
+        if len(files) > 1 and not has_variants(item):
             raise UsageError(
-                "an item holds one file: submit each as an item of its own — several only"
-                ' as options, variants of one asset for the owner to prefer one (`"options": true`)'
+                "an item holds one asset: submit each file as an item of its own — several only"
+                ' as variants, takes on one asset for the owner to prefer one (`"variants": true`)'
             )
         types = sorted({entry["type"] for entry in files})
-        if item.get("options") and len(types) > 1:
+        if has_variants(item) and len(types) > 1:
             raise UsageError(
-                f"options are variants of one asset, of one type — not {' and '.join(types)}:"
+                f"variants are takes on one asset, of one type — not {' and '.join(types)}:"
                 " unrelated files are items of their own"
             )
+
+    def view_file(self, given: dict[str, Any]) -> tuple[dict[str, Any], bytes]:
+        if "text" in given:
+            name = str(given.get("name") or "").strip()
+            data = str(given["text"]).encode()
+        elif "path" in given:
+            path = Path(given["path"]).expanduser()
+            path = path if path.is_absolute() else Path.cwd() / path
+            if not path.is_file():
+                raise UsageError(f"{given['path']}: no such file")
+            name = str(given.get("name") or path.name)
+            data = path.read_bytes()
+        else:
+            raise UsageError("a view gives `path` (an HTML file to copy) or `text` with `name`")
+        if "/" in name or Path(name).suffix.lower() not in (".html", ".htm"):
+            raise UsageError(f"{name or 'a view'}: a view is an HTML file, named `sizes.html`")
+        return {"name": name, "title": str(given.get("title") or "").strip()}, data
 
     def project_file(self, given: str) -> tuple[dict[str, Any], bytes, dict[str, bytes]]:
         here = self.project.here.resolve()
@@ -1258,12 +1363,13 @@ class Topics:
     # --- the owner's word -------------------------------------------------------
 
     def prefer(self, ref: str, version: int, name: str | None) -> tuple[dict[str, Any], str | None]:
-        """The owner's preferred option in a version of an item with options,
-        or none (`name` None): recorded and shown, changing nothing else."""
+        """The owner's preferred variant in a version of an item with variants,
+        or none (`name` None): recorded and shown; only an item whose latest
+        version's variant is preferred is accepted."""
         with self.project.lock("topics"):
             item = self.item(ref)
-            if not item.get("options"):
-                raise UsageError(f"{item['ref']} has no options to prefer one of")
+            if not has_variants(item):
+                raise UsageError(f"{item['ref']} has no variants to prefer one of")
             if name is None:
                 item["preferred"] = None
             else:
@@ -1276,11 +1382,11 @@ class Topics:
                     if entry["kind"] != "decision"
                 ]
                 if name not in names:
-                    raise NotFoundError(f"{item['ref']} has no option {name} in version {version}")
+                    raise NotFoundError(f"{item['ref']} has no variant {name} in version {version}")
                 item["preferred"] = {"version": version, "name": name}
             path = self.save_item(item["topic"], item)
             said = (
-                f"option {name} of version {version} preferred" if name else "no option preferred"
+                f"variant {name} of version {version} preferred" if name else "no variant preferred"
             )
             return item, self.commit([path], f"Item {item['ref']}, {said}: {item['title']}")
 
@@ -1295,6 +1401,10 @@ class Topics:
 
     def give(self, item: dict[str, Any], word: Word) -> None:
         verdict = verdict_of(word)
+        if verdict is Verdict.ACCEPTED and unpreferred(item):
+            raise ConflictError(
+                f"{item['ref']} has {len(variants_of(item))} variants: prefer one before accepting it"
+            )
         item["verdict"] = str(verdict)
         item["decided"] = {"moment": now(), **self.writer()}
         comment = str(word.get("comment") or "").strip()
@@ -1310,11 +1420,16 @@ class Topics:
             verdict = verdict_of(word)
             judged, paths = [], []
             for item in self.items(name):
-                if awaits_owner(item):
+                # Accepting all leaves out what cannot be accepted yet: variants with none preferred.
+                if awaits_owner(item) and not (verdict is Verdict.ACCEPTED and unpreferred(item)):
                     self.give(item, Word(verdict=verdict))
                     paths.append(self.save_item(name, item))
                     judged.append(item["ref"])
             if not judged:
+                if any(awaits_owner(item) for item in self.items(name)):
+                    raise ConflictError(
+                        f"topic {name}: every open item has variants with none preferred — prefer one first"
+                    )
                 raise ConflictError(f"topic {name} has nothing open")
             comment = str(word.get("comment") or "").strip()
             if comment:
@@ -1570,6 +1685,35 @@ def in_order(topics: list[dict[str, Any]]) -> list[dict[str, Any]]:
 def awaits_owner(item: dict[str, Any]) -> bool:
     """Open: the owner's to look at."""
     return item["verdict"] == Verdict.OPEN
+
+
+def occurrences(word: str, text: str) -> list[str]:
+    """Where a searched word is found in a text: wherever a word of it starts
+    with it, whatever the case ("cli" in "CLI's" and "clients", not "decline")."""
+    return re.findall(rf"(?<![a-z0-9]){re.escape(word.lower())}", text.lower())
+
+
+def has_variants(item: dict[str, Any]) -> bool:
+    """Whether an item's files are variants of one asset (`options`, as an
+    item from before variants says it)."""
+    return bool(item.get("variants") or item.get("options"))
+
+
+def variants_of(item: dict[str, Any]) -> list[dict[str, Any]]:
+    """The latest version's files, when they are an asset's variants."""
+    files = [entry for entry in item["versions"][-1]["files"] if entry["kind"] != "decision"]
+    return files if has_variants(item) else files[:1]
+
+
+def unpreferred(item: dict[str, Any]) -> bool:
+    """Several variants, none of the latest version's preferred: not to accept yet."""
+    found = variants_of(item)
+    preferred = item.get("preferred") or {}
+    latest = item["versions"][-1]["version"]
+    return len(found) > 1 and not (
+        preferred.get("version") == latest
+        and any(entry_name(entry) == preferred.get("name") for entry in found)
+    )
 
 
 def owner_moment(item: dict[str, Any]) -> str:

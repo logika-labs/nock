@@ -563,7 +563,8 @@ def test_the_owner_judges_on_the_page_and_the_submitting_session_hears_once(
     other = submit(project.root, {**DECISION, "title": "Orders are kept a year"})
     with urllib.request.urlopen(page) as response:
         shown = response.read().decode()
-    assert '<a href="#topics" data-tab-link="topics">Work</a>' in shown
+    assert '<a href="#topics" data-tab-link="topics">Topics</a>' in shown
+    assert '<a href="#timeline" data-tab-link="timeline">Timeline</a>' in shown
     assert "<!-- nock:" not in shown
     with urllib.request.urlopen(f"{page}topics") as response:
         listed = json.loads(response.read())
@@ -731,7 +732,12 @@ def test_the_owner_s_message_waits_for_the_agent_s_one_answer_and_is_withdrawn_u
     project: Project, page: str
 ) -> None:
     ref = submit(project.root)
-    assert chat_of(page, ref) == {"pending": False, "unseen": 0, "answered": False}
+    assert chat_of(page, ref) == {
+        "pending": False,
+        "unseen": 0,
+        "answered": False,
+        "addressing": False,
+    }
     post(page, "reply", {"ref": ref, "text": "Why not Postgres?"})
     assert chat_of(page, ref)["pending"] is True
     status, refused = post(page, "reply", {"ref": ref, "text": "And MySQL?"})
@@ -745,7 +751,12 @@ def test_the_owner_s_message_waits_for_the_agent_s_one_answer_and_is_withdrawn_u
     answered = run(project.root, "items", "update", ref, "--reply", "A server to run.")
     asked = Topics(project).item(ref)["thread"][0]["moment"]
     assert answered["answered"] == asked
-    assert chat_of(page, ref) == {"pending": False, "unseen": 1, "answered": True}
+    assert chat_of(page, ref) == {
+        "pending": False,
+        "unseen": 1,
+        "answered": True,
+        "addressing": False,
+    }
     assert "answered" not in run(project.root, "items", "update", ref, "--reply", "And backups.")
     assert chat_of(page, ref)["unseen"] == 2
     status, _ = post(page, "seen", {"ref": ref})
@@ -808,7 +819,7 @@ def test_the_map_check_holds_its_citations(project: Project) -> None:
 
 
 def test_every_studio_tab_has_its_panel_and_its_routes_only(page: str) -> None:
-    assert [tab.name for tab in TABS] == ["topics"]
+    assert [tab.name for tab in TABS] == ["topics", "timeline"]
     for tab in TABS:
         assert f'studio.register("{tab.name}"' in (PAGES / f"{tab.name}.html").read_text()
     for path in ("nothing", "decisions", "review", "topics/extra", "topics/file/a/b/1/c"):
@@ -864,7 +875,8 @@ def test_search_finds_what_the_owner_sees_and_not_what_nock_keeps_aside(
 
     def search(query: str) -> Any:
         with urllib.request.urlopen(f"{page}topics/search/{urllib.parse.quote(query)}") as response:
-            return json.loads(response.read())
+            found = json.loads(response.read())
+        return {"topics": found["topics"], "items": found["items"]}
 
     assert search("zephyr settled") == {"topics": [], "items": [ref]}
     assert search("ledger") == {"topics": [], "items": []}
@@ -1163,7 +1175,7 @@ def test_topics_get_their_state_once_and_task_items_become_notes(project: Projec
     assert git(project.root, "status", "--porcelain") == ""
 
 
-def test_an_item_holds_one_asset_or_options_of_one_the_owner_may_prefer(
+def test_an_item_holds_one_asset_or_variants_of_one_the_owner_may_prefer(
     project: Project, page: str
 ) -> None:
     def text(name: str, words: str = "x") -> dict[str, str]:
@@ -1174,7 +1186,7 @@ def test_an_item_holds_one_asset_or_options_of_one_the_owner_may_prefer(
         project.root, "items", "create", "orders",
         json.dumps({"title": "Two", "derived": [text("a.md"), text("b.md")]}),
     )  # fmt: skip
-    assert two.returncode == 40 and "an item holds one file" in two.stderr
+    assert two.returncode == 40 and "an item holds one asset" in two.stderr
     pictured = nock(
         project.root, "items", "create", "orders",
         json.dumps({**DECISION, "derived": [text("a.md")]}),
@@ -1182,16 +1194,20 @@ def test_an_item_holds_one_asset_or_options_of_one_the_owner_may_prefer(
     assert pictured.returncode == 40 and "a decision holds no derived file" in pictured.stderr
     mixed = nock(
         project.root, "items", "create", "orders",
-        json.dumps({"title": "Mixed", "options": True, "derived": [text("a.md"), text("b.svg", "<svg/>")]}),
+        json.dumps({"title": "Mixed", "variants": True, "derived": [text("a.md"), text("b.svg", "<svg/>")]}),
     )  # fmt: skip
     assert mixed.returncode == 40 and "of one type" in mixed.stderr
     submit(project.root, {**DECISION, "files": ["README.md"]})
     ref = submit(
         project.root,
-        {"title": "The banner", "options": True, "derived": [text(f"{name}.md") for name in "abc"]},
+        {
+            "title": "The banner",
+            "variants": True,
+            "derived": [text(f"{name}.md") for name in "abc"],
+        },
     )
     row = next(row for row in run(project.root, "items", "list")["rows"] if row["ref"] == ref)
-    assert row["options"] is True and "preferred" not in row
+    assert row["variants"] == 3 and "preferred" not in row
     assert post(page, "prefer", {"ref": ref, "version": 1, "name": "b.md"}) == (
         200,
         {"preferred": {"version": 1, "name": "b.md"}},
@@ -1212,7 +1228,7 @@ def test_an_item_holding_several_files_splits_into_one_item_per_file_once(
         project.root,
         {
             "title": "Texts",
-            "options": True,
+            "variants": True,
             "derived": [{"text": n, "name": f"{n}.md"} for n in "ab"],
         },
     )
@@ -1224,7 +1240,7 @@ def test_an_item_holding_several_files_splits_into_one_item_per_file_once(
     judge(project.root, ref, "rejected")
     path = project.root / ".nock" / "topics" / "orders" / "texts" / "item.json"
     record = json.loads(path.read_text())
-    del record["options"]
+    del record["variants"]
     path.write_text(json.dumps(record))
     git(project.root, "commit", "-qam", "An item from before one asset per item")
     assert Migration(project).run() == {"migrated": False, "split": {"items": 1, "into": 3}}
