@@ -31,8 +31,8 @@
 // and opens and rings the items holding it. Every word goes through a chat: the owner's message
 // waits for the agent's answer, withdrawn until it comes. Files dropped on a chat, pasted or picked
 // are uploaded at once (`topics/upload`) and go with the message, kept beside its thread; the
-// recorder sends what is said to `topics/transcribe` and writes the text where the cursor was. The address says what is open: `#topics/TOPIC` a topic, `#topics/TOPIC/SLUG` an item
-// (`#170`: the item an earlier decision 170 became). Verdicts go to `POST topics/judge`, messages
+// recorder sends what is said to `topics/transcribe` and writes the text where the cursor was. The address says what is open: `#topics/TOPIC` a topic, `#topics/TOPIC/SLUG` an item.
+// Verdicts go to `POST topics/judge`, messages
 // to `topics/reply` (`topics/withdraw` takes one back, `topics/seen` records a look), a question
 // to `topics/ask` (`topics/ask/cancel` stops it).
 (() => {
@@ -354,7 +354,7 @@
 
   const topicNamed = name => state.topics.find(topic => topic.name === name);
   const everyItem = () => state.topics.flatMap(topic => topic.items);
-  const itemAt = ref => everyItem().find(item => item.ref === ref || (item.aliases || []).some(alias => ref === alias || ref === `D${alias}` || ref === `${item.topic}/${alias}`));
+  const itemAt = ref => everyItem().find(item => item.ref === ref || (item.aliases || []).includes(ref));
   const last = item => item.versions[item.versions.length - 1];
   const versionOf = (item, number) => item.versions.find(version => version.version === number) || last(item);
   const fileUrl = (item, version, name) => `topics/file/${encodeURIComponent(item.topic)}/${encodeURIComponent(item.slug)}/${version.version}/${name.split("/").map(encodeURIComponent).join("/")}`;

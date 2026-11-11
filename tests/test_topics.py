@@ -201,16 +201,12 @@ def test_an_item_moves_to_another_topic_whatever_its_verdict_and_its_old_refs_re
     ref = submit(
         project.root, {"title": DECISION["title"], "derived": [{"text": "big", "name": "big.txt"}]}
     )
-    item = project.root / ".nock" / "topics" / "orders" / "orders-live-in-sqlite" / "item.json"
-    record = json.loads(item.read_text())
-    item.write_text(json.dumps({**record, "aliases": ["7"]}))
-    git(project.root, "commit", "-qam", "An earlier decision's number")
     run(project.root, "items", "update", ref, "--reply", "Why not Postgres?")
     judge(project.root, ref, "accepted")
     open_topic(project.root, {"name": "storage", "description": "Where data is kept."})
     taken = submit(project.root, DECISION, topic="storage")
     assert taken == "storage/orders-live-in-sqlite"
-    (project.root / ".nock" / "topics" / "map.md").write_text(f"- [{ref}] and [D7] hold.\n")
+    (project.root / ".nock" / "topics" / "map.md").write_text(f"- [{ref}] holds.\n")
     git(project.root, "add", "-A")
     git(project.root, "commit", "-qm", "The map")
     topics = Topics(project)
@@ -223,9 +219,8 @@ def test_an_item_moves_to_another_topic_whatever_its_verdict_and_its_old_refs_re
     record = topics.item(moved["ref"])
     assert record["verdict"] == "open" and record["thread"][0]["text"] == "Why not Postgres?"
     assert [version["version"] for version in record["versions"]] == [1, 2]
-    assert record["aliases"] == ["7", ref]
-    assert topics.item("7")["ref"] == topics.item("D7")["ref"] == topics.item(ref)["ref"]
-    assert topics.item("storage/7")["ref"] == moved["ref"]
+    assert record["aliases"] == [ref]
+    assert topics.item(ref)["ref"] == moved["ref"]
     assert (
         project.local / "topics" / "storage" / "orders-live-in-sqlite-2" / "2" / "big.txt"
     ).is_file()
@@ -236,7 +231,7 @@ def test_an_item_moves_to_another_topic_whatever_its_verdict_and_its_old_refs_re
     judge(project.root, moved["ref"], "accepted")
     again = run(project.root, "items", "update", moved["ref"], json.dumps({"topic": "orders"}))
     assert again["ref"] == "orders/orders-live-in-sqlite-2" and again["verdict"] == "accepted"
-    assert topics.item(ref)["aliases"] == ["7", ref, "storage/orders-live-in-sqlite-2"]
+    assert topics.item(ref)["aliases"] == [ref, "storage/orders-live-in-sqlite-2"]
     refused = nock(project.root, "items", "update", ref, json.dumps({"topic": "nowhere"}))
     assert refused.returncode != 0 and "no topic 'nowhere'" in refused.stderr
 
@@ -1075,7 +1070,7 @@ def test_an_earlier_nock_s_decisions_and_review_items_move_into_topics_once(
     outcome = Migration(project).run()
     assert outcome["topics"] == {"emails": 1, "general": 1, "storage": 1}
     topics = Topics(project)
-    seven = topics.item("7")
+    seven = topics.item("storage/orders-live-in-sqlite")
     assert seven["ref"] == "storage/orders-live-in-sqlite" and seven["verdict"] == "accepted"
     assert seven["thread"][0]["author"] == "owner" and seven["thread"][0]["text"] == "Fine for now."
     answer = topics.decision(seven, seven["versions"][0])
@@ -1097,7 +1092,7 @@ def test_an_earlier_nock_s_decisions_and_review_items_move_into_topics_once(
     assert Migration(project).run() == {"migrated": False}
     assert outcome["marked_told"] == 2
     assert HookRunner(project, {"session_id": "s1"}).handle("UserPromptSubmit") is None
-    topics.reply("7", "Revisit at scale.", Author.OWNER)
+    topics.reply("storage/orders-live-in-sqlite", "Revisit at scale.", Author.OWNER)
     prompt = HookRunner(project, {"session_id": "s1"}).handle("UserPromptSubmit")
     assert prompt is not None
     told = prompt["hookSpecificOutput"]["additionalContext"]

@@ -492,7 +492,7 @@ Every change is committed there with
 `git commit --only` (`topics.committed`), so a worktree's item lands on the
 main branch at once; it skips the commit, and says so, when the main
 checkout is mid-merge or mid-rebase. A ref is `topic/slug`; `resolve` also
-takes an alias (a migrated decision's number, `170`, `D170`, `topic/170`).
+takes a ref an item had before it moved.
 
 A topic's `state` (`State`: planned, active, review, done, abandoned) and `status`
 change through `update_topic` → `set_standing`, which keeps them in

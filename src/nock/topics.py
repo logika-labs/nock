@@ -66,8 +66,8 @@ BUSY_MARKERS = ("MERGE_HEAD", "CHERRY_PICK_HEAD", "REVERT_HEAD", "rebase-merge",
 # A file larger than this (most videos) is kept on this machine, uncommitted.
 LARGE = 20 * 1024 * 1024
 NAME = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}$")
-# How the map cites an item: `[topic/slug]`, or a migrated decision by its number, `[D7]`.
-CITATION = re.compile(r"\[(?:D(\d+)|([a-z0-9][a-z0-9-]*/[a-z0-9][a-z0-9-]*))\](?!\()")
+# How the map cites an item: `[topic/slug]`.
+CITATION = re.compile(r"\[([a-z0-9][a-z0-9-]*/[a-z0-9][a-z0-9-]*)\](?!\()")
 # How many rows a list shows before it is cut short (`--full` shows them all).
 SHORT = 15
 KINDS = {
@@ -422,18 +422,13 @@ class Topics:
         return item
 
     def resolve(self, ref: str) -> tuple[str, str]:
-        """A ref's topic and slug: `topic/slug`, a number an item keeps as an
-        alias (`170`, `D170`, `topic/170`), or a ref it had before it moved."""
+        """A ref's topic and slug: `topic/slug`, or a ref it had before it moved."""
         ref = ref.strip().strip("/")
         topic, _, slug = ref.rpartition("/")
         if topic and (self.directory / topic / slug / ITEM_FILE).is_file():
             return topic, slug
-        alias = slug.removeprefix("D")
         for item in self.every():
-            aliases = item.get("aliases", [])
-            if ref in aliases or (
-                alias.isdigit() and alias in aliases and topic in ("", item["topic"])
-            ):
+            if ref in item.get("aliases", []):
                 return item["topic"], item["slug"]
         if topic:
             self.topic(topic)
@@ -1530,7 +1525,7 @@ class Topics:
     ) -> str | None:
         """A message in a topic's thread (a ref without `/`) or an item's,
         with the files it carries."""
-        if "/" in ref.strip("/") or ref.strip().removeprefix("D").isdigit():
+        if "/" in ref.strip("/"):
             return self.update_item(ref, None, reply=text, author=author, attachments=attachments)[
                 1
             ]
@@ -1658,9 +1653,8 @@ class Topics:
         problems = []
         for line, text in enumerate(self.map.read_text().splitlines(), start=1):
             for match in CITATION.finditer(text):
-                ref = match.group(1) or match.group(2)
                 try:
-                    self.resolve(ref)
+                    self.resolve(match.group(1))
                 except NotFoundError:
                     problems.append(Problem(f"[{match.group(0)[1:-1]}] is no item", place, line))
         return problems
