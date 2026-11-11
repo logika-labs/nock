@@ -27,9 +27,9 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from build import build, coming_soon
-from publish import DOMAIN, problems
 
 HERE = Path(__file__).resolve().parent
+DOMAIN = "nock.dev"
 SITES = "/srv/sites"
 CADDY_SITES = "/etc/caddy/sites"
 CADDY_SITE = HERE / "nock.dev.caddy"
@@ -40,6 +40,15 @@ PLAYED = re.compile(r'<source src="/videos/([^"/]+)"')
 # What the closed site keeps: its page, the legal pages and the files they load.
 ICONS = ("favicon.svg", "favicon-32.png", "favicon-16.png", "favicon.ico", "apple-touch-icon.png")
 OPEN_WHILE_CLOSED = ("index.html", "style.css", "fonts", "og.jpg", *ICONS, "privacy", "terms")
+
+
+def problems(site: Path) -> list[str]:
+    """Why `site` must not be released."""
+    return [
+        f"{relative} is missing"
+        for relative in ("index.html", "style.css", "getting-started/index.html", "docs/index.html")
+        if not (site / relative).is_file()
+    ]
 
 
 @dataclass(frozen=True)
