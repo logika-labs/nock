@@ -19,7 +19,7 @@ from nock.project import Project
 from nock.reflect import Reflection
 from nock.rounds import Protocol, named
 
-from .conftest import git, nock
+from .conftest import git, nock, own_protocol
 from .test_topics import judge
 from .test_topics import submit as decide
 
@@ -267,8 +267,7 @@ def test_a_logika_round_is_offered_once_a_week_never_run(
     (logika.root / started["write"][0]).write_text("# The round\n")
     assert submit(logika, RECORD).returncode == 0
     assert protocol(logika, "logika.rules").due() == ""
-    local = logika.root / ".nock" / "local" / "config.toml"
-    local.write_text(local.read_text() + "[reflect.logika]\ndays = 0\n")
+    own_protocol(logika, "logika.rules", {"days": 0})
     assert protocol(logika, "logika.rules").due() == ""
     ledger = copy.deepcopy(LEDGER)
     ledger["params"]["reason"] = {"type": "str"}

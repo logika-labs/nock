@@ -23,7 +23,7 @@ from nock.sessions import Sessions, encoded
 from nock.share import Sharing
 
 from . import store
-from .conftest import git, nock, write_tool
+from .conftest import git, nock, own_protocol, write_tool
 
 
 def transcript(
@@ -160,8 +160,8 @@ def protocol(project: Project, name: str) -> Protocol:
 
 
 def test_a_round_is_due_after_enough_sessions(project: Project) -> None:
-    local = project.root / ".nock" / "local" / "config.toml"
-    local.write_text(local.read_text() + "[reflect.nock]\nsessions = 4\ndays = 3650\n")
+    for name in ("nock.toolbox", "nock.map", "nock.fit"):
+        own_protocol(project, name, {"sessions": 4, "days": 3650})
     for index in range(3):
         transcript(project, f"s{index}", ["work"], [])
     Sessions(project).catch_up()
@@ -175,20 +175,16 @@ def test_a_round_is_due_after_enough_sessions(project: Project) -> None:
     assert "`/nock-reflect`, which runs one" in start["systemMessage"]
 
 
-def test_a_due_rule_is_the_protocol_s_own_then_its_namespace_s_then_the_manifest_s(
+def test_a_due_rule_is_the_manifest_s_and_a_project_s_own_protocol_changes_it(
     project: Project,
 ) -> None:
-    local = project.root / ".nock" / "local" / "config.toml"
-    local.write_text(
-        local.read_text()
-        + "[reflect.nock]\nsessions = 4\ndays = 3650\n[reflect.nock.map]\nsessions = 2\n"
-    )
+    own_protocol(project, "nock.map", {"sessions": 2})
     for index in range(2):
         transcript(project, f"s{index}", ["work"], [])
     Sessions(project).catch_up()
     due = {own.name: own.due() for own in named(project, "nock")}
     assert due == {"nock.map": "2 sessions since the last", "nock.toolbox": "", "nock.fit": ""}
-    assert protocol(project, "nock.fit").setting("days") == 3650
+    assert protocol(project, "nock.fit").setting("days") == 7
     assert protocol(project, "logika.rules").setting("days") == 30
 
 

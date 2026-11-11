@@ -53,7 +53,8 @@
     answered: '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M8 5 3.5 9.5 8 14M3.5 9.5H11c3 0 5.5 2.3 5.5 5.5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>',
     message: '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 4.5h12a1.5 1.5 0 0 1 1.5 1.5v7a1.5 1.5 0 0 1-1.5 1.5H9l-3.5 3v-3H4A1.5 1.5 0 0 1 2.5 13V6A1.5 1.5 0 0 1 4 4.5z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>',
   };
-  const fileUrl = (event, face) => `topics/file/${[event.topic, event.ref.split("/")[1], event.version, ...face.file.split("/")].map(encodeURIComponent).join("/")}`;
+  // A face is one of a decision's assets' files: `topics/file/TOPIC/SLUG/ASSET/N/NAME`.
+  const fileUrl = (event, face) => `topics/file/${[event.topic, event.ref.split("/")[1], face.asset, face.version, ...face.file.split("/")].map(encodeURIComponent).join("/")}`;
 
   // A day's heading: Today, Yesterday, or the date.
   function day(moment) {

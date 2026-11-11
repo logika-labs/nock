@@ -32,6 +32,7 @@ from typing import TYPE_CHECKING, Any
 from nock.dispatch import Dispatcher, Session
 from nock.errors import ConflictError, Error, NotFoundError, UsageError
 from nock.git import GitError
+from nock.inbox import listeners, urge
 from nock.sessions import find_transcript
 from nock.shared import Settled, Shared, by_for
 from nock.templates import Library
@@ -282,8 +283,9 @@ class Chats:
         self, identifier: str | None, text: str, files: list[Path] | None = None
     ) -> dict[str, Any]:
         """The owner's message, with the files it carries (moved beside the
-        chat): in a new chat without `identifier`; the agent's answer starts
-        at once, in the background."""
+        chat): in a new chat without `identifier`. With an agent waiting on
+        `nock inbox`, it is there for that agent; with none, the chat's own
+        agent's answer starts at once, in the background."""
         files = files or []
         if not text.strip() and not files:
             raise UsageError("the message is empty")
@@ -301,7 +303,8 @@ class Chats:
                 said["attachments"] = self.attach(chat["id"], files, said["moment"])
             chat["messages"].append(said)
             self.save(chat)
-            self.start(chat)
+            if not listeners(self.project):
+                self.start(chat)
         return self.shown(chat["id"])
 
     def attach(self, identifier: str, files: list[Path], stamp: str) -> list[dict[str, Any]]:
@@ -352,6 +355,20 @@ class Chats:
         return self.shown(chat["id"])
 
     def address(self, ref: str | None = None) -> dict[str, Any]:
+        if ref is not None and listeners(self.project):
+            return self.urge(ref)
+        return self.dispatched(ref)
+
+    def urge(self, ref: str) -> dict[str, Any]:
+        """Address now with an agent waiting on `nock inbox`: the comment
+        waiting in that thread goes to it first, marked urgent."""
+        comments = [comment for comment in Topics(self.project).comments() if comment["ref"] == ref]
+        if not comments:
+            raise UsageError(f"no comment of yours waits for an answer in {ref}")
+        urge(self.project, comments[0]["id"])
+        return {"listening": True, "refs": [ref]}
+
+    def dispatched(self, ref: str | None = None) -> dict[str, Any]:
         """Address my comments: a new chat whose agent answers every comment
         the owner left waiting in a thread; with REF (a topic's name or an
         item's ref), Address now, the comment in that one thread. One such

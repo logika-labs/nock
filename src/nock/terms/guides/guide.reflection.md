@@ -175,9 +175,8 @@ installs a skill for each adopted one outside nock's (`/team-docs` runs
 
 A protocol is adopted always, where its files are, or once you accept the
 fit round's recommendation of it, a decision in the topic `rounds`. Its due
-rules (`sessions`, `days`, `changed` files, `first`) are its manifest's, and
-`reflect.<namespace>.<key>` or `reflect.<namespace>.<protocol>.<key>` in the
-settings override them. Each protocol keeps its own rounds, so none moves
+rules (`sessions`, `days`, `changed` files, `first`) are its manifest's; a
+project changes them with a protocol folder of its own in `.nock/rounds/`. Each protocol keeps its own rounds, so none moves
 another's window.
 
 ## What nock shares

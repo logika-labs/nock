@@ -57,10 +57,6 @@ DEFAULTS: dict[str, Any] = {
         # `check` does not run everything when only they change.
         "unaffected": [],
     },
-    # A round's due rules are its protocol's manifest's (`rounds/*/*/round.toml`);
-    # `reflect.<namespace>.<key>` and `reflect.<namespace>.<protocol>.<key>`
-    # override them.
-    "reflect": {},
     "agent": {
         # The headless agent nock dispatches (consult, the studio's Ask) and its model
         # ("" is Claude Code's default); bounds in seconds.
@@ -214,7 +210,7 @@ def with_table_settings(text: str, table: str, values: dict[str, Any]) -> str:
 # writes: the team's in `.nock/shared/settings.toml`, committed with the topics;
 # one machine's in `.nock/local/config.toml`. The code's (checks, environment,
 # permissions, …) stay in `.nock/config.toml`, written by hand.
-TEAM = ("share", "reminders", "reflect", "inbox", "consult", "agent")
+TEAM = ("share", "reminders", "inbox", "consult", "agent")
 MACHINE = (
     "notifications",
     "studio.port",
@@ -235,7 +231,7 @@ def scope_of(key: str) -> str | None:
 
 def with_key(text: str, key: str, value: Any) -> str:
     """A TOML file's text with a dotted key set: `share`, `studio.port`,
-    `reflect.logika.days`."""
+    `inbox.settle`."""
     table, _, name = key.rpartition(".")
     if table:
         return with_table_settings(text, table, {name: value})

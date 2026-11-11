@@ -842,3 +842,10 @@
 .topics .viewer .pane img[src$=".svg"], .topics .viewer.image .pane img[src$=".svg"] { width: 24rem; height: auto; }
 .topics .asset .face[src$=".svg"] { object-fit: contain; padding: 14px 14px 48px; }
 .topics .asset.list .face[src$=".svg"] { padding: 6px; }
+
+/* A decision's assets, under it; the viewer names the decision it shows. */
+.topics .decision-assets { margin: 6px 0 14px 18px; }
+.topics .decision-assets .assets-head { display: flex; justify-content: flex-end; margin-bottom: 6px; }
+.viewer .belongs { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 10px; min-width: 0; }
+.viewer .belongs .decision-link { font-weight: 600; color: inherit; }
+.viewer .belongs .gist { flex-basis: 100%; color: var(--muted); font-size: 0.9em; }

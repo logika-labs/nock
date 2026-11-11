@@ -8,6 +8,7 @@ rest of nock reads (an "item" is a decision)."""
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from typing import Any
 
@@ -122,11 +123,37 @@ def thread_of(events: list[dict[str, Any]], statuses: bool) -> list[dict[str, An
     return thread
 
 
+def folder_stamp(folder: Path) -> list[list[Any]]:
+    """What changes when a decision gains an event or an asset does: the
+    modification time of each of its event folders and of its assets' folder."""
+    stamp: list[list[Any]] = []
+    for place in (EVENTS, ASSETS):
+        try:
+            stamp.append([place, os.stat(folder / place).st_mtime_ns])
+        except OSError:
+            continue
+    try:
+        assets = sorted(entry.name for entry in os.scandir(folder / ASSETS) if entry.is_dir())
+    except OSError:
+        assets = []
+    for name in assets:
+        try:
+            stamp.append(
+                [f"{ASSETS}/{name}/{EVENTS}", os.stat(folder / ASSETS / name / EVENTS).st_mtime_ns]
+            )
+        except OSError:
+            continue
+    return stamp
+
+
 class Fold:
-    """The topics and items under `root` (`.nock/shared/`), read afresh."""
+    """The topics and decisions under `root` (`.nock/shared/`): each decision
+    folded again only once its event folders changed (`folder_stamp`), so a
+    long-lived reader (the studio) re-reads only what moved."""
 
     def __init__(self, root: Path) -> None:
         self.root = root
+        self.folded: dict[Path, tuple[list[list[Any]], str]] = {}
 
     @property
     def directory(self) -> Path:
@@ -138,7 +165,7 @@ class Fold:
         return sorted(
             path.name
             for path in self.directory.iterdir()
-            if path.is_dir() and read_events(path / EVENTS)
+            if path.is_dir() and has_events(path / EVENTS)
         )
 
     def topic(self, name: str) -> dict[str, Any] | None:
@@ -181,7 +208,7 @@ class Fold:
         if not folder.is_dir():
             return []
         return sorted(
-            path.name for path in folder.iterdir() if path.is_dir() and read_events(path / EVENTS)
+            path.name for path in folder.iterdir() if path.is_dir() and has_events(path / EVENTS)
         )
 
     def item(self, topic: str, slug: str) -> dict[str, Any] | None:
@@ -189,6 +216,16 @@ class Fold:
         its versions; its verdict stands only while no version of it or of an
         asset of it came after."""
         folder = self.directory / topic / ITEMS / slug
+        stamp = folder_stamp(folder)
+        kept = self.folded.get(folder)
+        if kept is not None and kept[0] == stamp:
+            return json.loads(kept[1]) if kept[1] else None
+        record = self.folded_item(topic, slug, folder)
+        # Kept as JSON: each caller gets a record of its own, cheaper than a deep copy.
+        self.folded[folder] = (stamp, json.dumps(record) if record is not None else "")
+        return record
+
+    def folded_item(self, topic: str, slug: str, folder: Path) -> dict[str, Any] | None:
         events = read_events(folder / EVENTS)
         created = next((event for event in events if event.get("kind") == "created"), None)
         if created is None:
@@ -301,6 +338,14 @@ class Fold:
         found = [self.item(topic, slug) for slug in self.slugs(topic)]
         kept = [item for item in found if item is not None]
         return sorted(kept, key=lambda item: item["created"]["moment"], reverse=True)
+
+
+def has_events(folder: Path) -> bool:
+    """Whether a folder holds a completed event, by its files' names alone."""
+    try:
+        return any(EVENT_FILE.match(path.name) for path in folder.iterdir())
+    except OSError:
+        return False
 
 
 def read_json_or(path: Path, default: Any) -> Any:

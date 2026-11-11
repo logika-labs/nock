@@ -112,16 +112,18 @@ wrote it, down to the subagent.
 `nock studio` serves your page on your machine, and its **Topics** tab is the
 queue. Each topic is a row: its name and status, what it holds ("4 decisions ·
 9 assets"), its verdicts ("3 open · 12 accepted"), its state and how long ago
-it moved. It opens in place, its items in two sections: decisions as bubbles
-that open on the answer and its alternatives, and assets as a grid of cards or
-a list of rows. A card shows the asset (the preferred variant, else the first),
-its state at the top right (accepted, rejected, a star for a variant preferred,
-or how many variants wait for one), and along its foot as much of its title
-and description as fits, then when it last changed and its chat; hovering it
-shows the whole title and description.
+it moved. It opens in place on its decisions, each a bubble that opens on the answer
+and its alternatives, with its assets under it, a grid of cards or a list of
+rows once it has more than one. A card shows the asset (the preferred variant,
+else the first), a star for a variant preferred or how many variants wait for
+one at its top right, and along its foot as much of its title and description
+as fits, then when it last changed and its decision's chat; hovering it shows
+the whole title and description.
 
-An asset opens in a viewer, one size whatever it holds; its chat icon opens
-it with its chat beside it. **Compare** puts two versions side by
+An asset opens in a viewer, one size whatever it holds, with the decision it
+belongs to at its foot (its title, its verdict and the start of its answer,
+linking to it); its chat icon opens it with the decision's chat beside it.
+There is no verdict in the viewer: it is the decision's. **Compare** puts two versions side by
 side, a text as a line diff with the changed words marked, a picture zoomed
 and panned in step with its other version, so you can check a detail. A video
 plays with its captions, and two versions play together. ← and → step through
@@ -177,7 +179,9 @@ what you say and has it made text, by a Whisper server you name in the studio's
 settings, for you to edit before you send.
 
 You don't have to wait for a session to answer. Under your waiting message,
-**Address now** sends an agent to answer it at once. **Address my
+**Address now** sends an agent to answer it at once; while an agent waits
+on its inbox (the studio's summary says "an agent listens"), Address now and
+the global chat go to that agent instead. **Address my
 comments**, over the chat's composer while comments wait ("Address my 3
 comments"), starts an agent that answers them all, each in its own thread, as
 an agent working the threads would: a reply, a new version of the item, a

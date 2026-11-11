@@ -44,7 +44,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, NotRequired, TypedDict, cast
 
 from nock.errors import ConflictError, NotFoundError, UsageError
-from nock.fold import ASSETS, EVENTS, ITEMS, STATUS, VERSIONS
+from nock.fold import ASSETS, ITEMS, STATUS, VERSIONS, folder_stamp
 from nock.notify import Notifications, Reason
 from nock.records import ASSETS_FILE, DECISION_FILE, NEXT
 from nock.render import Problem
@@ -673,6 +673,7 @@ class Topics:
                 found.append(
                     {
                         "ref": name,
+                        "id": said.get("id"),
                         "title": "",
                         "text": said["text"],
                         "files": self.attached(said, name),
@@ -684,6 +685,7 @@ class Topics:
                     found.append(
                         {
                             "ref": item["ref"],
+                            "id": said.get("id"),
                             "title": item["title"],
                             "text": said["text"],
                             "files": self.attached(said, name, item["slug"]),
@@ -1661,20 +1663,6 @@ class Topics:
                 except NotFoundError:
                     problems.append(Problem(f"[{match.group(0)[1:-1]}] is no item", place, line))
         return problems
-
-
-def folder_stamp(folder: Path) -> list[list[Any]]:
-    """What changes when a decision gains an event or an asset does: the
-    modification time of each of its event folders and of its assets' folder."""
-    places = [folder / EVENTS, folder / ASSETS, *sorted((folder / ASSETS).glob(f"*/{EVENTS}"))]
-    stamp = []
-    for place in places:
-        try:
-            status = place.stat()
-        except OSError:
-            continue
-        stamp.append([str(place.relative_to(folder)), status.st_mtime_ns])
-    return stamp
 
 
 def summary(item: dict[str, Any]) -> dict[str, Any]:

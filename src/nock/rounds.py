@@ -159,16 +159,8 @@ class Protocol:
         )
 
     def setting(self, key: str) -> Any:
-        """A due rule: `reflect.<namespace>.<protocol>.<key>`, else
-        `reflect.<namespace>.<key>`, else the manifest's."""
-        configuration = self.project.configuration
-        for path in (
-            f"reflect.{self.manifest.namespace}.{self.manifest.protocol}.{key}",
-            f"reflect.{self.manifest.namespace}.{key}",
-        ):
-            value = configuration.get(path)
-            if value is not None and not isinstance(value, dict):
-                return value
+        """A due rule, as its manifest has it: a project changes it by a
+        protocol of its own in `.nock/rounds/`."""
         return self.manifest.section("due").get(key)
 
     @property

@@ -47,8 +47,8 @@ each. Each round's agents run as subagents while the session works with you:
 
 They are never automatic: they run only when you ask. When one is due, the
 session start offers it, at most once a week: when it hasn't run yet and the
-ledger declares events, or 30 days after its last round (`reflect.logika.days`,
-or `reflect.logika.rules.days` for one), once `logika.json` has changed since.
+ledger declares events, or 30 days after its last round (the protocol's
+`[due]`), once `logika.json` has changed since.
 `nock status` always says.
 
 ## How a round goes

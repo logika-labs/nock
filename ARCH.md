@@ -631,7 +631,7 @@ holds the tabs and the settings, each group of them (sharing, notifications,
 transcription) folding on its own. Two tabs: `TimelineTab`, the timeline's
 events (`GET /timeline?query=&filter=&limit=`: searched as the topics are,
 kept to one filter of kinds, `FILTERS`); and `TopicsTab`, which serves every
-topic with its items and where each chat stands (`topics.chat_state`:
+topic with its decisions, each holding its assets, and where each chat stands (`topics.chat_state`:
 pending, unseen since `studio.Seen`'s last look, kept in
 `.nock/local/studio/seen.json`), a version's files as they are, the owner's
 verdicts, preferred options and messages (`withdraw` takes back one still waiting), the
@@ -645,15 +645,27 @@ which the page shows as a faded recorder saying how to set one), and the Ask (`s
 time, cancelled by stopping it, its answer and the decisions it rests on read
 back from the file `NOCK_CONSULT_RESULT` names; `GET /topics/ask` where it stands, for the Timeline's bar). Its search
 ranks as `Topics.score` does (every word first, more often higher, then all
-but one, a word found where a word starts). A version's view is served at
-`/topics/view/TOPIC/SLUG/N/NAME` with `view.css` and `window.nock` put in its
-head, and any other name there is the version's file of that name, so a view
-reaches the item's files by relative addresses. The page draws a topic's
-assets as a grid of cards or a list of rows, and opens one in a viewer of
-one size, its chat open; under the owner's waiting message, Address now
-(`POST /chat/address` with the thread) sends the addresser to that one
-thread, and `chat.addressing` (the threads a running one answers) is in each
-thread's `chat`.
+but one, a word found where a word starts). An asset version's file is
+`/topics/file/TOPIC/SLUG/ASSET/N/NAME`, typed by its name (the store keeps
+media by hash), and its view `/topics/view/TOPIC/SLUG/ASSET/N/NAME` with
+`view.css` and `window.nock` put in its head, any other name there the
+version's file of that name, so a view reaches the asset's files by relative
+addresses; a preference posts the decision, the `asset`, the version and the
+name. The page lays each decision out with its assets under it (`TOPIC/SLUG:ASSET`
+in its addresses), whose thread and verdict are the decision's: a grid of
+cards or a list of rows, and a viewer of one size that names its decision and
+carries no verdict. Serving every topic folds every decision, so `fold.Fold`
+keeps each decision's folded record (as JSON, a fresh copy each read) under
+`folder_stamp` (its event and asset folders' stamps), and `TopicsTab` keeps
+the whole list under `HEAD` and `git status` of `.nock/shared`; only chat
+states are worked out on each call. Under the owner's waiting message,
+Address now (`POST /chat/address` with the thread) sends the addresser to
+that one thread, and `chat.addressing` (the threads a running one answers) is
+in each thread's `chat`. `GET /topics` also names the agents waiting on `nock
+inbox` (`inbox.listeners`, as `listening`): while one is, the global chat
+starts no turn and Address now dispatches nobody, `inbox.urge` marking the
+thread's waiting message so the inbox gives it as `now`
+(`.nock/local/inbox-now.json`).
 
 The global chat is no tab: `studio.ChatRoutes` answers `/chat/…` for
 `chats.Chats`, and the topics tab's fragment draws it in `#topics-global`,
@@ -740,8 +752,8 @@ hooks `rounds.Protocol` calls: `unavailable`, `due`, `begun` (kept in
 names a required file or command missing; `adopted` reads the manifest, or
 for a recommended protocol an accepted decision in the topic `rounds`
 titled with its name (the fit round's lead records them). `setting(key)`
-reads `reflect.<namespace>.<protocol>.<key>`, then
-`reflect.<namespace>.<key>`, then the manifest's `[due]`; `due` says why:
+reads the manifest's `[due]` (a project changes it with its own protocol
+folder in `.nock/rounds/`); `due` says why:
 never run (`first`), `days` since the last with `changed` paths committed
 since, or `sessions` or `days` over the sessions since the last. `start`
 names the round by date (`Rounds.new_name`, or picks up `Rounds.current`),
@@ -793,7 +805,7 @@ from different machines merge as plain files.
 **The logika protocols.** `logika.rules` and `logika.analytics` require
 `logika.json` in the working tree and `logika` on PATH (`Logika.unavailable`),
 are adopted where the ledger is, and are due (`Logika.due`) when never run
-while the ledger declares events, or `reflect.logika.days` (30) after the
+while the ledger declares events, or its `[due]` `days` (30) after the
 last with commits to `logika.json` since; `status.Standing` offers them
 (`rounds`), and the session start says so at most once a week (`nudged`
 keys `KIND:LAST:WEEK`). Their material comes from the ledger, git and the

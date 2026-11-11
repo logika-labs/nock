@@ -25,6 +25,8 @@ KINDS = ("now", "chat", "comment", "verdict")
 # Verdicts whose word asks nothing more of an agent once one has heard it.
 SETTLED = ("accepted", "dropped")
 LISTENING = "inbox-listening.json"
+# The owner's comments sent with Address now while an agent listened, by id.
+URGED = "inbox-now.json"
 
 
 class Inbox:
@@ -32,6 +34,11 @@ class Inbox:
         self.project = project
         self.topics = Topics(project)
         self.reader = reader or project.writer().get("session") or "unknown"
+        path = project.local / URGED
+        try:
+            self.urged = set(read_json(path)) if path.is_file() else set()
+        except Exception:
+            self.urged = set()
 
     def entries(self, every: bool = False) -> list[dict[str, Any]]:
         """What waits on an agent, by priority, the reader's own first in each;
@@ -75,8 +82,9 @@ class Inbox:
         return found
 
     def said(self, entry: dict[str, Any], ref: str, title: str, yours: bool) -> dict[str, Any]:
+        urged = entry.get("now") or entry.get("id") in self.urged
         return {
-            "kind": "now" if entry.get("now") else "comment",
+            "kind": "now" if urged else "comment",
             "key": entry.get("id") or f"{ref}:{entry['moment']}",
             "ref": ref,
             "title": title,
@@ -189,6 +197,17 @@ class Inbox:
         else:
             listening[self.reader] = until
         write_json(path, listening)
+
+
+def urge(project: Project, message: str) -> None:
+    """A comment the owner sent with Address now: first in the inbox."""
+    path = project.local / URGED
+    try:
+        urged = read_json(path) if path.is_file() else []
+    except Exception:
+        urged = []
+    if message not in urged:
+        write_json(path, [*urged, message])
 
 
 def listeners(project: Project, now: float | None = None) -> list[str]:

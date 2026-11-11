@@ -111,8 +111,6 @@ machine.
 | `notifications` | true | whether nock tells you when a topic is your turn again (moved to review, an agent answered you, a rejected item reworked): on the desktop, or in the studio while it is open; once per topic per five minutes, and never without a display (CI, a headless agent). On macOS a click opens the topic with `terminal-notifier` installed (`brew install terminal-notifier`); without it, the notification names the address |
 | `run.deadline`, `run.silence` | 3600, 900 | seconds before a supervised process is stopped |
 | `checks.NAME.command`, `fix`, `chain`, `directory`, `deadline`, `silence`, `failure_codes` | — | a command that is a check; the command that fixes what it finds; its chain; where it runs and its bounds; the exit codes that mean the code is wrong (`[1]`) |
-| `reflect.logika.days` | 30 | in a Logika project, days after a logika round before the next is offered |
-| `reflect.<namespace>.<protocol>.<key>` | the manifest's | one protocol's due rule (`sessions`, `days`, `changed`, `first`) |
 | `agent.command`, `agent.model`, `agent.deadline` | `claude`, —, 1800 | the headless agent nock dispatches (consult, Ask, share, the studio's chat and Tidy up); it may not bypass or set permissions |
 | `permissions.confirm` | `ask` | `ask`: you approve each call of a `confirm=True` command, even in bypass mode; `allow`: the agent runs it only when your request calls for it |
 | `studio.port` | 8765 | the port `nock studio` serves on, and the one a notification links to while no studio runs |
