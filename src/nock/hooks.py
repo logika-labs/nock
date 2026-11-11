@@ -17,7 +17,12 @@ session, is one that wrote to a topic without ever setting where it stands
 (its state or status). What calls for the owner is also said to the human. With
 `reminders = false` nock says nothing unasked, and still records. The
 project's `@nock.hook`s run after. Every handler fails open — a nock that
-cannot load must never block the tool call that would fix it."""
+cannot load must never block the tool call that would fix it.
+
+A hook runs on every tool call, so each handler imports what only it needs
+inside itself, and the project's toolbox is loaded only when it has a hook for
+the event (`Project.hook_events`): loading all of nock for each call would be
+most of a hook's time."""
 
 from __future__ import annotations
 
@@ -27,20 +32,15 @@ import subprocess
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from nock.callers import Callers
-from nock.fixtures import Call, Scope
-from nock.harnesses import Harness
-from nock.kinds import kinds
-from nock.primer import refresh
+from nock.environment import enter
+from nock.harnesses import NATIVE_EVENTS, Event, Harness
 from nock.project import NOCK_DIRECTORY, Project
-from nock.releases import Updates
-from nock.sessions import Sessions, background_agents, find_transcript
-from nock.status import Standing
-from nock.tools import CONFIRM_NOTES, NATIVE_EVENTS, Event
-from nock.topics import Author, Topics
-from nock.usage import Usage
+
+if TYPE_CHECKING:
+    from nock.tools import Hook
 
 EVENTS = {native: event for event, native in NATIVE_EVENTS.items()}
 # The tools whose use is an edit, as a Claude Code matcher: the after-tool handler's.
@@ -79,6 +79,8 @@ class HookRunner:
         event = EVENTS[native]
         messages: list[str] = []
         if event is Event.SESSION_START:
+            from nock.primer import refresh
+
             refresh(self.project.here / NOCK_DIRECTORY)
             if self.project.current_role() is None:
                 upgraded = self.upgrade_itself()
@@ -99,8 +101,9 @@ class HookRunner:
             blocks += self.rounds_left_open()
             if self.reminding:
                 blocks += self.topics_unstated()
-        own = self.project.registry.hooks_for(event) if self.harness is not Harness.CURSOR else []
-        for entry in own:
+        for entry in self.own_hooks(event):
+            from nock.fixtures import Call, Scope
+
             values = {
                 "project": self.project,
                 "payload": self.payload,
@@ -136,9 +139,21 @@ class HookRunner:
             output["hookSpecificOutput"] = {"hookEventName": native, "additionalContext": text}
         return output or None
 
+    def own_hooks(self, event: Event) -> list[Hook]:
+        """The project's hooks for the event; none at Cursor, whose payloads
+        they are not written for. The toolbox is loaded only when it may hold one."""
+        if self.harness is Harness.CURSOR:
+            return []
+        known = self.project.hook_events()
+        if known is not None and event not in known:
+            return []
+        return self.project.registry.hooks_for(event)
+
     def session_start(self) -> str:
         """The toolbox, so the session reaches for a tool before scripting one,
         and — for a session the human started — where things stand."""
+        from nock.tools import CONFIRM_NOTES
+
         registry = self.project.registry
         lines = []
         own = registry.project_tools()
@@ -166,6 +181,8 @@ class HookRunner:
         clean, said in a line; on a conflict nothing changes, and the standing
         says the release is out, as it does with `upgrade.auto` off. The owner
         made it the default, so it runs without the ask `nock upgrade` has."""
+        from nock.releases import Updates
+
         updates = Updates(self.project)
         latest = updates.automatic()
         if latest is None:
@@ -191,6 +208,8 @@ class HookRunner:
     def standing(self) -> list[str]:
         """Where things stand, said once a day — sooner when something new
         calls: a round falls due, the owner rejects something."""
+        from nock.status import Standing
+
         store = self.project.store
 
         def seen(key: str) -> bool:
@@ -240,6 +259,8 @@ class HookRunner:
         if not path.resolve().is_relative_to(self.project.here.resolve()):
             return ""
         relative = str(path.resolve().relative_to(self.project.here.resolve()))
+        from nock.topics import Topics
+
         found = Topics(self.project).governing(session, relative)
         if not found:
             return ""
@@ -255,6 +276,8 @@ class HookRunner:
         session = self.payload.get("session_id")
         if not isinstance(session, str):
             return ""
+        from nock.topics import Author, Topics
+
         lines = []
         topics = Topics(self.project)
         for item in topics.news_for(session):
@@ -281,6 +304,8 @@ class HookRunner:
         nock asks for nothing then, and asks at the turn after the last."""
         if self.harness is not Harness.CLAUDE_CODE:
             return False
+        from nock.sessions import background_agents, find_transcript
+
         session = self.payload.get("session_id")
         transcript = self.payload.get("transcript_path")
         path = (
@@ -297,6 +322,8 @@ class HookRunner:
         session = self.payload.get("session_id")
         if not isinstance(session, str) or self.payload.get("stop_hook_active") is True:
             return []
+        from nock.kinds import kinds
+
         return [said for kind in kinds(self.project) if (said := kind.left_open(session))]
 
     def topics_unstated(self) -> list[str]:
@@ -308,6 +335,8 @@ class HookRunner:
         store = self.project.store
         if store.rows("SELECT session FROM stated WHERE session = ?", (session,)):
             return []
+        from nock.topics import Topics
+
         names = Topics(self.project).unstated(session)
         if not names:
             return []
@@ -321,6 +350,9 @@ class HookRunner:
         ]
 
     def session_end(self) -> None:
+        from nock.sessions import Sessions
+        from nock.usage import Usage
+
         transcript = self.payload.get("transcript_path")
         if isinstance(transcript, str) and Path(transcript).is_file():
             Sessions(self.project).ingest(Path(transcript))
@@ -342,6 +374,15 @@ def normalized(payload: dict[str, Any], harness: Harness) -> dict[str, Any]:
         "cwd": payload.get("cwd") or (roots[0] if isinstance(roots, list) and roots else None),
         "stop_hook_active": isinstance(count, int) and count > 0,
     }
+
+
+def main() -> None:
+    """`nock hook EVENT [HARNESS]`, from `python -m nock` without the rest of
+    the CLI: on the project's interpreter, then `run`."""
+    arguments = sys.argv[1:]
+    enter(arguments)
+    native, word = (*arguments[1:3], "", "")[:2]
+    sys.exit(run(native, sys.stdin.read(), word or "claude"))
 
 
 def run(native: str, stdin_text: str, word: str = Harness.CLAUDE_CODE) -> int:

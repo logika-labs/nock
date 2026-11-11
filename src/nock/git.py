@@ -3,6 +3,7 @@ its output."""
 
 from __future__ import annotations
 
+import os
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -11,6 +12,15 @@ from nock.errors import PreconditionError
 
 # The empty tree, for a diff against nothing.
 EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
+# The variables that move where git looks for a repository, past what its files say.
+LOCATION_VARIABLES = (
+    "GIT_DIR",
+    "GIT_WORK_TREE",
+    "GIT_COMMON_DIR",
+    "GIT_CEILING_DIRECTORIES",
+    "GIT_DISCOVERY_ACROSS_FILESYSTEM",
+)
+GITFILE_PREFIX = "gitdir: "
 
 
 class GitError(PreconditionError):
@@ -72,6 +82,17 @@ class Git:
         common = self("rev-parse", "--path-format=absolute", "--git-common-dir")
         return Path(common).parent
 
+    def location(self) -> tuple[Path, Path]:
+        """The working tree and the main checkout, in one call:
+        `located` from the files when it can, else git's answer."""
+        found = located(self.directory)
+        if found is not None:
+            return found
+        toplevel, common = self(
+            "rev-parse", "--show-toplevel", "--path-format=absolute", "--git-common-dir"
+        ).splitlines()
+        return Path(toplevel), Path(common).parent
+
     def branch(self) -> str:
         return self("rev-parse", "--abbrev-ref", "HEAD")
 
@@ -132,3 +153,47 @@ class Git:
                 )
             )
         return commits
+
+
+def located(directory: Path) -> tuple[Path, Path] | None:
+    """The working tree holding `directory` (a resolved path) and the main
+    checkout, read from the `.git` directory or file as git reads them, without
+    starting git: a hook runs on every tool call. None whenever git might see it
+    otherwise (a variable moving it, a directory inside `.git`, a filesystem
+    crossed, a repository someone else owns, a `core.worktree`, a bare one), and
+    git answers instead."""
+    if any(os.environ.get(name) for name in LOCATION_VARIABLES) or ".git" in directory.parts:
+        return None
+    try:
+        device = directory.stat().st_dev
+        for here in (directory, *directory.parents):
+            if here.stat().st_dev != device:
+                return None
+            marker = here / ".git"
+            if marker.is_dir():
+                gitdir = common = marker
+            elif marker.is_file():
+                text = marker.read_text()
+                if not text.startswith(GITFILE_PREFIX):
+                    return None
+                gitdir = (here / text.removeprefix(GITFILE_PREFIX).strip()).resolve()
+                pointer = gitdir / "commondir"
+                common = (
+                    (gitdir / pointer.read_text().strip()).resolve()
+                    if pointer.is_file()
+                    else gitdir
+                )
+            else:
+                continue
+            configuration = "".join((common / "config").read_text().lower().split())
+            if (
+                not (gitdir / "HEAD").is_file()
+                or here.stat().st_uid != os.getuid()
+                or "worktree" in configuration
+                or "bare=true" in configuration
+            ):
+                return None
+            return here, common.parent
+    except OSError:
+        return None
+    return None

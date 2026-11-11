@@ -50,6 +50,9 @@ if TYPE_CHECKING:
 
 TOPIC_FILE = "topic.json"
 ITEM_FILE = "item.json"
+# What the prompt and edit hooks look for in every item, in `local/`, each with
+# its item file's stamp: they read one file, and an item file only once it changed.
+SUMMARIES_FILE = "item-summaries.json"
 DECISION_FILE = "decision.json"
 PROJECT_FILES = "project"
 # The folder beside a thread holding the files its messages carry: no item's slug.
@@ -369,6 +372,54 @@ class Topics:
 
     def every(self) -> list[dict[str, Any]]:
         return [item for name in self.names() for item in self.items(name)]
+
+    def summaries(self) -> list[dict[str, Any]] | None:
+        """Every item as `every` lists it, in its order, but only what the
+        hooks look for in it (`summary`, with `file`, `topic` and `ref`): an
+        item file is read again only once it changed (its modification time,
+        size and inode). None when an item cannot be summed up, so the caller
+        reads them all as before and fails as it would have."""
+        path = self.project.local / SUMMARIES_FILE
+        try:
+            kept = json.loads(path.read_text())
+        except (OSError, ValueError):
+            kept = {}
+        kept = kept if isinstance(kept, dict) else {}
+        current: dict[str, Any] = {}
+        listed: list[dict[str, Any]] = []
+        for name in self.names():
+            found = []
+            for file in (self.directory / name).glob(f"*/{ITEM_FILE}"):
+                status = file.stat()
+                stamp = [status.st_mtime_ns, status.st_size, status.st_ino]
+                key = str(file.relative_to(self.directory))
+                entry = kept.get(key)
+                if not isinstance(entry, dict) or entry.get("stamp") != stamp:
+                    try:
+                        entry = {"stamp": stamp, "summary": summary(read_json(file))}
+                    except Exception:
+                        return None
+                current[key] = entry
+                found.append(
+                    {
+                        **entry["summary"],
+                        "file": str(file),
+                        "topic": name,
+                        "ref": f"{name}/{entry['summary']['slug']}",
+                    }
+                )
+            listed += sorted(found, key=lambda item: item["created"], reverse=True)
+        if current != kept:
+            with contextlib.suppress(OSError):
+                write_json(path, current)
+        return listed
+
+    def whole(self, summed: dict[str, Any]) -> dict[str, Any]:
+        """The item a summary is of, as `every` lists it."""
+        item = read_json(Path(summed["file"]))
+        item["topic"] = summed["topic"]
+        item["ref"] = summed["ref"]
+        return item
 
     def resolve(self, ref: str) -> tuple[str, str]:
         """A ref's topic and slug: `topic/slug`, a number an item keeps as an
@@ -1498,6 +1549,23 @@ class Topics:
             )
         }
         news = []
+        summed = self.summaries()
+        if summed is not None:
+            for entry in summed:
+                if entry["verdict"] == Verdict.DROPPED or session not in entry["writers"]:
+                    continue
+                said = entry["word"]
+                if (
+                    not said
+                    or (entry["ref"], said) in told
+                    or (entry["ref"], entry["moment"]) in told
+                ):
+                    continue
+                news.append(self.whole(entry))
+                self.project.store.insert(
+                    "told", {"session": session, "item": entry["ref"], "updated": said}
+                )
+            return news
         for item in self.every():
             if item["verdict"] == Verdict.DROPPED:
                 continue
@@ -1566,16 +1634,17 @@ class Topics:
             )
         }
         found = []
-        for item in self.every():
+        summed = self.summaries()
+        for item in summed if summed is not None else self.every():
             if item["verdict"] in (Verdict.REJECTED, Verdict.DROPPED) or item["ref"] in shown:
                 continue
-            latest = item["versions"][-1]["files"]
+            latest = item["latest"] if summed is not None else item["versions"][-1]["files"]
             if any(
                 entry.get("path") == path
                 or any(fnmatch.fnmatchcase(path, source) for source in entry.get("from", []))
                 for entry in latest
             ):
-                found.append(item)
+                found.append(self.whole(item) if summed is not None else item)
                 self.project.store.insert("shown_items", {"session": session, "item": item["ref"]})
         return found
 
@@ -1604,6 +1673,28 @@ class Topics:
             str(path.relative_to(root)) for path in paths if path.is_relative_to(self.directory)
         ]
         return committed(self.project, relative, message) if relative else None
+
+
+def summary(item: dict[str, Any]) -> dict[str, Any]:
+    """What `news_for` and `governing` look for in an item: who wrote its
+    versions (`by`), the owner's word on it, and its latest version's files."""
+    return {
+        "slug": item["slug"],
+        "created": moment(item["created"]),
+        "verdict": item["verdict"],
+        "writers": [
+            stamp[key]
+            for stamp in item["versions"]
+            for key in ("session", "parent")
+            if key in stamp
+        ],
+        "word": owner_word(item),
+        "moment": owner_moment(item),
+        "latest": [
+            {key: entry[key] for key in ("path", "from") if key in entry}
+            for entry in item["versions"][-1]["files"]
+        ],
+    }
 
 
 def by(stamp: dict[str, Any], sessions: set[str]) -> bool:
