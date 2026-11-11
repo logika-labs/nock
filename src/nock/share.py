@@ -99,7 +99,7 @@ class Sharing:
         return result
 
     def share(self, request: Request) -> dict[str, Any]:
-        if request.get("send") and sharing(self.project)[0] is Answer.NO:
+        if request.get("send") and sharing(self.project) is Answer.NO:
             raise PolicyError(
                 "`share` is false here, so nock sends nothing — set `share = true` in"
                 " .nock/config.toml to send the summary"

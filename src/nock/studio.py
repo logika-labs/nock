@@ -799,7 +799,7 @@ class Studio(ThreadingHTTPServer):
     def question(self) -> str:
         """Under the title while nobody has answered: a slim line asking, with
         Share and Don't share; what the report holds is in the settings."""
-        if sharing(self.project)[0] is not Answer.UNANSWERED:
+        if sharing(self.project) is not Answer.UNANSWERED:
             return ""
         return (
             '    <div class="notice" id="usage" role="region" aria-label="Usage reports">\n'
@@ -814,7 +814,7 @@ class Studio(ThreadingHTTPServer):
         """The settings behind the gear in the menu: whether nock shares its
         usage report, as a switch that gives the same answer the question
         does, and what the report holds."""
-        answer = sharing(self.project)[0]
+        answer = sharing(self.project)
         said = {Answer.YES: "On", Answer.NO: "Off", Answer.UNANSWERED: "Not answered"}[answer]
         return (
             '      <div class="settings">\n'

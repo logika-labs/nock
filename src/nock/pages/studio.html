@@ -309,12 +309,9 @@ const studio = {
     row.classList.toggle("more-before", row.scrollLeft > 2);
     row.classList.toggle("more-after", row.scrollLeft + row.clientWidth < row.scrollWidth - 2);
   },
-  // Other names an address may use for a tab.
-  aliases: { decisions: "topics", review: "topics", work: "topics", feed: "timeline" },
   route() {
     const hash = decodeURIComponent(location.hash.slice(1));
-    const [said, ...rest] = hash.split("/");
-    const name = this.aliases[said] ?? said;
+    const [name, ...rest] = hash.split("/");
     if (this.tabs.has(name)) return [name, rest.join("/")];
     return [this.tabs.keys().next().value, hash];
   },

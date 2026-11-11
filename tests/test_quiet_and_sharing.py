@@ -36,7 +36,7 @@ def configure(project: Project, old: str, new: str) -> Project:
 
 
 def shared(project: Project, value: str) -> Project:
-    """An answer already in the committed config, as an earlier nock or the owner wrote it."""
+    """An answer already in the committed config, as the owner wrote it."""
     return configure(project, "# share = false", f"share = {value}")
 
 
@@ -231,22 +231,10 @@ def test_every_clone_reports_the_same_id(project: Project, tmp_path: Path) -> No
     assert Usage(project).report(sending=True)["project"] == made
 
 
-@pytest.mark.parametrize(
-    ("setting", "shares"),
-    [('level = "none"', False), ('level = "anonymous"', True), ('level = "public"', True)],
-)
-def test_an_earlier_share_level_still_reads_sensibly_with_a_note(
-    project: Project, setting: str, shares: bool
-) -> None:
-    old = configure(project, "# share = false", f"[share]\n{setting}")
-    shown = usage(old)
-    assert shown["share"] == ("yes" if shares else "no") and "earlier nock" in shown["note"]
-    assert (shown["would_send"] is None) is not shares
-    if shares:
-        assert set(shown["would_send"]) >= {"project", "commands"}
-        assert "tools" not in shown["would_send"] and "level" not in shown["would_send"]
-    refused = nock(old.root, "usage", "share", "no")
-    assert refused.returncode == 42 and "remove it" in refused.stderr
+def test_share_is_only_true_or_false(project: Project) -> None:
+    table = configure(project, "# share = false", '[share]\nlevel = "none"')
+    refused = nock(table.root, "usage")
+    assert refused.returncode == 42 and "it is true or false" in refused.stderr
 
 
 def test_the_page_asks_until_the_owner_answers_with_its_buttons(project: Project) -> None:

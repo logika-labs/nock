@@ -373,8 +373,7 @@
   // An asset's variants: its latest version's files; the preferred one, when it is of that version.
   const variantsOf = item => last(item).files;
   const preferredOf = item => item.preferred?.version === last(item).version ? variantsOf(item).find(file => file.name === item.preferred.name) || null : null;
-  // An item from before variants says `options`.
-  const varied = item => !!(item.variants || item.options);
+  const varied = item => !!item.variants;
   const unpreferred = item => varied(item) && variantsOf(item).length > 1 && !preferredOf(item);
   const awaitsOwner = item => item.verdict === "open";
   const joined = parts => parts.filter(Boolean).join(" · ");
