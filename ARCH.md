@@ -93,15 +93,18 @@ src/nock/
                      asked on a terminal, sent with no terminal only with `--yes`
   consult.py         Consultant: a fresh agent advises on a task, submitting through `nock advise`
   dispatch.py        Dispatcher: launch a headless `claude -p` session and ingest it
-  hooks.py           `nock hook EVENT`: nock's own handlers, then the project's
-  primer.py          the primer `.nock/context.md`, as the committed settings have it
+  hooks.py           `nock hook EVENT [HARNESS]`: nock's own handlers, then the project's
+  harnesses.py       Harness: Claude Code, Codex, Cursor; which are found, and each one's
+                     skills directory, hooks file and events
+  primer.py          the primer `.nock/context.md`, as the committed settings have it, and
+                     its copy between nock's markers in AGENTS.md
   docs.py            Docs: the terms of `nock docs`, parsed and validated; the closest to a miss
   terms/             one article per term (`tools.caching.md`): front matter term, aliases,
                      description; at most 500 characters. The briefs point at the terms
     briefs/          the long texts the installed skills and subagents follow:
                      reflection.lead and its parts reflection.toolbox, .map, .nock;
                      reflection.logika.lead and its parts .rules, .analytics;
-                     topics.triage
+                     topics.triage; work and work.subagent (the orchestrator, and what it dispatches)
     guides/          the documentation for people: a few long essays (guide.why, guide.review, …)
                      and the reference (guide.commands), nock.dev's docs built from them; at most
                      16,000 characters, printed whole
@@ -112,6 +115,8 @@ src/nock/
     nock-reflect-logika/  the `/nock-reflect-logika` skill and its two parts' subagent types,
                      installed in Logika projects only; pointers likewise
     nock-triage/     the `/nock-triage` skill, a pointer to `topics.triage`
+    nock-work/       the `/nock-work` skill, a pointer to `work`, in `.agents/skills/` too
+                     where Codex is found
     ask.md           the brief of the agent that answers the studio's Ask
     consult.md       the consultant's brief
     share.md         the brief of the agent that vets a summary before it is shared
@@ -141,7 +146,6 @@ tests/               real git repositories and processes; no mocks
   fake_agent.py      the scripted stand-in for the dispatched agents (consultant, asker, sharer,
                      the studio's chatter, namer, tidier and addresser)
 scripts/release.py   cut a release: checks, asks, then tags vVERSION and pushes it (standard library)
-evals/               does reflection pay? real sessions, with and without a toolbox
 web/                 nock.dev, never vendored or packaged: layout.html, home.html, legal/, site/
                      (style, fonts, the built pages), build.py (the docs pages from the
                      terms and guides), publish.py (to GitHub Pages)
@@ -359,11 +363,19 @@ upgrade changes what a skill says without rewriting the skill.
 
 ### Hooks
 
-`nock init` writes `.claude/settings.json` entries that call
-`.nock/nock hook <NativeEvent>`. `cli.main` handles `hook` before anything
-else and hands it to `hooks.run`, which:
+`nock init` writes entries into each found harness's hooks file that call
+`.nock/nock hook <NativeEvent> [HARNESS]`, the event by Claude Code's name:
+`.claude/settings.json` (`"$CLAUDE_PROJECT_DIR"/.nock/nock hook EVENT`),
+`.codex/hooks.json` and `.cursor/hooks.json` (`"$(git rev-parse
+--show-toplevel)"/.nock/nock hook EVENT codex|cursor`, since neither names
+the project directory, with a 300-second timeout, past the upgrade a session
+start may run). `cli.main` handles `hook` before anything else and hands it
+to `hooks.run`, which:
 
-1. reads the payload from stdin and discovers the project from its `cwd`;
+1. reads the payload from stdin, in Claude Code's words (`hooks.normalized`:
+   Cursor's `conversation_id` is the session, its first `workspace_roots`
+   the directory, a `loop_count` above 0 a `stop_hook_active`), and
+   discovers the project from its `cwd`;
 2. runs nock's own handlers:
    - **SessionStart** rewrites the primer when the committed settings say
      otherwise (`primer.refresh`), then returns the project's tools, any
@@ -407,7 +419,19 @@ else and hands it to `hooks.run`, which:
 3. runs the project's `@nock.hook`s for the event, each in a fixture
    `Scope` with `payload`. Returned text is joined into `additionalContext`,
    and `Block` at `stop` becomes `{"decision": "block"}`;
-4. **fails open**: any exception is printed to stderr, and the hook exits 0.
+4. answers in the harness's format: Claude Code's and Codex's are the same
+   (`hookSpecificOutput.additionalContext`, `systemMessage`, `decision:
+   block`); Cursor's session start says it all as `additional_context`, and
+   its stop's block is a `followup_message`;
+5. **fails open**: any exception is printed to stderr, and the hook exits 0.
+
+Each harness is wired with the events it sends that nock handles
+(`Harness.events`, `own_events`): Claude Code all of the above; Codex
+SessionStart, UserPromptSubmit and Stop, and a project hook's PreToolUse or
+PostToolUse (its tool calls name no subagent, its edits no file, and it has
+no session end); Cursor sessionStart and stop, and no project hook, its
+payloads not being Claude Code's. The background-agents wait at a stop reads
+Claude Code's transcript, so it applies there only.
 
 `reminders = false` turns off everything nock's own handlers would add to
 the context (SessionStart's tools and standing, the prompt's verdicts, the
@@ -804,7 +828,7 @@ Everything a project adds lives in `.nock/` and is committed:
 | generated file | `.nock/tools/*.py` | `@nock.generator(path)` | `generators.Generators` |
 | catalog | `.nock/generators/NAME/` | `nock gen new` | `generators.Catalog` |
 | brief | `.nock/briefs/NAME.md` (consult, ask) | the file's presence | `templates.Library`, before the packaged briefs |
-| skill | `.claude/skills/nock-reflect/`, `.claude/skills/nock-triage/`, `.claude/skills/nock-reflect-logika/` (Logika projects) | `nock init` | Claude Code; `nock init` rewrites them, and removes the retired `reflect` and `consolidate` and the briefs earlier versions put beside a skill |
+| skill | `.claude/skills/nock-reflect/`, `.claude/skills/nock-triage/`, `.claude/skills/nock-work/` (and `.agents/skills/nock-work/` where Codex is found), `.claude/skills/nock-reflect-logika/` (Logika projects) | `nock init` | Claude Code and Cursor, and Codex for `/nock-work`; `nock init` rewrites them, and removes the retired `reflect` and `consolidate` and the briefs earlier versions put beside a skill |
 | settings | `.nock/config.toml`, `.nock/local/config.toml` | — | `configuration.Configuration` |
 | the core itself | `.nock/core/nock/` | edit it | kept by `nock upgrade`'s three-way merge |
 
@@ -844,13 +868,31 @@ worktree's install is that branch's change, never the main checkout's):
   `config.toml`, `context.md` (the primer, from the settings) and `tools/`;
 - records the version, the source (`pypi` unless told otherwise) and, from a
   checkout, its commit in `.nock/core/VERSION.json`;
-- imports `@.nock/context.md` into CLAUDE.md;
-- wires `.claude/settings.json`: the hooks, an `allow` rule per command but
-  `run`, and an `ask` rule per `confirm=True` command (an `allow` rule with
-  `permissions.confirm = "allow"`);
-- writes the `/nock-reflect` and `/nock-triage` skills, and in a Logika
-  project (`logika.json` at the root) `/nock-reflect-logika`, with their
-  parts' subagent types in `.claude/agents/`.
+- finds the agent harnesses the repository uses (`harnesses.found`): Claude
+  Code always; Codex when there is a `.codex/` or `codex` on PATH; Cursor
+  when there is a `.cursor/` or `cursor` or `cursor-agent` on PATH;
+- where Codex or Cursor is found, writes the primer into AGENTS.md between
+  `<!-- nock -->` and `<!-- /nock -->` (they read AGENTS.md and follow no
+  import), replaced in place; `primer.refresh` keeps it current like
+  `context.md`;
+- imports `@.nock/context.md` into CLAUDE.md, unless CLAUDE.md imports
+  AGENTS.md and AGENTS.md holds the primer, where it takes its own import out
+  so Claude Code reads the primer once;
+- wires each found harness's hooks file, replacing nock's entries and
+  keeping everyone else's; in `.claude/settings.json` also an `allow` rule
+  per command but `run`, and an `ask` rule per `confirm=True` command (an
+  `allow` rule with `permissions.confirm = "allow"`);
+- writes the `/nock-reflect`, `/nock-triage` and `/nock-work` skills into
+  `.claude/skills/`, and in a Logika project (`logika.json` at the root)
+  `/nock-reflect-logika`, with their parts' subagent types in
+  `.claude/agents/`. `/nock-work`, which any harness can follow, goes also
+  into each found harness's skills directory that no directory written
+  before is one it reads (`harnesses.skill_installs`): `.agents/skills/` for
+  Codex, nothing for Cursor, which reads `.claude/skills/`; a copy nock wrote
+  where no found harness reads it is taken out, an edited one kept;
+- prints what it found, each file it created, updated or removed with what
+  it holds, Codex's word on trusting hooks, and the next step; a file
+  already as nock would write it is left alone and not listed.
 
 It is idempotent, so running it again re-wires. It copies the core only when
 there is none; a vendored core is the project's, changed only by
@@ -894,7 +936,7 @@ the sdist and the wheel, publishes them to PyPI as `nock` through trusted
 publishing (environment `pypi`), and attaches them with their SHA-256 sums to
 a GitHub release.
 
-## Tests and evals
+## Tests
 
 - `tests/` runs the vendored `.nock/nock` in real temporary repositories,
   with real git and real processes. The dispatched agents are
@@ -903,16 +945,6 @@ a GitHub release.
   command line for a test to read, and refuses and reports a call its
   seat's rules don't allow, as Claude Code does in `dontAsk`. There are no
   mocks.
-- `evals/run.py` measures the whole loop with real Claude Code sessions:
-  1. training tasks on a seeded shop project;
-  2. one real `/nock-reflect` round, in a headless session;
-  3. different test tasks of the same kinds, with and without the landed
-     toolbox, each in a fresh clone.
-
-  It reports the pass rate, cost, turns, time, tokens and tool use per kind.
-  Its sessions run in `dontAsk` with the allowlist in `evals/permissions.py`
-  (read, edit inside the copy, Python, git, SQLite, nock). See
-  `evals/README.md`.
 
 The gates are `uv run pytest -n 4`, `uv run ruff check`,
 `uv run ruff format` and `uv run basedpyright`. The conventions are in

@@ -11,13 +11,15 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from nock import harnesses
 from nock.configuration import Confirm
 from nock.errors import ConflictError, NotFoundError, PreconditionError
 from nock.git import Git, GitError
-from nock.hooks import BUILT_IN_EVENTS, EDIT_TOOLS, NOCK_COMMANDS
+from nock.harnesses import Harness
+from nock.hooks import EDIT_TOOLS, NOCK_COMMANDS
 from nock.kinds import KINDS
 from nock.migration import migrate_in
-from nock.primer import PRIMER, refresh
+from nock.primer import AGENTS, MARK_START, PRIMER, refresh, with_section
 from nock.project import NOCK_DIRECTORY, Project
 from nock.releases import PYPI, VERSION, Releases
 from nock.templates import Library
@@ -102,7 +104,9 @@ IMPORT_LINE = "@.nock/context.md"
 # wanted. Each SKILL.md and subagent (`agents/`) is its trigger and one line pointing
 # at its brief in `nock docs`, so the text always matches the vendored core and an
 # upgrade never rewrites a skill.
-SKILLS = ("nock-triage",)
+SKILLS = ("nock-triage", "nock-work")
+# Skills any harness can follow, written to `.agents/skills/` too, where Codex reads them.
+PORTABLE_SKILLS = ("nock-work",)
 # Skills earlier versions installed, removed on install.
 RETIRED_SKILLS = ("reflect", "consolidate")
 # The briefs earlier versions installed beside a skill, now `nock docs` terms.
@@ -111,6 +115,21 @@ RETIRED_SKILL_FILES = {
     "nock-reflect-logika": ("rules.md", "analytics.md"),
 }
 HOOK_COMMAND = '"$CLAUDE_PROJECT_DIR"/.nock/nock hook {event}'
+# Codex and Cursor give a hook no project directory, and may run it in a subdirectory.
+OTHER_HOOK_COMMAND = '"$(git rev-parse --show-toplevel)"/.nock/nock hook {event} {harness}'
+# Seconds a Codex or Cursor hook may take: a session start may upgrade nock (`UPGRADE_DEADLINE`).
+HOOK_TIMEOUT = 300
+HOOKS_WHAT = {
+    Harness.CLAUDE_CODE: "Claude Code hooks, and a permission rule per nock command",
+    Harness.CODEX: "Codex hooks: the toolbox at a session's start, the owner's word at a prompt,"
+    " what a stop leaves open",
+    Harness.CURSOR: "Cursor hooks: the toolbox at a session's start, what a stop leaves open",
+}
+PRIMER_WHAT = "the primer: what nock is for here, as the settings have it"
+NEXT = (
+    "Next: commit what nock changed; each agent session from the next on starts with"
+    " nock's toolbox (`.nock/nock` lists it)."
+)
 # The rules nock writes into `.claude/settings.json`, and no others: one per
 # command, so the file says exactly what an agent runs unasked.
 # - `allow`: the bare `.nock/nock` (it lists the tools), and every command but
@@ -205,9 +224,20 @@ def core_files(root: Path) -> dict[str, bytes]:
     }
 
 
+@dataclass
+class Change:
+    """What `nock init` did to one file: its path, what it holds, and whether
+    it was `created`, `updated` or `removed`."""
+
+    path: str
+    what: str
+    outcome: str
+
+
 class Installer:
     """Installs into the working tree it is run in — a worktree's install is
-    that branch's change, never the main checkout's."""
+    that branch's change, never the main checkout's — for each agent harness
+    the repository uses (`harnesses.found`)."""
 
     def __init__(self, target: Path) -> None:
         try:
@@ -217,9 +247,12 @@ class Installer:
                 f"{target} is not a git repository — `git init` it first"
             ) from error
         self.directory = self.root / NOCK_DIRECTORY
-        self.report = Report()
+        self.harnesses = harnesses.found(self.root)
+        self.changes: list[Change] = []
+        self.notes: list[str] = []
 
-    def install(self, source: str | None = None) -> Report:
+    def install(self, source: str | None = None) -> list[str]:
+        """What it found, exactly what it changed, and the next step."""
         source = source or DEFAULT_SOURCE
         core = self.directory / "core" / "nock"
         if not core.exists():
@@ -231,84 +264,160 @@ class Installer:
         elif core.resolve() != PACKAGE:
             # Run from elsewhere (NOCK_SOURCE): re-wire with this nock, but the
             # vendored core is the project's, changed only by a merge.
-            self.report.notes.append(
+            self.notes.append(
                 f"kept the vendored core ({NOCK_DIRECTORY}/core/) — this nock runs from {PACKAGE}; "
                 "`nock upgrade` updates the core"
             )
-        self.write("nock", SHIM, executable=True, replace=True)
-        self.write(".gitignore", GITIGNORE, replace=False)
-        self.write("config.toml", CONFIG, replace=False)
-        if refresh(self.directory):
-            self.report.written.append(f"{NOCK_DIRECTORY}/{PRIMER}")
-        self.write("tools/.gitkeep", "", replace=False)
+        nock = NOCK_DIRECTORY
+        self.put(f"{nock}/nock", SHIM, "runs the vendored core", executable=True)
+        self.start(
+            f"{nock}/.gitignore", GITIGNORE, "keeps .nock/local/ (this machine's) out of git"
+        )
+        self.start(f"{nock}/config.toml", CONFIG, "nock's settings, committed")
+        self.start(f"{nock}/tools/.gitkeep", "", "where the project's own tools go")
+        primed = (self.directory / PRIMER).exists()
+        for path in refresh(self.directory):
+            relative = str(path.relative_to(self.root))
+            outcome = "created" if path.name == PRIMER and not primed else "updated"
+            self.changes.append(Change(relative, PRIMER_WHAT, outcome))
+        if {Harness.CODEX, Harness.CURSOR} & set(self.harnesses):
+            self.write_section()
         self.import_context()
-        self.wire_claude()
+        for harness in self.harnesses:
+            self.wire(harness)
         self.install_skills()
         self.start_map()
-        migrated = migrate_in(self.root)
-        if migrated and migrated["migrated"]:
-            self.report.written.append(
-                f"{NOCK_DIRECTORY}/topics/: {migrated['decisions']} decision(s) and"
-                f" {migrated['review_items']} review item(s) migrated into"
-                f" {len(migrated['topics'])} topic(s)"
-            )
-        if migrated and migrated.get("split"):
-            split = migrated["split"]
-            self.report.written.append(
-                f"{NOCK_DIRECTORY}/topics/: {split['items']} item(s) holding several files"
-                f" split into {split['into']}, one asset each"
-            )
-        return self.report
+        self.migrate()
+        return self.lines()
+
+    def lines(self) -> list[str]:
+        titles = ", ".join(harness.label for harness in self.harnesses)
+        lines = [f"Found agent harnesses: {titles}.", *self.notes]
+        if not self.changes:
+            return [*lines, "", "Nothing changed: nock is set up and wired already."]
+        width = max(len(change.path) for change in self.changes)
+        created = any(change.outcome == "created" for change in self.changes)
+        lines += ["", "Added:" if created else "Changed:"]
+        lines += [
+            f"  {change.path:{width}}  {change.what}"
+            + ("" if change.outcome == "created" else f" ({change.outcome})")
+            for change in self.changes
+        ]
+        if Harness.CODEX in self.harnesses:
+            lines += ["", "Codex runs a project's hooks once you trust them: `/hooks` in Codex."]
+        return [*lines, "", NEXT]
+
+    def put(self, relative: str, text: str, what: str, executable: bool = False) -> None:
+        """`text` at `relative` (to the repository) unless it is there already."""
+        path = self.root / relative
+        if path.is_file() and path.read_text() == text:
+            return
+        outcome = "updated" if path.exists() else "created"
+        write_atomic(path, text)
+        if executable:
+            path.chmod(0o755)
+        self.changes.append(Change(relative, what, outcome))
+
+    def start(self, relative: str, text: str, what: str) -> None:
+        """`text` at `relative` only where there is nothing yet: the project's to change."""
+        if not (self.root / relative).exists():
+            self.put(relative, text, what)
+
+    def remove(self, relative: str, what: str) -> None:
+        path = self.root / relative
+        path.unlink()
+        directory = path.parent
+        while directory != self.root and not any(directory.iterdir()):
+            directory.rmdir()
+            directory = directory.parent
+        self.changes.append(Change(relative, what, "removed"))
 
     def install_skills(self) -> None:
-        """`/nock-triage` and each kind of round's skill where it is wanted
-        (`/nock-reflect`; `/nock-reflect-logika` in a Logika project), with
-        the subagents its parts run as, kept in step with the core like the
-        primer."""
+        """`/nock-triage`, `/nock-work` and each kind of round's skill where it
+        is wanted (`/nock-reflect`; `/nock-reflect-logika` in a Logika project),
+        with the subagents its parts run as, for Claude Code; `/nock-work`,
+        which any harness can follow, also in the skills directory of each
+        other harness found that reads none written already (Codex's), and
+        taken out of a directory no harness found reads. Kept in step with the
+        core like the primer."""
         briefs = PACKAGE / "briefs"
         library = Library(briefs)
         rounds = tuple(kind.skill for kind in KINDS.values() if kind.wanted(self.root))
+        portable = [
+            harness
+            for harness in harnesses.skill_installs(self.harnesses)
+            if harness is not Harness.CLAUDE_CODE
+        ]
         for name in (*rounds, *SKILLS):
             for source in sorted((briefs / name).glob("*.md")):
-                relative = f".claude/skills/{name}/{source.name}"
-                write_atomic(self.root / relative, library.render(f"{name}/{source.name}"))
-                self.report.written.append(relative)
+                text = library.render(f"{name}/{source.name}")
+                self.put(
+                    f".claude/skills/{name}/{source.name}",
+                    text,
+                    f"the /{name} skill, for Claude Code",
+                )
+                if name not in PORTABLE_SKILLS:
+                    continue
+                for harness in Harness:
+                    relative = f"{harness.skills_directory}/{name}/{source.name}"
+                    if harness in portable:
+                        self.put(relative, text, f"the /{name} skill, for {harness.label}")
+                    elif harness is not Harness.CLAUDE_CODE and self.ours(relative, text):
+                        self.remove(relative, f"the /{name} skill: no harness found reads it here")
             # The round's parts as Claude Code subagents, each with only the tools its part needs.
             for source in sorted((briefs / name / "agents").glob("*.md")):
-                relative = f".claude/agents/{source.name}"
-                write_atomic(self.root / relative, library.render(f"{name}/agents/{source.name}"))
-                self.report.written.append(relative)
+                self.put(
+                    f".claude/agents/{source.name}",
+                    library.render(f"{name}/agents/{source.name}"),
+                    f"the {source.stem} subagent, for Claude Code",
+                )
         for name, files in RETIRED_SKILL_FILES.items():
             for file in files:
-                path = self.root / ".claude" / "skills" / name / file
-                if path.is_file():
-                    path.unlink()
-                    self.report.written.append(f"removed .claude/skills/{name}/{file}")
+                relative = f".claude/skills/{name}/{file}"
+                if (self.root / relative).is_file():
+                    self.remove(relative, "an earlier version's brief, now a `nock docs` term")
         for name in RETIRED_SKILLS:
-            skill = self.root / ".claude" / "skills" / name / "SKILL.md"
+            relative = f".claude/skills/{name}/SKILL.md"
+            skill = self.root / relative
             if skill.is_file() and skill.read_text().startswith(f"---\nname: {name}\n"):
-                skill.unlink()
-                if not any(skill.parent.iterdir()):
-                    skill.parent.rmdir()
-                self.report.written.append(f"removed .claude/skills/{name}")
+                self.remove(relative, "a skill earlier versions installed")
+
+    def ours(self, relative: str, text: str) -> bool:
+        path = self.root / relative
+        return path.is_file() and path.read_text() == text
 
     def start_map(self) -> None:
         """An empty map of topics, so an agent told to read it finds it (an
         earlier nock's map of decisions moves here when the project migrates)."""
-        relative = f"{NOCK_DIRECTORY}/topics/{MAP}"
-        if (self.root / relative).exists() or (
-            self.root / NOCK_DIRECTORY / "decisions" / MAP
-        ).exists():
+        if (self.root / NOCK_DIRECTORY / "decisions" / MAP).exists():
             return
-        write_atomic(self.root / relative, MAP_STUB)
-        self.report.written.append(relative)
+        self.start(
+            f"{NOCK_DIRECTORY}/topics/{MAP}", MAP_STUB, "the map of topics, empty until a round"
+        )
+
+    def migrate(self) -> None:
+        migrated = migrate_in(self.root)
+        if migrated and migrated["migrated"]:
+            self.notes.append(
+                f"migrated {migrated['decisions']} decision(s) and {migrated['review_items']}"
+                f" review item(s) into {len(migrated['topics'])} topic(s) in"
+                f" {NOCK_DIRECTORY}/topics/"
+            )
+        if migrated and migrated.get("split"):
+            split = migrated["split"]
+            self.notes.append(
+                f"split {split['items']} item(s) holding several files into {split['into']},"
+                f" one asset each, in {NOCK_DIRECTORY}/topics/"
+            )
 
     def copy_core(self, core: Path) -> None:
         for relative, content in core_files(PACKAGE).items():
             path = core / relative
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(content)
-        self.report.written.append(f"{NOCK_DIRECTORY}/core/")
+        self.changes.append(
+            Change(f"{NOCK_DIRECTORY}/core/", "nock's code, vendored: the project's own", "created")
+        )
 
     def source_commit(self) -> str | None:
         """The upstream commit this core was copied from, when it came from a checkout."""
@@ -317,58 +426,78 @@ class Installer:
             return None
         return git.head()
 
-    def write(
-        self, relative: str, text: str, executable: bool = False, replace: bool = False
-    ) -> None:
-        path = self.directory / relative
-        if path.exists() and not replace:
-            self.report.kept.append(f"{NOCK_DIRECTORY}/{relative}")
-            return
-        write_atomic(path, text)
-        if executable:
-            path.chmod(0o755)
-        self.report.written.append(f"{NOCK_DIRECTORY}/{relative}")
-
     def import_context(self) -> None:
         """CLAUDE.md imports `.nock/context.md`, so every session reads the
-        primer without nock ever editing CLAUDE.md again."""
+        primer without nock ever editing CLAUDE.md again — unless it imports
+        AGENTS.md and AGENTS.md holds the primer, which it would read twice."""
         claude = self.root / "CLAUDE.md"
         text = claude.read_text() if claude.is_file() else ""
-        if IMPORT_LINE in text.splitlines():
+        agents = self.root / AGENTS
+        lines = text.splitlines()
+        if (
+            any(word in ("@AGENTS.md", "@./AGENTS.md") for word in text.split())
+            and agents.is_file()
+            and MARK_START in agents.read_text()
+        ):
+            if IMPORT_LINE in lines:
+                kept = "\n".join(line for line in lines if line != IMPORT_LINE).rstrip("\n")
+                self.put("CLAUDE.md", kept + "\n", "imports AGENTS.md, which holds the primer")
             return
-        claude.write_text(text.rstrip("\n") + ("\n\n" if text.strip() else "") + IMPORT_LINE + "\n")
-        self.report.written.append("CLAUDE.md")
+        if IMPORT_LINE in lines:
+            return
+        self.put(
+            "CLAUDE.md",
+            text.rstrip("\n") + ("\n\n" if text.strip() else "") + IMPORT_LINE + "\n",
+            "imports .nock/context.md, so Claude Code reads the primer",
+        )
 
-    def wire_claude(self) -> None:
-        settings_path = self.root / ".claude" / "settings.json"
-        settings = read_json(settings_path) if settings_path.is_file() else {}
+    def write_section(self) -> None:
+        """The primer in AGENTS.md, between nock's markers: Codex and Cursor
+        read AGENTS.md and follow no import. `refresh` keeps it current."""
+        agents = self.root / AGENTS
+        text = agents.read_text() if agents.is_file() else ""
+        primer_text = (self.directory / PRIMER).read_text()
+        self.put(
+            AGENTS,
+            with_section(text, primer_text),
+            "the primer, between nock's markers, for Codex and Cursor",
+        )
+
+    def wire(self, harness: Harness) -> None:
+        """The harness's hooks file with nock's hooks in it, everything else
+        kept as it was; Claude Code's with nock's permission rules too."""
+        relative = harness.hooks_file
+        path = self.root / relative
+        settings = read_json(path) if path.is_file() else {}
+        if not isinstance(settings, dict):
+            raise PreconditionError(f"{relative} is not a JSON object — fix it, then `nock init`")
+        if harness is Harness.CURSOR and "version" not in settings:
+            settings = {"version": 1, **settings}
         hooks = settings.setdefault("hooks", {})
-        project_events = {entry.event for entry in Project(self.root).registry.hooks}
-        listened = {*BUILT_IN_EVENTS, *project_events}
-        for event in sorted(NATIVE_EVENTS[event] for event in listened):
-            command = HOOK_COMMAND.format(event=event)
-            hook: dict[str, Any] = {"type": "command", "command": command}
-            entry: dict[str, Any] = {"hooks": [hook]}
-            # nock's own after-tool handler wants only edits, its before-tool one only its own
-            # commands; a project hook may want every tool.
-            if event == NATIVE_EVENTS[Event.AFTER_TOOL] and Event.AFTER_TOOL not in project_events:
-                entry["matcher"] = EDIT_TOOLS
-            if (
-                event == NATIVE_EVENTS[Event.BEFORE_TOOL]
-                and Event.BEFORE_TOOL not in project_events
-            ):
-                entry["matcher"] = "Bash"
-                hook["if"] = NOCK_COMMANDS
-            entries = hooks.setdefault(event, [])
-            entries[:] = [
-                existing
-                for existing in entries
-                if not any(
-                    ".nock/nock hook" in str(hook.get("command", ""))
-                    for hook in existing.get("hooks", [])
-                )
-            ]
-            entries.append(entry)
+        project_events = (
+            {entry.event for entry in Project(self.root).registry.hooks}
+            if harness is not Harness.CURSOR
+            else set()
+        )
+        listened = {*harness.own_events, *project_events} & harness.events.keys()
+        for entries in hooks.values():
+            if isinstance(entries, list):
+                entries[:] = [entry for entry in entries if not hooked(entry)]
+        for event in sorted(listened, key=lambda event: harness.events[event]):
+            hooks.setdefault(harness.events[event], []).append(
+                hook_entry(harness, event, project_events)
+            )
+        for native in [native for native, entries in hooks.items() if entries == []]:
+            del hooks[native]
+        what = HOOKS_WHAT[harness]
+        if harness is Harness.CLAUDE_CODE:
+            self.permit(settings)
+        text = json.dumps(settings, indent=2, ensure_ascii=False) + "\n"
+        if path.is_file() and read_json(path) == settings:
+            return
+        self.put(relative, text, what)
+
+    def permit(self, settings: dict[str, Any]) -> None:
         permissions = settings.setdefault("permissions", {})
         allow, ask = wanted_permissions(Project(self.root))
         for kind, wanted in (("allow", allow), ("ask", ask)):
@@ -381,8 +510,37 @@ class Installer:
                 permissions[kind] = kept + wanted
             else:
                 permissions.pop(kind, None)
-        write_json(settings_path, settings)
-        self.report.written.append(".claude/settings.json")
+
+
+def hooked(entry: object) -> bool:
+    """Whether a hooks file's entry runs nock's hook: Claude Code's and
+    Codex's group commands under `hooks`, Cursor's holds one `command`."""
+    if not isinstance(entry, dict):
+        return False
+    commands = [hook.get("command") for hook in entry.get("hooks", []) if isinstance(hook, dict)]
+    return any(".nock/nock hook" in str(command) for command in [*commands, entry.get("command")])
+
+
+def hook_entry(harness: Harness, event: Event, project_events: set[Event]) -> dict[str, Any]:
+    if harness is Harness.CLAUDE_CODE:
+        command = HOOK_COMMAND.format(event=NATIVE_EVENTS[event])
+    else:
+        command = OTHER_HOOK_COMMAND.format(event=NATIVE_EVENTS[event], harness=harness.value)
+    if harness is Harness.CURSOR:
+        return {"command": command, "timeout": HOOK_TIMEOUT}
+    hook: dict[str, Any] = {"type": "command", "command": command}
+    if harness is not Harness.CLAUDE_CODE:
+        hook["timeout"] = HOOK_TIMEOUT
+    entry: dict[str, Any] = {"hooks": [hook]}
+    # nock's own after-tool handler wants only edits, its before-tool one only its own
+    # commands; a project hook may want every tool.
+    if harness is Harness.CLAUDE_CODE:
+        if event is Event.AFTER_TOOL and Event.AFTER_TOOL not in project_events:
+            entry["matcher"] = EDIT_TOOLS
+        if event is Event.BEFORE_TOOL and Event.BEFORE_TOOL not in project_events:
+            entry["matcher"] = "Bash"
+            hook["if"] = NOCK_COMMANDS
+    return entry
 
 
 class Upgrader:

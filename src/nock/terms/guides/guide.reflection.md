@@ -26,12 +26,12 @@ file on your machine that is never committed:
 - **every nock call**, refused ones included: the command and its arguments,
   how long it took, its exit code, how many bytes it printed, whether it came
   from the cache, and the error;
-- **every Claude Code session**: what you typed, each tool call the agent
+- **every session of your coding agent**: what you typed, each tool call the agent
   made (nock or not), what failed, the interrupts and compactions, and the
   tokens by kind;
 - **every supervised process**, with its log in `.nock/local/logs/`.
 
-Sessions are read from Claude Code's transcripts, from where the last read
+Sessions are read from the agent's transcripts, from where the last read
 stopped, so a session that runs for days is counted as it goes and nothing is
 counted twice.
 
@@ -54,8 +54,8 @@ summarize it, and `nock query "SELECT …"` runs read-only SQL over its tables.
 
 ## The first session
 
-Every session starts with the project's toolbox listed, through Claude Code's
-SessionStart hook. CLAUDE.md imports a short primer, `.nock/context.md`: why
+Every session starts with the project's toolbox listed, through the agent's
+session-start hook. CLAUDE.md imports a short primer, `.nock/context.md`: why
 the project uses nock, to consult before changing code, to put work before you
 in topics, to run noisy commands through `nock run`, and to offer to tell nock's
 makers what nock lacks.

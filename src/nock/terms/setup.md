@@ -4,4 +4,4 @@ aliases: [init, upgrade, install, primer, wiring]
 description: nock init and nock upgrade: installing, re-wiring, upgrading
 ---
 
-`nock init` vendors nock into `.nock/core/`, writes the shim, `config.toml`, `tools/`, the primer `.nock/context.md` (imported into CLAUDE.md), wires Claude Code's hooks and permissions (`permissions`), and installs the skills and subagents; run again, it re-wires and keeps the core. `.nock/nock upgrade` merges the latest release into the core, keeping local edits (a three-way merge), then re-runs init; a session start does if clean (`upgrade.auto`). `nock-wiring` fails while wiring is stale.
+`nock init` vendors nock into `.nock/core/` with the shim, `config.toml`, `tools/` and the primer `.nock/context.md`, and wires each agent harness it finds (Claude Code always; Codex, Cursor where their directory or command is): hooks, skills, the primer (CLAUDE.md imports it; AGENTS.md holds it), Claude Code's `permissions`. Run again, it re-wires. `nock upgrade` merges the latest release into the core (keeping local edits), then re-runs init. `nock-wiring` fails while it is stale.

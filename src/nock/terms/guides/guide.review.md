@@ -177,7 +177,7 @@ an agent working the threads would: a reply, a new version of the item, a
 change to the project's files checked with the project's gate. It gives no
 verdict and commits no code; the changes are left for you to look at.
 
-**The chat** beside the settings gear talks with a headless Claude Code session
+**The chat** beside the settings gear talks with a headless agent session
 in the project, from every tab. It reads the topics, the items and nock's docs,
 and changes nothing. Chats are your conversations, not the project's records:
 they stay on your machine, never committed.

@@ -908,7 +908,7 @@ def llms(pages: list[Page]) -> str:
         f"> {STORY['/'][1]}",
         "",
         f"nock is open source under the MIT License, standard-library Python with no dependencies, "
-        f"vendored into the repository that uses it: `uvx nock init`. Made by {COMPANY} for Claude Code; "
+        f"vendored into the repository that uses it: `uvx nock init`. Made by {COMPANY} for coding agents; "
         f"contact {CONTACT}.",
         "",
     ]
