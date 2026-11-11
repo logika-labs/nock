@@ -112,6 +112,8 @@ class State(StrEnum):
     """Given up: like done, it takes no new items until it is revived."""
 
 
+# How a closed topic comes back, as an agent writes it.
+REVIVE = 'a `state` event in its events/, `{"kind": "state", "state": "active", "revived": true, "note": "why it is back"}`'
 # The states in which a topic takes no new items.
 CLOSED = (State.DONE, State.ABANDONED)
 # The states in which an agent's work in a topic is finished, as the stop hook counts it.
@@ -905,8 +907,7 @@ class Topics:
             if existing is not None:
                 standing = self.standing(existing)
                 again = (
-                    f" — it is {standing}; revive it:"
-                    f' `.nock/nock topics update {name} --revive "why it is back"`'
+                    f" — it is {standing}; revive it: " + REVIVE
                     if standing in CLOSED
                     else ": submit into it"
                 )
@@ -943,7 +944,7 @@ class Topics:
     ) -> tuple[dict[str, Any], str | None]:
         if not change and reply is None and revive is None:
             raise UsageError(
-                "nothing to do: give a change (`state`, `status`, …), `--reply`, or `--revive`"
+                "nothing to do: give a change (`state`, `status`, …), a reply, or a revival"
             )
         with self.project.lock("topics"), self.drafting():
             topic = self.topic(name)
@@ -976,7 +977,7 @@ class Topics:
                     raise UsageError("a revived topic is planned or active")
                 note = revive.strip()
                 if not note:
-                    raise UsageError("`--revive` says why the topic is back")
+                    raise UsageError("a revival says why the topic is back")
                 standing |= {
                     "state": str(State(change.get("state") or State.ACTIVE)),
                     "revived": True,
@@ -1080,7 +1081,7 @@ class Topics:
             if self.standing(record) in CLOSED:
                 raise ConflictError(
                     f"topic {topic} is {self.standing(record)}: if this brings it back, revive it first —"
-                    f' `.nock/nock topics update {topic} --revive "why it is back"` — or open another topic'
+                    " " + REVIVE + " — or open another topic"
                 )
             slug = check_name(draft["slug"], "slug") if "slug" in draft else slugged(title)
             taken = {item["slug"] for item in items}
@@ -1122,7 +1123,7 @@ class Topics:
         attachments: list[Path] | None = None,
     ) -> tuple[dict[str, Any], str | None]:
         if not change and version is None and reply is None:
-            raise UsageError("nothing to do: give a change, `--version`, or `--reply`")
+            raise UsageError("nothing to do: give a change, a new version, or a reply")
         change = ItemChange(**change) if change else None
         moving = change.pop("topic", None) if change else None
         with self.project.lock("topics"), self.drafting():
@@ -1135,7 +1136,7 @@ class Topics:
                 if item["verdict"] != Verdict.OPEN:
                     raise ConflictError(
                         f"{item['ref']} is {item['verdict']}: it is not changed in place — "
-                        f"give the change as a new version, `.nock/nock items update {item['ref']} --version '{{…}}'`"
+                        "give the change as a new version (`.nock/nock docs topics.versions`)"
                     )
                 self.retitled(folder, change)
                 content = {
