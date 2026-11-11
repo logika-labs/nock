@@ -34,10 +34,13 @@ from typing import TYPE_CHECKING, Any
 from nock.errors import Error, ExitCode, NotFoundError
 from nock.fixtures import Call, CommandFailed, Scope
 from nock.git import Git, GitError
-from nock.render import PACKAGE_INTERNAL, crash
+from nock.render import CHARACTERS, PACKAGE_INTERNAL, crash
 
 if TYPE_CHECKING:
     from nock.project import Project
+
+# How many check suites may run at once on this machine.
+CONCURRENCY = 2
 
 
 class Outcome(StrEnum):
@@ -254,7 +257,7 @@ class Checks:
         output = sh(command, check=False, directory=directory, **bounds)
         if output.ok:
             return Result(Outcome.PASSED)
-        characters = int(self.project.configuration.get("output.characters")) // 2
+        characters = CHARACTERS // 2
         if output.code in (settings.get("failure_codes") or [1]):
             evidence = output.excerpt(characters) if output.text.strip() else ""
             return Result(
@@ -275,9 +278,9 @@ class Checks:
 
     @contextmanager
     def slot(self) -> Iterator[None]:
-        """One of `checks.concurrency` machine-wide slots, so parallel callers
+        """One of `CONCURRENCY` machine-wide slots, so parallel callers
         do not run their suites all at once and slow each other to a crawl."""
-        capacity = max(1, int(self.project.configuration.get("checks.concurrency", 2)))
+        capacity = CONCURRENCY
         directory = self.project.local / "locks"
         directory.mkdir(parents=True, exist_ok=True)
         while True:

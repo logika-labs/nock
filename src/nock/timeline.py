@@ -9,10 +9,11 @@ these same events (`nock.notify`): one source."""
 
 from __future__ import annotations
 
+import re
 from enum import StrEnum
 from typing import TYPE_CHECKING, Any
 
-from nock.notify import Reason
+from nock.notify import Reason, seconds_between
 from nock.topics import STATUS, Author, Topics, entry_name, moment
 
 if TYPE_CHECKING:
@@ -55,10 +56,34 @@ TURNS = {
 # The kinds in the order they follow one another within one second.
 ORDER = [str(kind) for kind in Event]
 
+# What a state change says happened, by the state it came to.
+CAME_TO = {
+    "review": "ready for your review",
+    "done": "done",
+    "abandoned": "stopped",
+    "active": "in progress",
+    "planned": "planned",
+}
+
+# An agent's message this soon after a new version says what changed in it.
+CHANGE_NOTE = 300
+
+SENTENCE = re.compile(r"(?<=[.!?])\s+")
+
 
 def clipped(text: str, limit: int = PREVIEW) -> str:
     text = " ".join(str(text or "").split())
     return text if len(text) <= limit else text[: limit - 1] + "…"
+
+
+def first_sentence(text: str) -> tuple[str, str]:
+    """TEXT's first sentence and the rest of it."""
+    head, *rest = SENTENCE.split(" ".join(str(text or "").split()), maxsplit=1)
+    return head, rest[0] if rest else ""
+
+
+def counted(number: int, one: str, many: str) -> str:
+    return f"{number} {one if number == 1 else many}"
 
 
 class Timeline:
@@ -66,7 +91,8 @@ class Timeline:
         self.topics = Topics(project)
 
     def events(self, topic: str | None = None) -> list[dict[str, Any]]:
-        """Every event (of TOPIC), the newest first."""
+        """Every event (of TOPIC), the newest first; a topic's status changes
+        with nothing between them one event, the latest, with their `count`."""
         found: list[dict[str, Any]] = []
         for name in [topic] if topic else self.topics.names():
             found += self.of_topic(name)
@@ -75,11 +101,25 @@ class Timeline:
             key=lambda event: (event["moment"], ORDER.index(event["kind"]), event["key"]),
             reverse=True,
         )
-        return found
+        folded: list[dict[str, Any]] = []
+        for event in found:
+            last = folded[-1] if folded else None
+            if (
+                last
+                and event["kind"] == last["kind"] == Event.STATUS
+                and event["topic"] == last["topic"]
+            ):
+                last["count"] = last.get("count", 1) + 1
+                last["preview"] = event["preview"]
+                continue
+            folded.append(event)
+        return folded
 
     def of_topic(self, name: str) -> list[dict[str, Any]]:
         record = self.topics.topic(name)
         created = moment(record.get("created"))
+        items = self.topics.items(name)
+        opening, rest = first_sentence(record["description"])
         found = [
             self.event(
                 Event.TOPIC,
@@ -87,25 +127,32 @@ class Timeline:
                 created or record.get("updated") or "",
                 name,
                 None,
-                f"New topic {name}",
-                record["description"],
+                "started",
+                opening,
+                rest,
                 f"#topics/{name}",
             )
         ]
-        state = None
+        state, status = None, ""
         for entry in record["thread"]:
             if entry.get("kind") == STATUS:
                 said = entry.get("status") or ""
+                before, status = status, said
+                preview, extra = "", {}
                 if entry.get("revived"):
-                    kind, text = Event.REVIVED, f"{name} is back"
+                    kind, phrase = Event.REVIVED, "back in progress"
                     said = entry.get("text") or said
                 elif entry.get("state") != (state or "active"):
-                    kind, text = Event.STATE, f"{name} is {entry.get('state')}"
+                    kind = Event.STATE
+                    phrase = CAME_TO.get(entry.get("state") or "", f"is {entry.get('state')}")
+                    if entry.get("state") == "review":
+                        preview = self.waiting(items, entry["moment"])
                 elif entry["moment"] == created:
                     state = entry.get("state")
                     continue
                 else:
-                    kind, text = Event.STATUS, f"{name}: new status"
+                    kind, phrase = Event.STATUS, "progress"
+                    preview, extra = before, {"muted": True}
                 state = entry.get("state")
                 found.append(
                     self.event(
@@ -114,40 +161,60 @@ class Timeline:
                         entry["moment"],
                         name,
                         None,
-                        text,
+                        phrase,
                         said,
+                        preview,
                         f"#topics/{name}",
                         state=state,
+                        **extra,
                     )
                 )
             elif not entry.get("kind"):
-                found += self.said(entry, name, None, "")
-        for item in self.topics.items(name):
+                found += self.said(entry, record["thread"], name, None, opening)
+        for item in items:
             found += self.of_item(item)
         return found
+
+    def waiting(self, items: list[dict[str, Any]], at: str) -> str:
+        """What waited for the owner's verdict at AT: "3 decisions, 2 to look at"."""
+        decisions = assets = 0
+        for item in items:
+            versions = [version for version in item["versions"] if version["moment"] <= at]
+            decided = moment(item.get("decided"))
+            if not versions or (item.get("verdict") != "open" and decided and decided <= at):
+                continue
+            if any(entry["kind"] == "decision" for entry in versions[-1]["files"]):
+                decisions += 1
+            else:
+                assets += 1
+        said = [counted(decisions, "decision", "decisions")] if decisions else []
+        return ", ".join(said + ([f"{assets} to look at"] if assets else []))
 
     def of_item(self, item: dict[str, Any]) -> list[dict[str, Any]]:
         ref, topic = item["ref"], item["topic"]
         found = []
-        for version in item["versions"]:
+        versions = item["versions"]
+        for at, version in enumerate(versions):
             decision = next(
                 (entry for entry in version["files"] if entry["kind"] == "decision"), None
             )
             files = [entry for entry in version["files"] if entry["kind"] != "decision"]
             what = "decision" if decision else "asset"
             if version["version"] == 1:
-                kind, text = Event.ITEM, f"New {what} for review"
-                key, address = f"item:{ref}", f"#topics/{ref}"
+                kind, key, address = Event.ITEM, f"item:{ref}", f"#topics/{ref}"
+                phrase = "decision for you" if decision else "to look at"
+                if decision:
+                    preview = (self.topics.decision(item, version) or {}).get("answer") or ""
+                else:
+                    preview = item.get("description") or ""
             else:
-                kind, text = Event.VERSION, f"Version {version['version']} for review"
+                kind, phrase = Event.VERSION, f"updated (v{version['version']})"
                 key, address = (
                     f"version:{ref}:{version['version']}",
                     f"#topics/{ref}~v{version['version']}",
                 )
-            preview = item.get("description") or ""
-            if decision and not preview:
-                read = self.topics.decision(item, version) or {}
-                preview = read.get("answer") or ""
+                following = versions[at + 1]["moment"] if at + 1 < len(versions) else None
+                preview = self.change_note(item["thread"], version["moment"], following)
             found.append(
                 self.event(
                     kind,
@@ -155,11 +222,12 @@ class Timeline:
                     version["moment"],
                     topic,
                     ref,
-                    text,
+                    phrase,
+                    item["title"],
                     preview,
                     address,
-                    title=item["title"],
                     what=what,
+                    verdict=item.get("verdict") or "open",
                     faces=[
                         {"file": entry_name(entry), "type": entry["type"]}
                         for entry in files
@@ -171,20 +239,51 @@ class Timeline:
             )
         for entry in item["thread"]:
             if not entry.get("kind"):
-                found += self.said(entry, topic, ref, item["title"])
+                found += self.said(entry, item["thread"], topic, ref, item["title"])
         return found
 
+    def change_note(self, thread: list[dict[str, Any]], at: str, following: str | None) -> str:
+        """What changed in the version made at AT, if an agent said so right after it."""
+        for entry in thread:
+            if (
+                entry["author"] == Author.AGENT
+                and not entry.get("kind")
+                and entry["moment"] >= at
+                and (following is None or entry["moment"] < following)
+                and seconds_between(at, entry["moment"]) <= CHANGE_NOTE
+            ):
+                return entry.get("text") or ""
+        return ""
+
     def said(
-        self, entry: dict[str, Any], topic: str, ref: str | None, title: str
+        self,
+        entry: dict[str, Any],
+        thread: list[dict[str, Any]],
+        topic: str,
+        ref: str | None,
+        title: str,
     ) -> list[dict[str, Any]]:
-        """An agent's message as an event; the owner's own words are none."""
+        """An agent's message as an event; the owner's own words are none. One
+        answering the owner is titled by the first line of what it answers."""
         if entry["author"] != Author.AGENT:
             return []
         where = ref or topic
-        kind = Event.ANSWERED if "answers" in entry else Event.MESSAGE
-        text = "An agent answered you" if kind is Event.ANSWERED else "An agent wrote"
         files = len(entry.get("attachments") or [])
-        preview = entry.get("text") or (f"{files} file{'' if files == 1 else 's'}" if files else "")
+        text = entry.get("text") or (f"{files} file{'' if files == 1 else 's'}" if files else "")
+        if "answers" in entry:
+            asked = next(
+                (
+                    said
+                    for said in thread
+                    if said["author"] == Author.OWNER and said["moment"] == entry["answers"]
+                ),
+                None,
+            )
+            question = (asked or {}).get("text") or ""
+            kind, phrase = Event.ANSWERED, "replied to you"
+            title = next((line for line in question.splitlines() if line.strip()), title)
+        else:
+            kind, phrase = Event.MESSAGE, "left a note"
         return [
             self.event(
                 kind,
@@ -192,10 +291,10 @@ class Timeline:
                 entry["moment"],
                 topic,
                 ref,
+                phrase,
+                title,
                 text,
-                preview,
                 f"#topics/{where}~chat",
-                title=title,
             )
         ]
 
@@ -206,7 +305,8 @@ class Timeline:
         at: str,
         topic: str,
         ref: str | None,
-        text: str,
+        phrase: str,
+        title: str,
         preview: str,
         address: str,
         **extra: Any,
@@ -217,7 +317,8 @@ class Timeline:
             "moment": at,
             "topic": topic,
             "ref": ref,
-            "text": text,
+            "phrase": phrase,
+            "title": clipped(title),
             "preview": clipped(preview),
             "address": address,
             **{name: value for name, value in extra.items() if value is not None},
@@ -234,9 +335,9 @@ class Timeline:
             return events
         scored = []
         for event in events:
-            heading = f"{event['topic']} {event.get('title') or ''}"
+            heading = f"{event['topic']} {event['title']}"
             faces = " ".join(face["file"] for face in event.get("faces") or [])
-            body = f"{event['text']} {event['preview']} {faces}"
+            body = f"{event['phrase']} {event['title']} {event['preview']} {faces}"
             points = self.topics.score(words, heading, body)
             if points:
                 scored.append((points, event))

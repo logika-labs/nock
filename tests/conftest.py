@@ -12,6 +12,7 @@ from pathlib import Path
 
 import pytest
 
+from nock.prices import Prices
 from nock.project import Project
 from nock.setup import Installer
 
@@ -71,14 +72,14 @@ def project(repository: Path, monkeypatch: pytest.MonkeyPatch) -> Project:
     local = repository / ".nock" / "local"
     local.mkdir(exist_ok=True)
     (local / "config.toml").write_text(
-        f'[agent]\ncommand = ["{sys.executable}", "{FAKE_AGENT}"]\n[run]\nheartbeat = 0\n'
-        "[upgrade]\ncheck = false\n"
-        f'[pricing]\ntable = "{PRICES.as_uri()}"\n'
+        f'[agent]\ncommand = ["{sys.executable}", "{FAKE_AGENT}"]\n[upgrade]\ncheck = false\n'
     )
     git(repository, "add", "-A")
     git(repository, "commit", "-q", "-m", "Add nock")
     monkeypatch.chdir(repository)
-    return Project.discover(repository)
+    project = Project.discover(repository)
+    Prices(project, PRICES.as_uri()).table()
+    return project
 
 
 def nock(

@@ -36,8 +36,8 @@ stopped, so a session that runs for days is counted as it goes and nothing is
 counted twice.
 
 Cost is API-equivalent: what the tokens would cost at the API's list prices,
-by model and kind, from LiteLLM's public price table (fetched at most daily;
-`[pricing]` overrides it by model-name prefix). A subscription doesn't pay per
+by model and kind, from LiteLLM's public price table (fetched at most daily).
+A subscription doesn't pay per
 token, but the number still says where the effort went. A model nock can't
 price leaves its session unpriced, never at 0, and totals say how many they
 leave out.

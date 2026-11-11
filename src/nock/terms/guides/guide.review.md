@@ -127,11 +127,15 @@ stay hidden until you show them.
 
 The **Timeline** tab shows the same topics as a feed of notifications, the
 newest first: an agent answered you, an item came up for review or a new
-version of one, a topic opened, changed state or status, or came back. Each has
-a preview, an asset's pictures and videos, and leads to the thing itself,
-opened: the item in the viewer, the chat with the answer; its topic's name
-opens the topic. It searches and asks as Topics does, and its filters
-keep the answers, what is for review, or the topics' own changes.
+version of one, a topic opened, changed state or status, or came back. Each
+card says what happened beside its topic's name, then a title and a few lines
+of description, and an asset's pictures and videos; a topic's status changes
+in a row are one card. A card leads to the thing itself, opened: the item in
+the viewer, the chat with the answer; its topic's name opens the topic.
+Hovered, a decision waiting for you offers Accept and Reject, and an answer
+Reply. A dot marks what came since you last looked. It searches and asks as
+Topics does, and its filters keep the answers, what is for review, or the
+topics' own changes.
 
 You don't have to keep looking. When a topic is your turn again (it moved to
 review, an agent answered you, or an item you rejected has a new version),

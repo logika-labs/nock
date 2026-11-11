@@ -22,7 +22,7 @@
 // came up for review or a new version of one, a topic opened, changed state or status, came back.
 // They are the same events nock's browser and desktop notifications tell (`nock.notify`). Each
 // leads to its topic with the thing opened: the item in the viewer, a decision expanded, a chat
-// open (`#topics/REF~chat`). Search ranks them as the topics' search does; the filters keep one kind;
+// open (`#topics/REF~chat`), or with its field ready to write (`~reply`). Search ranks them as the topics' search does; the filters keep one kind;
 // Ask is the Topics tab's (`topics/ask`). What came since the owner last left the tab is marked new.
 (() => {
   const $ = id => document.getElementById(id);
@@ -65,20 +65,26 @@
     return when.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", ...(when.getFullYear() !== today.getFullYear() ? { year: "numeric" } : {}) });
   }
 
-  // A notification: what happened, its time, where, a preview; an asset's pictures and videos by
-  // their own faces, one in a column at the right, several in a row under the rest. The topic's name
-  // is a pill that opens the topic; the rest of the card, the event's own place.
+  // A notification, on four lines: the topic's pill (it opens the topic), what happened, its time
+  // and the dot that marks it unseen; a title on one line; a description of up to three; an asset's
+  // pictures and videos in a row of their own. A topic's status changes in a row are one card, with
+  // their count. The rest of the card opens the event's own place. Hovered, an open decision offers
+  // Accept and Reject in place, an answer Reply, which opens its chat ready to write.
   function card(event) {
     const fresh = state.seen && event.moment > state.seen;
     const topic = `<span class="topic" role="link" tabindex="0" data-topic-link="#topics/${escape(event.topic)}">${escape(event.topic)}</span>`;
-    const where = event.ref ? `<span class="place">${topic}<span class="title">${studio.render.titled(event.title || "")}</span></span>`
-      : `<span class="place">${topic}${event.state ? `<span class="state">${escape(event.state)}</span>` : ""}</span>`;
+    const count = event.count ? `<span class="count">· ${event.count} updates</span>` : "";
     const faces = (event.faces || []).map(face => `<span class="still">${face.type === "image" ? `<img src="${fileUrl(event, face)}" alt="" loading="lazy">` : `<video src="${fileUrl(event, face)}#t=0.1" preload="metadata" muted playsinline tabindex="-1"></video>`}</span>`);
-    const shown = faces.length === 1 ? faces[0] : faces.length ? `<span class="stills">${faces.join("")}</span>` : "";
-    const preview = event.preview ? `<span class="gist">${studio.render.inline(event.preview)}</span>` : "";
-    return `<a class="event ${escape(event.kind)}${fresh ? " new" : ""}${faces.length === 1 ? " faced" : ""}" data-key="${escape(event.key)}" href="${escape(event.address)}">
+    const shown = faces.length ? `<span class="stills${faces.length === 1 ? " single" : ""}">${faces.join("")}</span>` : "";
+    const title = event.title ? `<span class="title">${studio.render.titled(event.title)}</span>` : "";
+    const preview = event.preview ? `<span class="gist${event.muted ? " muted" : ""}">${studio.render.inline(event.preview)}</span>` : "";
+    const action = (name, label, primary) => `<span class="button ${primary ? "primary" : "secondary"}" role="button" tabindex="0" ${name}>${label}</span>`;
+    const judgeable = event.what === "decision" && event.verdict === "open" && ["item", "version"].includes(event.kind);
+    const actions = judgeable ? `<span class="actions">${action(`data-timeline-judge="rejected" data-ref="${escape(event.ref)}"`, "Reject")}${action(`data-timeline-judge="accepted" data-ref="${escape(event.ref)}"`, "Accept", true)}</span>`
+      : event.kind === "answered" ? `<span class="actions">${action(`data-reply-link="#topics/${escape(event.ref || event.topic)}~reply"`, "Reply", true)}</span>` : "";
+    return `<a class="event ${escape(event.kind)}${fresh ? " new" : ""}" data-key="${escape(event.key)}" href="${escape(event.address)}">
       <span class="sign" aria-hidden="true">${ICONS[event.kind] || ICONS.message}</span>
-      <span class="headline"><strong>${escape(event.text)}</strong>${studio.render.time(event.moment)}</span>${where}${preview}${shown}</a>`;
+      <span class="headline">${topic}<strong>${escape(event.phrase)}</strong>${count}${studio.render.time(event.moment)}<span class="unseen"${fresh ? ' title="New since you last looked"' : ""}></span></span>${title}${preview}${shown}${actions}</a>`;
   }
 
   function drawList() {
@@ -158,6 +164,13 @@
     if (!response.ok) throw new Error(answer.error);
     return answer;
   }
+  // The owner's verdict on a decision, from its card: as the Topics tab gives it (`topics/judge`).
+  async function judge(ref, verdict) {
+    try { await post("topics/judge", { ref, verdict }); } catch (error) { studio.toast(error.message); return; }
+    studio.toast(`${ref} ${verdict}.`);
+    state.raw = "";
+    await load();
+  }
   async function ask() {
     const question = $("timeline-input").value.trim();
     if (!question || state.ask?.running) return;
@@ -171,6 +184,10 @@
     const target = event.target;
     const topic = target.closest("[data-topic-link]");
     if (topic) { event.preventDefault(); location.hash = topic.dataset.topicLink; return; }
+    const reply = target.closest("[data-reply-link]");
+    if (reply) { event.preventDefault(); location.hash = reply.dataset.replyLink; return; }
+    const judging = target.closest("[data-timeline-judge]");
+    if (judging) { event.preventDefault(); judge(judging.dataset.ref, judging.dataset.timelineJudge); return; }
     const mode = target.closest("[data-timeline-mode]");
     if (mode) { state.mode = mode.dataset.timelineMode; state.query = state.mode === "search" ? $("timeline-input").value : ""; state.raw = ""; load(); drawBar(); $("timeline-input").focus(); return; }
     const filter = target.closest("[data-timeline-filter]");
@@ -187,7 +204,7 @@
     drawBar();
   });
   document.addEventListener("keydown", event => {
-    if (state.shown && event.key === "Enter" && event.target.matches?.("[data-topic-link]")) { event.preventDefault(); location.hash = event.target.dataset.topicLink; return; }
+    if (state.shown && event.key === "Enter" && event.target.matches?.("[data-topic-link], [data-reply-link], [data-timeline-judge]")) { event.preventDefault(); event.target.click(); return; }
     if (!state.shown || event.target.id !== "timeline-input") return;
     if (event.key === "Enter" && state.mode === "ask") { event.preventDefault(); ask(); }
     else if (event.key === "Escape") { event.target.value = ""; state.query = ""; state.raw = ""; load(); drawBar(); event.target.blur(); }

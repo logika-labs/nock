@@ -80,7 +80,7 @@
 }
 /* Hovered, a topic takes the wash; open, its head keeps it. */
 .topics .topic-head:hover, .topics .sheet.topic.open .topic-head { background: var(--wash); }
-.topics .sheet.topic.open .topic-head { border-radius: calc(var(--radius) - 2px) calc(var(--radius) - 2px) 0 0; }
+.topics .sheet.topic.open .topic-head { border-radius: calc(var(--radius) - 1px) calc(var(--radius) - 1px) 0 0; }
 .topics .topic-head .name {
   border: 0; background: none; padding: 0; color: inherit; text-align: left; font: 700 17px/24px var(--display); letter-spacing: -.02em;
   overflow-wrap: anywhere; justify-self: start;

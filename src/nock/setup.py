@@ -67,11 +67,6 @@ reminders = true
 # [checks.test]
 # command = "pytest -q"
 
-[reflect]
-# A round is due after this many sessions or days, whichever comes first.
-sessions = 15
-days = 7
-
 [agent]
 # The model of the agents nock dispatches (consult, the studio's Ask); empty is Claude Code's default.
 model = ""
