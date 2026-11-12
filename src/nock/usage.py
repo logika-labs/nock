@@ -196,8 +196,8 @@ class Usage:
         relative = f".nock/{IDENTITY}"
         try:
             git = Git(self.project.root)
-            git("add", "--", relative)
-            git(
+            git.changing("add", "--", relative)
+            git.changing(
                 "commit", "--quiet", "--no-verify", "--only", "-m",
                 "nock: the project's anonymous id, for its usage reports", "--", relative,
             )  # fmt: skip

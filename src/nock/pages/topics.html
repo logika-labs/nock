@@ -49,7 +49,10 @@
     // ones that failed (kept to try again), where each field's cursor was, a picture enlarged.
     attached: new Map(), recording: null, transcribing: null, failed: new Map(), carets: new Map(), caretAt: null,
     picture: null, dropping: null, transcription: null,
+    // The messages being sent, and the id each unsent one keeps for its next try, by chat.
+    sending: new Set(), sendIds: new Map(),
   };
+  const messageId = () => Array.from(crypto.getRandomValues(new Uint8Array(4)), byte => byte.toString(16).padStart(2, "0")).join("");
   // How decisions look, for the owner to compare (`?decisions=rail` or `lift`); `foil` by default.
   const LOOKS = ["foil", "rail", "lift"];
   const look = new URLSearchParams(location.search).get("decisions");
@@ -1305,7 +1308,18 @@
     const files = state.attached.get(key) || [];
     if (!written && !files.length) return;
     if (files.some(file => file.uploading)) { studio.toast("Still uploading: send once the files are up."); return; }
-    try { await post("topics/reply", { ...where(key), text: written, ...(files.length ? { attachments: files.map(file => file.token) } : {}) }); } catch (error) { studio.toast(error.message); return; }
+    if (state.sending.has(key)) return;
+    // One id per message, kept until it is sent: sent again after a failure, it is written once.
+    const tokens = files.map(file => file.token);
+    const said = JSON.stringify([written, tokens]);
+    const kept = state.sendIds.get(key);
+    const id = kept?.said === said ? kept.id : messageId();
+    state.sendIds.set(key, { said, id });
+    state.sending.add(key);
+    try { await post("topics/reply", { ...where(key), text: written, id, ...(files.length ? { attachments: tokens } : {}) }); }
+    catch (error) { studio.toast(`Not sent: ${error.message}`); return; }
+    finally { state.sending.delete(key); }
+    state.sendIds.delete(key);
     for (const file of files) if (file.preview?.startsWith("blob:")) URL.revokeObjectURL(file.preview);
     state.attached.delete(key);
     state.drafts.delete(`reply:${key}`);

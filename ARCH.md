@@ -526,13 +526,21 @@ renamed, `versions/next/` numbered with its `version` event, a project file
 linked at the last commit that changed it (or kept by content when it has
 uncommitted changes), media moved to `media/`. It commits only those paths,
 with `git commit --only` and the trailers `Nock-User`, `Nock-On-Behalf`,
-`Nock-Session`, `Nock-Parent-Session`, `Nock-Host`; it skips the commit, and
-says so, when the main checkout is mid-merge or mid-rebase, and for Tidy up,
-whose writes `Chats.gather` commits together. A group with a problem is left
-uncommitted and its problems returned. `Topics` writes its changes as drafts
-(`Topics.draft`, `decision_version`, `asset_version`), settles only those
-(`only`), and discards them, and any folder they leave empty, when the change
-fails. A ref is `topic/slug`; `resolve` also takes a ref it had before it moved,
+`Nock-Session`, `Nock-Parent-Session`, `Nock-Host`, waiting for another
+git process's `index.lock` (`Git.changing`). A change it cannot commit now
+(the main checkout mid-merge or mid-rebase, git failing) is kept in
+`.nock/local/uncommitted.json` with its writer, and the next settle commits it
+as theirs before anything else (`commit_or_keep`, `commit_pending`); Tidy up's
+writes it never commits, `Chats.gather` commits them together. Every commit
+of the store is made under the `shared` lock, which `Project.lock` lets the
+thread holding it take again. A group with a problem is left uncommitted and
+its problems returned. `Topics` writes its changes as drafts (`Topics.draft`,
+`decision_version`, `asset_version`) and settles only those (`only`), all
+under the `shared` lock (`Topics.drafting`, waiting at most `STORE_PATIENCE`,
+then refusing the change), so no other process's sweep takes them as its own;
+it discards them, and any folder they leave empty, when the change fails. A
+reply may carry the id its sender chose (the studio's, one per message): a
+thread holding it already is not written again. A ref is `topic/slug`; `resolve` also takes a ref it had before it moved,
 or an asset item's that the move to the store made its asset.
 
 A topic's `state` (`State`: planned, active, review, done, abandoned) and `status`

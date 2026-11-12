@@ -494,10 +494,14 @@ def commit(project: Project, message: str, paths: list[str], record: Path) -> No
         places.append((project.root, [*here, store]))
     else:
         places += [(project.here, here), (project.root, [store])]
-    for root, wanted in places:
-        if not wanted:
-            continue
-        git = Git(root)
-        git("add", "--all", "--", *wanted)
-        if git("diff", "--cached", "--name-only", "--", *wanted):
-            git("commit", "--quiet", "--no-verify", "--only", "-m", message, "--", *wanted)
+    # The store's lock: its record is committed in the main checkout, as every store commit is.
+    with project.lock("shared"):
+        for root, wanted in places:
+            if not wanted:
+                continue
+            git = Git(root)
+            git.changing("add", "--all", "--", *wanted)
+            if git("diff", "--cached", "--name-only", "--", *wanted):
+                git.changing(
+                    "commit", "--quiet", "--no-verify", "--only", "-m", message, "--", *wanted
+                )

@@ -8,6 +8,8 @@ import fcntl
 import json
 import os
 import sys
+import threading
+import time
 from collections.abc import Iterator
 from contextlib import contextmanager
 from functools import cached_property
@@ -16,7 +18,7 @@ from typing import TYPE_CHECKING
 
 from nock.callers import Callers
 from nock.configuration import Configuration
-from nock.errors import PreconditionError
+from nock.errors import PreconditionError, TimedOutError
 from nock.git import Git, GitError
 from nock.store import Store
 from nock.utils import write_json
@@ -32,6 +34,10 @@ SESSION_VARIABLE = "CLAUDE_CODE_SESSION_ID"
 PARENT_VARIABLE = "NOCK_PARENT_SESSION"
 # Claude Code's: `cli` for a session someone works in, `sdk-…` for `claude -p`.
 ENTRYPOINT_VARIABLE = "CLAUDE_CODE_ENTRYPOINT"
+# The locks each thread holds (`Project.lock`), so it may take one again.
+HELD = threading.local()
+# How often a lock waited for with patience is tried again, in seconds.
+LOCK_POLL = 0.02
 # Which events each working tree's `@nock.hook`s listen to, in `local/`.
 HOOK_EVENTS_FILE = "hook-events.json"
 # The role of a `claude -p` run nock did not start.
@@ -183,13 +189,35 @@ class Project:
         return {"session": session, **({"parent": parent} if parent else {}), "role": role}
 
     @contextmanager
-    def lock(self, name: str) -> Iterator[None]:
-        """An exclusive, cross-process lock named `name`."""
+    def lock(self, name: str, patience: float | None = None) -> Iterator[None]:
+        """An exclusive, cross-process lock named `name`, taken again freely by
+        the thread that holds it; waited for at most `patience` seconds, if given."""
         path = self.local / "locks" / f"{name}.lock"
-        path.parent.mkdir(parents=True, exist_ok=True)
-        with path.open("w") as handle:
-            fcntl.flock(handle, fcntl.LOCK_EX)
+        held: dict[Path, int] = HELD.__dict__.setdefault("locks", {})
+        if held.get(path):
+            held[path] += 1
             try:
                 yield
             finally:
+                held[path] -= 1
+            return
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("w") as handle:
+            deadline = None if patience is None else time.monotonic() + patience
+            while True:
+                try:
+                    fcntl.flock(handle, fcntl.LOCK_EX | (0 if deadline is None else fcntl.LOCK_NB))
+                    break
+                except BlockingIOError:
+                    if deadline is not None and time.monotonic() > deadline:
+                        raise TimedOutError(
+                            f"another nock process held {name} for {patience:g} s; nothing was"
+                            " written — try again"
+                        ) from None
+                    time.sleep(LOCK_POLL)
+            held[path] = 1
+            try:
+                yield
+            finally:
+                del held[path]
                 fcntl.flock(handle, fcntl.LOCK_UN)

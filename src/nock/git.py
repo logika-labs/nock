@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import os
 import subprocess
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -21,6 +22,11 @@ LOCATION_VARIABLES = (
     "GIT_DISCOVERY_ACROSS_FILESYSTEM",
 )
 GITFILE_PREFIX = "gitdir: "
+# What git says when another process holds the index's lock, and how long and
+# how often a write waits for it to go (`Git.changing`), in seconds.
+INDEX_LOCKED = "index.lock"
+INDEX_PATIENCE = 20.0
+INDEX_POLL = 0.05
 
 
 class GitError(PreconditionError):
@@ -65,6 +71,19 @@ class Git:
         if check and result.returncode != 0:
             raise GitError(list(arguments), result.stderr + result.stdout, self.directory)
         return result.stdout.rstrip()
+
+    def changing(self, *arguments: str) -> str:
+        """A command that writes the index (`add`, `commit`): tried again while
+        another git process holds the index's lock, for at most `INDEX_PATIENCE`
+        seconds — git itself gives up at once."""
+        deadline = time.monotonic() + INDEX_PATIENCE
+        while True:
+            try:
+                return self(*arguments)
+            except GitError as error:
+                if INDEX_LOCKED not in error.output or time.monotonic() > deadline:
+                    raise
+            time.sleep(INDEX_POLL)
 
     def succeeds(self, *arguments: str) -> bool:
         return (

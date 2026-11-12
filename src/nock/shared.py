@@ -46,6 +46,8 @@ SHARED = Path(".nock") / "shared"
 MEDIA = "media"
 MAP = "map.md"
 SETTINGS = "settings.toml"
+# In `.nock/local/`: the settled changes not committed yet (`Shared.commit_or_keep`).
+PENDING = "uncommitted.json"
 NAME = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}$")
 SHA = re.compile(r"^[0-9a-f]{64}$")
 # The git states in which a commit would land in the middle of someone's work.
@@ -191,6 +193,8 @@ class Shared:
         self.project = project
         self.root: Path = project.root / SHARED
         self.fold = Fold(self.root)
+        # The ids nock's own drafts are to be completed with, by draft file name.
+        self.chosen: dict[str, str] = {}
 
     # --- places ---------------------------------------------------------------------
 
@@ -233,11 +237,13 @@ class Shared:
 
     # --- drafts ---------------------------------------------------------------------
 
-    def draft(self, folder: Path, record: dict[str, Any]) -> Path:
+    def draft(self, folder: Path, record: dict[str, Any], identifier: str | None = None) -> Path:
         """Write an event as an agent would, into `folder/events/`; `settle`
-        completes it."""
+        completes it, with `identifier` as its id when given."""
         path = folder / EVENTS / f"draft-{time.time_ns()}-{secrets.token_hex(3)}.json"
         write_json(path, record)
+        if identifier is not None:
+            self.chosen[path.name] = identifier
         return path
 
     # --- the write path -------------------------------------------------------------
@@ -249,8 +255,9 @@ class Shared:
             return []
         git = Git(self.project.root)
         try:
+            # No optional locks: a status taking the index's lock fails a commit beside it.
             output = git(
-                "status", "--porcelain=v1", "-z", "--untracked-files=all", "--no-renames",
+                "--no-optional-locks", "status", "--porcelain=v1", "-z", "--untracked-files=all", "--no-renames",
                 "--", str(SHARED),
             )  # fmt: skip
         except GitError:
@@ -286,6 +293,7 @@ class Shared:
         nock itself deletes."""
         settled = Settled()
         with self.project.lock("shared"):
+            waiting = self.commit_pending()
             wanted = {
                 path.resolve().relative_to(self.root.resolve()).as_posix() for path in only or []
             }
@@ -296,6 +304,11 @@ class Shared:
             changes = [
                 (code, path)
                 for code, path in self.changes()
+                if not any(path == place or path.startswith(f"{place}/") for place in waiting)
+            ]
+            changes = [
+                (code, path)
+                for code, path in changes
                 if only is None
                 or path in wanted
                 or any(path == folder or path.startswith(f"{folder}/") for folder in removed)
@@ -322,7 +335,7 @@ class Shared:
                 return settled
             settled.written = sorted(set(touched))
             if commit and by.get("role") != "tidier":
-                settled.commit, settled.note = self.commit(settled.written, by, settled)
+                settled.commit, settled.note = self.commit_or_keep(settled.written, by, settled)
         return settled
 
     def folders_of(self, wanted: set[str]) -> list[str]:
@@ -443,10 +456,11 @@ class Shared:
             return str(path)
 
     def envelope(
-        self, record: dict[str, Any], by: dict[str, Any], clock: Clock
+        self, record: dict[str, Any], by: dict[str, Any], clock: Clock, path: Path | None = None
     ) -> tuple[dict[str, Any], str]:
         moment = clock.next()
-        identifier = secrets.token_hex(4)
+        chosen = self.chosen.pop(path.name, None) if path is not None else None
+        identifier = chosen or secrets.token_hex(4)
         complete = {
             "kind": record["kind"],
             "moment": moment_of(moment),
@@ -517,7 +531,7 @@ class Shared:
             if record["kind"] == "renamed":
                 record["from"] = name
                 renamed_to = record["name"]
-            complete, file_name = self.envelope(record, by, clock)
+            complete, file_name = self.envelope(record, by, clock, path)
             target = folder / EVENTS / file_name
             write_json(target, complete)
             path.unlink()
@@ -714,7 +728,7 @@ class Shared:
         def write(
             place: Path, path: Path | None, record: dict[str, Any], asset: str | None
         ) -> None:
-            complete, file_name = self.envelope(record, by, clock)
+            complete, file_name = self.envelope(record, by, clock, path)
             target = place / EVENTS / file_name
             write_json(target, complete)
             if path is not None:
@@ -1119,6 +1133,52 @@ class Shared:
 
     # --- committing -----------------------------------------------------------------
 
+    @property
+    def pending(self) -> Path:
+        """What was completed but could not be committed yet, kept on this
+        machine: each change's paths, writer and subject."""
+        return self.project.local / PENDING
+
+    def commit_or_keep(
+        self, paths: list[str], by: dict[str, Any], settled: Settled
+    ) -> tuple[str | None, str | None]:
+        """Commit a settled change; one that cannot be committed now (the
+        main checkout mid-merge, git failing) is kept to be committed, as its
+        writer's, by the next settle — its events are written either way."""
+        subject = summary(settled)
+        try:
+            commit, note = self.commit(paths, by, settled, subject=subject)
+        except GitError as error:
+            commit, note = None, f"not committed yet: {error}"
+        if commit is None and note is not None:
+            entries = read_pending(self.pending)
+            entries.append({"paths": paths, "by": by, "subject": subject})
+            write_json(self.pending, entries)
+            note += " — the next settle commits it"
+        return commit, note
+
+    def commit_pending(self) -> list[str]:
+        """Commit each change kept by `commit_or_keep`, as its writer's; the
+        paths of those that still cannot be."""
+        entries = read_pending(self.pending)
+        if not entries:
+            return []
+        left = []
+        for entry in entries:
+            try:
+                commit, note = self.commit(
+                    entry["paths"], entry["by"], Settled(), subject=entry["subject"]
+                )
+            except GitError:
+                commit, note = None, "failed"
+            if commit is None and note is not None:
+                left.append(entry)
+        if left:
+            write_json(self.pending, left)
+        else:
+            self.pending.unlink(missing_ok=True)
+        return [path for entry in left for path in entry["paths"]]
+
     def commit(
         self,
         paths: list[str],
@@ -1129,7 +1189,19 @@ class Shared:
     ) -> tuple[str | None, str | None]:
         """Commit these paths under the root, alone, in the main checkout, with
         the writer's trailers; unless that would land in the middle of a merge or
-        rebase there."""
+        rebase there. Every commit of the store is made under its lock, so
+        nock's own never race."""
+        with self.project.lock("shared"):
+            return self.commit_locked(paths, by, settled, subject, body)
+
+    def commit_locked(
+        self,
+        paths: list[str],
+        by: dict[str, Any],
+        settled: Settled,
+        subject: str | None,
+        body: str,
+    ) -> tuple[str | None, str | None]:
         git = Git(self.project.root)
         git_directory = Path(git("rev-parse", "--absolute-git-dir"))
         busy = next((marker for marker in BUSY_MARKERS if (git_directory / marker).exists()), None)
@@ -1145,16 +1217,24 @@ class Shared:
         )
         if not specs:
             return None, None
-        git("add", "--all", "--", *specs)
+        git.changing("add", "--all", "--", *specs)
         staged = git("diff", "--cached", "--name-only", "--", *specs)
         if not staged.strip():
             return None, None
         trailers = "\n".join(f"{label}: {by.get(key) or 'unknown'}" for label, key in TRAILERS)
-        git(
+        git.changing(
             "commit", "--quiet", "--no-verify", "--only", "-m", subject or summary(settled),
             *(["-m", body.strip()] if body.strip() else []), "-m", trailers, "--", *specs,
         )  # fmt: skip
         return git.head(), None
+
+
+def read_pending(path: Path) -> list[dict[str, Any]]:
+    try:
+        entries = json.loads(path.read_text())
+    except (OSError, json.JSONDecodeError):
+        return []
+    return entries if isinstance(entries, list) else []
 
 
 def summary(settled: Settled) -> str:

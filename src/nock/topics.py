@@ -121,6 +121,8 @@ FINISHED = (State.REVIEW, *CLOSED)
 # The studio's Tidy up: its writes are not committed one by one; the studio
 # commits them together when it ends, so one revert undoes them.
 TIDIER = "tidier"
+# How long a change waits for the store's lock before it gives up, in seconds.
+STORE_PATIENCE = 30.0
 # The studio's Address my comments: it may run the recipes of the assets it
 # answers on (allowed to it one by one), never a recipe in a version it wrote.
 ADDRESSER = "addresser"
@@ -842,34 +844,36 @@ class Topics:
         Views(self.project).write(settled.topics | removed)
         return settled
 
-    def draft(self, folder: Path, record: dict[str, Any]) -> Path:
-        path = self.shared.draft(folder, record)
+    def draft(self, folder: Path, record: dict[str, Any], identifier: str | None = None) -> Path:
+        path = self.shared.draft(folder, record, identifier)
         self.drafted.append(path)
         return path
 
     @contextmanager
     def drafting(self) -> Iterator[None]:
-        """What a change drafts, all gone again — and any folder it left
-        empty — when the change fails before it is settled."""
+        """A change drafted and settled under the store's lock, so no other
+        process settles its drafts as its own; all it drafted gone again — and
+        any folder it left empty — when it fails before it is settled."""
         self.drafted = []
-        try:
-            yield
-        except BaseException:
-            for path in reversed(self.drafted):
-                if path.is_dir():
-                    shutil.rmtree(path, ignore_errors=True)
-                else:
-                    path.unlink(missing_ok=True)
-                for parent in path.parents:
-                    if parent == self.directory or not parent.is_relative_to(self.directory):
-                        break
-                    try:
-                        parent.rmdir()
-                    except OSError:
-                        break
-            raise
-        finally:
-            self.drafted = []
+        with self.project.lock("shared", patience=STORE_PATIENCE):
+            try:
+                yield
+            except BaseException:
+                for path in reversed(self.drafted):
+                    if path.is_dir():
+                        shutil.rmtree(path, ignore_errors=True)
+                    else:
+                        path.unlink(missing_ok=True)
+                    for parent in path.parents:
+                        if parent == self.directory or not parent.is_relative_to(self.directory):
+                            break
+                        try:
+                            parent.rmdir()
+                        except OSError:
+                            break
+                raise
+            finally:
+                self.drafted = []
 
     def standing(self, topic: dict[str, Any]) -> State:
         return state_of(topic, None if topic.get("state") else self.items(topic["name"]))
@@ -937,7 +941,10 @@ class Topics:
         revive: str | None = None,
         author: Author = Author.AGENT,
         attachments: list[Path] | None = None,
+        identifier: str | None = None,
     ) -> tuple[dict[str, Any], str | None]:
+        """`identifier`, the reply's id when its sender chose one: a reply the
+        thread holds already is not written again."""
         if not change and reply is None and revive is None:
             raise UsageError(
                 "nothing to do: give a change (`state`, `status`, …), a reply, or a revival"
@@ -946,6 +953,8 @@ class Topics:
             topic = self.topic(name)
             name = topic["name"]
             folder = self.shared.topic_folder(name)
+            if identifier is not None and holds(topic["thread"], identifier):
+                return topic, None
             was = self.standing(topic)
             owner_last = owner_wrote_last(topic["thread"])
             written: list[Path] = []
@@ -997,7 +1006,7 @@ class Topics:
                 said: dict[str, Any] = {"kind": "message", "text": reply.strip()}
                 if attachments:
                     said["attachments"] = self.attach(attachments)
-                written.append(self.draft(folder, said))
+                written.append(self.draft(folder, said, identifier))
             renamed = None
             if "name" in change and change["name"] != name:
                 renamed = check_name(change["name"])
@@ -1117,13 +1126,18 @@ class Topics:
         reply: str | None = None,
         author: Author = Author.AGENT,
         attachments: list[Path] | None = None,
+        identifier: str | None = None,
     ) -> tuple[dict[str, Any], str | None]:
+        """`identifier`, the reply's id when its sender chose one: a reply the
+        thread holds already is not written again."""
         if not change and version is None and reply is None:
             raise UsageError("nothing to do: give a change, a new version, or a reply")
         change = ItemChange(**change) if change else None
         moving = change.pop("topic", None) if change else None
         with self.project.lock("topics"), self.drafting():
             item = self.item(ref)
+            if identifier is not None and holds(item["thread"], identifier):
+                return item, None
             topic, slug = item["topic"], item["slug"]
             folder = self.shared.item_folder(topic, slug)
             rejected = item["verdict"] == Verdict.REJECTED
@@ -1175,7 +1189,7 @@ class Topics:
                 said: dict[str, Any] = {"kind": "message", "text": reply.strip()}
                 if attachments:
                     said["attachments"] = self.attach(attachments)
-                self.draft(folder, said)
+                self.draft(folder, said, identifier)
             moved = None
             if moving is not None:
                 moved = self.move(item, moving)
@@ -1708,6 +1722,11 @@ def pending(thread: list[dict[str, Any]], decided: dict[str, Any] | None = None)
     if not said or said[-1]["author"] != Author.OWNER or said[-1].get("verdict"):
         return False
     return moment(decided) < said[-1]["moment"]
+
+
+def holds(thread: list[dict[str, Any]], identifier: str) -> bool:
+    """Whether a thread holds the message with this id."""
+    return any(entry.get("id") == identifier for entry in thread)
 
 
 def said_in(

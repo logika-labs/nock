@@ -52,6 +52,7 @@ from nock.topics import (
     attachment_name,
     chat_state,
     entry_name,
+    holds,
     in_order,
     kind_of,
     latest_files,
@@ -77,6 +78,8 @@ SHELL = PAGES / "studio.html"
 LOOK = PAGES / "studio.css"
 # Views' look: what nock's own pages use, for a view laying out an asset's variants.
 VIEW_LOOK = PAGES / "view.css"
+# The id the page gives the owner's message (`Replied.id`), as events' ids are.
+MESSAGE_ID = re.compile(r"^[0-9a-f]{8}$")
 
 
 def code_moment() -> int:
@@ -161,12 +164,14 @@ class Judged(TypedDict):
 
 class Replied(TypedDict):
     """The owner's message in an item's thread (`ref`) or a topic's, with the
-    files uploaded for it (their tokens)."""
+    files uploaded for it (their tokens) and the id the page chose for it, so
+    sending it again writes nothing more."""
 
     ref: NotRequired[str]
     topic: NotRequired[str]
     text: str
     attachments: NotRequired[list[str]]
+    id: NotRequired[str]
 
 
 class Token(TypedDict):
@@ -602,18 +607,36 @@ class TopicsTab(Tab):
             where = body.get("ref") or body.get("topic")
             if not where:
                 raise UsageError("give `ref` or `topic`")
+            identifier = body.get("id")
+            if identifier is not None and not MESSAGE_ID.match(identifier):
+                raise UsageError("`id` is 8 lowercase hexadecimal digits")
+            thread = (
+                self.topics.item(body["ref"]) if "ref" in body else self.topics.topic(body["topic"])
+            )["thread"]
+            if identifier is not None and holds(thread, identifier):
+                return {"replied": where, "id": identifier}
             tokens = body.get("attachments", [])
             files = [self.uploads.path(token) for token in tokens]
             if "ref" in body:
                 self.topics.update_item(
-                    body["ref"], None, reply=body["text"], author=Author.OWNER, attachments=files
+                    body["ref"],
+                    None,
+                    reply=body["text"],
+                    author=Author.OWNER,
+                    attachments=files,
+                    identifier=identifier,
                 )
             else:
                 self.topics.update_topic(
-                    body["topic"], {}, reply=body["text"], author=Author.OWNER, attachments=files
+                    body["topic"],
+                    {},
+                    reply=body["text"],
+                    author=Author.OWNER,
+                    attachments=files,
+                    identifier=identifier,
                 )
             self.uploads.sent(tokens)
-            return {"replied": where}
+            return {"replied": where, **({"id": identifier} if identifier else {})}
         if route == "withdraw":
             validate(body, schema_of(Where))
             back: list[dict[str, Any]] = []
