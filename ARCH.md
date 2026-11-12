@@ -154,9 +154,6 @@ tests/               real git repositories and processes; no mocks
   fake_agent.py      the scripted stand-in for the dispatched agents (consultant, sharer,
                      the studio's chatter, namer, tidier and addresser)
 scripts/release.py   cut a release: checks, asks, then tags vVERSION and pushes it (standard library)
-scripts/move-to-shared.py  a one-off: a project's topics from the old `.nock/topics/` layout,
-                     and its `.nock/reflections/`, into `.nock/shared/` in one commit; run
-                     once when the store lands, then deleted; nock never reads the old layout
 web/                 nock.dev, never vendored or packaged: layout.html, home.html, legal/, site/
                      (style, fonts, the built pages), build.py (the docs pages from the
                      terms and guides), deploy.py (to Logika's box)
