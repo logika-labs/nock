@@ -2,8 +2,7 @@
    glass card each, grouped by day: a foil mark for its kind; then, on one line, the topic's pill,
    what happened, and its time at the top right of the text; a title on one line; a description of
    up to three; an asset's pictures in a row of their own. One not yet seen, since the owner last
-   left the tab, has a foil dot after its time, in a place every card keeps, so each time ends at
-   the same place. Hovered, a card takes the foil's edge, as a shadow, and its actions show over
+   left the tab, has a foil dot before its time, in a place every card keeps. Hovered, a card takes the foil's edge, as a shadow, and its actions show over
    its corner: nothing moves. */
 .timeline #timeline-main { display: grid; gap: 8px; margin-top: 16px; padding-bottom: 48px; }
 .timeline .day { margin: 14px 0 2px 6px; color: var(--foreground); }
@@ -27,9 +26,9 @@
 .timeline .headline { grid-column: 2; display: flex; align-items: center; gap: 10px; min-width: 0; height: 22px; }
 .timeline .headline strong { flex: 0 1 auto; min-width: 0; font: 600 13.5px/22px var(--sans); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .timeline .headline .count { flex: none; margin-left: -4px; color: var(--muted); font-size: 13px; white-space: nowrap; }
-.timeline .headline time { margin-left: auto; flex: none; color: var(--time); font: 500 12px/1 var(--mono); }
-/* The chats' unread dot, in its place whether or not the card is new. */
-.timeline .headline .unseen { flex: none; width: 8px; height: 8px; border-radius: 50%; margin-left: -4px; }
+.timeline .headline time { flex: none; color: var(--time); font: 500 12px/1 var(--mono); }
+/* The chats' unread dot, in its place whether or not the card is new, left of the time at the far right. */
+.timeline .headline .unseen { flex: none; width: 8px; height: 8px; border-radius: 50%; margin-left: auto; }
 .timeline .event.new .headline .unseen { background: var(--foil-ring); box-shadow: 0 0 0 1.5px #fff; }
 /* The topic's name, a pill in Tidy up's look, opens the topic; a long one gives way first. */
 .timeline .headline .topic {

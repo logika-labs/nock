@@ -66,8 +66,8 @@
     return when.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", ...(when.getFullYear() !== today.getFullYear() ? { year: "numeric" } : {}) });
   }
 
-  // A notification, on four lines: the topic's pill (it opens the topic), what happened, its time
-  // and the dot that marks it unseen; a title on one line; a description of up to three; an asset's
+  // A notification, on four lines: the topic's pill (it opens the topic), what happened, the dot
+  // that marks it unseen and its time; a title on one line; a description of up to three; an asset's
   // pictures and videos in a row of their own. A topic's status changes in a row are one card, with
   // their count. The rest of the card opens the event's own place. Hovered, an open decision offers
   // Accept and Reject in place, an answer Reply, which opens its chat ready to write.
@@ -85,7 +85,7 @@
       : event.kind === "answered" ? `<span class="actions">${action(`data-reply-link="#topics/${escape(event.ref || event.topic)}~reply"`, "Reply", true)}</span>` : "";
     return `<a class="event ${escape(event.kind)}${fresh ? " new" : ""}" data-key="${escape(event.key)}" href="${escape(event.address)}">
       <span class="sign" aria-hidden="true">${ICONS[event.kind] || ICONS.message}</span>
-      <span class="headline">${topic}<strong>${escape(event.phrase)}</strong>${count}${studio.render.time(event.moment)}<span class="unseen"${fresh ? ' title="New since you last looked"' : ""}></span></span>${title}${preview}${shown}${actions}</a>`;
+      <span class="headline">${topic}<strong>${escape(event.phrase)}</strong>${count}<span class="unseen"${fresh ? ' title="New since you last looked"' : ""}></span>${studio.render.time(event.moment)}</span>${title}${preview}${shown}${actions}</a>`;
   }
 
   function drawList() {

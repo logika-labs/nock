@@ -45,7 +45,7 @@
 }
 .topics .chat.global .chat-head { gap: 4px; padding: 0 8px; }
 /* Address my comments: after the messages, over the composer; foil, since the black is Send's. */
-.topics .chat.global .address { flex: none; display: flex; justify-content: center; padding: 10px 14px 12px; }
+.topics .chat.global .address { flex: none; display: flex; justify-content: center; padding: 10px 14px; }
 .topics .address-button {
   display: inline-flex; align-items: center; gap: 7px; height: 34px; padding: 0 16px 0 13px; border: 0; border-radius: 999px;
   font: 600 13px/1 var(--sans); color: #1d1240; cursor: pointer;

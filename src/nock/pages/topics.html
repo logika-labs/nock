@@ -489,7 +489,7 @@
     const others = files.filter(file => file.type !== "image").map(file => {
       const address = attachmentUrl(key, file);
       const saved = file.type === "binary" ? ` download="${escape(file.name)}"` : ` target="_blank" rel="noopener"`;
-      return `<a class="file-chip" href="${escape(address)}"${saved} title="${escape(file.name)}">${ICONS.file}<span class="name">${escape(file.name)}</span><span class="size">${sizeOf(file.bytes)}</span></a>`;
+      return `<a class="file-chip" href="${escape(address)}"${saved}>${ICONS.file}<span class="name">${escape(file.name)}</span><span class="size">${sizeOf(file.bytes)}</span></a>`;
     }).join("");
     return `<div class="attachments">${pictures ? `<div class="pictures${files.filter(file => file.type === "image").length === 1 ? " one" : ""}">${pictures}</div>` : ""}${others ? `<div class="chips">${others}</div>` : ""}</div>`;
   }
@@ -501,7 +501,7 @@
     return `<div class="attached" aria-label="Attached files">${files.map(file => {
       const face = file.uploading ? '<span class="spinner" aria-hidden="true"></span>'
         : file.type === "image" ? `<img src="${escape(file.preview || `topics/upload/${file.token}`)}" alt="">` : ICONS.file;
-      return `<span class="file-chip${file.uploading ? " uploading" : ""}" data-key="chip:${escape(file.id)}">${face}<span class="name" title="${escape(file.name)}">${escape(file.name)}</span><span class="size">${sizeOf(file.bytes)}</span>
+      return `<span class="file-chip${file.uploading ? " uploading" : ""}" data-key="chip:${escape(file.id)}">${face}<span class="name">${escape(file.name)}</span><span class="size">${sizeOf(file.bytes)}</span>
         <button type="button" class="remove" data-unattach="${escape(key)}" data-id="${escape(file.id)}" aria-label="Remove ${escape(file.name)}" title="Remove">${ICONS.cancel}</button></span>`;
     }).join("")}</div>`;
   }
@@ -581,7 +581,7 @@
   function bubble(item, items) {
     const open = state.expanded.has(item.ref);
     const todo = last(item).decision.status === "todo" ? todoPill : "";
-    const corner = `<span class="corner">${attached(item)}${time(item.updated)}${chatCorner(item.ref, item.thread, item.chat)}${todo}</span>`;
+    const corner = `<span class="corner">${attached(item)}${chatCorner(item.ref, item.thread, item.chat)}${time(item.updated)}${todo}</span>`;
     const title = `<button type="button" class="title" aria-expanded="${open}">${titled(item.title)}</button>`;
     const latest = last(item);
     const decision = latest.decision;
@@ -622,6 +622,7 @@
     if (file.type === "image") return `<img class="face" src="${address}" alt="" loading="lazy">`;
     if (file.type === "video") return `<span class="face still">${still(item, version, file)}</span>`;
     if (file.type === "html") return `<span class="face page"><iframe data-key="${address}" src="${address}" sandbox="" loading="lazy" tabindex="-1" title="" aria-hidden="true"></iframe></span>`;
+    if (file.type === "text" && rendering(file.name) === "markdown") return `<div class="face text rendered context" data-text="${address}" data-lines="40" data-render="markdown" data-own>…</div>`;
     if (file.type === "text") return `<pre class="face text" data-text="${address}" data-lines="40" data-own>…</pre>`;
     return `<span class="face kind">${ICONS.file}<span>${escape(extension(file.name).toUpperCase() || file.type)}</span></span>`;
   }
@@ -637,14 +638,16 @@
   // The chat's icon on a card, as on a decision's row: a click opens the asset with its chat.
   const cardChat = item => chatButton(item.ref, item.chat, "data-view-chat");
   // An asset as a card (the grid) or a row (the list): its face, its state at the top right, and a
-  // banner of as much of its title and description as fits, then its time and chat, as a decision's
+  // banner of as much of its title and description as fits, then its chat and time, as a decision's
   // row has them; its hover holds the whole title and description. A click opens it, without its chat.
+  // A row of text has no face: a thumbnail of tiny lines says nothing its title does not.
   function assetCard(item, layout) {
     const { version, file } = cover(item);
     const description = item.description ? `<span class="description">${titled(item.description)}</span>` : "";
-    return `<div class="asset ${layout}${file?.type === "video" ? " video" : ""}${hitClass(item)}" role="button" tabindex="0" data-key="${escape(item.ref)}" id="item-${escape(item.ref)}" data-view="${escape(item.ref)}" ${tipped(item.title, item.description || "")} aria-label="${escape(item.title)}">
-      <span class="frame">${face(item, version, file)}</span>${badge(item)}
-      <span class="banner"><span class="words"><span class="title">${titled(item.title)}</span>${description}</span><span class="meta">${time(item.updated)}${cardChat(item)}</span></span></div>`;
+    const bare = layout === "list" && (!file || file.type === "text");
+    return `<div class="asset ${layout}${bare ? " bare" : ""}${file?.type === "video" ? " video" : ""}${hitClass(item)}" role="button" tabindex="0" data-key="${escape(item.ref)}" id="item-${escape(item.ref)}" data-view="${escape(item.ref)}" ${tipped(item.title, item.description || "")} aria-label="${escape(item.title)}">
+      ${bare ? "" : `<span class="frame">${face(item, version, file)}</span>`}${badge(item)}
+      <span class="banner"><span class="words"><span class="title">${titled(item.title)}</span>${description}</span><span class="meta">${cardChat(item)}${time(item.updated)}</span></span></div>`;
   }
   // A variant's star: grey; the preferred one's filled in the foil. A click prefers it, or takes the
   // preference back.
@@ -668,16 +671,28 @@
     if (!found.length) return "";
     return `<div class="decision-assets" data-key="assets:${escape(item.ref)}"><div class="assets-head"><span class="label">Assets <span class="count">· ${found.length}</span></span>${layoutSwitch()}</div><div class="assets ${state.layout}">${found.map(entry => assetCard(entry, state.layout)).join("")}</div></div>`;
   }
+  // A topic's decisions in two groups: the open ones, the latest new version or message first; the
+  // closed ones (accepted, rejected, dropped) folded until opened, the latest closed first.
+  const groupOf = item => item.verdict === "open" ? "open" : "closed";
+  const newest = moments => Math.max(0, ...moments.filter(Boolean).map(moment => new Date(moment).getTime()));
+  const activity = item => newest([...item.versions.map(version => version.moment), ...(item.thread || []).map(entry => entry.moment)]);
+  const GROUPS = [["open", "Open", (one, two) => activity(two) - activity(one)], ["closed", "Closed", (one, two) => newest([two.decided?.moment]) - newest([one.decided?.moment])]];
+  // A group's fold: the open group is folded once the owner folds it, the closed one until they open it.
+  const isFolded = key => key.endsWith("/closed") !== state.folded.has(key);
+  const setFolded = (key, shut) => { if (shut !== key.endsWith("/closed")) state.folded.add(key); else state.folded.delete(key); };
   function sections(topic, items) {
     const decisions = items.filter(item => kindOf(item) === "decision");
     // A search may keep an asset and not its decision: the decision stays, to hold it.
     const holding = items.filter(item => item.asset && !decisions.some(entry => entry.ref === item.decision))
       .map(item => itemAt(item.decision)).filter(Boolean);
     const shown = [...decisions, ...holding.filter((item, index) => holding.indexOf(item) === index)];
-    if (!shown.length) return "";
-    const key = `${topic.name}/decision`, folded = state.folded.has(key);
-    const body = folded ? "" : `<div class="item-bubbles">${shown.map(item => bubble(item, items)).join("")}</div>`;
-    return `<section class="section decision${folded ? " folded" : ""}" data-key="section:decision"><h3 class="label"><button type="button" class="fold" data-fold="${escape(key)}" aria-expanded="${!folded}">${ICONS.caret}Decisions <span class="count">· ${shown.length}</span></button></h3>${body}</section>`;
+    return GROUPS.map(([group, label, order]) => {
+      const kept = shown.filter(item => groupOf(item) === group).sort(order);
+      if (!kept.length) return "";
+      const key = `${topic.name}/${group}`, folded = isFolded(key);
+      const body = folded ? "" : `<div class="item-bubbles">${kept.map(item => bubble(item, items)).join("")}</div>`;
+      return `<section class="section ${group}${folded ? " folded" : ""}" data-key="section:${group}"><h3 class="label"><button type="button" class="fold" data-fold="${escape(key)}" aria-expanded="${!folded}">${ICONS.caret}${label} <span class="count">· ${kept.length}</span></button></h3>${body}</section>`;
+    }).join("");
   }
 
   function kindCounts(items) {
@@ -688,14 +703,30 @@
   }
   const verdictCounts = counts => joined(["open", "accepted", "rejected", "dropped"].map(verdict => counts[verdict] ? `${counts[verdict]} ${verdict}` : ""));
 
+  // "21 minutes", "3 hours", "2 days": how long ago, in words.
+  function ago(moment) {
+    const seconds = Math.max(0, (Date.now() - new Date(moment).getTime()) / 1000);
+    const [count, unit] = seconds < 3600 ? [Math.floor(seconds / 60), "minute"] : seconds < 86400 ? [Math.floor(seconds / 3600), "hour"]
+      : seconds < 86400 * 60 ? [Math.floor(seconds / 86400), "day"] : seconds < 86400 * 365 ? [Math.floor(seconds / 86400 / 30), "month"] : [Math.floor(seconds / 86400 / 365), "year"];
+    return `${count} ${unit}${count === 1 ? "" : "s"}`;
+  }
+  // A topic's status, last, under its description: when it was set, then what it says, as a sentence.
+  function statusLine(topic) {
+    if (!topic.status) return "";
+    const moment = [...topic.thread].reverse().find(entry => entry.kind === "status")?.moment || topic.active;
+    const when = Date.now() - new Date(moment).getTime() < 60000 ? "Last updated just now" : `Last updated ${ago(moment)} ago`;
+    const said = /[.!?]$/.test(topic.status.trim()) ? topic.status.trim() : `${topic.status.trim()}.`;
+    return `<p class="status-line"><strong>${when}</strong>: ${escape(said)}</p>`;
+  }
+
   function sheet(topic, items) {
     const open = state.open.has(topic.name), key = `topic:${topic.name}`;
     const waiting = topic.items.filter(item => !item.asset && awaitsOwner(item)).length;
     const head = `<div class="topic-head" data-toggle="${escape(topic.name)}">
-        <span class="title-line"><button type="button" class="name" aria-expanded="${open}">${escape(topic.name)}</button>${topic.status ? `<span class="status">${escape(topic.status)}</span>` : ""}</span>
-        <span class="corner">${stateMark(topic)}${time(topic.active)}${chatCorner(key, topic.thread, topic.chat)}</span>
+        <span class="title-line"><button type="button" class="name" aria-expanded="${open}">${escape(topic.name)}</button></span>
+        <span class="corner">${stateMark(topic)}${chatCorner(key, topic.thread, topic.chat)}${time(topic.active)}</span>
         <span class="counts"><span>${escape(kindCounts(topic.items))}</span><span>${escape(verdictCounts(topic.counts))}</span></span>
-        <p class="about">${inline(topic.current)}</p></div>`;
+        <p class="about">${inline(topic.current)}</p>${statusLine(topic)}</div>`;
     const body = open ? `<div class="topic-body">${sections(topic, items) || '<p class="nothing">No items yet.</p>'}
         ${waiting ? `<div class="actions all" data-key="judge"><span class="hint" data-problem="${escape(key)}"></span><div class="buttons">${verdictButtons(key, null, waiting)}</div></div>` : ""}</div>` : "";
     return `<article class="sheet topic${open ? " open" : ""}" data-key="topic:${escape(topic.name)}" id="topic-${escape(topic.name)}">
@@ -961,21 +992,21 @@
     const wanted = {
       open: new Set(hits.map(item => item.topic)),
       expanded: new Set(hits.map(threadOf)),
-      folded: new Set(hits.map(item => `${item.topic}/decision`)),
+      folded: new Set(hits.map(item => `${item.topic}/${groupOf(item)}`)),
     };
     for (const [place, keys] of Object.entries(state.opened)) {
       for (const key of keys) {
         if (wanted[place].has(key)) continue;
-        if (place === "folded") state.folded.add(key); else state[place].delete(key);
+        if (place === "folded") setFolded(key, true); else state[place].delete(key);
         if (place === "open") state.chats.delete(`topic:${key}`);
         keys.delete(key);
       }
     }
     for (const [place, keys] of Object.entries(wanted)) {
       for (const key of keys) {
-        const shut = place === "folded" ? state.folded.has(key) : !state[place].has(key);
+        const shut = place === "folded" ? isFolded(key) : !state[place].has(key);
         if (!shut) continue;
-        if (place === "folded") state.folded.delete(key); else state[place].add(key);
+        if (place === "folded") setFolded(key, false); else state[place].add(key);
         state.opened[place].add(key);
       }
     }
@@ -1037,7 +1068,9 @@
       const lines = Number(place.dataset.lines || 0);
       text(address).then(content => {
         if (place.filled !== address) return;
-        if (lines) place.textContent = content.split("\n").slice(0, lines).join("\n");
+        // A Markdown file's first lines rendered, past its frontmatter, as the viewer shows it.
+        if (lines && place.dataset.render === "markdown") place.innerHTML = markdown(frontmatter(content.replace(/\r/g, ""))[1].split("\n").slice(0, lines).join("\n"));
+        else if (lines) place.textContent = content.split("\n").slice(0, lines).join("\n");
         else if (place.dataset.render === "markdown") place.innerHTML = markdown(content, true);
         else if (place.dataset.render === "code") place.innerHTML = `<pre><code>${highlight(content, place.dataset.language)}</code></pre>`;
         else place.innerHTML = `<pre>${escape(content)}</pre>`;
@@ -1215,6 +1248,7 @@
     const item = place ? itemAt(place) : null;
     if (!item) { state.modal = null; return; }
     state.open.add(item.topic);
+    setFolded(`${item.topic}/${groupOf(item)}`, false);
     if (kindOf(item) === "decision") {
       state.expanded.add(item.ref);
       state.modal = null;
@@ -1509,7 +1543,7 @@
       return;
     }
     const folding = target.closest("[data-fold]");
-    if (folding) { const key = folding.dataset.fold; owned("folded", key); state.folded.has(key) ? state.folded.delete(key) : state.folded.add(key); draw(); return; }
+    if (folding) { const key = folding.dataset.fold; owned("folded", key); setFolded(key, !isFolded(key)); draw(); return; }
     if (target.closest("[data-close]") || target.matches("[data-backdrop]")) { closeViewer(); return; }
     const menu = target.closest("[data-menu]");
     if (menu) { state.menu = state.menu === menu.dataset.menu ? null : menu.dataset.menu; draw(); return; }
@@ -1573,8 +1607,13 @@
   });
   // A zoomed picture follows the mouse; on a touch screen it is dragged, and a tap leaves the zoom.
   root.addEventListener("mouseover", event => {
+    // An asset's or a file's name shown whole, with nothing more to say, needs no tooltip.
+    const cropped = name => name && name.scrollWidth > name.clientWidth;
+    const chip = event.target.closest(".file-chip");
+    if (chip) { const name = chip.querySelector(".name"); chip.title = cropped(name) ? name.textContent : ""; }
     const mark = event.target.closest("[data-tip]");
-    if (mark) showTip(mark); else $("topics-tip").hidden = true;
+    const bare = mark?.matches(".asset") && !mark.dataset.tipMeans && !cropped(mark.querySelector(".words .title"));
+    if (mark && !bare) showTip(mark); else $("topics-tip").hidden = true;
   });
   root.addEventListener("mouseleave", () => { $("topics-tip").hidden = true; });
   addEventListener("scroll", () => { $("topics-tip").hidden = true; }, { passive: true });
@@ -1964,8 +2003,8 @@
   // Floating, it hangs under the band with its button while the band is in sight, then from the top.
   function placeGlobal() {
     const band = document.querySelector(".band");
-    // A little over the band's foot, nearer its button.
-    const below = band ? band.getBoundingClientRect().bottom - 11 : 16;
+    // Well over the band's foot, nearer its button.
+    const below = band ? band.getBoundingClientRect().bottom - 26 : 16;
     $("topics-global").style.setProperty("--chat-top", `${Math.max(16, below)}px`);
   }
   addEventListener("scroll", placeGlobal, { passive: true });
