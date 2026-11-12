@@ -204,7 +204,7 @@ def test_a_generator_function_writes_its_file_and_drift_fails_the_check(project:
         "    return f'VERSION = {(root / \"VERSION\").read_text().strip()!r}'\n",
     )
     (project.root / "VERSION").write_text("1.2\n")
-    assert nock(project.root, "gen", "write").stdout == "src/version.py\n"
+    assert nock(project.root, "gen").stdout == "src/version.py\n"
     assert (project.root / "src" / "version.py").read_text() == "VERSION = '1.2'\n"
     assert nock(project.root, "check", "nock-generators").returncode == 0
     (project.root / "VERSION").write_text("1.3\n")
@@ -221,7 +221,7 @@ def test_a_generator_s_bytes_are_the_file_exactly(project: Project) -> None:
         "    return (root / 'source.txt').read_bytes()[::-1]\n",
     )
     (project.root / "source.txt").write_bytes(b"\x00\xffno newline")
-    assert nock(project.root, "gen", "write").stdout == "golden.bin\n"
+    assert nock(project.root, "gen").stdout == "golden.bin\n"
     assert (project.root / "golden.bin").read_bytes() == b"enilwen on\xff\x00"
     assert nock(project.root, "check", "nock-generators").returncode == 0
     (project.root / "golden.bin").write_bytes(b"enilwen on\xff\x00\n")
@@ -252,35 +252,38 @@ def test_a_generator_may_read_what_an_earlier_one_writes(project: Project) -> No
         "    return 'types of ' + (root / 'schema.json').read_text()\n",
     )
     (project.root / "source.txt").write_text("v1")
-    assert nock(project.root, "gen", "write").returncode == 0
+    assert nock(project.root, "gen").returncode == 0
     (project.root / "source.txt").write_text("v2")
-    assert nock(project.root, "gen", "write").stdout == "schema.json\ntypes.txt\n"
+    assert nock(project.root, "gen").stdout == "schema.json\ntypes.txt\n"
     assert (project.root / "types.txt").read_text() == "types of V2\n"
     assert nock(project.root, "check", "nock-generators").returncode == 0
 
 
-def test_a_catalog_renders_its_outputs_and_a_drift_fails_the_check(project: Project) -> None:
+def test_a_catalog_is_plain_files_rendered_by_gen_and_held_by_the_check(
+    project: Project,
+) -> None:
+    catalog = project.root / ".nock" / "generators" / "errors"
+    (catalog / "templates").mkdir(parents=True)
     schema = {"type": "object", "required": ["code"], "properties": {"code": {"type": "integer"}}}
-    assert nock(project.root, "gen", "new", "errors", json.dumps(schema)).returncode == 0
-    template = project.root / ".nock" / "generators" / "errors" / "templates" / "errors.py.template"
-    template.write_text(
+    (catalog / "schema.json").write_text(json.dumps(schema))
+    entries = {"not-found": {"code": 404}, "teapot": {"code": 418}}
+    (catalog / "entries.json").write_text(json.dumps(entries))
+    (catalog / "templates" / "errors.py.template").write_text(
         "!for entry in entries:\n    {{ entry.key.upper().replace('-', '_') }} = {{ entry.code }}\n"
     )
-    bound = nock(
-        project.root,
-        "gen",
-        "bind",
-        "errors",
-        '{"template": "errors.py.template", "file": "src/errors.py"}',
+    (catalog / "outputs.toml").write_text(
+        '[[output]]\ntemplate = "errors.py.template"\nfile = "src/errors.py"\n'
     )
-    assert bound.returncode == 0, bound.stderr
-    nock(project.root, "gen", "add", "errors", '{"key": "not-found", "code": 404}')
-    nock(project.root, "gen", "add", "errors", '{"key": "teapot", "code": 418}')
+    assert nock(project.root, "gen").stdout == "src/errors.py\n"
     output = project.root / "src" / "errors.py"
     assert output.read_text() == "NOT_FOUND = 404\nTEAPOT = 418\n"
-    nock(project.root, "gen", "set", "errors", "teapot", '{"code": 419}')
-    assert "TEAPOT = 419" in output.read_text()
+    listed = json.loads(nock(project.root, "gen", "--list", "--json").stdout)
+    assert listed == [{"file": "src/errors.py", "from": "errors", "stale": False}]
     output.write_text("NOT_FOUND = 404\n")
     assert nock(project.root, "check", "nock-generators").returncode == 1
-    bad = nock(project.root, "gen", "add", "errors", '{"key": "bad", "code": "x"}')
-    assert bad.returncode == 40, bad.stderr
+    nock(project.root, "gen")
+    (catalog / "entries.json").write_text(json.dumps({**entries, "bad": {"code": "x"}}))
+    held = nock(project.root, "check", "nock-generators")
+    assert held.returncode == 1 and "errors.bad" in held.stdout + held.stderr
+    refused = nock(project.root, "gen")
+    assert refused.returncode == 40 and "errors.bad" in refused.stderr

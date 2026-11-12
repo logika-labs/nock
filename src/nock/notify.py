@@ -70,17 +70,9 @@ def plural(count: int, word: str) -> str:
 
 
 def waiting(items: list[dict[str, Any]]) -> str:
-    """The open items, as the owner would count them: "3 decisions, 2 files"."""
-    decisions = files = 0
-    for item in items:
-        if item["verdict"] != "open":
-            continue
-        if any(entry["kind"] == "decision" for entry in item["versions"][-1]["files"]):
-            decisions += 1
-        else:
-            files += 1
-    counted = [plural(decisions, "decision")] if decisions else []
-    return ", ".join([*counted, *([plural(files, "file")] if files else [])])
+    """The open decisions, as the owner would count them: "3 decisions"."""
+    decisions = sum(1 for item in items if item["verdict"] == "open")
+    return plural(decisions, "decision") if decisions else ""
 
 
 def wording(topic: str, reason: Reason, items: list[dict[str, Any]]) -> str:

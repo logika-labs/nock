@@ -228,15 +228,49 @@ class Timeline:
                     address,
                     what=what,
                     verdict=item.get("verdict") or "open",
-                    faces=[
-                        {"file": entry_name(entry), "type": entry["type"]}
-                        for entry in files
-                        if entry["type"] in FACES
-                    ]
+                    faces=(self.faces(item, version["moment"]) if version["version"] == 1 else None)
                     or None,
                     version=version["version"],
                 )
             )
+        first = item["versions"][0]["moment"] if item["versions"] else ""
+        for asset in item.get("assets", []):
+            for version in asset["versions"]:
+                if version["moment"] <= first:
+                    continue
+                number = version["version"]
+                files = version["files"]
+                found.append(
+                    self.event(
+                        Event.VERSION,
+                        f"asset:{ref}:{asset['name']}:{number}",
+                        version["moment"],
+                        topic,
+                        ref,
+                        f"{asset['title']}: version {number} for review"
+                        if number > 1
+                        else f"New asset for review: {asset['title']}",
+                        item["title"],
+                        asset.get("description") or "",
+                        f"#topics/{ref}",
+                        what="asset",
+                        verdict=item.get("verdict") or "open",
+                        type=files[0]["type"] if files else None,
+                        file=entry_name(files[0]) if files else None,
+                        faces=[
+                            {
+                                "file": entry_name(entry),
+                                "type": entry["type"],
+                                "asset": asset["name"],
+                                "version": number,
+                            }
+                            for entry in files
+                            if entry["type"] in FACES
+                        ]
+                        or None,
+                        version=number,
+                    )
+                )
         for entry in item["thread"]:
             if not entry.get("kind"):
                 found += self.said(entry, item["thread"], topic, ref, item["title"])
@@ -254,6 +288,22 @@ class Timeline:
             ):
                 return entry.get("text") or ""
         return ""
+
+    def faces(self, item: dict[str, Any], moment: str) -> list[dict[str, Any]]:
+        """The pictures a new decision came with: its assets' first versions,
+        made with it."""
+        return [
+            {
+                "file": entry_name(entry),
+                "type": entry["type"],
+                "asset": asset["name"],
+                "version": asset["versions"][0]["version"],
+            }
+            for asset in item.get("assets", [])
+            if asset["versions"] and asset["versions"][0]["moment"] <= moment
+            for entry in asset["versions"][0]["files"]
+            if entry["type"] in FACES
+        ]
 
     def said(
         self,

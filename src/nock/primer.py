@@ -28,38 +28,41 @@ the tools agents built.
 
 CONSULT = """\
 - **Consult before you change code,** unless the task is really
-  straightforward and unambiguous: `.nock/nock consult '{"intent": …,
-  "context": …}'`. A fresh agent reads the project and tells you the
-  topics, items, tools and checks that bear on what you are about to do; do
-  as it says, or say why not.
+  straightforward and unambiguous: `.nock/nock consult "what you are about
+  to do" --context "what you know"`. A fresh agent reads the project and
+  tells you the topics, decisions, tools and checks that bear on what you
+  are about to do; do as it says, or say why not.
 """
 
 TOPICS = """\
-- **Put your work before the owner in Topics:** find the topic for what you
-  are doing (`.nock/nock topics list --query …`) or open one (`topics
-  create`); a done one that comes back is revived, not made again. Into
-  it, submit items bare (`items create`, `--help` has the fields): a
-  decision when a later reader would ask "why" (a choice between real
-  alternatives the owner hasn't made, a deliberate simplification, your
-  reading of something ambiguous, a todo you leave; never the owner's own
-  instruction or a routine detail), project files, or something you made to
-  show part of the project (a screenshot, a page) with how to make it again.
-  If it is the owner's call, submit the answer you would propose and carry
-  on; the owner gives verdicts later, so don't wait.
+- **Put your work before the owner in Topics:** they are files you write in
+  `.nock/shared/topics/` (`.nock/nock docs files` has each kind; nock fills
+  in the rest and commits them). Find the topic for what you are doing
+  (`.nock/nock search …`, then its view in `.nock/local/views/`) or open
+  one; a done one that comes back is revived, not made again. Into it,
+  record decisions bare: one when a later reader would ask "why" (a choice
+  between real alternatives the owner hasn't made, a deliberate
+  simplification, your reading of something ambiguous, a todo you leave;
+  never the owner's own instruction or a routine detail), with the assets
+  that show it: project files, or something you made to show part of the
+  project (a screenshot, a page) with how to make it again. If it is the
+  owner's call, record the answer you would propose and carry on; the owner
+  gives verdicts later, so don't wait.
 - **Keep your topic's state and status current:** when you start work, set
-  it active with a status (`.nock/nock topics update TOPIC '{"state":
-  "active", "status": "…"}'`); update the status at each milestone ("waiting
+  it active with a status (a `state` event, `{"kind": "state", "state":
+  "active", "status": "…"}`); update the status at each milestone ("waiting
   for the gate on main", "benchmarks running, about 2 h"); set it `review` when
   you have finished and only the owner's verdicts remain, `done` or
   `abandoned` when the work is over. Work you dispatch is tracked the same way, in
   the topic it serves.
-- **Check what awaits you** with `.nock/nock topics list` when you start and
-  before you finish: threads where the owner wrote last, items they
-  rejected (rework one as a new version: `items update REF --version`).
-  When the owner is in the session, discuss with them here and leave at
-  most a line in the thread; when they are away, or told you to work in the
-  background, answer briefly in the thread (`--reply`), and say nothing if
-  you just did what was asked and the new version shows it.
+- **Check what awaits you** with `.nock/nock inbox` when you start and
+  before you finish: what the owner said that no agent has answered,
+  decisions they rejected (rework one as a new version: `docs
+  topics.versions`). When the owner is in the session, discuss with them
+  here and leave at most a line in the thread; when they are away, or told
+  you to work in the background, answer briefly in the thread (a message
+  event), and say nothing if you just did what was asked and the new
+  version shows it.
 - **Run noisy or long commands through `.nock/nock run -- COMMAND`**
   (Claude Code asks about it as about the command itself), and
   `.nock/nock check` before you finish: the checks your changes can affect
@@ -117,7 +120,9 @@ def refresh(directory: Path) -> list[Path]:
     `directory` that holds one, when the committed settings say otherwise;
     the files it changed. A machine's own `local/config.toml` never changes a
     committed file."""
-    text = primer(Configuration([directory / "config.toml"]))
+    text = primer(
+        Configuration([directory / "config.toml", directory / "shared" / "settings.toml"])
+    )
     changed = []
     path = directory / PRIMER
     if not (path.is_file() and path.read_text() == text):

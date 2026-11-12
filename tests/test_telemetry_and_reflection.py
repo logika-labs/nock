@@ -1,5 +1,5 @@
-"""Sessions read into telemetry, the hooks around them, and reflection rounds:
-what a round's parts read, a round that finishes — or does not — and
+"""Sessions read into telemetry, the hooks around them, and nock's rounds:
+what a round's parts read, a round that is submitted — or is not — and
 sharing its summary."""
 
 from __future__ import annotations
@@ -17,11 +17,13 @@ import pytest
 
 from nock.hooks import HookRunner
 from nock.project import Project
-from nock.reflect import SESSIONS, Reflection, Rounds, shape
+from nock.reflect import Reflection, shape
+from nock.rounds import Protocol, named
 from nock.sessions import Sessions, encoded
 from nock.share import Sharing
 
-from .conftest import git, nock, write_tool
+from . import store
+from .conftest import git, nock, own_protocol, write_tool
 
 
 def transcript(
@@ -147,18 +149,43 @@ def test_the_session_hooks_list_the_tools_and_read_the_transcript(project: Proje
     assert project.store.rows("SELECT id FROM sessions") == [{"id": "s2"}]
 
 
+def fit(project: Project) -> Protocol:
+    (protocol,) = named(project, "nock.fit")
+    return protocol
+
+
+def protocol(project: Project, name: str) -> Protocol:
+    (found,) = named(project, name)
+    return found
+
+
 def test_a_round_is_due_after_enough_sessions(project: Project) -> None:
-    for index in range(SESSIONS - 1):
+    for name in ("nock.toolbox", "nock.map", "nock.fit"):
+        own_protocol(project, name, {"sessions": 4, "days": 3650})
+    for index in range(3):
         transcript(project, f"s{index}", ["work"], [])
     Sessions(project).catch_up()
-    assert Reflection(project).due() == ""
-    transcript(project, "last", ["more work"], [])
+    assert {own.due() for own in named(project, "nock")} == {""}
+    transcript(project, "s3", ["more work"], [])
     Sessions(project).catch_up()
-    assert Reflection(project).due() == (
-        f"a reflection round is due ({SESSIONS} sessions since the last)"
-    )
+    assert {own.due() for own in named(project, "nock")} == {"4 sessions since the last"}
     start = HookRunner(project, {"session_id": "s9"}).handle("SessionStart")
-    assert start is not None and "`/nock-reflect`, which runs one" in start["systemMessage"]
+    assert start is not None
+    assert "a reflection round is due (4 sessions since the last)" in start["systemMessage"]
+    assert "`/nock-reflect`, which runs one" in start["systemMessage"]
+
+
+def test_a_due_rule_is_the_manifest_s_and_a_project_s_own_protocol_changes_it(
+    project: Project,
+) -> None:
+    own_protocol(project, "nock.map", {"sessions": 2})
+    for index in range(2):
+        transcript(project, f"s{index}", ["work"], [])
+    Sessions(project).catch_up()
+    due = {own.name: own.due() for own in named(project, "nock")}
+    assert due == {"nock.map": "2 sessions since the last", "nock.toolbox": "", "nock.fit": ""}
+    assert protocol(project, "nock.fit").setting("days") == 7
+    assert protocol(project, "logika.rules").setting("days") == 30
 
 
 def test_the_material_starts_from_the_work_and_names_the_waste(project: Project) -> None:
@@ -179,8 +206,8 @@ def test_the_material_starts_from_the_work_and_names_the_waste(project: Project)
         )
     nock(project.root, "unusd")
     for _ in range(12):
-        nock(project.root, "calls", "--limit", "1")
-    started = Reflection(project).start()
+        nock(project.root, "query", "calls", "--limit", "1")
+    started = protocol(project, "nock.toolbox").start()
     material = (project.root / started["material"]["process"]).read_text()
     assert material.index("# What the human asked for") < material.index("# The toolbox")
     assert "- no — run the slow suite too" in material
@@ -198,11 +225,12 @@ def test_shapes_name_what_a_command_is() -> None:
     assert shape("ls -la") == "ls"
 
 
-def finish(project: Project, record: dict[str, object]) -> subprocess.CompletedProcess[str]:
-    return nock(project.root, "reflect", "finish", json.dumps(record))
+def submit(project: Project, record: dict[str, object]) -> subprocess.CompletedProcess[str]:
+    return nock(project.root, "reflect", "--submit", json.dumps(record))
 
 
 RECORD = {
+    "protocol": "nock.fit",
     "summary": "Added nothing; calls is fine.",
     "changes": [
         {"kind": "other", "target": "calls", "why": "used twice", "expect": "calls stays under 1k"}
@@ -215,72 +243,99 @@ def test_a_command_that_ran_and_failed_is_not_nock_refusing(project: Project) ->
     assert nock(project.root, "run", "--", python, "-c", "exit(1)").returncode == 1
     # pytest's own usage error, or any code a wrapped command exits with, is its answer.
     assert nock(project.root, "run", "--", python, "-c", "exit(42)").returncode == 42
-    assert nock(project.root, "calls", "--bogus").returncode == 40
-    assert finish(project, RECORD).returncode == 42
+    assert nock(project.root, "query", "calls", "--bogus").returncode == 40
+    assert submit(project, RECORD).returncode == 42
     reflection = Reflection(project)
     metrics = reflection.metrics(reflection.window())
     assert (metrics["nock_failed"], metrics["nock_refused"], metrics["nock_broke"]) == (2, 2, 0)
-    stats = {row["tool"]: row for row in json.loads(nock(project.root, "stats", "--json").stdout)}
+    stats = {
+        row["tool"]: row
+        for row in json.loads(nock(project.root, "query", "stats", "--json").stdout)
+    }
     assert (stats["run"]["failed"], stats["run"]["refused"]) == (2, 0)
-    assert (stats["calls"]["failed"], stats["calls"]["refused"]) == (0, 1)
+    assert (stats["query"]["failed"], stats["query"]["refused"]) == (0, 1)
 
 
-def test_a_round_finishes_with_its_report_its_summary_and_its_numbers(project: Project) -> None:
+def test_a_round_is_submitted_with_its_report_its_summary_and_its_numbers(
+    project: Project,
+) -> None:
     for _ in range(2):
-        nock(project.root, "calls", "--limit", "1")
-    assert finish(project, RECORD).returncode == 42
-    started = json.loads(nock(project.root, "reflect", "--json").stdout)
+        nock(project.root, "query", "calls", "--limit", "1")
+    assert submit(project, RECORD).returncode == 42
+    started = json.loads(nock(project.root, "reflect", "nock", "--json").stdout)
+    rounds = {begun["protocol"]: begun for begun in started["rounds"]}
+    assert set(rounds) == {"nock.toolbox", "nock.map", "nock.fit"}
     material = {
-        part: (project.root / path).read_text() for part, path in started["material"].items()
+        part: Path(path).read_text()
+        for begun in rounds.values()
+        for part, path in begun["material"].items()
     }
     assert "This is the first round." in material["process"]
     assert "Empty until the first reflection round" in material["knowledge"]
-    assert "these numbers are the baseline" in material["nock"]
-    report, share = (project.root / path for path in started["write"])
-    refused = finish(project, RECORD)
+    assert "these numbers are the baseline" in material["evidence"]
+    assert "`nock.map` (adopted)" in material["catalogue"]
+    assert "`logika.rules` (cannot run here: not a Logika project" in material["catalogue"]
+    begun = rounds["nock.fit"]
+    assert begun["brief"].startswith("# The fit round")
+    (agent,) = begun["agents"]
+    assert agent["type"] == "nock-fit" and agent["brief"].endswith("agents/fit.md")
+    assert agent["reads"] == [begun["material"]["evidence"], begun["material"]["catalogue"]]
+    report, share = (project.root / path for path in begun["write"])
+    refused = submit(project, RECORD)
     assert refused.returncode == 42 and "write report.md and share.md" in refused.stderr
+    wrong = submit(project, {**RECORD, "changes": [{**RECORD["changes"][0], "kind": "add"}]})  # type: ignore[dict-item]
+    assert wrong.returncode == 40 and "not add" in wrong.stderr
 
     report.write_text("# The round\n\nNothing needs you.\n")
     share.write_text("A small project. See README.md, or write to test@example.com.\n")
-    named = finish(project, RECORD)
-    assert named.returncode == 1 and "names `README.md`" not in named.stdout
-    assert "names `test@example.com`" in named.stdout
+    named_ = submit(project, RECORD)
+    assert named_.returncode == 1 and "names `README.md`" not in named_.stdout
+    assert "names `test@example.com`" in named_.stdout
     share.write_text("A small project, a few days in; the toolbox is barely used yet.\n")
-    finished = finish(project, RECORD)
+    finished = submit(project, RECORD)
     assert finished.returncode == 0, finished.stdout + finished.stderr
     assert git(project.root, "status", "--porcelain") == ""
     assert git(project.root, "log", "-1", "--format=%s").startswith(
-        f"Reflection round {started['round']}"
+        f"nock.fit round {begun['round']}"
     )
-    (round_,) = Rounds(project).all()
+    (round_,) = fit(project).rounds.all()
+    assert round_["protocol"] == "nock.fit" and round_["since"] is None
     assert round_["changes"][0]["expect"] == "calls stays under 1k"
-    assert round_["snapshot"]["calls"]["calls"] == 2 and round_["since"] is None
     assert round_["metrics"]["nock_calls"] >= 2 and round_["shared"] is None
+    record = project.root / ".nock" / "shared" / "rounds" / "nock.fit" / begun["round"]
+    assert {path.name for path in record.iterdir()} == {"record.json", "report.md", "share.md"}
 
-    again = Reflection(project).start()
-    assert again["round"] == f"{started['round']}-2"
-    process = (project.root / again["material"]["process"]).read_text()
+    toolbox = rounds["nock.toolbox"]
+    (project.root / toolbox["write"][0]).write_text("# The toolbox\n\nNothing changed.\n")
+    done = submit(project, {**RECORD, "protocol": "nock.toolbox"})
+    assert done.returncode == 0, done.stdout + done.stderr
+    (kept,) = protocol(project, "nock.toolbox").rounds.all()
+    assert kept["snapshot"]["query"]["calls"] == 2
+
+    again = fit(project).start()
+    assert again["round"] == f"{begun['round']}-2"
+    evidence = Path(again["material"]["evidence"]).read_text()
+    assert f"| {begun['round']} | this window |" in evidence
+    process = Path(protocol(project, "nock.toolbox").start()["material"]["process"]).read_text()
     assert "# The last round" in process and "expected calls stays under 1k" in process
-    nock_material = (project.root / again["material"]["nock"]).read_text()
-    assert f"| {started['round']} | this window |" in nock_material
 
 
 def test_a_second_start_picks_up_the_open_round_and_rewrites_nothing(
     project: Project, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "s1")
-    first = json.loads(nock(project.root, "reflect", "--json").stdout)
-    process = project.root / first["material"]["process"]
-    process.write_text("the material as the first start wrote it\n")
-    kept = project.local / "reflections" / first["round"] / "round.json"
+    first = json.loads(nock(project.root, "reflect", "nock.fit", "--json").stdout)
+    evidence = Path(first["material"]["evidence"])
+    evidence.write_text("the material as the first start wrote it\n")
+    kept = project.local / "reflections" / "nock.fit" / first["round"] / "round.json"
     begun = json.loads(kept.read_text())
     for _ in range(3):
-        nock(project.root, "calls", "--limit", "1")
+        nock(project.root, "query", "calls", "--limit", "1")
     monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "s2")
-    second = json.loads(nock(project.root, "reflect", "--json").stdout)
+    second = json.loads(nock(project.root, "reflect", "nock.fit", "--json").stdout)
     assert second["round"] == first["round"] and second["material"] == first["material"]
     assert f"the round {first['round']}, started {begun['started']}" in second["picked_up"]
-    assert process.read_text() == "the material as the first start wrote it\n"
+    assert evidence.read_text() == "the material as the first start wrote it\n"
     again = json.loads(kept.read_text())
     assert again["metrics"] == begun["metrics"] and again["sessions"] == ["s1", "s2"]
 
@@ -309,12 +364,12 @@ def test_a_summary_is_vetted_and_shared_only_when_sent(
         local.read_text()
         + f'[endpoints]\nreflections = "http://127.0.0.1:{server.server_address[1]}/"\n'
     )
-    started = Reflection(project).start()
+    started = fit(project).start()
     for path, text in zip(
         started["write"], ("# Report\n", "Early days; little to say.\n"), strict=True
     ):
         (project.root / path).write_text(text)
-    assert finish(project, RECORD).returncode == 0
+    assert submit(project, RECORD).returncode == 0
     assert Sharing(project).unshared() == started["round"]
     begun = HookRunner(project, {"session_id": "s1"}).handle("SessionStart")
     assert begun is not None and "summary is not shared yet" in begun["systemMessage"]
@@ -338,6 +393,17 @@ def test_a_summary_is_vetted_and_shared_only_when_sent(
     assert received == [{"summary": "Early days, vetted.", "round": started["round"]}]
     assert Sharing(project).unshared() is None
     assert git(project.root, "status", "--porcelain") == ""
+
+    # Once the owner said yes, submitting the fit round vets and sends it.
+    assert nock(project.root, "config", "share", "true").returncode == 0
+    again = fit(project).start()
+    for path in again["write"]:
+        (project.root / path).write_text("A week on; the toolbox is used daily.\n")
+    submitted = submit(project, RECORD)
+    assert submitted.returncode == 0, submitted.stderr
+    assert received[-1] == {"summary": "Early days, vetted.", "round": again["round"]}
+    assert Sharing(project).unshared() is None and vetted() == 3
+    assert git(project.root, "status", "--porcelain") == ""
     server.shutdown()
     server.server_close()
 
@@ -346,10 +412,15 @@ def test_init_installs_the_skills(project: Project) -> None:
     skills = project.root / ".claude" / "skills"
     lead = (skills / "nock-reflect" / "SKILL.md").read_text()
     assert lead.startswith("---\nname: nock-reflect\n")
-    assert lead.endswith("\n---\n\nRun `.nock/nock docs reflection.lead` and do what it says.\n")
-    assert "`.nock/nock reflect` prints" in nock(project.root, "docs", "reflection.lead").stdout
+    assert lead.endswith("\n---\n\nRun `.nock/nock reflect nock` and do what it says.\n")
     assert {path.name for path in (skills / "nock-reflect").iterdir()} == {"SKILL.md"}
-    toolbox = (project.root / ".claude" / "agents" / "nock-reflect-toolbox.md").read_text()
+    assert not (skills / "logika").exists(), "no logika.json here (tests/test_logika.py)"
+    agents = project.root / ".claude" / "agents"
+    assert {path.name for path in agents.iterdir()} == {
+        "nock-toolbox.md", "nock-map.md", "nock-fit.md"
+    }  # fmt: skip
+    toolbox = (agents / "nock-toolbox.md").read_text()
+    assert toolbox.startswith("---\nname: nock-toolbox\n")
     assert toolbox.endswith("Run `.nock/nock docs reflection.toolbox` and do what it says.\n")
     assert ".nock/nock docs --full tools tools.signature" in (
         nock(project.root, "docs", "reflection.toolbox").stdout
@@ -367,14 +438,31 @@ def test_init_installs_the_skills(project: Project) -> None:
     assert nock(project.root, "init").returncode == 0
 
 
+def test_init_removes_the_skills_and_subagents_of_an_earlier_nock_s_rounds(
+    project: Project,
+) -> None:
+    old = [
+        ".claude/skills/nock-reflect-logika/SKILL.md",
+        ".claude/agents/nock-reflect-toolbox.md",
+        ".claude/agents/nock-logika-rules.md",
+    ]
+    for relative in old:
+        (project.root / relative).parent.mkdir(parents=True, exist_ok=True)
+        (project.root / relative).write_text("---\nname: old\n---\n")
+    assert nock(project.root, "init").returncode == 0
+    assert not any((project.root / relative).exists() for relative in old)
+    assert not (project.root / ".claude" / "skills" / "nock-reflect-logika").exists()
+    assert (project.root / ".claude" / "agents" / "nock-toolbox.md").is_file()
+
+
 def test_a_round_s_window_opens_at_its_moment_whatever_the_machine_s_time_zone(
     project: Project, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    started = Reflection(project).start()
+    started = fit(project).start()
     for path in started["write"]:
         (project.root / path).write_text("Early days; little to say.\n")
-    assert finish(project, RECORD).returncode == 0
-    (finished,) = (record["finished"] for record in Rounds(project).all())
+    assert submit(project, RECORD).returncode == 0
+    (finished,) = (record["finished"] for record in fit(project).rounds.all())
     # Nine hours east of UTC: the window's `Z` moment must not be read as local
     # time, which would count this commit from an hour before the round.
     monkeypatch.setenv("TZ", "Asia/Tokyo")
@@ -394,23 +482,30 @@ def test_a_session_cannot_end_its_turn_with_the_round_it_started_open(
 
     assert stop("s1") is None
     monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "s1")
-    started = json.loads(nock(project.root, "reflect", "--json").stdout)
-    assert started["finish"] == ".nock/nock reflect finish JSON"
+    started = json.loads(nock(project.root, "reflect", "nock", "--json").stdout)
+    rounds = {begun["protocol"]: begun for begun in started["rounds"]}
+    assert rounds["nock.fit"]["submit"].startswith(
+        '.nock/nock reflect --submit \'{"protocol": "nock.fit"'
+    )
     refused = stop("s1")
     assert refused is not None and refused["decision"] == "block"
     reason = str(refused["reason"])
-    assert f"the reflection round {started['round']} is under way and not finished" in reason
+    for name, begun in rounds.items():
+        assert f"the {name} round {begun['round']} is under way and not finished" in reason
     assert "write report.md" in reason and "write share.md" in reason
-    assert "`.nock/nock reflect finish JSON` records it" in reason
+    assert '`.nock/nock reflect --submit \'{"protocol": "nock.fit", …}\'` records it' in reason
     assert stop("s1", active=True) is None
     assert stop("s2") is None
-    for path, text in zip(started["write"], ("# Report\n", "Early days.\n"), strict=True):
-        (project.root / path).write_text(text)
-    (project.root / ".nock" / "topics" / "map.md").write_text("- [orders/nothing-here] holds.\n")
+    for begun in rounds.values():
+        for path in begun["write"]:
+            (project.root / path).write_text("Early days.\n")
+    (project.root / ".nock" / "shared" / "map.md").write_text("- [orders/nothing-here] holds.\n")
     reason = str((stop("s1") or {})["reason"])
     assert "report.md" not in reason and "[orders/nothing-here] is no item" in reason
-    (project.root / ".nock" / "topics" / "map.md").write_text("# The map\n")
-    assert finish(project, RECORD).returncode == 0
+    (project.root / ".nock" / "shared" / "map.md").write_text("# The map\n")
+    for name in rounds:
+        done = submit(project, {**RECORD, "protocol": name})
+        assert done.returncode == 0, done.stdout + done.stderr
     assert stop("s1") is None
 
 
@@ -418,7 +513,7 @@ def test_the_stop_waits_with_a_round_s_lead_while_its_parts_run_in_the_backgroun
     project: Project, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "s1")
-    assert nock(project.root, "reflect").returncode == 0
+    assert nock(project.root, "reflect", "nock").returncode == 0
     path = project.root / "s1.jsonl"
 
     def launched(agent: str) -> dict[str, object]:
@@ -447,11 +542,97 @@ def test_the_stop_waits_with_a_round_s_lead_while_its_parts_run_in_the_backgroun
     assert "is under way and not finished" in str(refused["reason"])
 
 
-def test_reflect_starts_the_default_kind_and_names_the_others(project: Project) -> None:
+def test_reflect_lists_the_protocols_and_starts_one_or_a_namespace(project: Project) -> None:
     unknown = nock(project.root, "reflect", "lgika")
-    assert unknown.returncode == 40 and "did you mean `reflect logika`" in unknown.stderr
-    assert nock(project.root, "reflect", "start").returncode == 40
+    assert unknown.returncode == 44 and "did you mean `reflect logika`" in unknown.stderr
+    elsewhere = nock(project.root, "reflect", "logika")
+    assert elsewhere.returncode == 42 and "not a Logika project" in elsewhere.stderr
     assert nock(project.root, "reflect", "--topic", "logika").returncode == 40
-    listed = nock(project.root).stdout
-    assert "reflect —" in listed and "reflect logika —" in listed
-    assert "reflect logika finish JSON —" in listed
+    listed = {
+        row["protocol"]: row for row in json.loads(nock(project.root, "reflect", "--json").stdout)
+    }
+    assert set(listed) == {
+        "nock.toolbox", "nock.map", "nock.fit", "logika.rules", "logika.analytics",
+        "audit.performance", "audit.security", "audit.tests", "fuzz.api", "fuzz.ui",
+    }  # fmt: skip
+    assert not listed["audit.performance"]["adopted"]
+    assert not listed["audit.tests"]["adopted"] and listed["audit.tests"]["unavailable"] is None
+    assert listed["nock.map"]["adopted"] and listed["nock.map"]["skill"] == "/nock-reflect"
+    assert listed["nock.map"]["unavailable"] is None and listed["nock.map"]["last"] is None
+    assert "not a Logika project" in listed["logika.rules"]["unavailable"]
+    assert listed["logika.rules"]["skill"] == "/logika-rules"
+    assert not listed["fuzz.ui"]["adopted"] and listed["fuzz.ui"]["skill"] == "/fuzz-ui"
+    fuzz = json.loads(nock(project.root, "reflect", "fuzz.ui", "--json").stdout)
+    assert fuzz["agents"] == [] and fuzz["brief"].startswith("# The UI fuzz round")
+    assert Path(fuzz["material"]["earlier"]).read_text() == "(no topic fuzz-ui yet)"
+    assert "reflect [NAME] [--submit SUBMIT] —" in nock(project.root).stdout
+
+
+def test_a_project_s_own_protocol_overrides_a_shipped_one_and_adds_its_own(
+    project: Project,
+) -> None:
+    own = project.root / ".nock" / "rounds" / "team" / "docs"
+    (own / "agents").mkdir(parents=True)
+    (own / "round.toml").write_text(
+        'title = "Docs"\nsummary = "Keep the docs true."\nadopted = "always"\n'
+        '[material.readme]\ncommand = "cat README.md"\n'
+        '[material.recent]\ngit = ["README.md"]\n'
+        '[lead]\nreads = ["readme", "recent"]\n'
+        '[[agents]]\nname = "docs"\nreads = ["readme"]\n'
+        '[end]\ncommit = ["README.md"]\n'
+    )
+    (own / "lead.md").write_text("# The docs round\n")
+    (own / "agents" / "docs.md").write_text(
+        "---\ndescription: Keeps the docs.\ntools: Read\n---\n\nRead the docs.\n"
+    )
+    (project.root / "README.md").write_text("# A project\n")
+    git(project.root, "add", "README.md")
+    git(project.root, "commit", "-qm", "Say what the project is")
+    shipped = project.root / ".nock" / "rounds" / "nock" / "map"
+    shipped.mkdir(parents=True)
+    (shipped / "round.toml").write_text(
+        'title = "Our map"\nsummary = "Ours."\nadopted = "always"\n[lead]\nwrites = ["map.md"]\n'
+    )
+    assert protocol(project, "nock.map").title == "Our map"
+    started = json.loads(nock(project.root, "reflect", "team.docs", "--json").stdout)
+    assert started["brief"] == "# The docs round"
+    assert Path(started["material"]["readme"]).read_text() == "# A project\n"
+    assert "Say what the project is" in Path(started["material"]["recent"]).read_text()
+    assert started["agents"][0]["type"] == "team-docs"
+    assert nock(project.root, "init").returncode == 0
+    skills = project.root / ".claude" / "skills"
+    assert (
+        (skills / "team-docs" / "SKILL.md")
+        .read_text()
+        .endswith("Run `.nock/nock reflect team.docs` and do what it says.\n")
+    )
+    assert not (skills / "team").exists(), "one adopted protocol: no namespace skill"
+    agent = (project.root / ".claude" / "agents" / "team-docs.md").read_text()
+    assert agent.startswith("---\nname: team-docs\ndescription: Keeps the docs.\n")
+    (project.root / started["write"][0]).write_text("# Docs\n\nTrue.\n")
+    (project.root / "README.md").write_text("# A project, documented\n")
+    record = {**RECORD, "protocol": "team.docs"}
+    assert submit(project, record).returncode == 0
+    assert git(project.root, "status", "--porcelain", "--", "README.md") == ""
+    assert git(project.root, "log", "-1", "--format=%s").startswith("team.docs round")
+
+
+def test_a_recommended_protocol_is_adopted_once_the_owner_accepts_it(project: Project) -> None:
+    own = project.root / ".nock" / "rounds" / "team" / "docs"
+    own.mkdir(parents=True)
+    (own / "round.toml").write_text('title = "Docs"\nsummary = "Keep the docs true."\n')
+    assert not protocol(project, "team.docs").adopted()
+    ref = store.submit(
+        project.root,
+        {
+            "title": "Run team.docs here",
+            "decision": {
+                "answer": "The docs drift from the code between releases.",
+                "alternatives": [{"option": "don't", "why_not": "the drift goes unseen"}],
+            },
+        },
+        topic="rounds",
+    )
+    assert not protocol(project, "team.docs").adopted()
+    store.judge(project.root, ref, "accepted")
+    assert protocol(project, "team.docs").adopted()

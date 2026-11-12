@@ -4,4 +4,4 @@ aliases: [verdict, accept, reject, drop, accepted, rejected, dropped, open, awai
 description: The owner's verdicts, and what waits on you
 ---
 
-Open until the owner judges it, in `.nock/nock studio` or with `/nock-triage` (`items judge`, `topics judge`: only on their word). Accepted, it stands; rejected, rework it as a new version as the thread says (a rejected todo is not done); dropped (`"rework": false`: superseded, say), it is closed. You are never told of a dropped item, nor of a verdict you recorded. `topics list` starts with what waits on you. Built, only verdicts left: set the topic to review.
+Open until judged, in `.nock/nock studio` or with `/nock-triage`. Accepted, it stands, its assets' current versions with it; rejected, rework it as a new version as the thread says (a rejected todo is not done); dropped, it is closed. A verdict is a `verdict` event in the decision's `events/`; an agent may write one too (Tidy up drops what is stale), and it says who. `.nock/nock inbox` has the owner's verdicts and comments that wait on you. Built, only verdicts left: set the topic to review.

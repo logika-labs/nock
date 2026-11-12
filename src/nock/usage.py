@@ -24,11 +24,12 @@ from typing import TYPE_CHECKING, Any
 from nock.checks import Checks
 from nock.errors import PreconditionError
 from nock.git import Git, GitError
-from nock.kinds import kinds
 from nock.logika import LEDGER
 from nock.reflect import Reflection, Window, tool_rows
 from nock.releases import VERSION
+from nock.rounds import protocols
 from nock.sessions import Sessions
+from nock.shared import SETTINGS, Shared, by_for
 from nock.tools import BUILT_IN_SOURCE
 from nock.utils import now, parse_moment, read_json, write_json
 
@@ -76,13 +77,13 @@ QUESTION = (
     " for this project, made when the first report is sent and committed in .nock/project.json"
     " so its clones share it; never code, paths, names, prompts, arguments or what items"
     " say. Nothing is sent unless you say yes; the first report would go a week after, then at"
-    " most weekly, and `.nock/nock usage` shows exactly what it would carry. You can change your"
+    " most weekly, and `.nock/nock config share` shows exactly what it would carry. You can change your"
     " answer at any time with `share` in .nock/config.toml."
 )
 # How the agent who asked records the answer.
 RECORD = (
     "Ask the owner this in its words, and record exactly what they answer with"
-    " `.nock/nock usage share yes` or `.nock/nock usage share no`; without an answer nothing"
+    " `.nock/nock config share true` or `.nock/nock config share false`; without an answer nothing"
     " is sent."
 )
 
@@ -148,35 +149,30 @@ class Usage:
         return f"{QUESTION}\n\n{RECORD}"
 
     def answer(self, share: bool, via: str) -> dict[str, Any]:
-        """The owner's answer, written to `share` in the main checkout's
-        config (committed there) or, where the machine's own config already
-        sets it, in that; when and how it was given, and to which question,
-        kept in this machine's state."""
+        """The owner's answer, written to `share` in the team's settings
+        (`.nock/shared/settings.toml`, committed with the topics) or, where the
+        machine's own config already sets it, in that; when and how it was
+        given, and to which question, kept in this machine's state."""
         local = self.project.local / "config.toml"
-        committed = self.project.root / ".nock" / "config.toml"
-        setting = local if sets(local, "share") else committed
-        # A worktree reads its own copy: one that sets `share` follows too, so a
-        # no is a no from every checkout at once.
-        working = self.project.code_path("config.toml")
-        for path in {setting, working} if sets(working, "share") else {setting}:
-            text = path.read_text() if path.is_file() else ""
-            path.write_text(with_setting(text, "share", share))
+        team = self.project.root / ".nock" / "shared" / SETTINGS
+        setting = local if sets(local, "share") else team
+        setting.parent.mkdir(parents=True, exist_ok=True)
+        text = setting.read_text() if setting.is_file() else ""
+        setting.write_text(with_setting(text, "share", share))
         self.project.__dict__.pop("configuration", None)
         state = self.state()
         state["answered"] = {"share": share, "at": now(), "via": via, "prompt": QUESTION_VERSION}
         write_json(self.path, state)
-        if setting == committed:
-            relative = f".nock/{committed.name}"
-            try:
-                git = Git(self.project.root)
-                git("add", "--", relative)
-                git(
-                    "commit", "--quiet", "--no-verify", "--only", "-m",
-                    f"nock: the owner's answer on sharing nock's usage report, share = {str(share).lower()}",
-                    "--", relative,
-                )  # fmt: skip
-            except GitError:
-                pass  # left for the owner to commit with the rest; the answer holds either way
+        if setting == team:
+            store = Shared(self.project)
+            by = by_for(self.project)
+            settled = store.settle(by, only=[team], commit=False)
+            store.commit(
+                settled.written,
+                by,
+                settled,
+                subject=f"nock: the owner's answer on sharing nock's usage report, share = {str(share).lower()}",
+            )
         return self.standing()
 
     def counting(self) -> None:
@@ -274,7 +270,9 @@ class Usage:
                 ),
                 "load_failures": len(registry.failures),
             },
-            "rounds": {kind.kind: len(kind.rounds.all()) for kind in kinds(project)},
+            "rounds": {
+                protocol.name: len(protocol.rounds.all()) for protocol in protocols(project)
+            },
         }
 
     def due(self) -> bool:

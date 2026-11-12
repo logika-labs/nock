@@ -357,7 +357,27 @@
   const itemAt = ref => everyItem().find(item => item.ref === ref || (item.aliases || []).includes(ref));
   const last = item => item.versions[item.versions.length - 1];
   const versionOf = (item, number) => item.versions.find(version => version.version === number) || last(item);
-  const fileUrl = (item, version, name) => `topics/file/${encodeURIComponent(item.topic)}/${encodeURIComponent(item.slug)}/${version.version}/${name.split("/").map(encodeURIComponent).join("/")}`;
+  // An asset's files, through its asset: `topics/file/TOPIC/SLUG/ASSET/N/NAME`.
+  const fileUrl = (item, version, name) => `topics/file/${[item.topic, item.slug, item.asset].map(encodeURIComponent).join("/")}/${version.version}/${name.split("/").map(encodeURIComponent).join("/")}`;
+  // What the server sends, a topic's decisions each holding its assets, laid out as the page
+  // lists them: each decision, then each of its assets (`TOPIC/SLUG:ASSET`), whose thread and
+  // verdict are the decision's.
+  function expand(topic) {
+    const items = [];
+    for (const decision of topic.items) {
+      const latest = decision.versions[decision.versions.length - 1];
+      const assets = (decision.assets || []).map(asset => ({
+        ...asset, ref: `${decision.ref}:${asset.name}`, topic: decision.topic, slug: decision.slug, asset: asset.name,
+        decision: decision.ref, decisionTitle: decision.title, gist: latest?.decision?.answer || "",
+        verdict: decision.verdict, thread: decision.thread, chat: decision.chat, aliases: [],
+        updated: asset.versions.length ? asset.versions[asset.versions.length - 1].moment : decision.updated,
+      }));
+      items.push({ ...decision, versions: decision.versions.map(version => ({ ...version, files: [] })), assetRefs: assets.map(asset => asset.ref) }, ...assets);
+    }
+    return { ...topic, items };
+  }
+  // The thread an item's chat is: an asset's is its decision's.
+  const threadOf = item => item.decision || item.ref;
   const texts = new Map();
   function text(address) {
     if (!texts.has(address)) texts.set(address, fetch(address).then(response => response.ok ? response.text() : Promise.reject(new Error("gone"))));
@@ -366,7 +386,7 @@
   const said = () => state.search.toLowerCase().split(/\s+/).filter(Boolean);
 
   // What an item is: a decision, or an asset (one file, or several variants of one).
-  const kindOf = item => last(item).decision ? "decision" : "asset";
+  const kindOf = item => item.asset ? "asset" : "decision";
   const SECTIONS = [["decision", "Decisions", "decision", "decisions"], ["asset", "Assets", "asset", "assets"]];
   // What the viewer steps through with the arrows: a topic's assets, as the list shows them.
   const viewable = topic => topic.items.filter(item => kindOf(item) === "asset");
@@ -374,7 +394,10 @@
   const variantsOf = item => last(item).files;
   const preferredOf = item => item.preferred?.version === last(item).version ? variantsOf(item).find(file => file.name === item.preferred.name) || null : null;
   const varied = item => !!item.variants;
-  const unpreferred = item => varied(item) && variantsOf(item).length > 1 && !preferredOf(item);
+  // An asset with variants and none preferred; a decision holding one cannot be accepted yet.
+  const unpreferred = item => item.assetRefs
+    ? item.assetRefs.some(ref => { const asset = itemAt(ref); return asset && unpreferred(asset); })
+    : varied(item) && variantsOf(item).length > 1 && !preferredOf(item);
   const awaitsOwner = item => item.verdict === "open";
   const joined = parts => parts.filter(Boolean).join(" · ");
 
@@ -565,9 +588,9 @@
     if (open) {
       const alternatives = decision.alternatives.length ? `<div class="considered"><span class="label">Considered instead</span><ul class="alternatives">${decision.alternatives.map(entry =>
         `<li><span class="option">${inline(entry.option)}</span> — <span class="why">${inline(entry.why_not)}</span></li>`).join("")}</ul></div>` : "";
-      const concerns = latest.files.length ? `<p class="where">Concerns ${latest.files.map(file => `<code>${escape(file.name)}</code>`).join(" ")}</p>` : "";
-      body = `<div class="expanded"><div class="context">${markdown(decision.answer)}</div>${alternatives}${concerns}
-        <div class="actions"><span class="hint" data-problem="${escape(item.ref)}"></span><div class="buttons">${verdictButtons(item.ref, item.verdict)}</div></div></div>`;
+      const hint = unpreferred(item) && item.verdict === "open" ? "Prefer a variant of each asset to accept it." : "";
+      body = `<div class="expanded"><div class="context">${markdown(decision.answer)}</div>${alternatives}
+        <div class="actions"><span class="hint" data-problem="${escape(item.ref)}">${escape(hint)}</span><div class="buttons">${verdictButtons(item.ref, item.verdict)}</div></div></div>`;
     }
     return `<div class="item-bubble decision${open ? " open" : ""}${hitClass(item)}" data-key="${escape(item.ref)}" id="item-${escape(item.ref)}">
       <div class="head" data-expand="${escape(item.ref)}">${head}</div>${body}</div>`;
@@ -600,10 +623,10 @@
     if (file.type === "text") return `<pre class="face text" data-text="${address}" data-lines="40" data-own>…</pre>`;
     return `<span class="face kind">${ICONS.file}<span>${escape(extension(file.name).toUpperCase() || file.type)}</span></span>`;
   }
-  // An asset's state, at the card's top right: accepted, rejected or dropped; with several variants
-  // and none preferred, how many more there are; one preferred, a star; open with one, nothing.
+  // An asset's state, at the card's top right: with several variants and none preferred, how many
+  // more there are; one preferred, a star; otherwise nothing.
+  // The verdict is its decision's: an asset's card shows only its variants' state.
   function badge(item) {
-    if (item.verdict !== "open") return verdictMark(item).replace(/ data-tip="[^"]*"( data-tip-means="[^"]*")?/, "");
     const count = variantsOf(item).length;
     if (count > 1 && !preferredOf(item)) return `<span class="verdict-mark more" role="img" aria-label="${count} variants, none preferred">+${count - 1}</span>`;
     if (count > 1) return `<span class="verdict-mark starred" role="img" aria-label="A variant preferred">${ICONS.star}</span>`;
@@ -637,16 +660,24 @@
   const layoutSwitch = () => `<span class="layouts" role="group" aria-label="Show assets as">${Object.entries(LAYOUTS).map(([name, label]) =>
     `<button type="button" data-layout="${name}" aria-pressed="${state.layout === name}" aria-label="${label}" title="${label}">${LAYOUT_ICONS[name]}</button>`).join("")}</span>`;
 
+  // A decision's assets under it: a grid or a list, switchable, once it holds more than one.
+  function assetsOf(item, items) {
+    const found = items.filter(entry => entry.decision === item.ref);
+    if (!found.length) return "";
+    const layout = found.length > 1 ? state.layout : "list";
+    const switching = found.length > 1 ? `<div class="assets-head">${layoutSwitch()}</div>` : "";
+    return `<div class="decision-assets" data-key="assets:${escape(item.ref)}">${switching}<div class="assets ${layout}">${found.map(entry => assetCard(entry, layout)).join("")}</div></div>`;
+  }
   function sections(topic, items) {
-    return SECTIONS.map(([kind, label]) => {
-      const found = items.filter(item => kindOf(item) === kind);
-      if (!found.length) return "";
-      const key = `${topic.name}/${kind}`, folded = state.folded.has(key);
-      const body = folded ? "" : kind === "decision" ? `<div class="item-bubbles">${found.map(bubble).join("")}</div>`
-        : `<div class="assets ${state.layout}">${found.map(item => assetCard(item, state.layout)).join("")}</div>`;
-      const switching = kind === "asset" && !folded ? layoutSwitch() : "";
-      return `<section class="section ${kind}${folded ? " folded" : ""}" data-key="section:${kind}"><h3 class="label"><button type="button" class="fold" data-fold="${escape(key)}" aria-expanded="${!folded}">${ICONS.caret}${label} <span class="count">· ${found.length}</span></button>${switching}</h3>${body}</section>`;
-    }).join("");
+    const decisions = items.filter(item => kindOf(item) === "decision");
+    // A search may keep an asset and not its decision: the decision stays, to hold it.
+    const holding = items.filter(item => item.asset && !decisions.some(entry => entry.ref === item.decision))
+      .map(item => itemAt(item.decision)).filter(Boolean);
+    const shown = [...decisions, ...holding.filter((item, index) => holding.indexOf(item) === index)];
+    if (!shown.length) return "";
+    const key = `${topic.name}/decision`, folded = state.folded.has(key);
+    const body = folded ? "" : `<div class="item-bubbles">${shown.map(item => bubble(item) + assetsOf(item, items)).join("")}</div>`;
+    return `<section class="section decision${folded ? " folded" : ""}" data-key="section:decision"><h3 class="label"><button type="button" class="fold" data-fold="${escape(key)}" aria-expanded="${!folded}">${ICONS.caret}Decisions <span class="count">· ${shown.length}</span></button></h3>${body}</section>`;
   }
 
   function kindCounts(items) {
@@ -659,7 +690,7 @@
 
   function sheet(topic, items) {
     const open = state.open.has(topic.name), key = `topic:${topic.name}`;
-    const waiting = topic.items.filter(awaitsOwner).length;
+    const waiting = topic.items.filter(item => !item.asset && awaitsOwner(item)).length;
     const head = `<div class="topic-head" data-toggle="${escape(topic.name)}">
         <span class="title-line"><button type="button" class="name" aria-expanded="${open}">${escape(topic.name)}</button>${topic.status ? `<span class="status">${escape(topic.status)}</span>` : ""}</span>
         <span class="corner">${stateMark(topic)}${time(topic.active)}${chatCorner(key, topic.thread, topic.chat)}</span>
@@ -688,7 +719,7 @@
       shown.sort(([one], [two]) => (rank.get(one.name) ?? Infinity) - (rank.get(two.name) ?? Infinity));
     }
     const empty = !state.topics.length
-      ? '<div class="empty" data-key="empty"><strong>No topics yet</strong><span>Agents open a topic for their work with <code>.nock/nock topics create</code> and submit items into it; they appear here.</span></div>'
+      ? '<div class="empty" data-key="empty"><strong>No topics yet</strong><span>Agents open a topic for their work in <code>.nock/shared/topics/</code> and record decisions in it; they appear here.</span></div>'
       : !shown.length ? `<div class="empty" data-key="empty"><strong>No matches</strong><span>No topic or item fits the ${said().length ? "search" : "filter"}${state.sift !== "all" || !state.closed ? " as filtered" : ""}.</span></div>` : "";
     studio.morph($("topics-main"), empty + shown.map(([topic, items]) => sheet(topic, items)).join(""));
   }
@@ -697,7 +728,7 @@
 
   // Compare is for versions: an item with options shows one version's options side by side instead.
   // A file that is only a link to download (`binary`) has nothing to show side by side.
-  const comparable = item => item.versions.length > 1 && !varied(item) && !last(item).decision
+  const comparable = item => item.versions.length > 1 && !varied(item)
     && last(item).files.length > 0 && last(item).files[0].type !== "binary";
   function chosen(item) {
     const numbers = item.versions.map(version => version.version);
@@ -789,7 +820,7 @@
     const path = !several && first ? pathButton(first, 0) : "";
     let content, heads = "";
     if (viewing) {
-      const address = `topics/view/${[item.topic, item.slug, shownVersion.version, viewing.name].map(encodeURIComponent).join("/")}`;
+      const address = `topics/view/${[item.topic, item.slug, item.asset, shownVersion.version, viewing.name].map(encodeURIComponent).join("/")}`;
       content = `<div class="panes" data-key="view:${escape(address)}"><div class="column"><div class="pane"><iframe class="view" data-key="${address}" src="${address}" sandbox="allow-scripts" title="${escape(viewing.title || viewing.name)}"></iframe></div></div></div>`;
     } else if (comparing && panes.every(entry => entry.file?.type === "text")) {
       const pair = panes.map(entry => fileUrl(item, entry.version, entry.file.name)).join(" ");
@@ -803,16 +834,18 @@
           ? `<div class="stack${entry.file?.type === "image" ? " fit" : ""}"><div class="head">${picker(item, sides[index], numbers[index])}</div>${pane(item, entry.version, entry.file, index)}</div>`
           : varied(item) && entry.file ? `<div class="pane-wrap">${pane(item, entry.version, entry.file, index)}${star(item, entry.version, entry.file)}</div>` : pane(item, entry.version, entry.file, index)}${several && entry.file ? optionBar(item, entry.version, entry.file, index) : ""}</div>`).join("")}</div>`;
     }
-    const hint = unpreferred(item) && item.verdict === "open" ? "Prefer a variant to accept it: star the one you choose." : "";
-    const actions = `<div class="actions"><span class="hint" data-problem="${escape(item.ref)}">${escape(hint)}</span><div class="buttons">${verdictButtons(item.ref, item.verdict)}</div></div>`;
+    // The verdict is its decision's: the viewer says which decision it shows, and links to it.
+    const hint = unpreferred(item) && item.verdict === "open" ? "Prefer a variant: its decision is accepted only once one is." : "";
+    const gist = item.gist ? `<span class="gist">${inline(item.gist.split(/\n\n/)[0].slice(0, 280))}</span>` : "";
+    const actions = `<div class="actions"><div class="belongs" data-key="belongs"><span class="label">Shows</span><a class="decision-link" href="#topics/${escape(item.decision)}" data-go="${escape(item.decision)}">${titled(item.decisionTitle || "")}</a>${verdictMark(itemAt(item.decision) || item)}${gist}</div><span class="hint" data-problem="${escape(item.ref)}">${escape(hint)}</span></div>`;
     // Every asset's viewer is one size, most of the screen, whatever it holds: what it holds scrolls inside.
     const look = viewing ? "page" : first?.type === "image" || first?.type === "video" ? "image" : first?.type === "text" && !comparing && !several ? "text" : "wide";
     const description = item.description ? `<p class="description">${titled(item.description)}</p>` : "";
     return `<div class="overlay" data-key="overlay:${escape(item.ref)}" data-backdrop>
       <article class="sheet open viewer ${look}${comparing ? " comparing" : ""}" role="dialog" aria-modal="true" aria-label="${escape(item.title)}">
-        <div class="ribbon"><div class="titling"><h2>${titled(item.title)}</h2>${description}</div><span class="side">${verdictMark(item)}${time(item.updated)}</span><button type="button" class="close" data-close aria-label="Close (Esc)" title="Close (Esc)">×</button></div>
+        <div class="ribbon"><div class="titling"><h2>${titled(item.title)}</h2>${description}</div><span class="side">${time(item.updated)}</span><button type="button" class="close" data-close aria-label="Close (Esc)" title="Close (Esc)">×</button></div>
         <div class="main">
-          <div class="line versions">${pickers ? `<span class="pickers">${pickers}</span>` : ""}${tabs}${viewing ? "" : path}<span class="end">${compare}${chatCorner(item.ref, item.thread, item.chat)}</span></div>
+          <div class="line versions">${pickers ? `<span class="pickers">${pickers}</span>` : ""}${tabs}${viewing ? "" : path}<span class="end">${compare}${chatCorner(threadOf(item), item.thread, item.chat)}</span></div>
           ${heads}<div class="content">${content}</div>${actions}</div>
       </article></div>`;
   }
@@ -1097,10 +1130,11 @@
   }
 
   function drawCounts() {
-    const open = everyItem().filter(awaitsOwner).length;
-    const busy = state.topics.filter(topic => topic.items.some(awaitsOwner)).length;
+    const open = everyItem().filter(item => !item.asset && awaitsOwner(item)).length;
+    const busy = state.topics.filter(topic => topic.items.some(item => !item.asset && awaitsOwner(item))).length;
     const words = open ? `${open} open in ${busy} ${busy === 1 ? "topic" : "topics"}` : "nothing waits on you";
-    studio.summary("topics", state.topics.length ? words : "no topics yet");
+    const listening = state.listening?.length ? " · an agent listens" : "";
+    studio.summary("topics", state.topics.length ? words + listening : "no topics yet");
   }
 
   function draw() {
@@ -1144,7 +1178,8 @@
       if (raw === state.seen) return;
       state.seen = raw;
       const data = JSON.parse(raw);
-      state.topics = data.topics;
+      state.topics = data.topics.map(expand);
+      state.listening = data.listening || [];
       state.ask = data.ask;
       state.transcription = data.transcription || null;
       if (said().length) find(false);
@@ -1185,8 +1220,8 @@
       state.modal = null;
       state.reveal_to = `item-${item.ref}`;
     } else view(item, false);
-    if (focus === "chat" || focus === "reply") state.chats.add(item.ref);
-    if (focus === "reply") state.focus = `reply:${item.ref}`;
+    if (focus === "chat" || focus === "reply") state.chats.add(threadOf(item));
+    if (focus === "reply") state.focus = `reply:${threadOf(item)}`;
     const number = focus.match(/^v(\d+)$/);
     if (number && kindOf(item) !== "decision") state.single = Number(number[1]);
   }
@@ -1257,8 +1292,9 @@
 
   // Address now: an agent answers the owner's waiting message in this one thread, at once.
   async function addressNowFor(key) {
-    try { await post("chat/address", where(key)); } catch (error) { studio.toast(error.message); return; }
-    studio.toast("An agent is answering your message.");
+    let done;
+    try { done = await post("chat/address", where(key)); } catch (error) { studio.toast(error.message); return; }
+    studio.toast(done.listening ? "The agent waiting on its inbox has your message first." : "An agent is answering your message.");
     state.seen = "";
     await load();
   }
@@ -1267,7 +1303,7 @@
     const item = itemAt(button.dataset.ref);
     if (!item) return;
     const taking = button.getAttribute("aria-pressed") === "true";
-    const body = { ref: item.ref, version: Number(button.dataset.version), ...(taking ? {} : { name: button.dataset.prefer }) };
+    const body = { ref: item.decision || item.ref, asset: item.asset, version: Number(button.dataset.version), ...(taking ? {} : { name: button.dataset.prefer }) };
     try { await post("topics/prefer", body); } catch (error) { studio.toast(error.message); return; }
     state.seen = "";
     await load();
@@ -1433,7 +1469,7 @@
     if (target.closest("[data-ask-cancel]")) { post("topics/ask/cancel", {}).then(found => { state.ask = found; draw(); }); return; }
     if (target.closest("[data-ask-dismiss]")) { state.dismissed = state.ask?.started; draw(); return; }
     const opening = target.closest("[data-view-chat]");
-    if (opening) { const item = itemAt(opening.dataset.viewChat); if (item) { view(item); state.chats.add(item.ref); draw(); } return; }
+    if (opening) { const item = itemAt(opening.dataset.viewChat); if (item) { view(item); state.chats.add(threadOf(item)); draw(); } return; }
     const chatting = target.closest("[data-chat]");
     if (chatting) { toggleChat(chatting.dataset.chat); return; }
     const sending = target.closest("[data-send]");
@@ -1676,13 +1712,14 @@
     const kept = closed ? topic.items : topic.items.filter(item => item.verdict !== "dropped");
     if (filter.whole) return filter.whole(topic) ? kept : null;
     if (!filter.item) return kept;
-    const items = kept.filter(filter.item);
+    // An asset goes with its decision.
+    const items = kept.filter(item => filter.item(item.asset ? itemAt(item.decision) || item : item));
     return items.length || filter.topic?.(topic) ? items : null;
   }
   function siftCount(sift) {
     const kept = state.topics.map(topic => [topic, sifted(topic, sift)]).filter(([, items]) => items);
     if (SIFTS[sift].whole || sift === "all") return kept.length;
-    return kept.reduce((sum, [topic, items]) => sum + items.length + (SIFTS[sift].topic?.(topic) ? 1 : 0), 0);
+    return kept.reduce((sum, [topic, items]) => sum + items.filter(item => !item.asset).length + (SIFTS[sift].topic?.(topic) ? 1 : 0), 0);
   }
   const BROOM = '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M13.5 2.5 9.7 9.2M6.2 9.4l5.6 3.2-1.1 2c-.9 1.6-2.6 2.6-4.4 2.6H3.4l.6-1.4M6.2 9.4l-1 1.8c-.6 1.1-1.3 2.5-1.8 3.9M6.2 9.4c.9-1.6 2.8-2.1 4.3-1.3l.2.1c1.5.9 2 2.8 1.1 4.4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M7.3 13.4 6.4 15M9.6 14 9 15.3" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>';
   function drawSift() {

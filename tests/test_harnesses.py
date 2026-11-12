@@ -62,7 +62,7 @@ def test_only_claude_code_is_wired_where_no_other_harness_is_found(repository: P
         "CLAUDE.md",
         ".claude/settings.json",
         ".claude/skills/nock-work/SKILL.md",
-        ".claude/agents/nock-reflect-toolbox.md",
+        ".claude/agents/nock-toolbox.md",
     } <= listed
     assert not any(path.startswith((".agents", ".codex", ".cursor", "AGENTS")) for path in listed)
     assert "(updated)" not in "\n".join(said), "everything is new"
@@ -89,7 +89,7 @@ def test_codex_found_by_its_directory_gets_its_skill_hooks_and_the_agents_md_sec
     assert not (repository / ".agents" / "skills" / "nock-triage").exists()
     assert hooks_of(repository / ".codex" / "hooks.json") == {
         event: [CODEX_COMMAND.format(event=event)]
-        for event in ("SessionStart", "Stop", "UserPromptSubmit")
+        for event in ("PostToolUse", "SessionStart", "Stop", "UserPromptSubmit")
     }
     stop = json.loads((repository / ".codex" / "hooks.json").read_text())["hooks"]["Stop"]
     assert stop == [
@@ -135,12 +135,12 @@ def test_hooks_files_keep_everyone_else_s_entries_and_replace_nock_s(repository:
     codex = repository / ".codex" / "hooks.json"
     codex.parent.mkdir()
     mine = {"hooks": [{"type": "command", "command": "./mine.sh"}]}
-    stale = {"hooks": [{"type": "command", "command": ".nock/nock hook PostToolUse codex"}]}
-    codex.write_text(json.dumps({"model": "x", "hooks": {"Stop": [mine], "PostToolUse": [stale]}}))
+    stale = {"hooks": [{"type": "command", "command": ".nock/nock hook PreToolUse codex"}]}
+    codex.write_text(json.dumps({"model": "x", "hooks": {"Stop": [mine], "PreToolUse": [stale]}}))
     Installer(repository).install()
     wired = json.loads(codex.read_text())
     assert wired["model"] == "x"
-    assert "PostToolUse" not in wired["hooks"], "nock's stale entry is gone, and with it the event"
+    assert "PreToolUse" not in wired["hooks"], "nock's stale entry is gone, and with it the event"
     assert hooks_of(codex)["Stop"] == ["./mine.sh", CODEX_COMMAND.format(event="Stop")]
     before = codex.read_text()
     again = "\n".join(Installer(repository).install())
@@ -196,7 +196,7 @@ def test_the_agents_md_section_follows_the_committed_settings(repository: Path) 
     Installer(repository).install()
     agents = repository / "AGENTS.md"
     agents.write_text(agents.read_text() + "\n## Ours\n\nKept.\n")
-    config = repository / ".nock" / "config.toml"
+    config = repository / ".nock" / "shared" / "settings.toml"
     config.write_text(config.read_text().replace("reminders = true", "reminders = false"))
     git(repository, "add", "-A")
     git(repository, "commit", "-qm", "Quiet nock")

@@ -1,0 +1,19 @@
+title = "UI fuzz"
+summary = "Drive every page and dialog of the web UI with odd input, sizes, themes and states; record each break as a decision."
+relevant = "Projects with a web UI that runs locally against a dev stack."
+requires = { commands = ["node"] }
+adopted = "recommended"
+agents = []
+
+[due]
+days = 30
+
+[material.earlier]
+topic = "fuzz-ui"
+
+[lead]
+reads = ["earlier"]
+writes = ["report.md"]
+
+[end]
+kinds = ["layout", "overflow", "console", "crash", "error", "accessibility", "state", "other"]

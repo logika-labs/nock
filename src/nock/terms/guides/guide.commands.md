@@ -13,22 +13,23 @@ description: Every nock command, and the exit codes that tell an agent what to d
 | `nock` | the toolbox: the project's tools first, then nock's |
 | `nock check [NAME…] [--all] [--fix]` | run the checks the branch's changes can affect (`--all` every one, or exactly the checks and chains named), side by side; prints nothing when all pass |
 | `nock run -- COMMAND` | run anything supervised and condensed (your agent asks you, as for the command itself) |
-| `nock docs [TERM…]` | nock's documentation for agents, a short article per term: with no term, the terms |
-| `nock calls`, `stats`, `sessions`, `query SQL` | the telemetry |
-| `nock status` | a round due, the open items by topic, what waits on agents in Topics, an unshared summary, a logika round to offer |
-| `nock topics list [--query Q] [--state S] [--full]`, `create JSON`, `update TOPIC [JSON] [--reply MD] [--revive MD]`, `delete TOPIC`, `show TOPIC`, `judge TOPIC JSON`, `migrate [--mark-seen]` | the topics: a summary and the list (in the owner's order: by priority, then newest activity; or ranked by a query, or of one state), opened, their state, status and priority kept current, changed or answered in, revived, deleted when empty, in full, every open item judged (asks the owner), an earlier nock's decisions and review items moved in, earlier topics given their state |
-| `nock items list [TOPIC] [--query Q] [--full]`, `create TOPIC JSON`, `update REF [JSON] [--version JSON] [--reply MD]`, `delete REF`, `show REF`, `judge REF JSON` | the items: a summary and the list, submitted, changed in place or by a new version or answered in, deleted while open and unanswered, in full, judged (asks the owner) |
-| `nock topics ask QUESTION`, `topics answer JSON` | the studio's Ask: a fresh agent answers a question about the topics; only that agent submits the answer |
-| `nock studio [JSON]` | the owner's page: the topics and their items, their Timeline, a chat with a headless agent, and Tidy up |
-| `nock consult JSON` | a fresh agent advises on a task: the topics, items, tools, checks and docs that bear on it; the caller waits |
-| `nock advise JSON` | the consultant's advice, submitted; only a consultant nock dispatched runs it |
-| `nock usage` | what nock shares with its makers, the owner's answer, and exactly what the next report carries |
-| `nock usage share yes\|no` | records the owner's answer on sharing the usage report |
-| `nock reflect [KIND]`, `nock reflect [KIND] finish JSON` | a reflection round: nock's own (`/nock-reflect`), or another kind, `logika` (`/nock-reflect-logika`) |
-| `nock share [JSON]` | a round's summary as it would be sent, and sending it (asks the owner) |
+| `nock docs [TERM…]` | nock's documentation for agents, a short article per term: with no term, the terms; `files` the store's files |
+| `nock search QUERY [--topic T]` | the topics and decisions matching, the strongest first, each with its view |
+| `nock inbox [--wait] [--deadline S] [--all]` | what you said that no agent has addressed: Address now, the global chat, comments, verdicts; `--wait` waits for it |
+| `nock consult [QUESTION] [--context C] [--submit JSON]` | a fresh agent answers from the project's memory: advice before a change, or your question from the studio's Ask; only that agent submits |
+| `nock status` | a round due, the open decisions by topic, what waits on agents, changes in the store that don't hold, an unshared summary, a logika round to offer |
+| `nock studio [--port N] [--open]` | your page: the topics, their decisions and assets, the Timeline, a chat with a headless agent, and Tidy up |
+| `nock config [KEY [VALUE]] [--local]` | the team's and this machine's settings: listed, read, set (`share` too: your answer on sharing the usage report) |
+| `nock query SQL\|calls\|stats\|sessions` | the telemetry: read-only SQL, or one of its views |
+| `nock reflect [NAME]`, `nock reflect --submit JSON` | the rounds: listed; one protocol's started (`nock.toolbox`), or a namespace's at once (`nock`: `/nock-reflect`; `logika`: `/logika`); a round's result recorded |
+| `nock share [JSON]` | the fit round's summary as it would be sent, and sending it (asks you) |
 | `nock report [TEXT] [--yes]` | send nock's makers what you need from nock or what is wrong with it (shows it and asks; with no terminal, only with `--yes`) |
-| `nock gen write`, `new`, `add`, `set`, `rm`, `show`, `bind`, `unbind` | generators |
-| `nock init`, `nock upgrade` | install (or re-wire), and upgrade the vendored core to the latest release, with a three-way merge (each asks the owner) |
+| `nock gen [--list]` | render the generated files and write those out of step |
+| `nock init`, `nock upgrade` | install (or re-wire), and upgrade the vendored core to the latest release, with a three-way merge, moving earlier topics into the store once (each asks you) |
+
+Agents change the topics by writing files in `.nock/shared/` — an event per
+file, a version per folder — which nock checks, completes and commits
+(`nock docs files`).
 
 Every command takes `--json` and `--full`, and every cached command also takes
 `--fresh`.

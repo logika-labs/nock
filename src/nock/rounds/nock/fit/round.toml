@@ -1,0 +1,28 @@
+title = "Fit"
+summary = "Judge how nock serves this project, and recommend the rounds that fit it."
+relevant = "Every project with nock."
+adopted = "always"
+
+[due]
+sessions = 15
+days = 7
+
+[material.evidence]
+python = "evidence"
+
+[material.catalogue]
+python = "catalogue"
+
+[lead]
+reads = ["evidence", "catalogue"]
+writes = ["report.md", "share.md"]
+share = "share.md"
+
+[[agents]]
+name = "fit"
+reads = ["evidence", "catalogue"]
+
+[end]
+checks = ["nock-share"]
+quick = ["nock-share"]
+kinds = ["recommend", "other"]

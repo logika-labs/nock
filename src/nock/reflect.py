@@ -1,16 +1,9 @@
-"""Reflection rounds, and nock's own kind of them. A round is of a kind
-(`kinds.KINDS`): each kind is a `Round` — its name, its skill, when it can
-run and is due, what it reads, the files its lead writes and the checks its
-end must pass, where its rounds are kept. `nock reflect [KIND]` starts one
-and `nock reflect [KIND] finish JSON` checks it and commits it.
-
-nock's own kind, `Reflection`, the default: an agent following the
-`/nock-reflect` skill has three subagents look at what the work has been
-since the last round — one improves the toolbox (`.nock/tools/`), one keeps
-the map of topics (`.nock/topics/map.md`), one weighs how well nock
-itself is serving the project — and writes the owner a report, and a summary
-abstract enough to share. Each round keeps its numbers, so the next holds its
-changes to them, and the first is the baseline."""
+"""What nock's own rounds read (the `nock.*` protocols in `nock.rounds`):
+the telemetry turned into the toolbox's material (`Material`), the topics
+into the map's (`Knowledge`), the numbers of every round into the fit's
+(`Evidence`); `Reflection`, the window since the last nock round and its
+metrics; and a round's record (`Record`). Each round keeps its numbers, so
+the next holds its changes to them, and the first is the baseline."""
 
 from __future__ import annotations
 
@@ -27,16 +20,14 @@ from enum import StrEnum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, NotRequired, TypedDict
 
-from nock.checks import Checks
 from nock.commands import schema_of
-from nock.errors import Failed, PreconditionError
-from nock.git import Git, GitError
+from nock.errors import PreconditionError
+from nock.git import GitError
 from nock.project import HEADLESS
-from nock.schema import validate
 from nock.sessions import Sessions
 from nock.topics import CITATION, Topics
 from nock.topics import Verdict as ItemVerdict
-from nock.utils import format_duration, now, parse_moment, read_json, write_json
+from nock.utils import format_duration, parse_moment, read_json, write_json
 
 if TYPE_CHECKING:
     from nock.project import Project
@@ -49,17 +40,13 @@ TWO_WORDS = {
 # Where an agent cut a command's output down by hand.
 TRIMMERS = re.compile(r"\|\s*(head|tail|grep|sed -n|awk|cut|wc)\b")
 SECTION_ROWS = 25
-# A round is due after this many sessions since the last one, or this many days, whichever
-# comes first, given a session to look at.
-SESSIONS = 15
-DAYS = 7
 # What the round's lead writes beside its record.
 REPORT = "report.md"
 SHARE = "share.md"
 # The checks nock's round must pass before it counts: nock's own.
-ROUND_CHECKS = ("nock-tools", "nock-generators", "nock-map", "nock-share")
+# nock's round whose records keep its metrics and its shareable summary.
+FIT = "nock.fit"
 # Those quick enough for the end of a turn, when a round is left open.
-QUICK_CHECKS = ("nock-map", "nock-share")
 ROUND_FILE = "round.json"
 RECORD_FILE = "record.json"
 # The window's calls, each marked `wrapped` when its exit code is the one a
@@ -98,13 +85,15 @@ class Change(TypedDict):
     kind: Literal[
         "add", "change", "retire", "check", "generator",
         "validate", "path", "timeout", "rule", "invariant", "error", "risk",
-        "instrumentation", "identity", "dimension", "funnel", "milestone", "view", "other",
+        "instrumentation", "identity", "dimension", "funnel", "milestone", "view", "recommend",
+        "other",
     ]  # fmt: skip
     """add, change, retire, check, generator — the toolbox; validate, path,
     timeout, rule, invariant, error — a logika round's rules; risk — a risk
     it declared on an event, or ruled out with its reason; instrumentation
     — the fields it added to the code for them; identity, dimension, funnel,
-    milestone, view — its analytics; other."""
+    milestone, view — its analytics; recommend — a round nock.fit
+    recommends; other."""
     target: str
     """The tool, check or file: `failures`, `.nock/tools/db.py`; in a logika
     round, the event or rule: `checkout`, `receipt_continuity`."""
@@ -125,6 +114,8 @@ class Verdict(TypedDict):
 
 
 class Record(TypedDict):
+    protocol: str
+    """The round's protocol: `nock.toolbox`, `logika.rules`."""
     summary: str
     """The round in a sentence or two."""
     changes: list[Change]
@@ -224,22 +215,14 @@ def said_spend(cost: float | None, unpriced: int) -> str:
 
 
 class Rounds:
-    """Every round: `.nock/reflections/DATE/` — its record, report and shareable
-    summary, committed — and, while it runs, what it reads, in
-    `.nock/local/reflections/DATE/`."""
+    """A protocol's rounds: `directory/DATE/` — its record and the lead's
+    files, in the store — and, while one runs, what it reads, in
+    `scratch/DATE/`."""
 
-    def __init__(self, project: Project, place: str = "") -> None:
+    def __init__(self, project: Project, directory: Path, scratch: Path) -> None:
         self.project = project
-        # A kind's rounds are a directory of their own, so they never move nock's window.
-        self.place = [place] if place else []
-
-    @property
-    def directory(self) -> Path:
-        return self.project.code_path("reflections", *self.place)
-
-    @property
-    def scratch(self) -> Path:
-        return self.project.local.joinpath("reflections", *self.place)
+        self.directory = directory
+        self.scratch = scratch
 
     def all(self) -> list[dict[str, Any]]:
         """Every finished round, oldest first."""
@@ -284,219 +267,17 @@ def schema() -> dict[str, Any]:
     return schema_of(Record)
 
 
-def commit(project: Project, message: str, also: tuple[str, ...] = ()) -> None:
-    """Commit a round: `.nock/` (and `also`) in the working tree, and the main
-    checkout's topics when the round ran in a worktree; nothing else in either."""
-    places = [(project.here, [".nock", *also])]
-    if project.root != project.here:
-        places.append((project.root, [".nock/topics"]))
-    for root, paths in places:
-        git = Git(root)
-        git("add", "--all", "--", *paths)
-        if git("diff", "--cached", "--name-only", "--", *paths):
-            git("commit", "--quiet", "--no-verify", "--only", "-m", message, "--", *paths)
-
-
-class Round:
-    """A kind of reflection round: what `kinds.KINDS` holds. A kind says its
-    name (the word after `nock reflect`), its skill, where it can run and
-    when it is due, what its lead reads (`begin`), the files the lead writes,
-    the checks its end must pass, and what its record keeps (`kept`)."""
-
-    kind = ""
-    # The kind run by `nock reflect` alone; its rounds are `.nock/reflections/DATE/`.
-    default = False
-    title = ""
-    skill = ""
-    # What the round's lead writes beside its record.
-    files: tuple[str, ...] = (REPORT,)
-    # nock checks its end must pass; the quick ones also judge a round left open.
-    checks: tuple[str, ...] = ()
-    quick: tuple[str, ...] = ()
-    # Committed with `.nock/` when it finishes.
-    also: tuple[str, ...] = ()
+class Reflection:
+    """nock's own numbers: the window since the last nock round (`nock.fit`'s,
+    whose records keep the metrics), the metrics over it, each tool's snapshot."""
 
     def __init__(self, project: Project) -> None:
         self.project = project
-        self.rounds = Rounds(project, "" if self.default else self.kind)
-
-    @classmethod
-    def wanted(cls, root: Path) -> bool:
-        """Whether `nock init` installs its skill in the repository at `root`."""
-        return True
-
-    @property
-    def command(self) -> str:
-        return "reflect" if self.default else f"reflect {self.kind}"
-
-    def unavailable(self) -> str:
-        """Why a round of this kind cannot run here, or nothing when it can."""
-        return ""
-
-    def due(self) -> str:
-        return ""
-
-    def standing(self) -> dict[str, Any] | None:
-        """For `nock status` and the session start, of a kind that is offered
-        rather than due: nothing where it cannot run."""
-        if self.unavailable():
-            return None
-        last = self.rounds.last()
-        return {
-            "due": self.due() or None,
-            "last": last.get("finished") if last else None,
-            "skill": (self.project.here / ".claude" / "skills" / self.skill / "SKILL.md").is_file(),
-        }
-
-    def begin(self, name: str, scratch: Path) -> dict[str, Any]:
-        """Write what the round reads into `scratch`: `since`, `material`
-        (part → file) and what `round.json` keeps for the record."""
-        raise NotImplementedError
-
-    def problems(self, record: Record | None) -> list[str]:
-        """What its end-of-round checks find: `checks` (only `quick` with no
-        record, for a round left open), and the record's own."""
-        names = list(self.checks if record is not None else self.quick)
-        return Checks(self.project).run(names).problems() if names else []
-
-    def kept(self, name: str, started: dict[str, Any]) -> dict[str, Any]:
-        """What the record keeps beside the lead's: the numbers it started from."""
-        return {}
-
-    def start(self) -> dict[str, Any]:
-        """Start a round — or pick up the one started and not finished, its
-        material and start left as they were written, so a second start
-        overwrites nothing; another round the same day is `DATE-2`."""
-        problem = self.unavailable()
-        if problem:
-            raise PreconditionError(problem)
-        name = self.rounds.current()
-        scratch = self.rounds.scratch / (name or self.rounds.new_name())
-        kept = scratch / ROUND_FILE
-        session = self.project.current_session()
-        if name is not None and kept.is_file():
-            started = read_json(kept)
-            if session and session not in started.get("sessions", []):
-                write_json(kept, {**started, "sessions": [*started.get("sessions", []), session]})
-            material = started.get("material") or {
-                path.stem: str(path) for path in sorted(scratch.glob("*.md"))
-            }
-            return {
-                **self.started(scratch.name, started["since"], material),
-                "picked_up": f"the round {scratch.name}, started {started['started']} and not "
-                "finished; its material stands as written then",
-            }
-        name = scratch.name
-        scratch.mkdir(parents=True, exist_ok=True)
-        begun = self.begin(name, scratch)
-        write_json(
-            kept,
-            {
-                "round": name,
-                "since": begun["since"],
-                "started": now(),
-                "sessions": [session] if session else [],
-                "material": begun["material"],
-                **begun["kept"],
-            },
+        self.rounds = Rounds(
+            project,
+            directory=project.root / ".nock" / "shared" / "rounds" / FIT,
+            scratch=project.local / "reflections" / FIT,
         )
-        (self.rounds.directory / name).mkdir(parents=True, exist_ok=True)
-        return self.started(name, begun["since"], begun["material"])
-
-    def started(self, name: str, since: str | None, material: dict[str, str]) -> dict[str, Any]:
-        """What `nock reflect` answers of a round under way."""
-        return {
-            "round": name,
-            "since": since,
-            # On the main checkout, wherever the round runs.
-            "material": material,
-            "write": [
-                str((self.rounds.directory / name / file).relative_to(self.project.here))
-                for file in self.files
-            ],
-            "finish": f".nock/nock {self.command} finish JSON",
-        }
-
-    def unwritten(self, name: str) -> list[str]:
-        directory = self.rounds.directory / name
-        return [
-            file
-            for file in self.files
-            if not (directory / file).is_file() or not (directory / file).read_text().strip()
-        ]
-
-    def finish(self, record: Record) -> dict[str, Any]:
-        """Check the round and commit it: its files written, its checks
-        passing, the record kept with what it started from."""
-        name = self.rounds.current()
-        if name is None:
-            raise PreconditionError(
-                f"no {self.title} is under way — `.nock/nock {self.command}` starts one"
-            )
-        validate(record, schema())
-        directory = self.rounds.directory / name
-        missing = self.unwritten(name)
-        if missing:
-            raise PreconditionError(f"write {' and '.join(missing)} in {directory} first")
-        problems = self.problems(record)
-        if problems:
-            raise Failed(f"the {self.title} does not pass its checks yet", problems)
-        started = read_json(self.rounds.scratch / name / ROUND_FILE)
-        write_json(
-            directory / RECORD_FILE,
-            {
-                **record,
-                "round": name,
-                "since": started["since"],
-                "started": started["started"],
-                "finished": now(),
-                **self.kept(name, started),
-            },
-        )
-        commit(self.project, f"{self.title.capitalize()} {name}: {record['summary']}", self.also)
-        return {
-            "round": name,
-            "wrote": [
-                str((directory / file).relative_to(self.project.here)) for file in self.files
-            ],
-        }
-
-    def left_open(self, session: str) -> str | None:
-        """What a session that started this kind's round, still under way,
-        has left to do before it may end; nothing otherwise."""
-        name = self.rounds.current()
-        if name is None:
-            return None
-        started = read_json(self.rounds.scratch / name / ROUND_FILE)
-        if session not in started.get("sessions", []):
-            return None
-        directory = self.rounds.directory / name
-        owed = [
-            f"write {file} in {directory.relative_to(self.project.here)}"
-            for file in self.unwritten(name)
-        ]
-        if not owed:
-            owed += [f"fix what its checks find: {problem}" for problem in self.problems(None)]
-        owed.append(f"then `.nock/nock {self.command} finish JSON` records it")
-        return (
-            f"nock: the {self.title} {name} is under way and not finished — "
-            + "; ".join(owed)
-            + ". Finish it, or tell the owner why it stays open."
-        )
-
-
-class Reflection(Round):
-    """nock's own round: the toolbox, the map and nock itself."""
-
-    kind = "nock"
-    default = True
-    title = "reflection round"
-    skill = "nock-reflect"
-    files = (REPORT, SHARE)
-    checks = ROUND_CHECKS
-    quick = QUICK_CHECKS
-
-    # --- when -----------------------------------------------------------------
 
     def window(self) -> Window:
         """The sessions since the last round, the transcripts read up to now first."""
@@ -506,54 +287,11 @@ class Reflection(Round):
         sessions.catch_up()
         return Window(since, sessions.since(since))
 
-    def due(self) -> str:
-        """Why a round is due, or nothing when it is not: enough sessions or
-        enough days since the last one, and at least one session to look at."""
-        window = self.window()
-        count = len(window.sessions)
-        if not count:
-            return ""
-        if count >= SESSIONS:
-            return f"a reflection round is due ({count} sessions since the last)"
-        days = self.days(window)
-        if days >= DAYS:
-            return f"a reflection round is due ({count} sessions over {days:.0f} days)"
-        return ""
-
     def days(self, window: Window) -> float:
         since = parse_moment(window.since) or (
             parse_moment(window.sessions[0]["started"]) if window.sessions else None
         )
         return (datetime.now(UTC) - since).total_seconds() / 86400 if since else 0
-
-    # --- a round ----------------------------------------------------------------
-
-    def begin(self, name: str, scratch: Path) -> dict[str, Any]:
-        """What its three parts read: the toolbox's, the map's and nock's."""
-        window = self.window()
-        last = self.rounds.last()
-        metrics = self.metrics(window)
-        material = {
-            "process": Material(self.project, window, last).render(),
-            "knowledge": Knowledge(self.project, window).render(),
-            "nock": Evidence(
-                self.project, metrics, self.rounds.all(), feedback(self.project, window.since)
-            ).render(),
-        }
-        for part, text in material.items():
-            (scratch / f"{part}.md").write_text(text)
-        return {
-            "since": window.since,
-            "material": {part: str(scratch / f"{part}.md") for part in material},
-            "kept": {"metrics": metrics},
-        }
-
-    def kept(self, name: str, started: dict[str, Any]) -> dict[str, Any]:
-        return {
-            "metrics": started["metrics"],
-            "snapshot": self.snapshot(started["since"]),
-            "shared": None,
-        }
 
     def record_shared(self, name: str, shared: dict[str, Any]) -> None:
         path = self.rounds.directory / name / RECORD_FILE

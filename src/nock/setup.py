@@ -11,19 +11,17 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from nock import harnesses
+from nock import harnesses, rounds
 from nock.configuration import Confirm
 from nock.errors import ConflictError, NotFoundError, PreconditionError
 from nock.git import Git, GitError
 from nock.harnesses import NATIVE_EVENTS, Event, Harness
 from nock.hooks import EDIT_TOOLS, NOCK_COMMANDS
-from nock.kinds import KINDS
-from nock.migration import migrate_in
 from nock.primer import AGENTS, MARK_START, PRIMER, refresh, with_section
 from nock.project import NOCK_DIRECTORY, Project
 from nock.releases import PYPI, VERSION, Releases
+from nock.shared import MAP, SETTINGS
 from nock.templates import Library
-from nock.topics import MAP
 from nock.utils import read_json, write_atomic, write_json
 
 PACKAGE = Path(__file__).resolve().parent
@@ -44,18 +42,6 @@ CONFIG = """\
 # machine-specific overrides go in .nock/local/config.toml (not committed).
 
 branch = "main"
-
-# Whether nock speaks up unasked: the primer's advice, the toolbox and an
-# occasional word on where things stand at a session's start, the owner's
-# word in the topics, the items about an edited file. false: silent unless asked.
-reminders = true
-
-# Whether nock shares a usage report with its makers, weekly: counts and
-# categories, and a random id for the project, never code, paths, names or
-# text. Unset until the owner answers nock's question, and nothing is sent
-# unless it is true; false sends nothing at all. `.nock/nock usage` shows
-# exactly what would be sent.
-# share = false
 
 # Checks `.nock/nock check` runs besides the @nock.check functions in
 # .nock/tools/. Exit 0 passes, 1 fails (the code is wrong), anything else
@@ -85,22 +71,47 @@ confirm = "ask"
 
 GITIGNORE = "local/\n__pycache__/\n"
 
+SETTINGS_STUB = """\
+# The team's settings: whatever the people working on this project share,
+# committed with the topics. `.nock/nock config` lists and sets them; the code's
+# settings are in .nock/config.toml, one machine's in .nock/local/config.toml.
+
+# Whether nock speaks up unasked: the primer's advice, the toolbox and an
+# occasional word on where things stand at a session's start, the owner's
+# word in the topics, the decisions about an edited file. false: silent unless asked.
+reminders = true
+
+# Whether nock shares a usage report with its makers, weekly: counts and
+# categories, and a random id for the project, never code, paths, names or
+# text. Unset until the owner answers nock's question, and nothing is sent
+# unless it is true; false sends nothing at all. `.nock/nock config share` shows
+# exactly what would be sent.
+# share = false
+"""
+
 MAP_STUB = """\
 # The map of topics
 
 When each topic and its items matter, and how they bear on each other,
 citing each item by its ref in brackets. Empty until the first reflection round
-writes it; until then, `.nock/nock topics list` lists the topics.
+writes it; until then, `.nock/local/views/index.md` lists the topics.
 """
 
 IMPORT_LINE = "@.nock/context.md"
-# Claude Code skills, from `briefs/NAME/`, besides each kind of round's where it is
-# wanted. Each SKILL.md and subagent (`agents/`) is its trigger and one line pointing
-# at its brief in `nock docs`, so the text always matches the vendored core and an
-# upgrade never rewrites a skill.
+# Claude Code skills, from `briefs/NAME/`, besides the rounds' (`install_rounds`).
+# Each SKILL.md is its trigger and one line pointing at its brief in `nock docs`,
+# so the text always matches the vendored core and an upgrade never rewrites a skill.
 SKILLS = ("nock-triage", "nock-work")
 # Skills any harness can follow, written to `.agents/skills/` too, where Codex reads them.
 PORTABLE_SKILLS = ("nock-work",)
+RETIRED_ROUND_FILES = (
+    ".claude/skills/nock-reflect-logika/SKILL.md",
+    ".claude/agents/nock-reflect-toolbox.md",
+    ".claude/agents/nock-reflect-map.md",
+    ".claude/agents/nock-reflect-nock.md",
+    ".claude/agents/nock-logika-rules.md",
+    ".claude/agents/nock-logika-analytics.md",
+)
 HOOK_COMMAND = '"$CLAUDE_PROJECT_DIR"/.nock/nock hook {event}'
 # Codex and Cursor give a hook no project directory, and may run it in a subdirectory.
 OTHER_HOOK_COMMAND = '"$(git rev-parse --show-toplevel)"/.nock/nock hook {event} {harness}'
@@ -274,7 +285,6 @@ class Installer:
             self.wire(harness)
         self.install_skills()
         self.start_map()
-        self.migrate()
         return self.lines()
 
     def lines(self) -> list[str]:
@@ -320,22 +330,23 @@ class Installer:
         self.changes.append(Change(relative, what, "removed"))
 
     def install_skills(self) -> None:
-        """`/nock-triage`, `/nock-work` and each kind of round's skill where it
-        is wanted (`/nock-reflect`; `/nock-reflect-logika` in a Logika project),
-        with the subagents its parts run as, for Claude Code; `/nock-work`,
-        which any harness can follow, also in the skills directory of each
-        other harness found that reads none written already (Codex's), and
-        taken out of a directory no harness found reads. Kept in step with the
-        core like the primer."""
+        """`/nock-triage`, `/nock-work` and the rounds' skills from the
+        registry (`rounds`): `/nock-reflect` for nock's, `/<namespace>` for
+        another namespace with two or more adopted protocols and
+        `/<namespace>-<protocol>` for each adopted one outside nock, each
+        saying only which `reflect` to run, with each protocol's agents as
+        Claude Code subagents; `/nock-work`, which any harness can follow,
+        also in the skills directory of each other harness found that reads
+        none written already (Codex's), and taken out of a directory no
+        harness found reads. Kept in step with the core like the primer."""
         briefs = PACKAGE / "briefs"
         library = Library(briefs)
-        rounds = tuple(kind.skill for kind in KINDS.values() if kind.wanted(self.root))
         portable = [
             harness
             for harness in harnesses.skill_installs(self.harnesses)
             if harness is not Harness.CLAUDE_CODE
         ]
-        for name in (*rounds, *SKILLS):
+        for name in SKILLS:
             for source in sorted((briefs / name).glob("*.md")):
                 text = library.render(f"{name}/{source.name}")
                 self.put(
@@ -351,41 +362,63 @@ class Installer:
                         self.put(relative, text, f"the /{name} skill, for {harness.label}")
                     elif harness is not Harness.CLAUDE_CODE and self.ours(relative, text):
                         self.remove(relative, f"the /{name} skill: no harness found reads it here")
-            # The round's parts as Claude Code subagents, each with only the tools its part needs.
-            for source in sorted((briefs / name / "agents").glob("*.md")):
-                self.put(
-                    f".claude/agents/{source.name}",
-                    library.render(f"{name}/agents/{source.name}"),
-                    f"the {source.stem} subagent, for Claude Code",
+        self.install_rounds()
+
+    def install_rounds(self) -> None:
+        project = Project(self.root)
+        wanted = [
+            protocol
+            for protocol in rounds.protocols(project)
+            if protocol.adopted() and not protocol.unavailable()
+        ]
+        namespaces: dict[str, list[rounds.Protocol]] = {}
+        for protocol in wanted:
+            namespaces.setdefault(protocol.manifest.namespace, []).append(protocol)
+        skills: dict[str, tuple[str, str]] = {}
+        for namespace, members in namespaces.items():
+            titles = ", ".join(protocol.title.lower() for protocol in members)
+            if namespace == "nock" or len(members) > 1:
+                skills[rounds.skill_of(namespace)] = (
+                    namespace,
+                    f"Run the {namespace} rounds at once: {titles}. Use when nock says a round"
+                    " is due, or when asked to reflect.",
                 )
+            if namespace == "nock":
+                continue
+            for protocol in members:
+                skills[rounds.skill_of(namespace, protocol.manifest.protocol)] = (
+                    protocol.name,
+                    f"Run the {protocol.name} round: {protocol.manifest.data['summary']}"
+                    " Use when the owner asks, or agrees when nock says it is due.",
+                )
+        for skill, (target, description) in skills.items():
+            self.put(
+                f".claude/skills/{skill}/SKILL.md",
+                f"---\nname: {skill}\ndescription: {description}\n---\n\n"
+                f"Run `.nock/nock reflect {target}` and do what it says.\n",
+                f"the /{skill} skill, for Claude Code",
+            )
+        for protocol in wanted:
+            for agent in protocol.manifest.data.get("agents", []):
+                kind = rounds.agent_type(protocol.manifest, agent["name"])
+                source = protocol.manifest.folder / "agents" / f"{agent['name']}.md"
+                text = source.read_text().replace("---\n", f"---\nname: {kind}\n", 1)
+                self.put(f".claude/agents/{kind}.md", text, f"the {kind} subagent, for Claude Code")
+        for relative in RETIRED_ROUND_FILES:
+            if (self.root / relative).is_file():
+                self.remove(relative, "an earlier nock's round skill or subagent")
 
     def ours(self, relative: str, text: str) -> bool:
         path = self.root / relative
         return path.is_file() and path.read_text() == text
 
     def start_map(self) -> None:
-        """An empty map of topics, so an agent told to read it finds it (an
-        earlier nock's map of decisions moves here when the project migrates)."""
-        if (self.root / NOCK_DIRECTORY / "decisions" / MAP).exists():
-            return
+        """An empty map of topics, so an agent told to read it finds it, and
+        the team's settings."""
         self.start(
-            f"{NOCK_DIRECTORY}/topics/{MAP}", MAP_STUB, "the map of topics, empty until a round"
+            f"{NOCK_DIRECTORY}/shared/{MAP}", MAP_STUB, "the map of topics, empty until a round"
         )
-
-    def migrate(self) -> None:
-        migrated = migrate_in(self.root)
-        if migrated and migrated["migrated"]:
-            self.notes.append(
-                f"migrated {migrated['decisions']} decision(s) and {migrated['review_items']}"
-                f" review item(s) into {len(migrated['topics'])} topic(s) in"
-                f" {NOCK_DIRECTORY}/topics/"
-            )
-        if migrated and migrated.get("split"):
-            split = migrated["split"]
-            self.notes.append(
-                f"split {split['items']} item(s) holding several files into {split['into']},"
-                f" one asset each, in {NOCK_DIRECTORY}/topics/"
-            )
+        self.start(f"{NOCK_DIRECTORY}/shared/{SETTINGS}", SETTINGS_STUB, "the team's settings")
 
     def copy_core(self, core: Path) -> None:
         for relative, content in core_files(PACKAGE).items():
@@ -505,11 +538,12 @@ def hook_entry(harness: Harness, event: Event, project_events: set[Event]) -> di
     if harness is not Harness.CLAUDE_CODE:
         hook["timeout"] = HOOK_TIMEOUT
     entry: dict[str, Any] = {"hooks": [hook]}
-    # nock's own after-tool handler wants only edits, its before-tool one only its own
-    # commands; a project hook may want every tool.
+    # nock's own after-tool handler wants edits and shell commands (either may write
+    # in .nock/shared/), its before-tool one only its own commands; a project hook
+    # may want every tool.
     if harness is Harness.CLAUDE_CODE:
         if event is Event.AFTER_TOOL and Event.AFTER_TOOL not in project_events:
-            entry["matcher"] = EDIT_TOOLS
+            entry["matcher"] = f"{EDIT_TOOLS}|Bash"
         if event is Event.BEFORE_TOOL and Event.BEFORE_TOOL not in project_events:
             entry["matcher"] = "Bash"
             hook["if"] = NOCK_COMMANDS

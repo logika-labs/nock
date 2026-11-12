@@ -1,0 +1,18 @@
+title = "Performance"
+summary = "Measure what users wait for, find what costs the most, and put each finding before the owner as a decision."
+relevant = "Projects whose speed users feel: a server, a pipeline or scheduled job, a CLI, or a web app."
+adopted = "recommended"
+agents = []
+
+[due]
+days = 60
+
+[material.earlier]
+topic = "audit-performance"
+
+[lead]
+reads = ["earlier"]
+writes = ["report.md"]
+
+[end]
+kinds = ["latency", "throughput", "query", "memory", "startup", "bundle", "other"]

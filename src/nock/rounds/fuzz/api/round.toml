@@ -1,0 +1,17 @@
+title = "API fuzzing"
+summary = "Send edge-case inputs to every route of the project's API on a local server, and record each 5xx, wrong acceptance, leak, hang or broken state as a decision."
+relevant = "Projects that serve an HTTP API they can run locally, best with an OpenAPI description."
+agents = []
+
+[due]
+days = 30
+
+[material.past]
+topic = "fuzz-api"
+
+[lead]
+reads = ["past"]
+writes = ["report.md"]
+
+[end]
+kinds = ["error", "accepted", "leak", "hang", "state", "other"]

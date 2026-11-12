@@ -4,7 +4,9 @@ stand-in process."""
 
 from __future__ import annotations
 
+import json
 import os
+import shutil
 import subprocess
 import sys
 from collections.abc import Iterator
@@ -102,3 +104,20 @@ def write_tool(project: Project, name: str, source: str) -> None:
     path.write_text(source)
     git(project.root, "add", "-A")
     git(project.root, "commit", "-qm", f"Add tool {name}")
+
+
+def own_protocol(project: Project, name: str, due: dict[str, object]) -> None:
+    """A project's own copy of a shipped protocol in `.nock/rounds/`, its due
+    rules changed: how a project sets when a round is due."""
+    namespace, protocol = name.split(".")
+    shipped = project.root / ".nock" / "core" / "nock" / "rounds" / namespace / protocol
+    target = project.root / ".nock" / "rounds" / namespace / protocol
+    shutil.copytree(shipped, target, dirs_exist_ok=True)
+    manifest = target / "round.toml"
+    text = manifest.read_text()
+    head, _, rest = text.partition("[due]\n")
+    rules, _, tail = rest.partition("\n\n")
+    kept = {line.split(" = ")[0]: line for line in rules.splitlines() if " = " in line}
+    for key, value in due.items():
+        kept[key] = f"{key} = {json.dumps(value)}"
+    manifest.write_text(head + "[due]\n" + "\n".join(kept.values()) + "\n\n" + tail)

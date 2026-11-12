@@ -37,7 +37,9 @@ from typing import Any, NotRequired, TypedDict
 from nock.chats import Chats, Kind
 from nock.commands import schema_of
 from nock.configuration import with_table_settings
+from nock.consult import RESULT_VARIABLE
 from nock.errors import ConflictError, Error, NotFoundError, UsageError
+from nock.inbox import listeners
 from nock.notify import ICON, Notifications, Watching
 from nock.project import Project
 from nock.schema import validate
@@ -52,6 +54,7 @@ from nock.topics import (
     entry_name,
     in_order,
     kind_of,
+    latest_files,
     occurrences,
     state_of,
 )
@@ -134,9 +137,11 @@ def talk_of(thread: list[dict[str, Any]]) -> list[str]:
 
 @dataclass(frozen=True)
 class Raw:
-    """A file a tab answers with as it is, not as JSON."""
+    """A file a tab answers with as it is, not as JSON; typed by `name`, since the
+    store keeps media by their hash, without an extension."""
 
     path: Path
+    name: str = ""
 
 
 @dataclass(frozen=True)
@@ -246,11 +251,13 @@ class Where(TypedDict):
 
 
 class Preferred(TypedDict):
-    """The owner's preferred option of an item's version; without `name`, none."""
+    """The owner's preferred variant of a decision's asset, in one of its
+    versions; without `name`, none."""
 
     ref: str
     version: int
     name: NotRequired[str]
+    asset: NotRequired[str]
 
 
 class Question(TypedDict):
@@ -274,15 +281,17 @@ class Seen:
 
 
 class Asking:
-    """The one question being asked at a time: a `nock topics ask` run in its
-    own process, so it is cancelled by stopping it."""
+    """The one question being asked at a time: a `nock consult` run in its own
+    process, so it is cancelled by stopping it; its answer, with the decisions
+    it rests on, comes back as data (`consult.RESULT_VARIABLE`)."""
 
     def __init__(self, project: Project) -> None:
         self.project = project
         self.question: str | None = None
         self.started: str | None = None
         self.process: subprocess.Popen[bytes] | None = None
-        self.output = project.local / "answers" / "studio.json"
+        self.output = project.local / "answers" / "studio.log"
+        self.result = project.local / "answers" / "studio.json"
         self.cancelled = False
 
     def start(self, question: str) -> dict[str, Any]:
@@ -291,11 +300,16 @@ class Asking:
         if self.process is not None and self.process.poll() is None:
             raise UsageError("a question is being answered: wait for it, or cancel it")
         self.output.parent.mkdir(parents=True, exist_ok=True)
+        self.result.unlink(missing_ok=True)
         with self.output.open("wb") as output:
             self.process = subprocess.Popen(
-                [sys.executable, "-m", "nock", "topics", "ask", question.strip(), "--json"],
+                [sys.executable, "-m", "nock", "consult", question.strip()],
                 cwd=self.project.here,
-                env={**os.environ, "PYTHONPATH": str(PACKAGE.parent)},
+                env={
+                    **os.environ,
+                    "PYTHONPATH": str(PACKAGE.parent),
+                    RESULT_VARIABLE: str(self.result),
+                },
                 stdin=subprocess.DEVNULL,
                 stdout=output,
                 stderr=subprocess.STDOUT,
@@ -321,8 +335,8 @@ class Asking:
         text = self.output.read_text() if self.output.is_file() else ""
         if self.process.returncode == 0:
             try:
-                answered = json.loads(text)
-            except json.JSONDecodeError:
+                answered = json.loads(self.result.read_text())
+            except (OSError, json.JSONDecodeError):
                 answered = {"answer": text.strip(), "items": []}
             return {**said, "running": False, **answered}
         return {
@@ -362,6 +376,9 @@ class TopicsTab(Tab):
         self.seen = Seen(project)
         self.uploads = Uploads(project)
         self.texts: dict[Path, tuple[int, str]] = {}
+        self.cache: (
+            tuple[tuple[str, str], list[tuple[dict[str, Any], list[dict[str, Any]]]]] | None
+        ) = None
 
     def fragment(self) -> str:
         look = (PAGES / "topics.css").read_text() + (PAGES / "chat.css").read_text()
@@ -372,6 +389,7 @@ class TopicsTab(Tab):
             transcription = Transcription(self.project)
             return {
                 "topics": self.everything(),
+                "listening": listeners(self.project),
                 "ask": self.asking.state(),
                 "transcription": {
                     "enabled": transcription.enabled,
@@ -383,18 +401,20 @@ class TopicsTab(Tab):
             return Raw(self.uploads.path(parts[1]))
         if parts[0] == "attachment" and ATTACHMENTS in parts[2:4]:
             slug = None if parts[2] == ATTACHMENTS else parts[2]
-            return Raw(self.topics.attachment(parts[1], slug, "/".join(parts[3 if slug else 2 :])))
+            name = "/".join(parts[3 if slug else 2 :])
+            return Raw(self.topics.attachment(parts[1], slug, name), name)
         if parts[0] == "ask" and len(parts) == 1:
             return {"ask": self.asking.state()}
         if parts[0] == "search":
             return self.search("/".join(parts[1:]))
         if parts[0] == "view.css":
             return Raw(VIEW_LOOK)
-        if parts[0] == "view" and len(parts) >= 5 and parts[3].isdigit():
-            return self.view(parts[1], parts[2], int(parts[3]), "/".join(parts[4:]))
-        if parts[0] != "file" or len(parts) < 5 or not parts[3].isdigit():
+        if parts[0] == "view" and len(parts) >= 6 and parts[4].isdigit():
+            return self.view(parts[1], parts[2], parts[3], int(parts[4]), "/".join(parts[5:]))
+        if parts[0] != "file" or len(parts) < 6 or not parts[4].isdigit():
             raise NotFoundError("no such page")
-        return Raw(self.topics.file(parts[1], parts[2], int(parts[3]), "/".join(parts[4:])))
+        name = "/".join(parts[5:])
+        return Raw(self.topics.file(parts[1], parts[2], parts[3], int(parts[4]), name), name)
 
     def search(self, query: str) -> dict[str, Any]:
         """What the Search field finds, in what the owner sees: a topic by its
@@ -443,14 +463,15 @@ class TopicsTab(Tab):
         """An item's words as the owner sees them, lowercased; the text files
         of its latest version read once per change."""
         shown = self.topics.shown(item)
-        latest = shown["versions"][-1]
-        decision = latest.get("decision") or {}
+        decision = (shown["versions"][-1].get("decision") or {}) if shown["versions"] else {}
         parts = [item["title"], item.get("description") or "", *talk_of(item["thread"])]
         if decision:
             parts.append(decision.get("answer") or "")
             for entry in decision.get("alternatives") or []:
                 parts += [entry.get("option") or "", entry.get("why_not") or ""]
-        for file in latest["files"]:
+        latest = [file for asset in shown["assets"] for file in latest_files(asset)]
+        parts += [asset["title"] for asset in shown["assets"]]
+        for file in latest:
             parts.append(file["name"])
             if file.get("type") == "text":
                 parts.append(self.text_of(Path(file["where"])))
@@ -470,26 +491,26 @@ class TopicsTab(Tab):
             self.texts[path] = kept
         return kept[1]
 
-    def view(self, topic: str, slug: str, version: int, name: str) -> Any:
-        """A version's view, with nock's look and the item's files named for it
-        (`window.nock.assets`); any other name, the version's file beside it,
-        so a view reaches them by relative addresses."""
+    def view(self, topic: str, slug: str, asset: str, version: int, name: str) -> Any:
+        """An asset version's view, with nock's look and the asset's files
+        named for it (`window.nock.assets`); any other name, the version's
+        file beside it, so a view reaches them by relative addresses."""
         item = self.topics.item(f"{topic}/{slug}")
-        record = next((entry for entry in item["versions"] if entry["version"] == version), None)
+        held = self.topics.asset(item, asset)
+        record = next((entry for entry in held["versions"] if entry["version"] == version), None)
         views = (record or {}).get("views", [])
         if not any(entry["name"] == name for entry in views):
-            return Raw(self.topics.file(topic, slug, version, name))
-        page = self.topics.file(topic, slug, version, name).read_text(errors="replace")
+            return Raw(self.topics.file(topic, slug, asset, version, name), name)
+        page = self.topics.file(topic, slug, asset, version, name).read_text(errors="replace")
         assets = [
             {
                 "name": entry_name(entry),
                 "type": entry["type"],
-                "title": item["title"],
+                "title": held["title"],
                 "address": urllib.parse.quote(entry_name(entry)),
-                "preferred": (item.get("preferred") or {}).get("name") == entry_name(entry),
+                "preferred": (held.get("preferred") or {}).get("name") == entry_name(entry),
             }
             for entry in (record or {}).get("files", [])
-            if entry["kind"] != "decision"
         ]
         given = json.dumps({"assets": assets, "title": item["title"]}).replace("</", "<\\/")
         head = (
@@ -500,26 +521,23 @@ class TopicsTab(Tab):
         return Html(page[: at + 6] + head + page[at + 6 :] if at >= 0 else head + page)
 
     def everything(self) -> list[dict[str, Any]]:
-        found = []
+        """Every topic with its decisions shown, and where each chat stands.
+        The topics themselves are read again only once the store changed
+        (`folded`); where each chat stands, every time."""
         seen = self.seen.all()
         addressing = self.chats.addressing() if self.chats is not None else set()
-        for name in self.topics.names():
-            record = self.topics.topic(name)
-            items = self.topics.items(name)
+        found = []
+        for record, items in self.folded():
             found.append(
                 {
                     **record,
-                    "current": self.topics.current_description(record),
-                    "state": str(state_of(record, items)),
-                    "active": self.topics.activity(record, items),
-                    "counts": self.topics.counts(items),
                     "chat": {
-                        **chat_state(record["thread"], seen.get(name)),
-                        "addressing": name in addressing,
+                        **chat_state(record["thread"], seen.get(record["name"])),
+                        "addressing": record["name"] in addressing,
                     },
                     "items": [
                         {
-                            **self.topics.shown(item),
+                            **item,
                             "chat": {
                                 **chat_state(
                                     item["thread"], seen.get(item["ref"]), item.get("decided")
@@ -532,6 +550,34 @@ class TopicsTab(Tab):
                 }
             )
         return in_order(found)
+
+    def folded(self) -> list[tuple[dict[str, Any], list[dict[str, Any]]]]:
+        """Each topic and its decisions as shown, kept while the store stands
+        still: the main checkout's HEAD and what is uncommitted in the store."""
+        key = (
+            self.project.git("rev-parse", "HEAD", check=False),
+            self.project.git("status", "--porcelain", "--", ".nock/shared", check=False),
+        )
+        if self.cache is not None and self.cache[0] == key:
+            return self.cache[1]
+        found = []
+        for name in self.topics.names():
+            record = self.topics.topic(name)
+            items = self.topics.items(name)
+            found.append(
+                (
+                    {
+                        **record,
+                        "current": self.topics.current_description(record),
+                        "state": str(state_of(record, items)),
+                        "active": self.topics.activity(record, items),
+                        "counts": self.topics.counts(items),
+                    },
+                    [self.topics.shown(item) for item in items],
+                )
+            )
+        self.cache = (key, found)
+        return found
 
     def post(self, route: str, body: Any) -> Any:
         if route == "upload":
@@ -589,8 +635,19 @@ class TopicsTab(Tab):
             return {"seen": where}
         if route == "prefer":
             validate(body, schema_of(Preferred))
-            item, _ = self.topics.prefer(body["ref"], body["version"], body.get("name"))
-            return {"preferred": item["preferred"]}
+            item, _ = self.topics.prefer(
+                body["ref"], body["version"], body.get("name"), body.get("asset")
+            )
+            held = next(
+                (
+                    asset
+                    for asset in item["assets"]
+                    if asset["name"] == body.get("asset")
+                    or (body.get("asset") is None and asset.get("variants"))
+                ),
+                None,
+            )
+            return {"preferred": (held or {}).get("preferred")}
         if route == "ask":
             validate(body, schema_of(Question))
             return self.asking.start(body["question"])
@@ -695,7 +752,7 @@ class ChatRoutes(Tab):
         identifier, _, rest = urllib.parse.unquote(route).partition("/")
         if identifier == "file":
             chat, _, path = rest.partition("/")
-            return Raw(self.chats.attachment(chat, path))
+            return Raw(self.chats.attachment(chat, path), path)
         if identifier == "search":
             return {"chats": self.chats.search(rest)}
         return self.chats.shown(identifier)
@@ -1035,17 +1092,17 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(status, {"error": str(error)})
             return
         if isinstance(value, Raw):
-            self.send_file(value.path)
+            self.send_file(value.path, value.name)
             return
         if isinstance(value, Html):
             self.send(HTTPStatus.OK, value.text.encode(), "text/html")
             return
         self.send_json(HTTPStatus.OK, value)
 
-    def send_file(self, path: Path) -> None:
+    def send_file(self, path: Path, name: str = "") -> None:
         """A file as it is; a byte range of it when asked, so a video seeks."""
         size = path.stat().st_size
-        kind = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
+        kind = mimetypes.guess_type(name or path.name)[0] or "application/octet-stream"
         if kind.startswith("text/") or kind in ("application/json", "image/svg+xml"):
             kind += "; charset=utf-8"
         asked = re.fullmatch(r"bytes=(\d*)-(\d*)", self.headers.get("Range", ""))

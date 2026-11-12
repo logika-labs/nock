@@ -29,14 +29,16 @@ from enum import StrEnum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from nock.asking import listing
 from nock.dispatch import Dispatcher, Session
 from nock.errors import ConflictError, Error, NotFoundError, UsageError
 from nock.git import GitError
+from nock.inbox import listeners, urge
 from nock.sessions import find_transcript
+from nock.shared import Settled, Shared, by_for
 from nock.templates import Library
-from nock.topics import ADDRESSER, TIDIER, Topics, attachment_name, committed, kind_of
+from nock.topics import ADDRESSER, TIDIER, Topics, attachment_name, kind_of, listing
 from nock.utils import now, read_json, write_json
+from nock.views import Views
 
 if TYPE_CHECKING:
     from nock.project import Project
@@ -45,7 +47,7 @@ BRIEFS = Path(__file__).resolve().parent / "briefs"
 CHATTER = "chatter"
 NAMER = "namer"
 # The topics, as the main checkout keeps them: what Tidy up commits.
-TOPICS = ".nock/topics"
+TOPICS = ".nock/shared"
 # What the owner's first message in a Tidy up chat says.
 TIDY_REQUEST = "Tidy up the topics: regroup the items, set the topics' states, drop what is stale, and put the topics in order."
 # How much of one comment the request to address them quotes; the agent reads the rest.
@@ -281,8 +283,9 @@ class Chats:
         self, identifier: str | None, text: str, files: list[Path] | None = None
     ) -> dict[str, Any]:
         """The owner's message, with the files it carries (moved beside the
-        chat): in a new chat without `identifier`; the agent's answer starts
-        at once, in the background."""
+        chat): in a new chat without `identifier`. With an agent waiting on
+        `nock inbox`, it is there for that agent; with none, the chat's own
+        agent's answer starts at once, in the background."""
         files = files or []
         if not text.strip() and not files:
             raise UsageError("the message is empty")
@@ -300,7 +303,8 @@ class Chats:
                 said["attachments"] = self.attach(chat["id"], files, said["moment"])
             chat["messages"].append(said)
             self.save(chat)
-            self.start(chat)
+            if not listeners(self.project):
+                self.start(chat)
         return self.shown(chat["id"])
 
     def attach(self, identifier: str, files: list[Path], stamp: str) -> list[dict[str, Any]]:
@@ -351,6 +355,20 @@ class Chats:
         return self.shown(chat["id"])
 
     def address(self, ref: str | None = None) -> dict[str, Any]:
+        if ref is not None and listeners(self.project):
+            return self.urge(ref)
+        return self.dispatched(ref)
+
+    def urge(self, ref: str) -> dict[str, Any]:
+        """Address now with an agent waiting on `nock inbox`: the comment
+        waiting in that thread goes to it first, marked urgent."""
+        comments = [comment for comment in Topics(self.project).comments() if comment["ref"] == ref]
+        if not comments:
+            raise UsageError(f"no comment of yours waits for an answer in {ref}")
+        urge(self.project, comments[0]["id"])
+        return {"listening": True, "refs": [ref]}
+
+    def dispatched(self, ref: str | None = None) -> dict[str, Any]:
         """Address my comments: a new chat whose agent answers every comment
         the owner left waiting in a thread; with REF (a topic's name or an
         item's ref), Address now, the comment in that one thread. One such
@@ -446,10 +464,19 @@ class Chats:
             if session is not None:
                 chat["session"] = session.id
             chat["messages"].append(reply)
+            written: list[str] = []
+            if chat["kind"] in (Kind.TIDY, Kind.ADDRESS):
+                settled = self.settled(chat, session)
+                written = settled["written"]
+                problems = settled["problems"]
+                if problems:
+                    reply["problem"] = "what it wrote in .nock/shared/ does not hold: " + "; ".join(
+                        problems
+                    )
             if chat["kind"] == Kind.TIDY:
                 # Its last message is the summary: what it said along the way is not.
                 summary = (turn.result or reply["text"] or "").strip()
-                chat["tidy"] = self.gather(summary)
+                chat["tidy"] = self.gather(summary, written)
                 chat["summary"] = " ".join(summary.split())[:300]
             elif chat["kind"] == Kind.ADDRESS and not chat["summary"]:
                 summary = (turn.result or reply["text"] or "").strip()
@@ -464,11 +491,11 @@ class Chats:
         earlier = chat["messages"][:-1]
         previous = chat.get("session")
         if previous and find_transcript(self.project.root, previous) is not None:
-            session = self.launch(role, said, turn, resume=previous)
+            session = self.launch(role, said, turn, resume=previous, allowed=self.recipes(chat))
             if session.exit_code == 0 or turn.text or turn.stop.is_set():
                 return session
             turn.reset()
-        return self.launch(role, self.brief(chat, said, earlier), turn)
+        return self.launch(role, self.brief(chat, said, earlier), turn, allowed=self.recipes(chat))
 
     def heard(self, chat: dict[str, Any], said: dict[str, Any]) -> str:
         """The owner's message as the agent reads it: the files it carries named
@@ -481,7 +508,14 @@ class Chats:
         )
         return f"{said['text']}\n\nThe owner attached these files (read them):\n{listed}".strip()
 
-    def launch(self, role: str, prompt: str, turn: Turn, resume: str | None = None) -> Session:
+    def launch(
+        self,
+        role: str,
+        prompt: str,
+        turn: Turn,
+        resume: str | None = None,
+        allowed: tuple[str, ...] = (),
+    ) -> Session:
         return Dispatcher(self.project).launch(
             role,
             prompt,
@@ -490,7 +524,37 @@ class Chats:
             arguments=("--include-partial-messages",),
             listener=turn.hear,
             stop=turn.stop,
+            allowed=allowed,
         )
+
+    def recipes(self, chat: dict[str, Any]) -> tuple[str, ...]:
+        """For Address my comments: the recipes of the assets in the threads it
+        answers, each allowed as a command of its own — never one it wrote."""
+        if chat["kind"] != Kind.ADDRESS:
+            return ()
+        topics = Topics(self.project)
+        rules: list[str] = []
+        for ref in chat.get("refs") or []:
+            try:
+                commands = topics.recipes(ref)
+            except Error:
+                continue
+            rules += [f"Bash({command})" for command in commands]
+        return tuple(dict.fromkeys(rules))
+
+    def settled(self, chat: dict[str, Any], session: Session | None) -> dict[str, Any]:
+        """What a dispatched agent wrote in the store, settled as its own once
+        its turn ends: for Tidy up, left for `gather` to commit as one."""
+        writer = {
+            "session": session.id if session is not None else None,
+            "role": ROLES[Kind(chat["kind"])],
+            "parent": self.project.writer().get("session"),
+        }
+        store = Shared(self.project)
+        result = store.settle_changes(lambda: by_for(self.project, writer=writer))
+        if result.topics:
+            Views(self.project).write(result.topics)
+        return {"problems": result.problems, "written": result.written}
 
     def brief(self, chat: dict[str, Any], said: str, earlier: list[dict[str, Any]]) -> str:
         library = Library(self.project.code_path("briefs"), BRIEFS)
@@ -552,11 +616,16 @@ class Chats:
 
     # --- Tidy up's one commit ---------------------------------------------------
 
-    def gather(self, summary: str) -> dict[str, Any]:
-        """Tidy up's writes to the topics, committed as one, its summary the
+    def gather(self, summary: str, written: list[str]) -> dict[str, Any]:
+        """Tidy up's writes to the store, settled as its own (`written`: what
+        that settle wrote, moved or removed), committed as one, its summary the
         message; nothing changed, nothing committed."""
-        git = self.project.git
-        if not git("status", "--porcelain", "--", TOPICS):
+        store = Shared(self.project)
+        writer = {"role": TIDIER, "session": None, "parent": self.project.writer().get("session")}
+        by = by_for(self.project, writer=writer)
+        settled = Settled(written=written)
+        paths = written
+        if not paths:
             return {"commit": None}
         first = next(
             (line.strip("#*- ").strip() for line in summary.splitlines() if line.strip()), ""
@@ -564,14 +633,13 @@ class Chats:
         subject = f"Topics tidied up: {first}" if first else "Topics tidied up by Tidy up"
         if len(subject) > 100:
             subject = subject[:99] + "…"
-        body = f"{subject}\n\n{summary}\n" if summary else subject
         try:
-            problem = committed(self.project, [TOPICS], body)
+            commit, problem = store.commit(paths, by, settled, subject=subject, body=summary)
         except GitError as error:
             return {"commit": None, "problem": str(error)}
         if problem:
             return {"commit": None, "problem": problem}
-        return {"commit": git("rev-parse", "HEAD"), "subject": subject}
+        return {"commit": commit, "subject": subject}
 
     def undo(self, identifier: str) -> dict[str, Any]:
         """Revert Tidy up's commit (`git revert`), when nothing since conflicts with it."""

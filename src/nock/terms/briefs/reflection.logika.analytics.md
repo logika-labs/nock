@@ -95,8 +95,8 @@ You change nothing: the rules parts read the same tree at the same time.
 Bring back proposals for `logika.json` (params' `identity` and `dimension`
 flags, `funnels`, `milestones` and `views`, each panel with its `title` and
 `answer`), the fields they need, and the few questions only the owner can
-answer. The round's lead writes them, and `.nock/nock reflect logika
-finish` commits.
+answer. The round's lead writes them, and `.nock/nock reflect
+--submit` records it.
 
 # What you may do
 

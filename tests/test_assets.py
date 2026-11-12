@@ -13,15 +13,18 @@ from typing import Any
 
 import pytest
 
+from nock.errors import ConflictError, UsageError
 from nock.notify import ICON, Notifications, Reason, desktop_command
 from nock.project import Project
+from nock.shared import Shared
 from nock.timeline import Timeline
 from nock.topics import Author, Topics
 
-from .conftest import nock
+from . import store
+from .conftest import git
 from .test_chats import answered
 from .test_chats import post as chat_post
-from .test_topics import open_topic, page, post, run, submit
+from .test_topics import item_folder, judge, open_topic, page, post, submit
 
 __all__ = ["page"]
 
@@ -46,7 +49,7 @@ def test_an_item_keeps_the_description_it_was_submitted_with(project: Project) -
             "derived": [{"text": name, "name": f"{name}.md"} for name in "ab"],
         },
     )
-    shown = run(project.root, "items", "show", ref)
+    shown = store.shown(project.root, ref)
     assert shown["description"] == "Three takes on the landing banner"
 
 
@@ -58,21 +61,17 @@ def test_an_asset_with_variants_is_accepted_only_once_one_is_preferred(
         paths.append(tmp_path / name)
         paths[-1].write_text(f"<svg xmlns='http://www.w3.org/2000/svg'><title>{name}</title></svg>")
     open_topic(project.root)
-    many = nock(
-        project.root,
-        "items",
-        "create",
-        "orders",
-        json.dumps({"title": "Favicon", "derived": [{"path": str(path)} for path in paths]}),
-    )
-    assert many.returncode == 40 and '"variants": true' in many.stderr
+    with pytest.raises(UsageError, match='"variants": true'):
+        submit(
+            project.root, {"title": "Favicon", "derived": [{"path": str(path)} for path in paths]}
+        )
     ref = submit(
         project.root,
         {"title": "Favicon", "variants": True, "derived": [{"path": str(path)} for path in paths]},
     )
     single = submit(project.root, {"title": "Logo", "derived": [{"path": str(paths[0])}]})
-    refused = nock(project.root, "items", "judge", ref, '{"verdict": "accepted"}')
-    assert refused.returncode != 0 and "prefer one before accepting it" in refused.stderr
+    with pytest.raises(ConflictError, match="prefer one before accepting it"):
+        judge(project.root, ref, "accepted")
     assert post(page, "judge", {"topic": "orders", "verdict": "accepted"}) == (
         200,
         {"judged": [single]},
@@ -95,12 +94,13 @@ def test_a_view_is_served_with_nock_s_look_and_the_item_s_files_named_for_it(
             "views": [{"text": view, "name": "sizes.html", "title": "At three sizes"}],
         },
     )
-    shown = run(project.root, "items", "show", ref)["versions"][0]
+    (asset,) = store.shown(project.root, ref)["assets"]
+    shown = asset["versions"][0]
     assert (
         shown["views"][0]["name"] == "sizes.html" and shown["views"][0]["title"] == "At three sizes"
     )
     slug = ref.split("/")[1]
-    served = fetch(page, f"topics/view/orders/{slug}/1/sizes.html").decode()
+    served = fetch(page, f"topics/view/orders/{slug}/favicon/1/sizes.html").decode()
     assert served.index('<link rel="stylesheet" href="/topics/view.css">') > served.index("<head>")
     given = json.loads(served.split("window.nock = ")[1].split(";</script>")[0])
     assert given["assets"] == [
@@ -112,44 +112,28 @@ def test_a_view_is_served_with_nock_s_look_and_the_item_s_files_named_for_it(
             "preferred": False,
         }
     ]
-    assert fetch(page, f"topics/view/orders/{slug}/1/icon.svg") == icon.read_bytes()
+    assert fetch(page, f"topics/view/orders/{slug}/favicon/1/icon.svg") == icon.read_bytes()
     assert b".grid" in fetch(page, "topics/view.css")
-    decided = nock(
-        project.root,
-        "items",
-        "create",
-        "orders",
-        json.dumps(
+    with pytest.raises(UsageError, match="views lay out an asset's files"):
+        submit(
+            project.root,
             {
                 "title": "D",
                 "decision": {"answer": "Yes."},
                 "views": [{"text": view, "name": "v.html"}],
-            }
-        ),
-    )
-    assert decided.returncode != 0 and "a decision has no views" in decided.stderr
+            },
+        )
 
 
 def test_the_timeline_is_read_from_the_topics_and_a_notification_is_one_of_its_events(
     project: Project, page: str
 ) -> None:
-    run(
-        project.root,
-        "topics",
-        "create",
-        json.dumps({**{"name": "orders", "description": "Orders."}, "status": "starting"}),
-    )
+    open_topic(project.root, {**{"name": "orders", "description": "Orders."}, "status": "starting"})
     ref = submit(project.root)
     topics = Topics(project)
     topics.reply(ref, "Why not Postgres?", Author.OWNER)
-    run(project.root, "items", "update", ref, "--reply", "One file is enough.")
-    run(
-        project.root,
-        "topics",
-        "update",
-        "orders",
-        json.dumps({"state": "review", "status": "built"}),
-    )
+    store.update_item(project.root, ref, reply="One file is enough.")
+    store.update_topic(project.root, "orders", change={"state": "review", "status": "built"})
     events = Timeline(project).events()
     # Written within one second, the review and the answer may come in either order.
     kinds = [event["kind"] for event in events]
@@ -180,23 +164,29 @@ def test_the_timeline_is_read_from_the_topics_and_a_notification_is_one_of_its_e
 def test_a_topic_s_status_changes_in_a_row_are_one_event_with_their_count(
     project: Project,
 ) -> None:
-    open_topic(project.root, {"name": "orders", "description": "Orders. Kept in one file."})
-    for status in ("one", "two", "three"):
-        run(project.root, "topics", "update", "orders", json.dumps({"status": status}))
-    submit(project.root)
-    run(project.root, "topics", "update", "orders", json.dumps({"status": "four"}))
-    # A second apart each, as an agent working writes them.
-    folder = project.root / ".nock" / "topics" / "orders"
-    topic = json.loads((folder / "topic.json").read_text())
-    topic["created"]["moment"] = "2026-01-01T10:00:00Z"
-    seconds = {"one": 1, "two": 2, "three": 3, "four": 5}
-    for entry in topic["thread"]:
-        entry["moment"] = f"2026-01-01T10:00:0{seconds.get(entry.get('status'), 0)}Z"
-    (folder / "topic.json").write_text(json.dumps(topic))
-    item_file = next(folder.glob("*/item.json"))
-    item = json.loads(item_file.read_text())
-    item["versions"][0]["moment"] = "2026-01-01T10:00:04Z"
-    item_file.write_text(json.dumps(item))
+    # A second apart each, as an agent working writes them: events as the store keeps them.
+    shared = Shared(project)
+    by = {"author": "agent", "on_behalf": "interactive", "session": "s1", "role": "interactive"}
+
+    def event(folder: Path, second: int, record: dict[str, Any], milli: int = 0) -> None:
+        identifier = f"{second * 1000 + milli:08x}"
+        path = folder / "events" / f"20260101T10000{second}.{milli:03d}Z-{identifier}.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        moment = f"2026-01-01T10:00:0{second}Z"
+        path.write_text(json.dumps({**record, "moment": moment, "id": identifier, "by": by}))
+
+    topic = shared.topic_folder("orders")
+    event(topic, 0, {"kind": "created", "description": "Orders. Kept in one file."})
+    for second, status in ((1, "one"), (2, "two"), (3, "three"), (5, "four")):
+        event(topic, second, {"kind": "state", "state": "active", "status": status})
+    decision = shared.item_folder("orders", "orders-live-in-sqlite")
+    event(decision, 4, {"kind": "created", "title": "Orders live in SQLite"})
+    event(decision, 4, {"kind": "version", "version": 1}, milli=1)
+    (decision / "versions" / "1").mkdir(parents=True)
+    (decision / "versions" / "1" / "decision.json").write_text(json.dumps({"answer": "One file."}))
+    git(project.root, "add", "-A")
+    git(project.root, "commit", "-qm", "Orders")
+    assert not shared.settle(by).problems
     events = Timeline(project).events()
     shown = [(event["kind"], event["title"], event.get("count")) for event in events]
     assert shown == [
@@ -230,8 +220,8 @@ def test_an_asset_s_event_carries_the_face_of_each_of_its_pictures(
     text = submit(project.root, {"title": "Notes", "derived": [{"text": "x", "name": "x.md"}]})
     events = {event.get("ref"): event for event in Timeline(project).events()}
     assert events[pictures]["faces"] == [
-        {"file": "a.svg", "type": "image"},
-        {"file": "b.svg", "type": "image"},
+        {"file": "a.svg", "type": "image", "asset": "favicon", "version": 1},
+        {"file": "b.svg", "type": "image", "asset": "favicon", "version": 1},
     ]
     assert "faces" not in events[text]
 
@@ -251,9 +241,9 @@ def test_address_now_answers_the_comment_in_one_thread(
     topics = Topics(project)
     topics.reply(ref, "Why not Postgres?", Author.OWNER)
     topics.reply(other, "And the cap?", Author.OWNER)
-    monkeypatch.setenv(
-        "FAKE_ADDRESS", json.dumps([["items", "update", ref, "--reply", "One file is enough."]])
-    )
+    said = {"kind": "message", "text": "One file is enough."}
+    reply = ["write", str(item_folder(project, ref) / "events" / "a.json"), json.dumps(said)]
+    monkeypatch.setenv("FAKE_ADDRESS", json.dumps([reply]))
     status, started = chat_post(page, "address", {"ref": ref})
     assert status == 200 and started["title"] == "Address now" and started["refs"] == [ref]
     assert started["messages"][0]["text"].startswith("Address my comment:")
@@ -277,8 +267,7 @@ def test_search_ranks_what_holds_every_word_first_then_all_but_one_and_so_on(
         ("pair", "nock docs, the essays."),
     ]:
         open_topic(project.root, {"name": name, "description": description})
-    listed = run(project.root, "topics", "list", "--query", "nock cli docs")
-    names = [row["name"] for row in listed["rows"]]
+    names = Topics(project).search_topics("nock cli docs")
     assert names == ["twice", "complete", "pair", "partial"]
     found = get(page, "topics/search/nock%20cli%20docs")
     # Shown whole, only the topics holding every word; the strongest first.

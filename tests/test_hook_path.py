@@ -53,8 +53,17 @@ BEFORE_TOOL_MODULES = {
     "nock.store",
     "nock.utils",
 }
-# The prompt and edit hooks read Topics too.
-TOPICS_MODULES = {"nock.notify", "nock.render", "nock.condense", "nock.topics"}
+# The prompt and edit hooks read Topics too, from the store.
+TOPICS_MODULES = {
+    "nock.notify",
+    "nock.render",
+    "nock.condense",
+    "nock.topics",
+    "nock.fold",
+    "nock.records",
+    "nock.schema",
+    "nock.shared",
+}
 NEVER_IN_A_HOOK = {"nock.cli", "nock.builtin", "nock.tools", "nock.reflect", "nock.kinds"}
 
 

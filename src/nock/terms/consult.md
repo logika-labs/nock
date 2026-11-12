@@ -1,7 +1,7 @@
 ---
 term: consult
 aliases: [consultation, consultant]
-description: Consult before you change code: advice on the items, tools and checks that bear
+description: Consult before you change code, or ask about the topics: an answer from nock's memory
 ---
 
-`.nock/nock consult '{"intent": "Move orders to Postgres.", "context": "SQLite locks under load."}'`: a fresh agent reads the topics, map, tools and checks, changes nothing, and advises in a few lines: the topic to submit into, what to keep to, the tools for its steps, what to submit, the checks and docs to read. You wait (up to 600s), then do as it says or say why not. Off with `consult.enabled = false`.
+`.nock/nock consult "Move orders to Postgres." --context "SQLite locks under load."`: a fresh agent reads the topics, map, tools and checks, changes nothing, and answers in a few lines: the topic to put the work in, what to keep to, the tools for its steps, what to record, the checks and docs to read. The studio's Ask uses it for the owner's questions. You wait (up to 600s), then do as it says or say why not. Off with `consult.enabled = false`.

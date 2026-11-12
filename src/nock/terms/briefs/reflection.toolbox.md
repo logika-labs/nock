@@ -32,7 +32,7 @@ sessions with `.nock/nock query` before deciding anything.
 - **Change nothing** that nothing earns: fewer, better tools.
 
 Change only `.nock/`, plus what a generator you add writes
-(`.nock/nock gen write`; name it in your report). Run every tool you touched
+(`.nock/nock gen`; name it in your report). Run every tool you touched
 as an agent would, give each new command `examples=[...]`, and leave
 `.nock/nock check` passing but for `nock-wiring` on a command you added:
 Claude Code asks about a new command until `.nock/nock init` allows it,

@@ -31,6 +31,7 @@ from nock.project import Project
 from nock.topics import Author, Topics
 from nock.utils import now, parse_moment
 
+from . import store
 from .test_topics import DECISION, judge, page, run, submit  # noqa: F401  (page is a fixture)
 
 FILE = {"title": "The README", "files": ["README.md"]}
@@ -50,24 +51,24 @@ def test_a_topic_moving_to_review_tells_the_owner_once_with_what_waits(project: 
     submit(project.root)
     submit(project.root, {**DECISION, "title": "Orders keep their history"})
     submit(project.root, FILE)
-    run(project.root, "topics", "update", "orders", '{"state": "active", "status": "building"}')
+    store.update_topic(project.root, "orders", change={"state": "active", "status": "building"})
     assert told(project) == []
-    run(project.root, "topics", "update", "orders", '{"state": "review", "status": "built"}')
+    store.update_topic(project.root, "orders", change={"state": "review", "status": "built"})
     assert told(project) == [
         {
             "topic": "orders",
             "reason": "review",
-            "text": "orders is ready for review: 2 decisions, 1 file",
+            "text": "orders is ready for review: 3 decisions",
             "shown": "nowhere",
         }
     ]
     # A burst: more items and a reply in the same few minutes add nothing.
     submit(project.root, {**DECISION, "title": "Orders are never deleted"})
-    run(project.root, "topics", "update", "orders", '{"status": "built, one more"}')
+    store.update_topic(project.root, "orders", change={"status": "built, one more"})
     assert len(told(project)) == 1
     # Another topic is told of on its own.
     submit(project.root, FILE, topic="billing")
-    run(project.root, "topics", "update", "billing", '{"state": "review"}')
+    store.update_topic(project.root, "billing", change={"state": "review"})
     assert [row["topic"] for row in told(project)] == ["orders", "billing"]
 
 
@@ -77,19 +78,19 @@ def test_it_is_the_owners_turn_when_an_agent_answers_them_or_reworks_what_they_r
     topics = Topics(project)
     asked = submit(project.root, topic="asked")
     topics.update_item(asked, None, reply="Why SQLite?", author=Author.OWNER)
-    run(project.root, "items", "update", asked, "--reply", "One file is enough at today's load.")
+    store.update_item(project.root, asked, reply="One file is enough at today's load.")
     rejected = submit(project.root, FILE, topic="rejected")
     judge(project.root, rejected, "rejected", "Bolder.")
-    run(project.root, "items", "update", rejected, "--version", "{}")
+    store.update_item(project.root, rejected, version={})
     submit(project.root, topic="talked")
     topics.update_topic("talked", {}, reply="Where are we?", author=Author.OWNER)
-    run(project.root, "topics", "update", "talked", "--reply", "Halfway.")
+    store.update_topic(project.root, "talked", reply="Halfway.")
     assert [(row["topic"], row["reason"], row["text"]) for row in told(project)] == [
         ("asked", "answered", "asked is your turn again: an agent answered you; 1 decision open"),
         (
             "rejected",
             "reworked",
-            "rejected is your turn again: a new version of an item you rejected; 1 file open",
+            "rejected is your turn again: a new version of an item you rejected; 1 decision open",
         ),
         ("talked", "answered", "talked is your turn again: an agent answered you; 1 decision open"),
     ]
@@ -98,8 +99,8 @@ def test_it_is_the_owners_turn_when_an_agent_answers_them_or_reworks_what_they_r
 def test_nothing_is_told_of_the_owners_own_doing_or_an_agent_talking_on(project: Project) -> None:
     topics = Topics(project)
     ref = submit(project.root)
-    run(project.root, "items", "update", ref, "--reply", "A note, unasked.")
-    run(project.root, "items", "update", ref, "--version", "{}")
+    store.update_item(project.root, ref, reply="A note, unasked.")
+    store.update_item(project.root, ref, version={})
     topics.update_item(ref, None, reply="Fine.", author=Author.OWNER)
     judge(project.root, ref, "accepted")
     topics.update_topic("orders", {}, reply="Thanks.", author=Author.OWNER)
@@ -123,7 +124,7 @@ def test_one_setting_turns_them_off(project: Project) -> None:
     config = project.local / "config.toml"
     config.write_text("notifications = false\n" + config.read_text())
     submit(project.root)
-    run(project.root, "topics", "update", "orders", '{"state": "review"}')
+    store.update_topic(project.root, "orders", change={"state": "review"})
     assert told(project) == []
 
 
@@ -140,7 +141,7 @@ def test_a_studio_page_watching_takes_them_and_its_poll_hands_them_over(
     first = poll("seen=focused")
     assert first == {"latest": 0, "notifications": []}
     submit(project.root)
-    run(project.root, "topics", "update", "orders", '{"state": "review"}')
+    store.update_topic(project.root, "orders", change={"state": "review"})
     [shown] = poll("after=0&seen=notifying")["notifications"]
     assert shown["shown"] == "studio" and shown["address"] == "#topics/orders"
     assert shown["text"] == "orders is ready for review: 1 decision"

@@ -1,0 +1,26 @@
+title = "Rules"
+summary = "Give each event's risks their rule over their evidence params, or a reason, from logika map."
+relevant = "Logika projects: logika.json at the root."
+requires = { files = ["logika.json"], commands = ["logika"] }
+adopted = "when-files"
+
+[due]
+first = true
+days = 30
+changed = ["logika.json"]
+
+[material.rules]
+python = "rules"
+
+[lead]
+reads = ["rules"]
+writes = ["report.md"]
+
+[[agents]]
+name = "rules"
+reads = ["rules"]
+fan_out = "each directory logika map shows gaps in"
+
+[end]
+commit = ["logika.json"]
+kinds = ["validate", "path", "timeout", "rule", "invariant", "error", "risk", "instrumentation", "other"]

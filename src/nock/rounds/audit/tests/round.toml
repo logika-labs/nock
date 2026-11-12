@@ -1,0 +1,29 @@
+title = "Tests"
+summary = "Audit the tests: coverage of what matters, weak assertions, fakes, flakes, slow tests and promises no test holds."
+relevant = "Projects with a test suite."
+adopted = "recommended"
+
+[due]
+days = 30
+
+[material.tests]
+command = "git ls-files | grep -E '(^|/)(tests?|__tests__|spec|e2e)/|(_test|_spec|\\.test|\\.spec)\\.[a-z]+$|(^|/)test_[^/]+$' | awk -F/ '{print ($2 == \"\" ? \".\" : $1)}' | sort | uniq -c | sort -rn"
+
+[material.flakes]
+command = '''git log --since=90.days.ago --no-merges --format='%h %ad %s' --date=short | grep -vE '^[0-9a-f]+ [0-9-]+ (Item|Topic|Asset|Review item|Decision) ' | grep -iE '\b(flak[a-z]*|intermittent[a-z]*|retr(y|ies)|races?|timing|deadlines?|hangs?|on ci|in ci|test[a-z]* (now )?(wait|pass|fail)[a-z]*)\b' | head -60'''
+
+[lead]
+reads = ["tests", "flakes"]
+writes = ["report.md"]
+
+[[agents]]
+name = "package"
+reads = ["tests", "flakes"]
+fan_out = "each package with its own test runner"
+
+[[agents]]
+name = "promises"
+reads = ["tests"]
+
+[end]
+kinds = ["coverage", "assertion", "fake", "flaky", "slow", "gap", "other"]
