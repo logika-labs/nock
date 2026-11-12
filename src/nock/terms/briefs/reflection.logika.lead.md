@@ -16,13 +16,13 @@ directions and genuine ambiguities, and reviews the rest in your report,
 after the round rather than before each rule. Whatever this session was
 doing waits.
 
-Every event in the ledger carries its `risks`: each a `concern.risk` key
+Every event in the ledger carries its `risks`: each a risk key (`once`)
 mapped to the event's params that are its evidence, or to the reason it
 doesn't apply here:
 
-    "risks": {"webhooks.retry": ["attempt", "will_retry"], "webhooks.once": "why it doesn't apply"}
+    "risks": {"once": ["attempt", "will_retry"], "stale": "why it doesn't apply"}
 
-`logika docs <concern>.<risk>` says what a risk is and how a rule guards it.
+`logika docs risks` says what a risk is and how a rule guards it.
 The round gives each risk with evidence its rule over those params, or the
 reason it gets none; `logika map` shows where that stands.
 
@@ -117,7 +117,7 @@ recorded each round.
           "changes": [{"kind": "validate", "target": "refund", "why": "refunds.overpaid, by amount and charged",
                        "expect": "what it should catch, and that it stays quiet otherwise",
                        "tested": "quiet in the noise check over a week of production refunds"},
-                      {"kind": "risk", "target": "delivery: webhooks.once", "why": "the provider never reuses a delivery id",
+                      {"kind": "risk", "target": "delivery: once", "why": "the provider never reuses a delivery id",
                        "expect": "no rule while ids come from the provider"},
                       {"kind": "instrumentation", "target": "refund", "why": "the rule it made possible",
                        "expect": "the field filled on every sighting", "tested": "the capture that shows it"},

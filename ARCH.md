@@ -820,7 +820,7 @@ items of the `logika` topic: `rules.md` (`logika.Material`) and
 `analytics.md` (`logika.Analytics`: params and their flags, funnels,
 milestones, views); `reflection.logika.lead` is the lead's guide and
 `reflection.logika.rules` and `.analytics` the agents' briefs. The rules
-material lists each event's `risks` (`concern.risk` by its evidence params,
+material lists each event's `risks` (each risk key by its evidence params,
 or ruled out); the round's work list is `logika map`, and the lead
 dispatches a rules agent per directory with gaps. Each end requires
 `report.md` and a parsing ledger (`tested` is optional), keeps the ledger's

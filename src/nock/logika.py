@@ -2,7 +2,7 @@
 `logika.analytics` protocols in `nock.rounds`). In a Logika project — a
 `logika.json` ledger, and the `logika` CLI on PATH — the owner runs them
 with the `/logika` skill: **rules**, a subagent per directory, gives each
-event's `risks` (a `concern.risk` key mapped to its evidence params, or to
+event's `risks` (a risk key, `once`, mapped to its evidence params, or to
 why it doesn't apply) its rule over that evidence, or the reason it gets
 none, from what `logika map` shows; **analytics** declares what is worth
 measuring (identities, dimensions, funnels, milestones, views). `Material`
@@ -50,7 +50,7 @@ def event_of(reference: Any) -> str:
 
 
 def risks(declared: Any) -> str:
-    """An event's risks, in a cell: `webhooks.retry by attempt will_retry; webhooks.once ruled out`."""
+    """An event's risks, in a cell: `once by attempt will_retry; stale ruled out`."""
     if not isinstance(declared, dict) or not declared:
         return "-"
     said = [
@@ -280,7 +280,7 @@ class Material:
             "# Events",
             "",
             "What each declared event already says must hold; `-` is nothing yet. on/expected: "
-            "a rule's trigger or follow-up. risks: each `concern.risk` by its evidence params, "
+            "a rule's trigger or follow-up. risks: each risk by its evidence params, "
             "or ruled out (`logika map` says which a rule guards).",
             "",
             "event,kind,params,validate,paths,timeout,rules,anomaly,risks",

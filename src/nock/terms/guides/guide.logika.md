@@ -15,9 +15,9 @@ what is worth measuring.
 Logika is observability and analytics for coding agents. A project declares a
 typed ledger, `logika.json`, of the events its code emits as OpenTelemetry
 spans: what each event means, the params it carries, and the **risks** it
-covers. A webhook's delivery, say, carries the risk `webhooks.retry`, with
+covers. A webhook's delivery, say, carries the risk `once`, with
 `attempt` and `will_retry` as the params that are its evidence:
-`"risks": {"webhooks.retry": ["attempt", "will_retry"]}`. Logika's
+`"risks": {"once": ["attempt", "will_retry"]}`. Logika's
 server judges the stream of events against the ledger's rules, and when the
 system misbehaves, it raises an anomaly into a queue your own coding agent
 works through: it wakes up, claims the anomaly, reads the evidence and fixes

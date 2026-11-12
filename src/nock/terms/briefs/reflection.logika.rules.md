@@ -11,10 +11,10 @@ other directories.
 
 A rule says how the system is expected to behave, and Logika raises an
 issue when production breaks it. Each event in `logika.json` carries its
-`risks`: each a `concern.risk` key mapped to the event's params that are its
+`risks`: each a risk key (`once`) mapped to the event's params that are its
 evidence, or to the reason it doesn't apply:
 
-    "risks": {"webhooks.retry": ["attempt", "will_retry"], "webhooks.once": "why it doesn't apply"}
+    "risks": {"once": ["attempt", "will_retry"], "stale": "why it doesn't apply"}
 
 Your job: for every risk of every event in your directory, the rule over its
 evidence params, or the reason it gets none; and the risks an event lacks.
@@ -27,7 +27,7 @@ field is no reason for a weaker rule.
 
 Logika's docs hold the syntax, and forms written from memory tend to be
 refused: `logika docs rules` (validate and its SQL, paths, timeouts,
-anomaly, rules, descriptions), `logika docs <concern>.<risk>` (what each
+anomaly, rules, descriptions), `logika docs risks` (what each
 risk is and the rules that usually guard it), `logika docs rules.invariants`,
 `logika docs map`, `logika docs ledger` (events, params, risks), `logika
 docs query` (the tables), `logika docs replay`, `logika docs instrument`
@@ -57,7 +57,7 @@ own telemetry, so the promise, not the traffic, says what the rule is.
 ## 3. Each risk: its rule, or its reason
 
 For each risk with evidence, write the rule over those params, the form
-`logika docs <concern>.<risk>` gives for it adapted to this code. The shapes
+`logika docs risks` gives for it adapted to this code. The shapes
 most risks take:
 
 - **A verdict against its raw signal**: what came in says one thing, what
