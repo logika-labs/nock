@@ -365,10 +365,9 @@
   function expand(topic) {
     const items = [];
     for (const decision of topic.items) {
-      const latest = decision.versions[decision.versions.length - 1];
       const assets = (decision.assets || []).map(asset => ({
         ...asset, ref: `${decision.ref}:${asset.name}`, topic: decision.topic, slug: decision.slug, asset: asset.name,
-        decision: decision.ref, decisionTitle: decision.title, gist: latest?.decision?.answer || "",
+        decision: decision.ref, decisionTitle: decision.title,
         verdict: decision.verdict, thread: decision.thread, chat: decision.chat, aliases: [],
         updated: asset.versions.length ? asset.versions[asset.versions.length - 1].moment : decision.updated,
       }));
@@ -575,11 +574,14 @@
 
   // The session that wrote a version, short, with the session that dispatched it.
 
-  // A decision: a bubble opening in place, its chat floating over it.
-  function bubble(item) {
+  // How many assets a decision holds, before its time: a clip and the count; nothing when none.
+  const attached = item => item.assetRefs?.length
+    ? `<span class="attached" role="img" aria-label="${item.assetRefs.length} ${item.assetRefs.length === 1 ? "asset" : "assets"}" title="${item.assetRefs.length} ${item.assetRefs.length === 1 ? "asset" : "assets"}">${ICONS.clip}${item.assetRefs.length}</span>` : "";
+  // A decision: a bubble opening in place on what it says and its assets, its chat floating over it.
+  function bubble(item, items) {
     const open = state.expanded.has(item.ref);
     const todo = last(item).decision.status === "todo" ? todoPill : "";
-    const corner = `<span class="corner">${time(item.updated)}${chatCorner(item.ref, item.thread, item.chat)}${todo}</span>`;
+    const corner = `<span class="corner">${attached(item)}${time(item.updated)}${chatCorner(item.ref, item.thread, item.chat)}${todo}</span>`;
     const title = `<button type="button" class="title" aria-expanded="${open}">${titled(item.title)}</button>`;
     const latest = last(item);
     const decision = latest.decision;
@@ -589,7 +591,7 @@
       const alternatives = decision.alternatives.length ? `<div class="considered"><span class="label">Considered instead</span><ul class="alternatives">${decision.alternatives.map(entry =>
         `<li><span class="option">${inline(entry.option)}</span> — <span class="why">${inline(entry.why_not)}</span></li>`).join("")}</ul></div>` : "";
       const hint = unpreferred(item) && item.verdict === "open" ? "Prefer a variant of each asset to accept it." : "";
-      body = `<div class="expanded"><div class="context">${markdown(decision.answer)}</div>${alternatives}
+      body = `<div class="expanded"><div class="context">${markdown(decision.answer)}</div>${alternatives}${assetsOf(item, items)}
         <div class="actions"><span class="hint" data-problem="${escape(item.ref)}">${escape(hint)}</span><div class="buttons">${verdictButtons(item.ref, item.verdict)}</div></div></div>`;
     }
     return `<div class="item-bubble decision${open ? " open" : ""}${hitClass(item)}" data-key="${escape(item.ref)}" id="item-${escape(item.ref)}">
@@ -660,13 +662,11 @@
   const layoutSwitch = () => `<span class="layouts" role="group" aria-label="Show assets as">${Object.entries(LAYOUTS).map(([name, label]) =>
     `<button type="button" data-layout="${name}" aria-pressed="${state.layout === name}" aria-label="${label}" title="${label}">${LAYOUT_ICONS[name]}</button>`).join("")}</span>`;
 
-  // A decision's assets under it: a grid or a list, switchable, once it holds more than one.
+  // An open decision's assets, inside it: a grid or a list, switchable.
   function assetsOf(item, items) {
     const found = items.filter(entry => entry.decision === item.ref);
     if (!found.length) return "";
-    const layout = found.length > 1 ? state.layout : "list";
-    const switching = found.length > 1 ? `<div class="assets-head">${layoutSwitch()}</div>` : "";
-    return `<div class="decision-assets" data-key="assets:${escape(item.ref)}">${switching}<div class="assets ${layout}">${found.map(entry => assetCard(entry, layout)).join("")}</div></div>`;
+    return `<div class="decision-assets" data-key="assets:${escape(item.ref)}"><div class="assets-head"><span class="label">Assets <span class="count">· ${found.length}</span></span>${layoutSwitch()}</div><div class="assets ${state.layout}">${found.map(entry => assetCard(entry, state.layout)).join("")}</div></div>`;
   }
   function sections(topic, items) {
     const decisions = items.filter(item => kindOf(item) === "decision");
@@ -676,7 +676,7 @@
     const shown = [...decisions, ...holding.filter((item, index) => holding.indexOf(item) === index)];
     if (!shown.length) return "";
     const key = `${topic.name}/decision`, folded = state.folded.has(key);
-    const body = folded ? "" : `<div class="item-bubbles">${shown.map(item => bubble(item) + assetsOf(item, items)).join("")}</div>`;
+    const body = folded ? "" : `<div class="item-bubbles">${shown.map(item => bubble(item, items)).join("")}</div>`;
     return `<section class="section decision${folded ? " folded" : ""}" data-key="section:decision"><h3 class="label"><button type="button" class="fold" data-fold="${escape(key)}" aria-expanded="${!folded}">${ICONS.caret}Decisions <span class="count">· ${shown.length}</span></button></h3>${body}</section>`;
   }
 
@@ -834,16 +834,16 @@
           ? `<div class="stack${entry.file?.type === "image" ? " fit" : ""}"><div class="head">${picker(item, sides[index], numbers[index])}</div>${pane(item, entry.version, entry.file, index)}</div>`
           : varied(item) && entry.file ? `<div class="pane-wrap">${pane(item, entry.version, entry.file, index)}${star(item, entry.version, entry.file)}</div>` : pane(item, entry.version, entry.file, index)}${several && entry.file ? optionBar(item, entry.version, entry.file, index) : ""}</div>`).join("")}</div>`;
     }
-    // The verdict is its decision's: the viewer says which decision it shows, and links to it.
     const hint = unpreferred(item) && item.verdict === "open" ? "Prefer a variant: its decision is accepted only once one is." : "";
-    const gist = item.gist ? `<span class="gist">${inline(item.gist.split(/\n\n/)[0].slice(0, 280))}</span>` : "";
-    const actions = `<div class="actions"><div class="belongs" data-key="belongs"><span class="label">Shows</span><a class="decision-link" href="#topics/${escape(item.decision)}" data-go="${escape(item.decision)}">${titled(item.decisionTitle || "")}</a>${verdictMark(itemAt(item.decision) || item)}${gist}</div><span class="hint" data-problem="${escape(item.ref)}">${escape(hint)}</span></div>`;
+    const actions = hint ? `<div class="actions"><span class="hint" data-problem="${escape(item.ref)}">${escape(hint)}</span></div>` : "";
+    // The verdict is its decision's: a quiet line over the title says which one it shows, and links to it.
+    const crumbs = `<nav class="crumbs" aria-label="Belongs to"><span>${escape(item.topic)}</span><span class="sep" aria-hidden="true">›</span><a href="#topics/${escape(item.decision)}" data-go="${escape(item.decision)}">${titled(item.decisionTitle || "")}</a></nav>`;
     // Every asset's viewer is one size, most of the screen, whatever it holds: what it holds scrolls inside.
     const look = viewing ? "page" : first?.type === "image" || first?.type === "video" ? "image" : first?.type === "text" && !comparing && !several ? "text" : "wide";
     const description = item.description ? `<p class="description">${titled(item.description)}</p>` : "";
     return `<div class="overlay" data-key="overlay:${escape(item.ref)}" data-backdrop>
       <article class="sheet open viewer ${look}${comparing ? " comparing" : ""}" role="dialog" aria-modal="true" aria-label="${escape(item.title)}">
-        <div class="ribbon"><div class="titling"><h2>${titled(item.title)}</h2>${description}</div><span class="side">${time(item.updated)}</span><button type="button" class="close" data-close aria-label="Close (Esc)" title="Close (Esc)">×</button></div>
+        <div class="ribbon">${crumbs}<div class="titling"><h2>${titled(item.title)}</h2>${description}</div><span class="side">${time(item.updated)}</span><button type="button" class="close" data-close aria-label="Close (Esc)" title="Close (Esc)">×</button></div>
         <div class="main">
           <div class="line versions">${pickers ? `<span class="pickers">${pickers}</span>` : ""}${tabs}${viewing ? "" : path}<span class="end">${compare}${chatCorner(threadOf(item), item.thread, item.chat)}</span></div>
           ${heads}<div class="content">${content}</div>${actions}</div>
@@ -960,8 +960,8 @@
     const hits = findHits();
     const wanted = {
       open: new Set(hits.map(item => item.topic)),
-      expanded: new Set(hits.filter(item => kindOf(item) === "decision").map(item => item.ref)),
-      folded: new Set(hits.map(item => `${item.topic}/${kindOf(item)}`)),
+      expanded: new Set(hits.map(threadOf)),
+      folded: new Set(hits.map(item => `${item.topic}/decision`)),
     };
     for (const [place, keys] of Object.entries(state.opened)) {
       for (const key of keys) {

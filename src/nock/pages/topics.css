@@ -843,9 +843,25 @@
 .topics .asset .face[src$=".svg"] { object-fit: contain; padding: 14px 14px 48px; }
 .topics .asset.list .face[src$=".svg"] { padding: 6px; }
 
-/* A decision's assets, under it; the viewer names the decision it shows. */
-.topics .decision-assets { margin: 6px 0 14px 18px; }
-.topics .decision-assets .assets-head { display: flex; justify-content: flex-end; margin-bottom: 6px; }
-.viewer .belongs { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 10px; min-width: 0; }
-.viewer .belongs .decision-link { font-weight: 600; color: inherit; }
-.viewer .belongs .gist { flex-basis: 100%; color: var(--muted); font-size: 0.9em; }
+/* A decision's assets: on its row, a clip and their count before its time; open, they lie inside it
+   under what it says, labelled as its alternatives are. */
+.topics .attached { display: inline-flex; align-items: center; gap: 3px; height: 20px; color: var(--time); font: 600 11px/1 var(--mono); font-variant-numeric: tabular-nums; }
+.topics .attached svg { width: 13px; height: 13px; }
+.topics .decision-assets { display: grid; gap: 8px; }
+.topics .decision-assets .assets-head { display: flex; align-items: center; }
+.topics .decision-assets .assets-head .label { color: var(--muted); }
+
+/* The viewer's head: a quiet line naming the topic and the decision it shows, then its title; its
+   time and the close level with the title's first line, however many lines it wraps to. */
+.topics .viewer .ribbon { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: start; column-gap: 12px; }
+.topics .viewer .ribbon .titling { padding-top: 0; }
+.topics .viewer .ribbon h2 { line-height: 26px; }
+.topics .viewer .ribbon .side { min-height: 0; height: 26px; }
+.topics .viewer .ribbon .close { margin-top: -3px; }
+.topics .viewer .crumbs {
+  grid-column: 1 / -1; display: flex; align-items: baseline; gap: 6px; min-width: 0; margin-bottom: 2px;
+  color: var(--muted); font: 500 12px/18px var(--sans);
+}
+.topics .viewer .crumbs > span:first-child { flex: none; }
+.topics .viewer .crumbs a { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: inherit; text-decoration: none; }
+.topics .viewer .crumbs a:hover { color: var(--foreground); text-decoration: underline; text-underline-offset: 2px; }
