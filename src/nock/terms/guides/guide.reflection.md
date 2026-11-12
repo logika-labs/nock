@@ -168,7 +168,9 @@ what it is for, when it is due, what its lead and agents read (each material
 from a command, a topic, the commits that touched some paths, or a function
 in `material.py`), what they write and what its end checks and commits;
 `lead.md` is the lead's brief and `agents/NAME.md` each agent's. nock ships
-its own and Logika's (see [nock in Logika](#nock-in-logika)); a project adds
+its own, Logika's (see [nock in Logika](#nock-in-logika)), and audits and
+fuzzing a project adopts when it wants them (`audit.performance`,
+`audit.security`, `audit.tests`, `fuzz.api`, `fuzz.ui`); a project adds
 its own, or overrides a shipped one by name, in `.nock/rounds/`. `nock init`
 installs a skill for each adopted one outside nock's (`/team-docs` runs
 `nock reflect team.docs`) and one for a namespace with two or more.

@@ -56,7 +56,8 @@ src/nock/
                      it can run and is adopted, when it is due, its materials, a round started,
                      picked up, left open and submitted; the round's commit
   rounds/            the shipped protocols, a folder each: nock/toolbox, nock/map, nock/fit,
-                     logika/rules, logika/analytics (round.toml, lead.md, agents/, material.py)
+                     logika/rules, logika/analytics, audit/performance, audit/security,
+                     audit/tests, fuzz/api, fuzz/ui (round.toml, lead.md, agents/, material.py)
   reflect.py         Rounds (a protocol's records and scratch), the Record schema, Reflection
                      (nock's window and its metrics, over nock.fit's rounds), and the material
                      builders: Material (the toolbox), Knowledge (the map), Evidence (fit)
@@ -115,6 +116,7 @@ src/nock/
     briefs/          the long texts the installed skills and subagents follow: the
                      rounds' agents reflection.toolbox, .map, .nock (fit's); the logika
                      rounds' lead reflection.logika.lead and agents .rules, .analytics;
+                     the audits' agents reflection.security, .tests (its package agent), .tests.promises;
                      topics.triage; work and work.subagent (the orchestrator, and what it dispatches)
     guides/          the documentation for people: a few long essays (guide.why, guide.review, …)
                      and the reference (guide.commands), nock.dev's docs built from them; at most

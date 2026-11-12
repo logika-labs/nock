@@ -179,15 +179,11 @@ def test_every_skill_and_subagent_nock_installs_points_at_its_brief() -> None:
     docs = Docs()
     skills = list(PACKAGE.joinpath("briefs").rglob("SKILL.md"))
     agents = list(PACKAGE.joinpath("rounds").glob("*/*/agents/*.md"))
-        "nock.toolbox", "nock.map", "nock.fit", "logika.rules", "logika.analytics",
-        ,
+    assert (len(skills), len(agents)) == (2, 8)
     for path in skills + agents:
         front, _, body = path.read_text()[4:].partition("\n---\n")
         named = f"name: {path.parent.name}\n" if path.name == "SKILL.md" else ""
         assert front.startswith(f"{named}description: "), path
-        if path.is_relative_to(PACKAGE / "rounds" / "audit"):
-            assert body.strip().startswith("# "), path
-            continue
         pointer = re.fullmatch(
             r"Run `\.nock/nock docs ([a-z.-]+)` and do what it says\.", body.strip()
         )
