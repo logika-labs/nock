@@ -4,7 +4,6 @@ and generators, which keep derived files from drifting."""
 from __future__ import annotations
 
 import json
-import time
 from pathlib import Path
 
 from nock.checks import Checks, Outcome
@@ -54,18 +53,24 @@ command = "echo tests >> order.log"
 chain = "rust"
 
 [checks.web]
-command = "sleep 2; echo web >> order.log"
+command = "touch web.started; {meet_types}; echo web >> order.log"
 
 [checks.types]
-command = "sleep 2; echo types >> order.log"
-"""
+command = "touch types.started; {meet_web}; echo types >> order.log"
+""".format(
+    # Each check side by side waits for the other to have started, for a minute at most: run one
+    # after the other, the first logs that it ran alone.
+    **{
+        f"meet_{other}": f"i=0; until [ -e {other}.started ] || [ $i -ge 600 ]; do sleep 0.1; i=$((i+1)); done; "
+        f"[ -e {other}.started ] || echo alone >> order.log"
+        for other in ("web", "types")
+    }
+)
 
 
 def test_chains_run_in_order_and_side_by_side(project: Project) -> None:
     configure(project, CHAINS)
-    started = time.monotonic()
     result = nock(project.root, "check", "rust", "web", "types")
-    elapsed = time.monotonic() - started
     assert result.returncode == 1 and result.stdout == "lint: exited 1, printing nothing\n"
     order = (project.root / "order.log").read_text().split()
     assert [step for step in order if step in ("format", "lint", "tests")] == [
@@ -73,8 +78,8 @@ def test_chains_run_in_order_and_side_by_side(project: Project) -> None:
         "lint",
         "tests",
     ]
+    assert "alone" not in order, "the chains ran one after another"
     assert sorted(order) == ["format", "lint", "tests", "types", "web"]
-    assert elapsed < 5, "the chains ran one after another"
 
 
 def test_a_chain_or_a_check_can_be_named(project: Project) -> None:
