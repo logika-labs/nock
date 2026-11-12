@@ -150,6 +150,15 @@ def test_init_installs_the_logika_skills_in_a_logika_project(logika: Project) ->
     assert "reflect --submit" in nock(logika.root, "docs", "reflection.logika.lead").stdout
 
 
+def test_a_skill_of_the_project_s_own_keeps_its_name_from_a_round(logika: Project) -> None:
+    own = logika.root / ".claude" / "skills" / "logika" / "SKILL.md"
+    own.write_text("---\nname: logika\ndescription: How this project logs.\n---\n\nLog it.\n")
+    assert nock(logika.root, "init").returncode == 0
+    assert own.read_text().endswith("Log it.\n")
+    rules = (logika.root / ".claude" / "skills" / "logika-rules" / "SKILL.md").read_text()
+    assert rules.endswith("Run `.nock/nock reflect logika.rules` and do what it says.\n")
+
+
 def test_the_material_says_what_the_ledger_holds_and_what_was_decided(logika: Project) -> None:
     ref = decide(
         logika.root,

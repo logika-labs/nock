@@ -392,8 +392,11 @@ class Installer:
                     " Use when the owner asks, or agrees when nock says it is due.",
                 )
         for skill, (target, description) in skills.items():
+            relative = f".claude/skills/{skill}/SKILL.md"
+            if self.foreign(relative):
+                continue
             self.put(
-                f".claude/skills/{skill}/SKILL.md",
+                relative,
                 f"---\nname: {skill}\ndescription: {description}\n---\n\n"
                 f"Run `.nock/nock reflect {target}` and do what it says.\n",
                 f"the /{skill} skill, for Claude Code",
@@ -407,6 +410,12 @@ class Installer:
         for relative in RETIRED_ROUND_FILES:
             if (self.root / relative).is_file():
                 self.remove(relative, "an earlier nock's round skill or subagent")
+
+    def foreign(self, relative: str) -> bool:
+        """A skill the project wrote itself, which a round's of the same name
+        must not replace: Logika's own repository has a `logika` skill."""
+        path = self.root / relative
+        return path.is_file() and "Run `.nock/nock reflect " not in path.read_text()
 
     def ours(self, relative: str, text: str) -> bool:
         path = self.root / relative
