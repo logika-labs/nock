@@ -56,13 +56,15 @@ src/nock/
                      it can run and is adopted, when it is due, its materials, a round started,
                      picked up, left open and submitted; the round's commit
   rounds/            the shipped protocols, a folder each: nock/toolbox, nock/map, nock/fit,
-                     logika/rules, logika/analytics, audit/performance, audit/security,
+                     logika/rules, logika/analytics, logika/instrument, audit/performance,
+                     audit/security,
                      audit/tests, fuzz/api, fuzz/ui (round.toml, lead.md, agents/, material.py)
   reflect.py         Rounds (a protocol's records and scratch), the Record schema, Reflection
                      (nock's window and its metrics, over nock.fit's rounds), and the material
                      builders: Material (the toolbox), Knowledge (the map), Evidence (fit)
   logika.py          Ledger (logika.json read and counted), Logika (where its rounds can run,
-                     when due, the ledger's problems), and its rounds' material: Material, Analytics
+                     when due, the ledger's problems), Map (`logika map --json`'s open items),
+                     and its rounds' material: Material, Analytics, Instrument
   records.py         the file kinds of `.nock/shared/`: each event's schema by where it lives
                      (topic, decision, asset), decision.json, assets.json, event file names
   shared.py          Shared, the store: its root, media and committer; `settle`, the write
@@ -809,9 +811,9 @@ the metrics, `nock query stats` and the usage report) opens at the latest
 fit round's `finished`. Rounds are directories named by date, so records
 from different machines merge as plain files.
 
-**The logika protocols.** `logika.rules` and `logika.analytics` require
-`logika.json` in the working tree and `logika` on PATH (`Logika.unavailable`),
-are adopted where the ledger is, and are due (`Logika.due`) when never run
+**The logika protocols.** `logika.rules`, `logika.analytics` and `logika.instrument` require
+`logika.json` in the working tree and `logika` on PATH (`Logika.unavailable`);
+the first two are adopted where the ledger is, and are due (`Logika.due`) when never run
 while the ledger declares events, or its `[due]` `days` (30) after the
 last with commits to `logika.json` since; `status.Standing` offers them
 (`rounds`), and the session start says so at most once a week (`nudged`
@@ -820,9 +822,17 @@ items of the `logika` topic: `rules.md` (`logika.Material`) and
 `analytics.md` (`logika.Analytics`: params and their flags, funnels,
 milestones, views); `reflection.logika.lead` is the lead's guide and
 `reflection.logika.rules` and `.analytics` the agents' briefs. The rules
-material lists each event's `risks` (each risk key by its evidence params,
-or ruled out); the round's work list is `logika map`, and the lead
-dispatches a rules agent per directory with gaps. Each end requires
+material lists what each event already says must hold; the round's work
+list is `logika map`'s open items (unread and verdicts events), and the
+lead dispatches a rules agent per directory with open items.
+`logika.instrument` is never adopted or due and has no agents: an agent
+runs it by name for one area. Several share one round, so its material
+(`logika.Instrument`) is the whole repository's `logika map --json` at the
+start (`logika.Map`, a subprocess at the working tree's root): the counts,
+the directories and each open item as a submission names it (`silent
+<file> <function>`, `verdicts <event>`, `unread <event>`), with the reason
+its latest earlier round gave (a change of kind `reason`, by target);
+`begun` and `kept` keep the open counts beside the ledger's. Each end requires
 `report.md` and a parsing ledger (`tested` is optional), keeps the ledger's
 counts before and after, and commits `logika.json`. The rounds read Logika's
 docs through the `logika` CLI rather than copying them.
