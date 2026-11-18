@@ -55,6 +55,9 @@ STANDING_PREFACE = (
 )
 
 
+# A bad store is said in a few lines: its full list once flooded agents' context.
+PROBLEMS_SHOWN = 5
+
 class Block(Exception):
     """Raised by a `stop` hook to refuse the end of a turn, with the reason."""
 
@@ -99,7 +102,7 @@ class HookRunner:
         if event is Event.AFTER_TOOL:
             # Whatever the tool wrote in the store, settled now: a bad edit is said in
             # this same turn, for the agent to fix.
-            refused = self.settled(self.writer())
+            refused = self.settled(self.writer(), once=True)
             if refused:
                 return self.refusal(refused)
         elif event in (Event.SESSION_START, Event.PROMPT, Event.STOP):
@@ -165,9 +168,10 @@ class HookRunner:
             "role": self.project.current_role() or "interactive",
         }
 
-    def settled(self, writer: dict[str, str | None]) -> str:
+    def settled(self, writer: dict[str, str | None], once: bool = False) -> str:
         """Settle what changed in the store (`nock.shared`), as `writer`
-        wrote it (no one known: a sweep); the problems left, said, or nothing."""
+        wrote it (no one known: a sweep); the problems left, said, or nothing;
+        `once`: nothing when this session was already told the same problems."""
         root = self.project.root / NOCK_DIRECTORY / "shared"
         if not root.is_dir():
             return ""
@@ -181,12 +185,36 @@ class HookRunner:
             Topics(self.project).heard(settled)
         if not settled.problems:
             return ""
+        if once and not self.first_saying(settled.problems, writer):
+            return ""
         lines = [
             "nock: these changes in .nock/shared/ don't hold, so none of them was committed"
             " — fix them, or remove them (`.nock/nock docs files` has each kind):"
         ]
-        lines += [f"- {problem}" for problem in settled.problems]
+        lines += [f"- {problem}" for problem in settled.problems[:PROBLEMS_SHOWN]]
+        if len(settled.problems) > PROBLEMS_SHOWN:
+            lines.append(f"- and {len(settled.problems) - PROBLEMS_SHOWN} more")
         return "\n".join(lines)
+
+    def first_saying(self, problems: list[str], writer: dict[str, str | None]) -> bool:
+        """Whether this session has not yet been told these same problems: a
+        hook that repeats them after every tool call floods the agent's context."""
+        import hashlib
+
+        digest = hashlib.sha256("\n".join(sorted(problems)).encode()).hexdigest()
+        session = writer.get("session") or "sweep"
+        said = self.project.root / NOCK_DIRECTORY / "local" / "said-problems" / session
+        try:
+            if said.read_text() == digest:
+                return False
+        except OSError:
+            pass
+        try:
+            said.parent.mkdir(parents=True, exist_ok=True)
+            said.write_text(digest)
+        except OSError:
+            pass
+        return True
 
     def refusal(self, reason: str) -> dict[str, Any]:
         """A bad edit, said to the agent in the turn that made it."""
