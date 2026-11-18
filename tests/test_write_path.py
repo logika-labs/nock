@@ -85,3 +85,18 @@ def test_the_hook_after_a_tool_hears_shell_commands_too(project: Project) -> Non
     settings = json.loads((project.root / ".claude" / "settings.json").read_text())
     (entry,) = settings["hooks"]["PostToolUse"]
     assert entry["matcher"].split("|")[-1] == "Bash" and "Edit" in entry["matcher"]
+
+
+def test_bad_store_files_are_said_once_per_session_and_in_a_few_lines(project: Project) -> None:
+    for n in range(8):
+        write(project, f"topics/orders/events/{n}.json", {"kind": "nonsense"})
+    first = after_tool(project)
+    assert first is not None and first["reason"].count("\n- ") == 6
+    assert first["reason"].splitlines()[-1].startswith("- and ") and "more" in first["reason"]
+    # The same problems after the next tool call: nothing more to say.
+    assert after_tool(project) is None
+    # A new problem is said again; the turn's end still holds it.
+    write(project, "topics/orders/events/9.json", {"kind": "nonsense"})
+    assert after_tool(project) is not None
+    stop = HookRunner(project, {"session_id": "s1"}).handle("Stop")
+    assert stop is not None and "don't hold" in stop["reason"]
