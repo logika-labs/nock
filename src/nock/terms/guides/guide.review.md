@@ -64,10 +64,10 @@ then each part with what shows it — a decision or a proposal inline with its
 controls, a diff of a prompt or a schema, an excerpt of a long file, a
 screenshot, a table or a chart of the numbers, and, for what nothing
 built-in shows, a small page of its own (an html block, sandboxed, which can
-leave notes and accept or reject like the rest). A toggle shows the same
-review as a **list**: its decisions, proposals and assets flat, by kind, with
-the same controls. When the work changes, the agent writes a new version of
-the review.
+leave notes and accept or reject like the rest). Under the review, the
+task's other decisions and proposals are listed, open ones first, then its
+assets, with the same controls. When the work changes, the agent writes a
+new version of the review.
 
 The agents follow `nock docs review` to compose it, and the project's own
 preferences, which reflection learns from your notes and from what you skip:
@@ -78,8 +78,8 @@ the more you review, the better the reviews fit you.
 The minimum:
 
 - **Accept** or **Reject** a proposal.
-- **Note** anything: a block, an item, an asset, a span of text, a line of a
-  diff. A note is a draft, pinned where you left it.
+- **Note** an item or an asset, wherever it shows, or a block of your
+  agent's own page. A note is a draft, pinned where you left it.
 - **Send** a message in the task's one chat. It carries all your unsent
   notes, each pointing at what it is on, and asks for an answer now; it may
   be empty ("go through my notes and redo"). An agent waiting on its inbox
@@ -93,25 +93,29 @@ The minimum:
 
 ## The studio
 
-`nock studio` serves your page on your machine. The front lists the tasks,
-each with what waits on you and what it holds; at the top, only how many are
-active and how many items wait for you, each opening the list of them.
-Anything referenced — an item, an asset, a task, a file — opens a card with
-its details and its actions on a click; Esc or a click outside closes it.
-The page updates as agents write.
+`nock studio` serves your page on your machine. The Topics tab lists the
+tasks, each a row with what it holds, what waits on you, its plan's
+progress (`3/5 steps · ~20 min left`) and its status; a row opens in place
+on its review, and its chat floats from its corner. Filters keep what needs
+you, what waits on an agent, what is to do or active; a search marks what it
+finds. An asset opens in a viewer that compares its versions. The Timeline
+tab is everything that happened, newest first. The page updates as agents
+write.
 
-**Notifications** keep a history of every change, overall and per task: an
+**Notifications** keep a history of every change, in the Timeline: an
 item added or revised, a review ready, a reply in the chat, a task changing
 state. When a task is your turn (its review is ready, an agent answered you,
 or proposed something), nock tells you once per burst: in the studio while
 it is open, through the browser's notifications when you turn them on, on
 the desktop when no page watches (`terminal-notifier`, if installed, opens
-the place on a click). `notifications = false` turns it off.
+the place on a click). Turn them on in the studio's settings;
+`notifications = false` turns them off.
 
-**Rounds** that are due show as hints (see [Agents that build their own
-tools](#agents-that-build-their-own-tools)): Run starts one in the
-background, its result a task like any other; or remind you in some days,
-after twice the changes, or never.
+A **round** that is due shows as one quiet button beside the filters (see
+[Agents that build their own tools](#agents-that-build-their-own-tools)):
+behind it, how often it comes, and Run, which starts it in the background,
+its result a task like any other; or In a week, or Never. Work under way
+shows as a small toast, with Stop.
 
 ## The memory
 
@@ -121,5 +125,5 @@ is where, each pointing to the task, item or doc with the detail. The agent
 you work with reads it first and points every agent it launches at the lines
 and files that bear on its work, so a decision you settled a month ago
 reaches the agent about to undo it. It stays small; the fit round keeps it,
-reshaping it from how it was used, and you can read and edit it in the
-studio, or leave a note on a line to correct it.
+reshaping it from how it was used, and you can read and edit the file
+yourself.

@@ -1,0 +1,168 @@
+<div class="frame topics timeline" id="timeline-tab">
+  <div class="controls">
+    <div class="bar">
+      <div class="field">
+        <input type="text" id="timeline-input" placeholder="search the timeline" autocomplete="off" spellcheck="false" aria-label="Search the timeline">
+        <button type="button" class="inside" id="timeline-clear" aria-label="Clear the search" hidden>×</button>
+      </div>
+    </div>
+    <div class="sift" id="timeline-sift" role="toolbar" aria-label="Filters"></div>
+  </div>
+  <main id="timeline-main"></main>
+</div>
+<script>
+// The Timeline (its look is pages/timeline.css): what happened in the topics as a feed of
+// notifications, the newest first (`GET /api/history`, `nock.timeline`): an agent answered you, an
+// item or an asset came up or changed, a review was composed, a topic opened or changed state. They
+// are the same events nock's browser and desktop notifications tell (`nock.notify`). Each leads to
+// its topic with the thing opened: an item expanded, an asset in the viewer, the chat open, or with
+// its field ready to write (`~reply`). Search keeps the events holding every word; the filters keep
+// one kind. What came since the owner last left the tab is marked new.
+(() => {
+  const $ = id => document.getElementById(id);
+  const escape = studio.escape;
+  const POLL = 5000;
+  const PAGE = 60;
+  const stored = (key, fallback) => { try { return localStorage.getItem(key) ?? fallback; } catch { return fallback; } };
+  const store = (key, value) => { try { if (value === null) localStorage.removeItem(key); else localStorage.setItem(key, value); } catch { /* a private window */ } };
+  const FILTERS = {
+    all: { label: "All" },
+    answers: { label: "Answers", title: "What was said in the chats: the agents' answers to you, and the rest", kinds: ["reply", "message"] },
+    review: { label: "For review", title: "Reviews composed, items and assets submitted or changed, verdicts", kinds: ["review", "item", "revised", "implemented", "verdict", "asset"] },
+    topics: { label: "Topics", title: "Topics opened, their state and status, reviews done", kinds: ["opened", "state", "reviewed"] },
+  };
+  const state = {
+    shown: false, raw: "", all: [], events: [], total: 0, counts: {}, limit: PAGE, query: "",
+    filter: FILTERS[stored("nock.timeline.filter", "all")] ? stored("nock.timeline.filter", "all") : "all",
+    // What the owner had seen when they last left the tab: anything newer is new.
+    seen: stored("nock.timeline.seen", ""),
+  };
+  const ICONS = {
+    topic: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 2h12v3H2zM2 6.5h12v3H2zM2 11h8v3H2z" fill="currentColor"/></svg>',
+    state: '<svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="5.5" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="m5.5 8.2 1.8 1.8 3.4-3.8" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+    status: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 4h11M2.5 8h7M2.5 12h9" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>',
+    revived: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8a5 5 0 1 0 1.5-3.6M3 2.5v2.5h2.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+    item: '<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="2.5" y="2.5" width="11" height="11" rx="2.5" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M8 5.5v5M5.5 8h5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>',
+    version: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5 3.5h7.5v9H5zM3.5 5v8.5H11" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>',
+    answered: '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M8 5 3.5 9.5 8 14M3.5 9.5H11c3 0 5.5 2.3 5.5 5.5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+    message: '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 4.5h12a1.5 1.5 0 0 1 1.5 1.5v7a1.5 1.5 0 0 1-1.5 1.5H9l-3.5 3v-3H4A1.5 1.5 0 0 1 2.5 13V6A1.5 1.5 0 0 1 4 4.5z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>',
+  };
+  // Each kind of event's sign.
+  const SIGNS = { opened: "topic", state: "state", reviewed: "state", implemented: "state", verdict: "state", review: "version", revised: "version", asset: "version", item: "item", reply: "answered", message: "message" };
+
+  // A day's heading: Today, Yesterday, or the date.
+  function day(moment) {
+    const when = new Date(moment), today = new Date();
+    const start = date => new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+    const days = Math.round((start(today) - start(when)) / 86400000);
+    if (days === 0) return "Today";
+    if (days === 1) return "Yesterday";
+    return when.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", ...(when.getFullYear() !== today.getFullYear() ? { year: "numeric" } : {}) });
+  }
+
+  // A notification, on four lines: the topic's pill (it opens the topic), what happened, the dot
+  // that marks it unseen and its time; a title on one line; a description of up to three; an asset's
+  // pictures and videos in a row of their own. A topic's status changes in a row are one card, with
+  // their count. The rest of the card opens the event's own place. Hovered, an open decision offers
+  // Accept and Reject in place, an answer Reply, which opens its chat ready to write.
+  function card(event) {
+    const fresh = state.seen && event.moment > state.seen;
+    const topic = `<span class="topic" role="link" tabindex="0" data-topic-link="#topics/${escape(event.topic)}">${escape(event.topic)}</span>`;
+    const count = event.count ? `<span class="count">· ${event.count} updates</span>` : "";
+    const title = event.title ? `<span class="title">${studio.render.titled(event.title)}</span>` : "";
+    const preview = event.preview ? `<span class="gist${event.muted ? " muted" : ""}">${studio.render.inline(event.preview)}</span>` : "";
+    const action = (name, label, primary) => `<span class="button ${primary ? "primary" : "secondary"}" role="button" tabindex="0" ${name}>${label}</span>`;
+    const actions = event.kind === "reply" ? `<span class="actions">${action(`data-reply-link="#topics/${escape(event.topic)}~reply"`, "Reply", true)}</span>` : "";
+    return `<a class="event ${escape(event.kind)}${fresh ? " new" : ""}" data-key="${escape(event.key)}" href="${escape(event.address)}">
+      <span class="sign" aria-hidden="true">${ICONS[SIGNS[event.kind]] || ICONS.message}</span>
+      <span class="headline">${topic}<strong>${escape(event.phrase)}</strong>${count}<span class="unseen"${fresh ? ' title="New since you last looked"' : ""}></span>${studio.render.time(event.moment)}</span>${title}${preview}${actions}</a>`;
+  }
+
+  function drawList() {
+    let markup = "", last = "";
+    for (const event of state.events) {
+      const heading = state.query.trim() ? "" : day(event.moment);
+      if (heading && heading !== last) { markup += `<h3 class="label day" data-key="day:${escape(heading)}">${escape(heading)}</h3>`; last = heading; }
+      markup += card(event);
+    }
+    if (!state.events.length) {
+      markup = `<div class="empty" data-key="empty"><strong>${state.query.trim() ? "No matches" : "Nothing yet"}</strong><span>${state.query.trim() ? "No event holds that." : "What agents do in the topics shows here as it happens."}</span></div>`;
+    }
+    if (state.total > state.events.length) markup += `<button type="button" class="button secondary more" data-key="more" data-more>Show more · ${state.total - state.events.length}</button>`;
+    studio.morph($("timeline-main"), markup);
+  }
+
+  function drawSift() {
+    const chips = Object.entries(FILTERS).map(([name, filter]) =>
+      `<button type="button" class="chip" data-timeline-filter="${name}" data-key="filter:${name}" aria-pressed="${state.filter === name}"${filter.title ? ` title="${escape(filter.title)}"` : ""}>${escape(filter.label)} <span class="count">${state.counts[name] ?? ""}</span></button>`).join("");
+    studio.morph($("timeline-sift"), `<div class="chips" role="group" aria-label="Filter" data-key="filters">${chips}</div>`);
+  }
+
+  function drawBar() {
+    $("timeline-clear").hidden = !$("timeline-input").value;
+  }
+
+  function draw() {
+    const fresh = state.seen ? state.events.filter(event => event.moment > state.seen).length : 0;
+    studio.summary("timeline", state.total ? `${state.total} ${state.total === 1 ? "event" : "events"}${fresh ? ` · ${fresh} new` : ""}` : "nothing yet");
+    drawBar();
+    drawSift();
+    drawList();
+  }
+
+  // The events, read when the studio's store moved; searched and filtered here.
+  function sift() {
+    const words = state.query.toLowerCase().split(/\s+/).filter(Boolean);
+    const found = words.length ? state.all.filter(event => { const all = [event.topic, event.phrase, event.title, event.preview].join(" ").toLowerCase(); return words.every(word => all.includes(word)); }) : state.all;
+    state.counts = { all: found.length };
+    for (const [name, filter] of Object.entries(FILTERS)) if (filter.kinds) state.counts[name] = found.filter(event => filter.kinds.includes(event.kind)).length;
+    const kept = FILTERS[state.filter].kinds ? found.filter(event => FILTERS[state.filter].kinds.includes(event.kind)) : found;
+    state.total = kept.length;
+    state.events = kept.slice(0, state.limit);
+  }
+  async function load() {
+    try {
+      const raw = await fetch("/api/history").then(response => response.text());
+      if (raw !== state.raw) { state.raw = raw; state.all = JSON.parse(raw).events; }
+      sift();
+      draw();
+    } catch {
+      studio.summary("timeline", "Lost touch with nock — is `nock studio` still running?");
+    }
+  }
+
+  const root = $("timeline-tab");
+  root.addEventListener("click", event => {
+    const target = event.target;
+    const topic = target.closest("[data-topic-link]");
+    if (topic) { event.preventDefault(); location.hash = topic.dataset.topicLink; return; }
+    const reply = target.closest("[data-reply-link]");
+    if (reply) { event.preventDefault(); location.hash = reply.dataset.replyLink; return; }
+    const filter = target.closest("[data-timeline-filter]");
+    if (filter) { state.filter = filter.dataset.timelineFilter; store("nock.timeline.filter", state.filter === "all" ? null : state.filter); state.limit = PAGE; sift(); draw(); return; }
+    if (target.closest("#timeline-clear")) { $("timeline-input").value = ""; state.query = ""; sift(); draw(); $("timeline-input").focus(); return; }
+    if (target.closest("[data-more]")) { state.limit += PAGE; sift(); draw(); }
+  });
+  root.addEventListener("input", event => {
+    if (event.target.id !== "timeline-input") return;
+    state.query = event.target.value; state.limit = PAGE; sift(); draw();
+  });
+  document.addEventListener("keydown", event => {
+    if (state.shown && event.key === "Enter" && event.target.matches?.("[data-topic-link], [data-reply-link]")) { event.preventDefault(); event.target.click(); return; }
+    if (!state.shown || event.target.id !== "timeline-input") return;
+    if (event.key === "Escape") { event.target.value = ""; state.query = ""; sift(); draw(); event.target.blur(); }
+  });
+
+  studio.register("timeline", {
+    show() { state.shown = true; state.raw = ""; load(); },
+    // Leaving, what it showed counts as seen: next time, only what came since is new.
+    hide() {
+      state.shown = false;
+      const newest = state.events[0]?.moment;
+      if (newest && (!state.seen || newest > state.seen) && !state.query.trim() && state.filter === "all") { state.seen = newest; store("nock.timeline.seen", newest); }
+    },
+  });
+  setInterval(() => { if (state.shown && !document.hidden) load(); }, POLL);
+  setInterval(() => { if (state.shown) draw(); }, 30000);
+})();
+</script>

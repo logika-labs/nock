@@ -89,9 +89,11 @@ src/nock/
   studio.py          the owner's page (`nock studio`): a local server, `Api` the page's JSON;
                      `code_moment`, so a studio older than its code offers to restart
                      in place (`POST /restart`, a re-exec on the same port)
-  pages/             studio.html, the shell; studio.css, its look; app.js, the page (routes by
-                     `#/…`, the front, a task's review, the chat and its runs, the memory,
-                     notifications, the settings and the rounds); view.css, the look an html
+  pages/             studio.html, the shell (the band, the menu, the settings with the
+                     notifications, the toasts); studio.css, its look; topics.html with
+                     topics.css and chat.css, the Topics tab (each topic opening in place on
+                     its review, its items, assets and chat; the filters and the round due);
+                     timeline.html with timeline.css, the Timeline; view.css, the look an html
                      block is served with; icon.png, nock's logo, shown with every notification
   status.py          Standing: a round due, what waits on the owner and on agents, an
                      unshared summary; `nock status`'s nudges (record, gen)
@@ -576,21 +578,30 @@ history and reads the same on every machine.
 
 `nock studio` serves one page from one process, `studio.Studio`, a
 `ThreadingHTTPServer` on 127.0.0.1: `pages/studio.html` with `studio.css`
-and `app.js` put in. The page routes by the address's hash (`#/`, `#/t/TASK`
-and what is in it, `#/memory`) and keeps the scroll offset everywhere a link
-lands. `studio.Api` answers `/api/…`, JSON both ways, a nock `Error`
-becoming 404 or 400: `GET topics` (every task's row with what it holds,
-the two counts' lists, the rounds due, the round runs), `topic/NAME` (a task
+and each tab's fragment put in, the Topics (`topics.html`, its look
+`topics.css` and `chat.css`) and the Timeline (`timeline.html`,
+`timeline.css`). The address's hash says which tab and what in it is open
+(`#topics/TOPIC`, `#topics/TOPIC/SLUG` an item, `#topics/TOPIC:ASSET` an
+asset, `~chat` its chat); the addresses nock gives elsewhere (`#/t/TOPIC`
+and what is in it) are read as the same. A topic opens in place on its
+review, drawn with the list's own parts (an item as its bubble, a diff or a
+document as the viewer shows a file), then its open and closed items and
+its assets; its one chat floats from its row. A plan's progress is a count
+in the row and a hairline in the open topic; a round due is one quiet
+button among the filters, Run, In a week and Never behind it, with how
+often it comes; work under way is a toast with Open and Stop. `studio.Api` answers `/api/…`, JSON both ways, a nock `Error`
+becoming 404 or 400: `GET topics` (every task's row with what it holds and
+where its chat stands, the two counts' lists, the rounds due, the round
+runs, the runs under way), `topic/NAME` (a task
 whole: its items, its assets with each version's address and small text,
 its review, its chat with each message's notes, its runs), `asset/…` and
 `attachment/…` (files as they are, a byte range when asked), `html/…` (an
 html block with `view.css` and the bridge, `studio.BRIDGE`: `nock.note`,
 `accept`, `reject`, `open`, its size, posted to the page), `history`,
 `runs`, `run/ID` (a run with its turn's events, live), `rounds`,
-`settings`, `memory`, and `stamp`, which the page polls to read again when
+`settings`, and `stamp`, which the page polls to read again when
 the store, the runs or the notifications moved. `POST note`, `send` (then
-an answer now), `verdict`, `done`, `upload`, `memory` (the owner's edit),
-`runs/stop`, `rounds/run`, `rounds/snooze`, `rounds/set`. `GET
+an answer now), `verdict`, `done`, `upload`, `runs/stop`, `rounds/run`, `rounds/snooze`, `rounds/set`. `GET
 /notifications` is the page's poll for what to tell the owner (in the page,
 or through the browser's notifications), `POST /usage` their answer on
 sharing, `/restart` whether the code changed and a restart in place.
