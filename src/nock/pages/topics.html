@@ -643,7 +643,7 @@
     const values = series.flatMap(entry => entry.values || []).filter(Number.isFinite);
     const top = Math.max(1, ...values);
     const width = 560, height = 160, band = width / Math.max(1, labels.length), bar = Math.max(4, band / (series.length + 1) - 4);
-    const shades = ["var(--foreground)", "var(--muted)", "var(--input)"];
+    const shades = ["var(--muted)", "var(--input)", "var(--foreground)"];
     const marks = labels.map((label, index) => series.map((entry, which) => {
       const value = entry.values?.[index] ?? 0, tall = (value / top) * (height - 36);
       const x = index * band + (band - series.length * (bar + 4)) / 2 + which * (bar + 4);
