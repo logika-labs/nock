@@ -16,26 +16,24 @@ directions and genuine ambiguities, and reviews the rest in your report,
 after the round rather than before each rule. Whatever this session was
 doing waits.
 
-Every event in the ledger carries its `risks`: each a risk key (`once`)
-mapped to the event's params that are its evidence, or to the reason it
-doesn't apply here:
-
-    "risks": {"once": ["attempt", "will_retry"], "stale": "why it doesn't apply"}
-
-`logika docs risks` says what a risk is and how a rule guards it.
-The round gives each risk with evidence its rule over those params, or the
-reason it gets none; `logika map` shows where that stands.
+`logika map` lists what no rule covers yet, as open items: **unread**, an
+event no rule reads, and **verdicts**, an event logged where the code
+decides or authorizes whose params are all verdicts (bools, counts,
+verdict-named). The round gives each unread event its rule over its values,
+or the reason it gets none, and each verdicts event the values it decided
+on with the rule over them; `logika docs rules` says what to log and which
+rules to write.
 
 Done when: the rules and declarations you decided on are in `logika.json`;
-`logika map` leaves no risk at "no rule yet" that a rule could guard; the
-instrumentation they need is in the code; the noise check fires on nothing
-normal; `logika check` passes; and `.nock/nock reflect --submit` has
-recorded each round.
+`logika map` leaves no unread or verdicts item a rule could close without
+its reason; the instrumentation they need is in the code; the noise check
+fires on nothing normal; `logika check` passes; and `.nock/nock reflect
+--submit` has recorded each round.
 
 1. `.nock/nock reflect logika` starts both rounds (`reflect logika.rules`
    or `reflect logika.analytics` one) and prints each one's material and
    the report you write for it. The material shows what the ledger already says
-   and measures, per component, event (with its risks) and param, what
+   and measures, per component, event and param, what
    changed since the last round, and the decisions earlier rounds left in the
    `logika` topic.
 2. Start with what is owed:
@@ -44,13 +42,13 @@ recorded each round.
      when the version doesn't say it;
    - the last round's rules that raised false alarms: fix them or take them
      out (`logika query` shows them).
-3. Find the gaps: `logika map` (`logika docs map`) prints, per file, each
-   function's events and each event's risks, "by <params>, guarded by …",
-   "no rule yet" or "ruled out", and ends with "To look at". That is the
-   round's work list: the gaps come from it.
+3. Find the open items: `logika map` (`logika docs map`) prints the
+   repository's files, events and open items, a line per subdirectory with
+   its own, and ends with "To look at", grouped by what to do. That is the
+   round's work list: the unread and verdicts items come from it.
 4. Dispatch the parts as subagents, in one message, each of its type (in
    `.claude/agents/`; each reads its own brief): one rules part per
-   directory the map shows gaps in (a component's paths, or a top-level
+   directory the map shows open items in (a component's paths, or a top-level
    source directory where the map names no components), and one analytics
    part for the whole. Give each its material and the round's window, and
    a rules part its directory. They read and run commands but change
@@ -59,7 +57,7 @@ recorded each round.
 
    | part | subagent type | brief | material | brings back |
    |---|---|---|---|---|
-   | rules, one per directory | `logika-rules` | `reflection.logika.rules` | `rules` | for each risk, its rule over its evidence or the reason it gets none; risks an event lacks; the fields a rule needs |
+   | rules, one per directory | `logika-rules` | `reflection.logika.rules` | `rules` | for each unread or verdicts item, its rule or the reason it gets none; rules a read event lacks; the fields a rule needs |
    | analytics | `logika-analytics` | `reflection.logika.analytics` | `analytics` | identities, dimensions, funnels, milestones, views |
 
    If a part fails, say so in the report rather than doing its part
@@ -77,18 +75,18 @@ recorded each round.
 6. Add the instrumentation the rules need, as Logika's docs describe
    (`logika docs instrument`): the raw input a decision read beside its
    outcome, an effect's real result, the id it acted on, a step as a child
-   event. Change the code and the ledger together, point the event's risks
-   at the new params, keep every existing event and param, run `logika
+   event. Change the code and the ledger together, keep every existing
+   event and param, run `logika
    check`, then capture again (`logika test "<the command that exercises
    it>"`) and see the new fields filled. Commit it on its own (the code and
    the ledger), saying what the code now logs.
 7. Write what the parts brought back into `logika.json`, most important
    first: money, stock, access, and anything else that changes shared
    state. Each rule carries its one-sentence `description` (the anomaly's
-   title) saying what must hold and why (`logika docs rules`); each risk
-   maps to its evidence or its reason. Run `logika check` until it passes.
-   Then run `logika map` again: if it shows much the parts didn't cover
-   (risks the new instrumentation brought, a directory they missed), run
+   title) saying what must hold and why (`logika docs rules`); each item
+   left open keeps its reason for the submission. Run `logika check` until
+   it passes. Then run `logika map` again: if it shows much the parts didn't
+   cover (events the new instrumentation brought, a directory they missed), run
    steps 4 to 7 once more over those directories only, then stop.
 8. One noise check, at the end (`logika docs replay`): judge real traffic
    against the new ledger, `logika replay '{"on": "capture"}'` for the last
@@ -100,11 +98,11 @@ recorded each round.
    a little noise is calibrated in production, and a missing rule never
    fires.
 9. Write each round's report for the owner, as what you decided, for them to
-   review (the rules round's the rules, risks and their instrumentation; the
-   analytics round's what is now measured):
-   - the rules you added or changed, each with its risk, its evidence and
-     the margin behind its threshold;
-   - the risks you ruled out, and why;
+   review (the rules round's the rules, reasons and their instrumentation;
+   the analytics round's what is now measured):
+   - the rules you added or changed, each with the event it reads, the
+     params and the margin behind its threshold;
+   - the items you left open, and why;
    - the instrumentation you added, and the rules it made possible;
    - what is now measured, and the questions it answers;
    - what the noise check fired on, and what you did about it;
@@ -114,10 +112,10 @@ recorded each round.
 10. Submit each round:
 
         .nock/nock reflect --submit '{"protocol": "logika.rules", "summary": "the round in a sentence or two",
-          "changes": [{"kind": "validate", "target": "refund", "why": "refunds.overpaid, by amount and charged",
+          "changes": [{"kind": "validate", "target": "refund", "why": "a refund never exceeds its charge, by amount and charged",
                        "expect": "what it should catch, and that it stays quiet otherwise",
                        "tested": "quiet in the noise check over a week of production refunds"},
-                      {"kind": "risk", "target": "delivery: once", "why": "the provider never reuses a delivery id",
+                      {"kind": "reason", "target": "unread delivery", "why": "the provider never reuses a delivery id",
                        "expect": "no rule while ids come from the provider"},
                       {"kind": "instrumentation", "target": "refund", "why": "the rule it made possible",
                        "expect": "the field filled on every sighting", "tested": "the capture that shows it"},
@@ -129,8 +127,9 @@ recorded each round.
     `{"kind": "funnel", "target": "activation", "why": "the question it
     answers", "expect": "what it should show", "tested": "the captures that
     carry it"}`. The rules round's kinds are validate, path, timeout, rule,
-    invariant and error (the rules), risk (a risk declared or ruled out),
-    instrumentation and other; the analytics round's identity, dimension,
+    invariant and error (the rules), reason (an item left open, its target
+    the item: `unread <event>`, `verdicts <event>`, and its `why` the
+    reason), instrumentation and other; the analytics round's identity, dimension,
     funnel, milestone, view, instrumentation and other.
     `tested`, what showed a change (the noise check, a capture), is
     optional. The verdicts cover the last round's expectations. Submitting

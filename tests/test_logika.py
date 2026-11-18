@@ -34,11 +34,7 @@ LEDGER: dict[str, Any] = {
             "span": {"timeout": "2m"},
             "children": [{"name": "reserved", "params": ["sku"]}],
         },
-        {
-            "name": "refund",
-            "params": ["order_id", "amount"],
-            "risks": {"refunds.overpaid": ["amount"], "refunds.once": "one refund per order"},
-        },
+        {"name": "refund", "params": ["order_id", "amount"]},
     ],
     "rules": [{"on": "checkout.order_id", "expect": ["refund.order_id"], "within": "7d"}],
     "invariants": [],
@@ -56,8 +52,8 @@ RECORD = {
             "tested": "quiet in the noise check over the test suite's capture",
         },
         {
-            "kind": "risk",
-            "target": "refund: refunds.once",
+            "kind": "reason",
+            "target": "unread refund",
             "why": "the provider refuses a second refund of an order",
             "expect": "no rule while refunds go through the provider",
         },
@@ -173,15 +169,13 @@ def test_the_material_says_what_the_ledger_holds_and_what_was_decided(logika: Pr
     assert set(begun) == {"logika.rules", "logika.analytics"}
     started = begun["logika.rules"]
     assert started["agents"][0]["type"] == "logika-rules"
-    assert started["agents"][0]["one per"] == "each directory logika map shows gaps in"
+    assert started["agents"][0]["one per"] == "each directory logika map shows open items in"
     material = Path(started["material"]["rules"]).read_text()
     assert "3 events (1 spans; 1 with `validate`, 0 with paths, 1 with a timeout)" in material
-    assert 'checkout,span,order_id amount,"amount > 0",-,2m,on,-,-' in material
-    assert "checkout.reserved,leaf,sku,-,-,-,-,-,-" in material
-    assert (
-        'refund,leaf,order_id amount,-,-,-,expected,-,"refunds.overpaid by amount; '
-        'refunds.once ruled out"' in material
-    )
+    assert "event,kind,params,validate,paths,timeout,rules,anomaly\n" in material
+    assert 'checkout,span,order_id amount,"amount > 0",-,2m,on,-\n' in material
+    assert "checkout.reserved,leaf,sku,-,-,-,-,-\n" in material
+    assert "refund,leaf,order_id amount,-,-,-,expected,-\n" in material
     assert "- rule: checkout.order_id → refund.order_id within 7d" in material
     assert "shop,src,,yes,1," in material
     assert "Instrument the shop" in material
@@ -289,3 +283,113 @@ def test_a_logika_round_is_offered_once_a_week_never_run(
         .due()
         .startswith("a logika round is due (1 commits changed")
     )
+
+
+MAP: dict[str, Any] = {
+    "path": ".",
+    "mode": "logika",
+    "files": 12,
+    "events": 9,
+    "counts": {"silent": 2, "verdicts": 1, "unread": 2},
+    "open": {
+        "silent": [{"file": "app/billing/refunds.py", "functions": ["Refunds.refund", "clean"]}],
+        "verdicts": ["refund.decided"],
+        "unread": ["refund", "refund.sent"],
+    },
+    "directories": [{"path": "app/", "events": 9, "open": 5}],
+}
+
+
+@pytest.fixture
+def mapped(logika: Project, on_path: Path) -> Path:
+    """The stand-in `logika` prints `map.json` for `logika map --json`, and
+    fails as a broken map would while there is none."""
+    found = on_path.parent / "map.json"
+    on_path.write_text(
+        "#!/bin/sh\n"
+        'if [ "$1 $2" = "map --json" ]; then\n'
+        f'  [ -f "{found}" ] && exec cat "{found}"\n'
+        "  echo 'logika.json: the ledger does not parse' >&2; exit 3\n"
+        "fi\n"
+    )
+    found.write_text(json.dumps(MAP))
+    return found
+
+
+def test_the_instrument_round_runs_by_name_only_and_starts_from_the_map(
+    logika: Project, mapped: Path
+) -> None:
+    assert set(start(logika)) == {"logika.rules", "logika.analytics"}
+    assert not (logika.root / ".claude" / "skills" / "logika-instrument").exists()
+    standing = json.loads(nock(logika.root, "status", "--json").stdout)["rounds"]
+    assert "logika.instrument" not in json.dumps(standing)
+    started = start(logika, "logika.instrument")["logika.instrument"]
+    assert started["agents"] == [] and "logika map <area>" in started["brief"]
+    material = Path(started["material"]["instrument"]).read_text()
+    assert "logika, 12 files, 9 events; open: 2 silent, 1 verdicts, 2 unread." in material
+    assert "- app/: 9 events, 5 open" in material
+    for item in (
+        "silent app/billing/refunds.py Refunds.refund",
+        "silent app/billing/refunds.py clean",
+        "verdicts refund.decided",
+        "unread refund",
+        "unread refund.sent",
+    ):
+        assert f"- {item}\n" in material
+    begun = json.loads((Path(started["material"]["instrument"]).parent / "round.json").read_text())
+    assert begun["open"] == {"silent": 2, "verdicts": 1, "unread": 2}
+
+
+def test_an_instrument_round_keeps_its_reasons_for_the_next_one(
+    logika: Project, mapped: Path
+) -> None:
+    started = start(logika, "logika.instrument")["logika.instrument"]
+    (logika.root / started["write"][0]).write_text("# The round\n")
+    record: dict[str, Any] = {
+        "protocol": "logika.instrument",
+        "summary": "Refunds are logged and ruled.",
+        "changes": [
+            {
+                "kind": "validate",
+                "target": "refund",
+                "why": "a refund never exceeds its charge",
+                "expect": "fires only on a refund above its charge",
+            },
+            {
+                "kind": "reason",
+                "target": "unread refund.sent",
+                "why": "the provider acknowledges every send",
+                "expect": "no rule while sends go through the provider",
+            },
+        ],
+    }
+    risk = {**record, "changes": [{**record["changes"][1], "kind": "risk"}]}
+    refused = submit(logika, risk)
+    assert refused.returncode == 40 and "not risk" in refused.stderr
+    later = copy.deepcopy(MAP)
+    later["counts"] = {"silent": 0, "verdicts": 1, "unread": 1}
+    later["open"] = {"silent": [], "verdicts": ["refund.decided"], "unread": ["refund.sent"]}
+    mapped.write_text(json.dumps(later))
+    finished = submit(logika, record)
+    assert finished.returncode == 0, finished.stdout + finished.stderr
+    (kept,) = protocol(logika, "logika.instrument").rounds.all()
+    assert kept["open_before"] == {"silent": 2, "verdicts": 1, "unread": 2}
+    assert kept["open"] == {"silent": 0, "verdicts": 1, "unread": 1}
+    assert kept["ledger"]["events"] == 3
+
+    again = start(logika, "logika.instrument")["logika.instrument"]
+    material = Path(again["material"]["instrument"]).read_text()
+    assert "- unread refund.sent — left: the provider acknowledges every send\n" in material
+    assert "- verdicts refund.decided\n" in material
+    assert "silent" not in material.split("# Open items")[1]
+
+
+def test_the_instrument_material_says_when_the_map_fails(logika: Project, mapped: Path) -> None:
+    mapped.unlink()
+    started = start(logika, "logika.instrument")["logika.instrument"]
+    material = Path(started["material"]["instrument"]).read_text()
+    assert (
+        "`logika map --json` exited 3: logika.json: the ledger does not parse: run it yourself."
+        in material
+    )
+    assert "No earlier instrument round left an item with a reason." in material

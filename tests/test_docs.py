@@ -194,11 +194,12 @@ def test_every_shipped_protocol_has_its_lead_s_brief_and_one_for_each_agent() ->
     manifests = rounds.manifests(None)
     assert set(manifests) == {
         "nock.toolbox", "nock.map", "nock.fit", "logika.rules", "logika.analytics",
-        "audit.performance", "audit.security", "audit.tests", "fuzz.api", "fuzz.ui",
+        "logika.instrument", "audit.performance", "audit.security", "audit.tests", "fuzz.api",
+        "fuzz.ui",
     }  # fmt: skip
     for manifest in manifests.values():
         assert (manifest.folder / rounds.LEAD).read_text().startswith("# "), manifest.name
-        names = {agent["name"] for agent in manifest.data["agents"]}
+        names = {agent["name"] for agent in manifest.data.get("agents", [])}
         assert {path.stem for path in (manifest.folder / "agents").glob("*.md")} == names
         for source in manifest.data.get("material", {}).values():
             assert len(source) == 1 and set(source) <= {"python", "command", "topic", "git"}

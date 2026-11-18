@@ -1,18 +1,22 @@
-"""What a Logika project's rounds read (the `logika.rules` and
-`logika.analytics` protocols in `nock.rounds`). In a Logika project — a
-`logika.json` ledger, and the `logika` CLI on PATH — the owner runs them
-with the `/logika` skill: **rules**, a subagent per directory, gives each
-event's `risks` (a risk key, `once`, mapped to its evidence params, or to
-why it doesn't apply) its rule over that evidence, or the reason it gets
-none, from what `logika map` shows; **analytics** declares what is worth
-measuring (identities, dimensions, funnels, milestones, views). `Material`
-and `Analytics` are what each reads; `Logika`, the ledger and when a round
-is worth offering."""
+"""What a Logika project's rounds read (the `logika.rules`, `logika.analytics`
+and `logika.instrument` protocols in `nock.rounds`). In a Logika project — a
+`logika.json` ledger, and the `logika` CLI on PATH — the owner runs the first
+two with the `/logika` skill: **rules**, a subagent per directory, gives each
+event `logika map` lists as unread its rule over its values, or the reason it
+gets none, and each verdict-only event the values it decided on;
+**analytics** declares what is worth measuring (identities, dimensions,
+funnels, milestones, views). **instrument** is never adopted: an agent runs
+it by name for one area, instrumenting it and writing its rules until the
+map leaves each item closed or with its reason. `Material`, `Analytics` and
+`Instrument` are what each reads; `Logika`, the ledger and when a round is
+worth offering; `Map`, what `logika map` leaves open."""
 
 from __future__ import annotations
 
 import json
+import posixpath
 import shutil
+import subprocess
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -31,6 +35,13 @@ PROGRAM = "logika"
 TOPIC = "logika"
 # The round's parts: each a brief in `nock docs` (`reflection.logika.PART`), and a material file.
 SECTION_ROWS = 40
+# What `logika map` leaves open, by kind: functions that log nothing, events whose
+# params are all verdicts, events no rule reads.
+OPEN = ("silent", "verdicts", "unread")
+# The change kind an instrument round leaves an open item with, its target the item.
+REASON = "reason"
+# `logika map` reads the tree offline: past this it is stuck, not slow.
+MAP_SECONDS = 300
 
 
 def flattened(events: Any, prefix: str = "") -> list[tuple[str, dict[str, Any]]]:
@@ -47,19 +58,6 @@ def flattened(events: Any, prefix: str = "") -> list[tuple[str, dict[str, Any]]]
 def event_of(reference: Any) -> str:
     """The event an `event.param` reference names: `checkout.captured.order_id` → `checkout.captured`."""
     return str(reference).rsplit(".", 1)[0]
-
-
-def risks(declared: Any) -> str:
-    """An event's risks, in a cell: `once by attempt will_retry; stale ruled out`."""
-    if not isinstance(declared, dict) or not declared:
-        return "-"
-    said = [
-        f"{key} by {' '.join(map(str, evidence))}"
-        if isinstance(evidence, list)
-        else f"{key} ruled out"
-        for key, evidence in declared.items()
-    ]
-    return json.dumps("; ".join(said))
 
 
 class Ledger:
@@ -280,10 +278,9 @@ class Material:
             "# Events",
             "",
             "What each declared event already says must hold; `-` is nothing yet. on/expected: "
-            "a rule's trigger or follow-up. risks: each risk by its evidence params, "
-            "or ruled out (`logika map` says which a rule guards).",
+            "a rule's trigger or follow-up (`logika map` says which events no rule reads).",
             "",
-            "event,kind,params,validate,paths,timeout,rules,anomaly,risks",
+            "event,kind,params,validate,paths,timeout,rules,anomaly",
         ]
         for path, event in events:
             span = event.get("span") if isinstance(event.get("span"), dict) else None
@@ -301,7 +298,6 @@ class Material:
                         str(span.get("timeout")) if span and span.get("timeout") else "-",
                         " ".join(role) or "-",
                         "yes" if event.get("anomaly") else "-",
-                        risks(event.get("risks")),
                     ]
                 )
             )
@@ -464,3 +460,142 @@ class Analytics(Material):
         if len(lines) == 2:
             lines.append("None yet.")
         return "\n".join(lines)
+
+
+class Map:
+    """`logika map --json` at the repository's root: what logs nothing, what
+    logs only its verdicts and what no rule reads, as the open items an
+    instrument round closes."""
+
+    def __init__(self, project: Project) -> None:
+        self.project = project
+
+    def read(self) -> dict[str, Any]:
+        """The map, or `Failed` saying why there is none."""
+        command = f"`{PROGRAM} map --json`"
+        try:
+            done = subprocess.run(
+                [PROGRAM, "map", "--json"],
+                cwd=self.project.here,
+                capture_output=True,
+                text=True,
+                timeout=MAP_SECONDS,
+            )
+        except (OSError, subprocess.TimeoutExpired) as error:
+            raise Failed(f"{command} did not run: {error}") from error
+        if done.returncode:
+            said = (done.stderr or done.stdout).strip().splitlines()
+            raise Failed(f"{command} exited {done.returncode}" + (f": {said[-1]}" if said else ""))
+        try:
+            found = json.loads(done.stdout)
+        except json.JSONDecodeError as error:
+            raise Failed(f"{command} printed no JSON: {error}") from error
+        if not isinstance(found, dict):
+            raise Failed(f"{command} printed no JSON object")
+        return found
+
+    def counts(self) -> dict[str, int] | None:
+        """The open items by kind, or nothing when the map can't be read."""
+        try:
+            counts = self.read().get("counts")
+        except Failed:
+            return None
+        if not isinstance(counts, dict):
+            return None
+        return {kind: int(counts.get(kind) or 0) for kind in OPEN}
+
+
+def items(found: dict[str, Any]) -> list[str]:
+    """Each open item as a round's submission names it: `silent <file>
+    <function>`, the file from the repository root; `verdicts <event>`;
+    `unread <event>`."""
+    base = str(found.get("path") or ".")
+    opened = found.get("open")
+    if not isinstance(opened, dict):
+        return []
+    listed: list[str] = []
+    for entry in opened.get("silent") or []:
+        if isinstance(entry, dict):
+            file = posixpath.normpath(posixpath.join(base, str(entry.get("file"))))
+            listed += [f"silent {file} {function}" for function in entry.get("functions") or []]
+    for kind in OPEN[1:]:
+        listed += [f"{kind} {event}" for event in opened.get(kind) or []]
+    return listed
+
+
+class Instrument:
+    """What an instrument round reads: the repository's map when it starts —
+    its counts, its directories and each open item — and the reasons earlier
+    instrument rounds left items open with (changes of kind `reason`, by
+    their target, the latest standing)."""
+
+    def __init__(self, mapping: Map, rounds: list[dict[str, Any]]) -> None:
+        self.mapping = mapping
+        self.reasons: dict[str, str] = {}
+        for record in rounds:
+            for change in record.get("changes") or []:
+                if change.get("kind") == REASON:
+                    self.reasons[str(change.get("target"))] = str(change.get("why"))
+
+    def render(self) -> str:
+        try:
+            found = self.mapping.read()
+        except Failed as error:
+            sections = [f"# The map\n\n{error}: run it yourself.", self.earlier()]
+        else:
+            sections = [self.overview(found), self.directories(found), self.open(found)]
+        return "\n\n".join(section for section in sections if section) + "\n"
+
+    def overview(self, found: dict[str, Any]) -> str:
+        counts = found.get("counts")
+        counts = counts if isinstance(counts, dict) else {}
+        left = ", ".join(f"{int(counts.get(kind) or 0)} {kind}" for kind in OPEN)
+        return (
+            f"# The map\n\n`{PROGRAM} map --json` at the repository's root when the round "
+            f"started: {found.get('mode', '?')}, {found.get('files', '?')} files, "
+            f"{found.get('events', '?')} events; open: {left}."
+        )
+
+    def directories(self, found: dict[str, Any]) -> str:
+        listed = [entry for entry in found.get("directories") or [] if isinstance(entry, dict)]
+        if not listed:
+            return ""
+        return "\n".join(
+            [
+                "# Directories",
+                "",
+                f"Each one's events and open items; `{PROGRAM} map <path>` maps one alone.",
+                "",
+            ]
+            + [
+                f"- {entry.get('path')}: {entry.get('events', 0)} events, "
+                f"{entry.get('open', 0)} open"
+                for entry in listed
+            ]
+        )
+
+    def open(self, found: dict[str, Any]) -> str:
+        listed = items(found)
+        if not listed:
+            return "# Open items\n\nNone: the map leaves nothing open."
+        return "\n".join(
+            [
+                "# Open items",
+                "",
+                "Each as a submission's target names it. `left:` is the reason an earlier "
+                "round gave: keep it, or close the item.",
+                "",
+            ]
+            + [
+                f"- {item}" + (f" — left: {self.reasons[item]}" if item in self.reasons else "")
+                for item in listed
+            ]
+        )
+
+    def earlier(self) -> str:
+        if not self.reasons:
+            return "# Reasons given\n\nNo earlier instrument round left an item with a reason."
+        return "\n".join(
+            ["# Reasons given", "", "What earlier instrument rounds left open, and why:", ""]
+            + [f"- {item} — left: {reason}" for item, reason in self.reasons.items()]
+        )

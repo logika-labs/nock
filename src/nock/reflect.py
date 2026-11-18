@@ -84,19 +84,21 @@ class Ending(StrEnum):
 class Change(TypedDict):
     kind: Literal[
         "add", "change", "retire", "check", "generator",
-        "validate", "path", "timeout", "rule", "invariant", "error", "risk",
+        "validate", "path", "timeout", "rule", "invariant", "error", "reason",
         "instrumentation", "identity", "dimension", "funnel", "milestone", "view", "recommend",
-        "other",
+        "risk", "other",
     ]  # fmt: skip
     """add, change, retire, check, generator — the toolbox; validate, path,
-    timeout, rule, invariant, error — a logika round's rules; risk — a risk
-    it declared on an event, or ruled out with its reason; instrumentation
-    — the fields it added to the code for them; identity, dimension, funnel,
-    milestone, view — its analytics; recommend — a round nock.fit
-    recommends; other."""
+    timeout, rule, invariant, error — a logika round's rules; reason — an
+    item `logika map` lists that it left open, with its one-line reason;
+    instrumentation — the fields it added to the code for them; identity,
+    dimension, funnel, milestone, view — its analytics; recommend — a round
+    nock.fit recommends; risk — a security audit's finding; other."""
     target: str
     """The tool, check or file: `failures`, `.nock/tools/db.py`; in a logika
-    round, the event or rule: `checkout`, `receipt_continuity`."""
+    round, the event or rule: `checkout`, `receipt_continuity`, or the item
+    a reason leaves open: `silent app/refunds.py clean_amount`, `verdicts
+    refund.decided`, `unread refund`."""
     why: str
     """The evidence: what in the material called for it."""
     expect: str

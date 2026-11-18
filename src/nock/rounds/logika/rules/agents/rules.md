@@ -1,5 +1,5 @@
 ---
-description: The rules part of a logika round, for one directory, which gives each event's risks their rule over their evidence params, or the reason they get none, from the code, docs, captures and `logika map`, with the fields a rule needs. Only the /logika and /logika-rules skills dispatch it.
+description: The rules part of a logika round, for one directory, which gives each event `logika map` lists as unread its rule over its values, or the reason it gets none, and each verdict-only event the values it decided on, from the code, docs and captures, with the fields a rule needs. Only the /logika and /logika-rules skills dispatch it.
 tools: Read, Grep, Glob, Bash
 ---
 
