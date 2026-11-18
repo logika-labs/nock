@@ -1,10 +1,16 @@
 title = "Security"
 summary = "Audit who can reach what, what crosses the project's boundaries, what it keeps and logs, and what it depends on."
 relevant = "Projects that run a service, hold accounts or other people's data, take payments, or ship code others install."
-adopted = "recommended"
 
 [due]
-days = 90
+# Due on any change to a dependency manifest or lockfile, or once 300 lines
+# changed in code that authenticates, authorizes, routes requests or handles
+# uploads (the fit round names those paths; until it does, all source).
+measure = "lines"
+paths = ["**/*.py", "**/*.ts", "**/*.tsx", "**/*.js", "**/*.jsx", "**/*.rs", "**/*.go", "**/*.rb", "**/*.java", "**/*.kt", "**/*.swift", "**/*.c", "**/*.cpp", "**/*.cs", "**/*.php"]
+any = ["**/package.json", "**/pyproject.toml", "**/requirements*.txt", "**/Cargo.toml", "**/go.mod", "**/Gemfile", "**/*.lock", "**/package-lock.json", "**/pnpm-lock.yaml", "**/yarn.lock", "**/go.sum"]
+threshold = 300
+
 
 [material.changes]
 git = ["."]

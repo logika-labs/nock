@@ -20,7 +20,7 @@ from nock.hooks import EDIT_TOOLS, NOCK_COMMANDS
 from nock.primer import AGENTS, MARK_START, PRIMER, refresh, with_section
 from nock.project import NOCK_DIRECTORY, Project
 from nock.releases import PYPI, VERSION, Releases
-from nock.shared import MAP, SETTINGS
+from nock.shared import MEMORY, SETTINGS
 from nock.templates import Library
 from nock.utils import read_json, write_atomic, write_json
 
@@ -54,12 +54,8 @@ branch = "main"
 # command = "pytest -q"
 
 [agent]
-# The model of the agents nock dispatches (consult, the studio's Ask); empty is Claude Code's default.
+# The model of the agents nock dispatches (the studio's answers and rounds); empty is Claude Code's default.
 model = ""
-
-[consult]
-# Whether agents are asked to consult nock's consultant before changing code.
-enabled = true
 
 [permissions]
 # How Claude Code treats a command only the owner may set off (confirm=True):
@@ -78,7 +74,7 @@ SETTINGS_STUB = """\
 
 # Whether nock speaks up unasked: the primer's advice, the toolbox and an
 # occasional word on where things stand at a session's start, the owner's
-# word in the topics, the decisions about an edited file. false: silent unless asked.
+# word in the tasks, the tasks whose assets show an edited file. false: silent unless asked.
 reminders = true
 
 # Whether nock shares a usage report with its makers, weekly: counts and
@@ -89,12 +85,12 @@ reminders = true
 # share = false
 """
 
-MAP_STUB = """\
-# The map of topics
+MEMORY_STUB = """\
+# What nock has learned here
 
-When each topic and its items matter, and how they bear on each other,
-citing each item by its ref in brackets. Empty until the first reflection round
-writes it; until then, `.nock/local/views/index.md` lists the topics.
+What is where, for the work: short lines, each pointing to the files that
+hold the detail (a task, an item by its ref in brackets, a doc). Read first;
+kept small.
 """
 
 IMPORT_LINE = "@.nock/context.md"
@@ -108,6 +104,7 @@ RETIRED_ROUND_FILES = (
     ".claude/skills/nock-reflect-logika/SKILL.md",
     ".claude/agents/nock-reflect-toolbox.md",
     ".claude/agents/nock-reflect-map.md",
+    ".claude/agents/nock-map.md",
     ".claude/agents/nock-reflect-nock.md",
     ".claude/agents/nock-logika-rules.md",
     ".claude/agents/nock-logika-analytics.md",
@@ -422,10 +419,12 @@ class Installer:
         return path.is_file() and path.read_text() == text
 
     def start_map(self) -> None:
-        """An empty map of topics, so an agent told to read it finds it, and
-        the team's settings."""
+        """The memory with its subjects, so an agent told to read it finds it,
+        and the team's settings."""
         self.start(
-            f"{NOCK_DIRECTORY}/shared/{MAP}", MAP_STUB, "the map of topics, empty until a round"
+            f"{NOCK_DIRECTORY}/shared/{MEMORY}",
+            MEMORY_STUB,
+            "what nock learns here, kept by reflection",
         )
         self.start(f"{NOCK_DIRECTORY}/shared/{SETTINGS}", SETTINGS_STUB, "the team's settings")
 

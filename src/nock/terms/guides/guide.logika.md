@@ -87,7 +87,7 @@ ledger declares events, or 30 days after its last round (the protocol's
    parts read.
 5. **You settle only directions and genuine ambiguities**, asked in the session
    with the answer the session proposes and carries on with; a question for
-   later becomes a decision item in the `logika` topic. The rest you review in
+   later becomes a proposal in the `logika` topic. The rest you review in
    each round's report.
 6. **`nock reflect --submit JSON`**, once per round, requires its report and
    a `logika.json` that parses, records the rules, reasons and declarations changed,

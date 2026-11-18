@@ -1,6 +1,5 @@
-"""`nock status` nudges the session asking: files it changed without
-consulting, commits with nothing recorded in the topics, generated files
-edited by hand — each only when it applies, and never at a session's start."""
+"""`nock status` nudges the session asking: commits with nothing recorded
+in the topics, generated files edited by hand — each only when it applies, and never at a session's start."""
 
 from __future__ import annotations
 
@@ -11,7 +10,7 @@ import pytest
 
 from nock.hooks import HookRunner
 from nock.project import Project
-from nock.status import consult_nudge, gen_nudge, record_nudge
+from nock.status import gen_nudge, record_nudge
 
 from .conftest import git, nock, write_tool
 from .store import submit
@@ -29,23 +28,6 @@ def session_started(project: Project, session: str, when: datetime) -> None:
     )
 
 
-def test_a_session_that_changed_files_and_consulted_on_none_is_nudged(project: Project) -> None:
-    session_started(project, "s1", HOUR_AGO)
-    assert consult_nudge(project, "s1") == ""
-    for path in ("src/app.py", "src/app.py", "src/db.py"):
-        project.store.insert(
-            "events", {"session": "s1", "moment": moment(HOUR_AGO), "tool": "Edit", "input": path}
-        )
-    said = consult_nudge(project, "s1")
-    assert "changed 2 file(s) and consulted on none" in said and "nock consult" in said
-    project.store.insert(
-        "calls",
-        {"tool": "consult", "arguments": "[]", "session": "s1", "started": moment(HOUR_AGO)},
-    )
-    assert consult_nudge(project, "s1") == ""
-    assert consult_nudge(project, None) == ""
-
-
 def test_commits_with_nothing_recorded_since_nudge_until_the_session_records(
     project: Project, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -57,7 +39,7 @@ def test_commits_with_nothing_recorded_since_nudge_until_the_session_records(
         git(project.root, "commit", "-q", "--allow-empty", "-m", f"Change {number}")
     assert "3 commit(s) since this session last recorded anything" in record_nudge(project, "s1")
     assert record_nudge(project, "s2") == ""
-    submit(project.root, {"title": "Orders are kept a year", "decision": {"answer": "Yes."}})
+    submit(project.root, slug="kept-a-year")
     # nock's own commit for it is the session's latest: nothing since.
     assert record_nudge(project, "s1") == ""
 

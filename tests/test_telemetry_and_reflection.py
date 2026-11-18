@@ -18,12 +18,12 @@ import pytest
 from nock.hooks import HookRunner
 from nock.project import Project
 from nock.reflect import Reflection, shape
-from nock.rounds import Protocol, named
+from nock.rounds import Protocol, named, snooze
 from nock.sessions import Sessions, encoded
 from nock.share import Sharing
 
-from . import store
-from .conftest import git, nock, own_protocol, write_tool
+from .conftest import git, nock, write_tool
+from .store import topics_in
 
 
 def transcript(
@@ -159,33 +159,73 @@ def protocol(project: Project, name: str) -> Protocol:
     return found
 
 
-def test_a_round_is_due_after_enough_sessions(project: Project) -> None:
-    for name in ("nock.toolbox", "nock.map", "nock.fit"):
-        own_protocol(project, name, {"sessions": 4, "days": 3650})
+def fit_ran(project: Project, finished: str = "2020-01-01T00:00:00Z") -> None:
+    """A fit round on record, as if it had run when FINISHED says, at HEAD."""
+    folder = project.root / ".nock" / "shared" / "rounds" / "nock.fit" / "2020-01-01"
+    folder.mkdir(parents=True, exist_ok=True)
+    record = {
+        "protocol": "nock.fit",
+        "summary": "set up",
+        "changes": [],
+        "round": "2020-01-01",
+        "finished": finished,
+        "commit": git(project.root, "rev-parse", "HEAD"),
+    }
+    (folder / "record.json").write_text(json.dumps(record))
+
+
+def configure_round(project: Project, name: str, text: str) -> None:
+    path = project.root / ".nock" / "config.toml"
+    path.write_text(path.read_text() + f'\n[rounds."{name}"]\n{text}\n')
+
+
+def test_fit_is_due_first_and_the_others_by_their_measure_once_it_ran(project: Project) -> None:
+    assert fit(project).due() == "it has never run here"
+    assert protocol(project, "nock.toolbox").due() == ""
+    start = HookRunner(project, {"session_id": "s9"}).handle("SessionStart")
+    assert (
+        start is not None
+        and "a reflection round is due (it has never run here)" in (start["systemMessage"])
+    )
+    fit_ran(project)
+    configure_round(project, "nock.fit", "threshold = 4")
     for index in range(3):
         transcript(project, f"s{index}", ["work"], [])
     Sessions(project).catch_up()
-    assert {own.due() for own in named(project, "nock")} == {""}
+    assert fit(Project.discover(project.root)).due() == ""
     transcript(project, "s3", ["more work"], [])
     Sessions(project).catch_up()
-    assert {own.due() for own in named(project, "nock")} == {"4 sessions since the last"}
-    start = HookRunner(project, {"session_id": "s9"}).handle("SessionStart")
-    assert start is not None
-    assert "a reflection round is due (4 sessions since the last)" in start["systemMessage"]
-    assert "`/nock-reflect`, which runs one" in start["systemMessage"]
+    assert fit(Project.discover(project.root)).due() == "4 of 4 sessions in what Fit looks at"
 
 
-def test_a_due_rule_is_the_manifest_s_and_a_project_s_own_protocol_changes_it(
+def test_lines_changed_in_a_rounds_paths_make_it_due_and_a_snooze_quiets_it(
     project: Project,
 ) -> None:
-    own_protocol(project, "nock.map", {"sessions": 2})
-    for index in range(2):
-        transcript(project, f"s{index}", ["work"], [])
-    Sessions(project).catch_up()
-    due = {own.name: own.due() for own in named(project, "nock")}
-    assert due == {"nock.map": "2 sessions since the last", "nock.toolbox": "", "nock.fit": ""}
-    assert protocol(project, "nock.fit").setting("days") == 7
-    assert protocol(project, "logika.rules").setting("days") == 30
+    fit_ran(project)
+    configure_round(project, "audit.tests", 'paths = ["src/**"]\nthreshold = 10')
+    tests = protocol(Project.discover(project.root), "audit.tests")
+    assert tests.measure()["value"] == 0 and tests.due() == ""
+    (project.root / "src").mkdir()
+    (project.root / "src" / "app.py").write_text("x = 1\n" * 12)
+    (project.root / "docs.md").write_text("words\n" * 50)
+    (project.root / "uv.lock").write_text("lock\n" * 50)
+    git(project.root, "add", "-A")
+    git(project.root, "commit", "-qm", "work")
+    tests = protocol(Project.discover(project.root), "audit.tests")
+    assert tests.measure()["value"] == 12
+    assert tests.due() == "12 of 10 lines changed in what Tests looks at"
+    security = protocol(Project.discover(project.root), "audit.security")
+    assert security.due() == "uv.lock since the last run"
+    # Snoozed until twice the changes, then off altogether.
+    snooze(Project.discover(project.root), "audit.tests", {"twice": True})
+    assert protocol(Project.discover(project.root), "audit.tests").due() == ""
+    snooze(Project.discover(project.root), "audit.tests", {"never": True})
+    again = protocol(Project.discover(project.root), "audit.tests")
+    assert not again.adopted() and again.due() == ""
+    assert "enabled = false" in (project.root / ".nock" / "config.toml").read_text()
+    assert "nock: round audit.tests" in git(project.root, "log", "-1", "--format=%s")
+    snooze(Project.discover(project.root), "audit.security", {"days": 3})
+    assert protocol(Project.discover(project.root), "audit.security").due() == ""
 
 
 def test_the_material_starts_from_the_work_and_names_the_waste(project: Project) -> None:
@@ -264,22 +304,25 @@ def test_a_round_is_submitted_with_its_report_its_summary_and_its_numbers(
     assert submit(project, RECORD).returncode == 42
     started = json.loads(nock(project.root, "reflect", "nock", "--json").stdout)
     rounds = {begun["protocol"]: begun for begun in started["rounds"]}
-    assert set(rounds) == {"nock.toolbox", "nock.map", "nock.fit"}
+    assert set(rounds) == {"nock.toolbox", "nock.fit"}
     material = {
         part: Path(path).read_text()
         for begun in rounds.values()
         for part, path in begun["material"].items()
     }
     assert "This is the first round." in material["process"]
-    assert "Empty until the first reflection round" in material["knowledge"]
+    assert "# The memory as it stands" in material["knowledge"]
+    assert "Read first" in material["knowledge"]
     assert "these numbers are the baseline" in material["evidence"]
-    assert "`nock.map` (adopted)" in material["catalogue"]
+    assert "`nock.toolbox` (on; " in material["catalogue"]
     assert "`logika.rules` (cannot run here: not a Logika project" in material["catalogue"]
     begun = rounds["nock.fit"]
     assert begun["brief"].startswith("# The fit round")
     (agent,) = begun["agents"]
     assert agent["type"] == "nock-fit" and agent["brief"].endswith("agents/fit.md")
-    assert agent["reads"] == [begun["material"]["evidence"], begun["material"]["catalogue"]]
+    assert agent["reads"] == [
+        begun["material"][part] for part in ("evidence", "catalogue", "presentation", "knowledge")
+    ]
     report, share = (project.root / path for path in begun["write"])
     refused = submit(project, RECORD)
     assert refused.returncode == 42 and "write report.md and share.md" in refused.stderr
@@ -295,9 +338,11 @@ def test_a_round_is_submitted_with_its_report_its_summary_and_its_numbers(
     finished = submit(project, RECORD)
     assert finished.returncode == 0, finished.stdout + finished.stderr
     assert git(project.root, "status", "--porcelain") == ""
-    assert git(project.root, "log", "-1", "--format=%s").startswith(
-        f"nock.fit round {begun['round']}"
+    assert any(
+        subject.startswith(f"nock.fit round {begun['round']}")
+        for subject in git(project.root, "log", "-4", "--format=%s").splitlines()
     )
+    assert topics_in(project.root).topic("round-nock-fit")["state"] == "review"
     (round_,) = fit(project).rounds.all()
     assert round_["protocol"] == "nock.fit" and round_["since"] is None
     assert round_["changes"][0]["expect"] == "calls stays under 1k"
@@ -417,7 +462,8 @@ def test_init_installs_the_skills(project: Project) -> None:
     assert not (skills / "logika").exists(), "no logika.json here (tests/test_logika.py)"
     agents = project.root / ".claude" / "agents"
     assert {path.name for path in agents.iterdir()} == {
-        "nock-toolbox.md", "nock-map.md", "nock-fit.md"
+        "nock-toolbox.md", "nock-fit.md",
+        "audit-security.md", "audit-tests-package.md", "audit-tests-promises.md",
     }  # fmt: skip
     toolbox = (agents / "nock-toolbox.md").read_text()
     assert toolbox.startswith("---\nname: nock-toolbox\n")
@@ -499,10 +545,10 @@ def test_a_session_cannot_end_its_turn_with_the_round_it_started_open(
     for begun in rounds.values():
         for path in begun["write"]:
             (project.root / path).write_text("Early days.\n")
-    (project.root / ".nock" / "shared" / "map.md").write_text("- [orders/nothing-here] holds.\n")
+    (project.root / ".nock" / "shared" / "memory.md").write_text("- [orders/nothing-here] holds.\n")
     reason = str((stop("s1") or {})["reason"])
     assert "report.md" not in reason and "[orders/nothing-here] is no item" in reason
-    (project.root / ".nock" / "shared" / "map.md").write_text("# The map\n")
+    (project.root / ".nock" / "shared" / "memory.md").write_text("# Memory\n")
     for name in rounds:
         done = submit(project, {**RECORD, "protocol": name})
         assert done.returncode == 0, done.stdout + done.stderr
@@ -552,22 +598,25 @@ def test_reflect_lists_the_protocols_and_starts_one_or_a_namespace(project: Proj
         row["protocol"]: row for row in json.loads(nock(project.root, "reflect", "--json").stdout)
     }
     assert set(listed) == {
-        "nock.toolbox", "nock.map", "nock.fit", "logika.rules", "logika.analytics",
+        "nock.toolbox", "nock.fit", "logika.rules", "logika.analytics",
         "logika.instrument", "audit.performance", "audit.security", "audit.tests", "fuzz.api",
         "fuzz.ui",
     }  # fmt: skip
-    assert not listed["logika.instrument"]["adopted"]
+    # Every round that can run here is on, but one that runs only by its name.
+    assert not listed["logika.instrument"]["on"]
     assert listed["logika.instrument"]["skill"] == "/logika-instrument"
-    assert not listed["audit.performance"]["adopted"]
-    assert not listed["audit.tests"]["adopted"] and listed["audit.tests"]["unavailable"] is None
-    assert listed["nock.map"]["adopted"] and listed["nock.map"]["skill"] == "/nock-reflect"
-    assert listed["nock.map"]["unavailable"] is None and listed["nock.map"]["last"] is None
+    assert listed["audit.performance"]["on"] and listed["audit.tests"]["unavailable"] is None
+    assert listed["nock.fit"]["on"] and listed["nock.fit"]["skill"] == "/nock-reflect"
+    assert listed["nock.fit"]["due"] == "it has never run here"
+    assert listed["nock.toolbox"]["due"] is None and listed["nock.toolbox"]["last"] is None
+    assert listed["audit.tests"]["measure"]["threshold"] == 500
     assert "not a Logika project" in listed["logika.rules"]["unavailable"]
     assert listed["logika.rules"]["skill"] == "/logika-rules"
-    assert not listed["fuzz.ui"]["adopted"] and listed["fuzz.ui"]["skill"] == "/fuzz-ui"
+    assert listed["fuzz.ui"]["task"] == "round-fuzz-ui" and listed["fuzz.ui"]["skill"] == "/fuzz-ui"
     fuzz = json.loads(nock(project.root, "reflect", "fuzz.ui", "--json").stdout)
     assert fuzz["agents"] == [] and fuzz["brief"].startswith("# The UI fuzz round")
-    assert Path(fuzz["material"]["earlier"]).read_text() == "(no topic fuzz-ui yet)"
+    assert Path(fuzz["material"]["earlier"]).read_text() == "(no topic round-fuzz-ui yet)"
+    assert fuzz["task"].startswith("round-fuzz-ui")
     assert "reflect [NAME] [--submit SUBMIT] —" in nock(project.root).stdout
 
 
@@ -591,12 +640,12 @@ def test_a_project_s_own_protocol_overrides_a_shipped_one_and_adds_its_own(
     (project.root / "README.md").write_text("# A project\n")
     git(project.root, "add", "README.md")
     git(project.root, "commit", "-qm", "Say what the project is")
-    shipped = project.root / ".nock" / "rounds" / "nock" / "map"
+    shipped = project.root / ".nock" / "rounds" / "nock" / "toolbox"
     shipped.mkdir(parents=True)
     (shipped / "round.toml").write_text(
-        'title = "Our map"\nsummary = "Ours."\nadopted = "always"\n[lead]\nwrites = ["map.md"]\n'
+        'title = "Our toolbox"\nsummary = "Ours."\n[lead]\nwrites = ["report.md"]\n'
     )
-    assert protocol(project, "nock.map").title == "Our map"
+    assert protocol(project, "nock.toolbox").title == "Our toolbox"
     started = json.loads(nock(project.root, "reflect", "team.docs", "--json").stdout)
     assert started["brief"] == "# The docs round"
     assert Path(started["material"]["readme"]).read_text() == "# A project\n"
@@ -609,7 +658,7 @@ def test_a_project_s_own_protocol_overrides_a_shipped_one_and_adds_its_own(
         .read_text()
         .endswith("Run `.nock/nock reflect team.docs` and do what it says.\n")
     )
-    assert not (skills / "team").exists(), "one adopted protocol: no namespace skill"
+    assert not (skills / "team").exists(), "one protocol on: no namespace skill"
     agent = (project.root / ".claude" / "agents" / "team-docs.md").read_text()
     assert agent.startswith("---\nname: team-docs\ndescription: Keeps the docs.\n")
     (project.root / started["write"][0]).write_text("# Docs\n\nTrue.\n")
@@ -617,25 +666,16 @@ def test_a_project_s_own_protocol_overrides_a_shipped_one_and_adds_its_own(
     record = {**RECORD, "protocol": "team.docs"}
     assert submit(project, record).returncode == 0
     assert git(project.root, "status", "--porcelain", "--", "README.md") == ""
-    assert git(project.root, "log", "-1", "--format=%s").startswith("team.docs round")
+    assert any(
+        subject.startswith("team.docs round")
+        for subject in git(project.root, "log", "-4", "--format=%s").splitlines()
+    )
 
 
-def test_a_recommended_protocol_is_adopted_once_the_owner_accepts_it(project: Project) -> None:
+def test_the_projects_config_turns_a_round_off_and_on(project: Project) -> None:
     own = project.root / ".nock" / "rounds" / "team" / "docs"
     own.mkdir(parents=True)
     (own / "round.toml").write_text('title = "Docs"\nsummary = "Keep the docs true."\n')
-    assert not protocol(project, "team.docs").adopted()
-    ref = store.submit(
-        project.root,
-        {
-            "title": "Run team.docs here",
-            "decision": {
-                "answer": "The docs drift from the code between releases.",
-                "alternatives": [{"option": "don't", "why_not": "the drift goes unseen"}],
-            },
-        },
-        topic="rounds",
-    )
-    assert not protocol(project, "team.docs").adopted()
-    store.judge(project.root, ref, "accepted")
     assert protocol(project, "team.docs").adopted()
+    configure_round(project, "team.docs", "enabled = false")
+    assert not protocol(Project.discover(project.root), "team.docs").adopted()

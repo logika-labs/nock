@@ -9,14 +9,19 @@ import os
 import shutil
 import subprocess
 import sys
+import threading
+import urllib.error
+import urllib.request
 from collections.abc import Iterator
 from pathlib import Path
+from typing import Any
 
 import pytest
 
 from nock.prices import Prices
 from nock.project import Project
 from nock.setup import Installer
+from nock.studio import Studio
 
 FAKE_AGENT = Path(__file__).with_name("fake_agent.py")
 # A copy of a few entries of LiteLLM's price table, so no test reaches the network.
@@ -121,3 +126,34 @@ def own_protocol(project: Project, name: str, due: dict[str, object]) -> None:
     for key, value in due.items():
         kept[key] = f"{key} = {json.dumps(value)}"
     manifest.write_text(head + "[due]\n" + "\n".join(kept.values()) + "\n\n" + tail)
+
+
+@pytest.fixture
+def page(project: Project) -> Iterator[str]:
+    """The studio, serving on a free port for the test."""
+    server = Studio(project, 0)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    yield server.address
+    server.shutdown()
+    server.server_close()
+
+
+def post(address: str, route: str, body: dict[str, object]) -> tuple[int, Any]:
+    """The studio's page posting to its API."""
+    request = urllib.request.Request(
+        f"{address}api/{route}",
+        data=json.dumps(body).encode(),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request) as response:
+            return response.status, json.loads(response.read())
+    except urllib.error.HTTPError as error:
+        return error.code, json.loads(error.read())
+
+
+def get(address: str, route: str) -> Any:
+    with urllib.request.urlopen(f"{address}api/{route}") as response:
+        return json.loads(response.read())

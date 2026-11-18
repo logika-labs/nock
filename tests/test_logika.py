@@ -19,9 +19,9 @@ from nock.project import Project
 from nock.reflect import Reflection
 from nock.rounds import Protocol, named
 
-from .conftest import git, nock, own_protocol
-from .test_topics import judge
-from .test_topics import submit as decide
+from .conftest import git, nock
+from .store import item as record_item
+from .store import topics_in
 
 LEDGER: dict[str, Any] = {
     "ledger": "shop",
@@ -116,7 +116,7 @@ def test_a_logika_round_needs_a_ledger_and_the_logika_cli(project: Project, on_p
     refused = nock(project.root, "reflect", "logika")
     assert refused.returncode == 42 and "not a Logika project" in refused.stderr
     assert not (project.root / ".claude" / "skills" / "logika").exists()
-    assert json.loads(nock(project.root, "status", "--json").stdout)["rounds"] == {}
+    assert "logika" not in json.loads(nock(project.root, "status", "--json").stdout)["rounds"]
     write_ledger(project, LEDGER)
     on_path.unlink()
     refused = nock(project.root, "reflect", "logika")
@@ -156,15 +156,15 @@ def test_a_skill_of_the_project_s_own_keeps_its_name_from_a_round(logika: Projec
 
 
 def test_the_material_says_what_the_ledger_holds_and_what_was_decided(logika: Project) -> None:
-    ref = decide(
+    ref = record_item(
         logika.root,
-        {
-            "title": "Refunds never exceed the charge",
-            "decision": {"answer": "A rule would hold every refund to its charge."},
-        },
-        topic="logika",
+        "logika",
+        "refunds-capped",
+        kind="proposal",
+        title="Refunds never exceed the charge",
+        means="A rule would hold every refund to its charge.",
     )
-    judge(logika.root, ref, "rejected", "110%")
+    topics_in(logika.root).judge(ref, "rejected")
     begun = start(logika)
     assert set(begun) == {"logika.rules", "logika.analytics"}
     started = begun["logika.rules"]
@@ -181,7 +181,8 @@ def test_the_material_says_what_the_ledger_holds_and_what_was_decided(logika: Pr
     assert "Instrument the shop" in material
     assert "This is the first logika round." in material
     assert (
-        f"- [{ref}] done, rejected: Refunds never exceed the charge — the owner: 110%" in material
+        f"- [{ref}] rejected: Refunds never exceed the charge — A rule would hold every refund"
+        " to its charge." in material
     )
     assert started["write"] == [
         ".nock/shared/rounds/logika.rules/" + started["round"] + "/report.md"
@@ -233,10 +234,16 @@ def test_a_logika_round_finishes_and_commits_the_ledger_apart_from_nock_s_rounds
     finished = submit(logika, RECORD)
     assert finished.returncode == 0, finished.stdout + finished.stderr
     assert git(logika.root, "status", "--porcelain") == ""
-    assert git(logika.root, "log", "-1", "--format=%s") == (
-        f"logika.rules round {started['round']}: Refunds are positive."
-    )
-    assert "logika.json" in git(logika.root, "show", "--name-only", "--format=", "HEAD")
+    subjects = git(logika.root, "log", "-3", "--format=%s").splitlines()
+    assert f"logika.rules round {started['round']}: Refunds are positive." in subjects
+    committed = git(logika.root, "log", "-3", "--name-only", "--format=")
+    assert "logika.json" in committed
+    # Its result is a task to review: the report and each change as a decision.
+    task = topics_in(logika.root)
+    assert task.topic("round-logika-rules")["state"] == "review"
+    review = task.current_review("round-logika-rules")
+    assert review is not None and review["summary"] == "Refunds are positive."
+    assert len(task.items("round-logika-rules")) == len(RECORD["changes"])
     (record,) = protocol(logika, "logika.rules").rounds.all()
     assert record["ledger_before"]["validated"] == 1 and record["ledger"]["validated"] == 2
     assert record["changes"][0]["tested"].startswith("quiet in the noise check")
@@ -252,37 +259,37 @@ def test_a_logika_round_finishes_and_commits_the_ledger_apart_from_nock_s_rounds
     assert "expected fires only on a refund of 0 or less" in material
 
 
-def test_a_logika_round_is_offered_once_a_week_never_run(
-    logika: Project, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_a_logika_round_is_quiet_until_fit_ran_then_due_by_its_measure(logika: Project) -> None:
     def said(session: str) -> str:
         begun = HookRunner(logika, {"session_id": session}).handle("SessionStart")
         return (begun or {}).get("systemMessage", "")
 
-    first = said("s1")
-    assert "no logika round has run, and the ledger declares 3 events" in first
-    assert "`/logika`" in first and "never start it unasked" in first
-    assert "logika" not in said("s2")
-    standing = json.loads(nock(logika.root, "status", "--json").stdout)["rounds"]["logika"]
-    assert standing["due"].startswith("no logika round has run") and standing["skill"]
-
-    started = start(logika, "logika.rules")["logika.rules"]
-    (logika.root / started["write"][0]).write_text("# The round\n")
-    assert submit(logika, RECORD).returncode == 0
-    assert protocol(logika, "logika.rules").due() == ""
-    own_protocol(logika, "logika.rules", {"days": 0})
-    assert protocol(logika, "logika.rules").due() == ""
-    ledger = copy.deepcopy(LEDGER)
-    ledger["params"]["reason"] = {"type": "str"}
-    write_ledger(logika, ledger)
-    # Later than the round's finish, which is to the second.
-    monkeypatch.setenv("GIT_COMMITTER_DATE", "2099-01-01T00:00:00Z")
-    git(logika.root, "commit", "-qam", "Declare the refund's reason")
-    assert (
-        protocol(logika, "logika.rules")
-        .due()
-        .startswith("a logika round is due (1 commits changed")
+    assert "logika" not in said("s1")
+    assert protocol(logika, "logika.analytics").due() == ""
+    # The fit round ran: from its run on, each round is due by its own measure.
+    fit = logika.root / ".nock" / "shared" / "rounds" / "nock.fit" / "2026-01-01"
+    fit.mkdir(parents=True)
+    (fit / "record.json").write_text(
+        json.dumps(
+            {
+                "protocol": "nock.fit",
+                "summary": "set up",
+                "changes": [],
+                "round": "2026-01-01",
+                "finished": "2026-01-01T00:00:00Z",
+                "commit": git(logika.root, "rev-parse", "HEAD"),
+            }
+        )
     )
+    analytics = protocol(logika, "logika.analytics")
+    assert analytics.measure()["value"] == 3 and analytics.due() == ""
+    ledger = copy.deepcopy(LEDGER)
+    ledger["events"] += [{"name": f"extra.{number}"} for number in range(2)]
+    write_ledger(logika, ledger)
+    due = protocol(logika, "logika.analytics").due()
+    assert due == "5 of 5 events added to logika.json in what Analytics looks at", due
+    standing = json.loads(nock(logika.root, "status", "--json").stdout)["rounds"]["logika"]
+    assert standing["due"] == due
 
 
 MAP: dict[str, Any] = {

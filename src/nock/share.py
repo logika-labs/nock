@@ -36,7 +36,7 @@ URL = re.compile(r"https?://[^\s)>\]]+")
 COMMON_FILES = {
     "README.md", "CLAUDE.md", "AGENTS.md", "CHANGELOG.md", "LICENSE", "Makefile",
     "pyproject.toml", "package.json", "requirements.txt", "setup.py", ".gitignore",
-    "config.toml", "settings.json", "map.md", "SKILL.md",
+    "config.toml", "settings.json", "memory.md", "SKILL.md",
 }  # fmt: skip
 
 

@@ -5,7 +5,9 @@ requires = { files = ["logika.json"], commands = ["logika"] }
 # Never adopted, so it joins neither `/logika` nor a skill of its own: the logika-instrument
 # skill's subagents run it by name, one per area, and it is never due on a schedule.
 [due]
-first = false
+# Never due by itself: the logika-instrument skill starts it for one area.
+measure = "never"
+
 
 [material.instrument]
 python = "instrument"

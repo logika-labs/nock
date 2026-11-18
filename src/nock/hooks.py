@@ -5,10 +5,9 @@ knowing the toolbox, upgraded to a newer nock when the merge is clean
 something new calls — where things stand, in a few lines (a reflection round
 due, what is new in Topics and what waits on an agent there, another kind of round worth
 offering); a
-prompt brings the owner's verdicts and messages on the items the session
-submitted; a `.nock/nock` command about to run is noted with the subagent
+prompt brings what the owner said in the tasks the session worked in; a `.nock/nock` command about to run is noted with the subagent
 running it, if any (`callers.py`), so what it writes names its parent session;
-an edit to a file shows the items about it; and when the session ends
+an edit to a file shows the tasks whose assets show it; and when the session ends
 its transcript is read into telemetry and, when due, the usage statistics
 are shared. A turn that would end with a round this session started still
 open is refused once, saying what the round still needs — unless it ends only
@@ -177,9 +176,9 @@ class HookRunner:
         store = Shared(self.project)
         settled = store.settle_changes(lambda: by_for(self.project, writer=writer))
         if settled.topics or settled.commit:
-            from nock.views import Views
+            from nock.topics import Topics
 
-            Views(self.project).write(settled.topics)
+            Topics(self.project).heard(settled)
         if not settled.problems:
             return ""
         lines = [
@@ -280,6 +279,7 @@ class HookRunner:
         news = [
             bool(collected["reflection"]["due"]),
             collected["topics"]["awaiting_you"],
+            collected["topics"]["awaiting_agents"],
             collected["unshared"],
             collected["newer_nock"],
             offers,
@@ -320,37 +320,46 @@ class HookRunner:
         found = Topics(self.project).governing(session, relative)
         if not found:
             return ""
-        lines = [f"nock: decisions in Topics are about {relative} — keep to them, or say why not:"]
-        lines += [f"- [{item['ref']}] ({item['verdict']}) {item['title']}" for item in found]
+        lines = [
+            f"nock: tasks in Topics show {relative} — keep to their decisions, or say why not:"
+        ]
+        for entry in found:
+            lines.append(f"- {entry['topic']} (asset {entry['asset']})")
+            lines += [f"  - [{item['ref']}] {item['title']}" for item in entry["decisions"]]
         lines.append("Each topic's view, `.nock/local/views/TOPIC.md`, has them in full.")
         return "\n".join(lines)
 
     def reviews(self) -> str:
-        """The owner's verdicts and messages on the items this session
-        submitted, the first time it sees them: never what it recorded
-        itself, nor anything on a dropped item."""
+        """What the owner said in the topics this session worked in, the first
+        time it sees it: messages (with their notes), their word on
+        proposals, Done on a review."""
         session = self.payload.get("session_id")
         if not isinstance(session, str):
             return ""
-        from nock.topics import Author, Topics
+        from nock.topics import Topics
 
         lines = []
-        topics = Topics(self.project)
-        for item in topics.news_for(session):
-            said = [entry for entry in item["thread"] if entry["author"] == Author.OWNER]
-            note = f": {said[-1]['text']}" if said and said[-1]["text"] else ""
-            lines.append(f"- [{item['ref']}] {item['title']} — {item['verdict']}{note}")
-            files = topics.attached(said[-1], item["topic"], item["slug"]) if said else []
-            if files:
-                lines.append(f"  attached (Read them): {', '.join(files)}")
+        for news in Topics(self.project).news_for(session):
+            kind = news["kind"]
+            if kind == "message":
+                lines.append(f"- {news['topic']}, the owner wrote: {news['text'] or '(no text)'}")
+                lines += [f"  - note on {note['target']}: {note['text']}" for note in news["notes"]]
+                if news["files"]:
+                    lines.append(f"  attached (Read them): {', '.join(news['files'])}")
+            elif kind == "reviewed":
+                lines.append(f"- {news['topic']}: the owner is done with the review")
+            elif kind == "accepted":
+                lines.append(f"- [{news['ref']}] {news['title']}: accepted — carry it out")
+            else:
+                lines.append(f"- [{news['ref']}] {news['title']}: rejected — dropped, leave it")
         if not lines:
             return ""
         return "\n".join(
             [
-                "nock: the owner said something on decision(s) you recorded:",
+                "nock: the owner said something in your tasks:",
                 *lines,
-                "Rework what was rejected as a new version (`.nock/nock docs topics.versions`);"
-                " answer a question in the thread (a message event), briefly, when the owner is away.",
+                "Answer in the topic's chat (a message event) when they are away; carry out an"
+                " accepted proposal and mark it implemented (`.nock/nock docs topics.items`).",
             ]
         )
 
@@ -404,8 +413,8 @@ class HookRunner:
             f"nock: you worked in topic(s) {listed} and never set where they stand. Before you"
             f" stop: a `state` event in .nock/shared/topics/{names[0]}/events/,"
             ' `{"kind": "state", "status": "…"}` — or `"state": "review"` when it is built and'
-            ' only the owner\'s verdicts remain, `"state": "done"` (or "abandoned") when the'
-            " work is finished."
+            ' its review is composed (`.nock/nock docs review`), `"state": "done"` (or'
+            ' "abandoned") when the work is finished.'
         ]
 
     def session_end(self) -> None:

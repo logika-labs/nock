@@ -86,50 +86,50 @@ GIT_WRITING = ("Bash(git * --ou*)",)
 # events and versions there too, which nock settles when the session ends.
 READS, WRITES = "read", "write"
 SEATS = {
-    # Reads the project and its topics and answers through `nock consult
-    # --submit` — advice before a change, or the owner's question from the
-    # studio's Ask; changes nothing.
-    "consultant": Seat(
-        READING,
-        (
-            nock("search"),
-            nock("docs"),
-            "Bash(.nock/nock consult --submit:*)",
-            *GIT_READING,
-        ),
-        GIT_WRITING,
-        READS,
-    ),
     # Reads what identifies the project and answers in its last message.
     "sharer": Seat(READING, (GIT_READING[0],), GIT_WRITING),
-    # The studio's chat: talks with the owner, reading what the consultant
-    # reads; changes nothing.
-    "chatter": Seat(READING, (nock("search"), nock("docs"), *GIT_READING), GIT_WRITING, READS),
-    # Names a finished chat from its transcript, in its last message: no tools.
-    "namer": Seat((), ()),
-    # The studio's Tidy up: reorganizes the topics by writing events in the store
-    # (moving decisions, setting states, statuses and priorities, dropping what
-    # is stale; never accepting nor asking rework), gathered into one commit by
-    # the studio when it ends.
-    "tidier": Seat(
-        (*READING, "Write", "Edit"),
-        (nock("search"), nock("docs"), *GIT_READING),
-        GIT_WRITING,
-        WRITES,
-    ),
-    # The studio's Address my comments: answers each comment the owner left
-    # waiting in a thread — a message, a new version of a decision or of one
-    # of its assets, a change to the project's files — and checks it with the
-    # project's own gate. It commits no code (the owner looks first) and runs
-    # nothing else but the recipes of the assets it answers on, which the
-    # studio allows it one by one (never a recipe it wrote).
-    "addresser": Seat(
+    # The studio's answer now: answers the owner's message in a task's chat —
+    # a reply, an item revised, a new version of an asset or of the review, a
+    # change to the project's files — and checks it with the project's own
+    # gate. It commits no code (the owner looks first) and runs nothing else
+    # but the recipes of the task's assets, which the studio allows it one by
+    # one (never a recipe it wrote).
+    "answerer": Seat(
         (*READING, "Edit", "Write"),
         (
             nock("search"),
             nock("docs"),
             nock("check"),
             nock("test"),
+            "Edit(./**)",
+            "Write(./**)",
+            *GIT_READING,
+            "Bash(git diff:*)",
+            "Bash(git status:*)",
+        ),
+        GIT_WRITING,
+        WRITES,
+    ),
+    # A reflection round the owner started from the studio: its lead runs
+    # `nock reflect NAME`, dispatches the round's own subagents and submits;
+    # nock's reading commands, the checks and the tests, edits in the project.
+    "reflector": Seat(
+        (*READING, "Edit", "Write", "Agent", "Task"),
+        (
+            nock("reflect"),
+            nock("search"),
+            nock("docs"),
+            nock("query"),
+            nock("status"),
+            nock("check"),
+            nock("test"),
+            nock("gen"),
+            nock("inbox"),
+            "Bash(logika map:*)",
+            "Bash(logika docs:*)",
+            "Bash(logika check:*)",
+            "Bash(logika test:*)",
+            "Bash(logika replay:*)",
             "Edit(./**)",
             "Write(./**)",
             *GIT_READING,

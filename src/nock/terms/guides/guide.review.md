@@ -1,237 +1,125 @@
 ---
 term: guide.review
 aliases: []
-description: Agents put their work before you in topics and never wait; you review it when it suits you
+description: Agents put their work before you as tasks and never wait; you review each when it suits you
 ---
 
 # Review on your time
 
-An agent at work makes calls all the time. Most are routine, some are real
-choices: requeue dead charges or failed ones too, refund the whole order or
-the item, three takes on a subject line. The obvious design is to have the
-agent stop and ask. It doesn't scale: you become the bottleneck, every agent
-idles until you answer, and you answer in a hurry, out of context.
+An agent at work makes calls all the time. Most are routine, some matter to
+you: requeue dead charges or failed ones too, refund the whole order or the
+item. The obvious design is to have the agent stop and ask. It doesn't scale:
+you become the bottleneck, every agent idles until you answer, and you answer
+in a hurry, out of context.
 
-nock turns it around. The agent goes ahead, and puts what it chose, or what it
-made, before you in a queue. You look at it when it suits you, all at once,
-with the context there. A verdict you give reaches the agent that did the work,
-and a choice you accept becomes part of the project's memory, which later
-agents consult before they change anything.
+nock turns it around. The agent goes ahead, and puts what it did before you
+as a **task**: what it decided, what it proposes, the files that show it, and
+a page telling the story. You look at it when it suits you, and you know at a
+glance what changed, what it means for you, and what needs you.
 
-## Topics
+## Tasks
 
-The queue isn't a task manager. Its unit is a **topic**: a piece of work, with
-a name, a line on why it exists, and a thread. Topics are files in the
-repository, `.nock/shared/topics/`, one event per file, and agents write them
-with their own tools; nock checks each file, fills in when and who, and
-commits it on its own. An agent looks for the topic of what it is doing, or
-opens one:
+A task is a stream of work, with a name, a line on why it exists, a **state**
+(planned, active, review, done or abandoned), a **status** the agent keeps
+current, and a **plan**: the steps it registered with their estimates,
+marked started and done as it goes, so the task shows a progress bar, the
+current step and the time left. Tasks are files in the repository,
+`.nock/shared/topics/` (a task is a topic in nock's files), one event per
+file; agents write them with their own tools, and nock checks each file,
+fills in when and who, and commits it on its own.
 
-```sh
-$ .nock/nock search "charge sweep"
-$ cat .nock/shared/topics/charge-sweep/events/new.json
-{"kind": "created", "description": "The nightly sweep of failed charges, for the payments rework."}
-```
+A task holds three kinds of thing:
 
-A topic says where its work stands with a **state** (planned, active, review,
-done or abandoned) and a **status**, a free line the agent keeps current, each
-a `state` event:
-
-```json
-{"kind": "state", "state": "active", "status": "requeueing dead charges"}
-{"kind": "state", "status": "waiting for the gate on main"}
-{"kind": "state", "state": "review", "status": "built; 3 decisions to judge"}
-```
-
-Review means the work is built and only your verdicts remain. Each change is
-kept in the topic's thread with its moment and who wrote it, so the history
-stays. The primer asks every agent to keep its topic current, and a session
-that worked in a topic without ever saying where it stands is stopped once, at
-the end of its turn, and asked to. A topic gets a **priority** too
-(`"priority": 1`), which orders your list. A done topic takes no new decisions
-until it is revived (`"state": "active", "revived": true, "note": "why it is
-back"`), with its history kept. Each topic is also written out whole, for
-agents to read, in `.nock/local/views/`.
-
-That is all the tracking there is, and it's enough: you see what is under way,
-what waits on you, and what is finished, and you can search all of it.
-
-## Decisions and their assets
-
-Into a topic go **decisions**. A decision is bare: a short title, a
-description under it, and its answer, written for someone who knows what the
-system does but not how it's built, with the alternatives really weighed and
-why not, and whether it is done or a todo. It holds the **assets** that show
-what it looks like:
-
-- a **project file**: a path in the repository, linked at the commit that last
-  changed it, so versions compare: a skill, a prompt, a page of copy;
-- a **derived file**: something made to show part of the project, such as a
-  screenshot of an email, a rendered page, a video of a flow or a PDF, with the
-  project files it shows (`from`), the condition it shows (`when`: "the payment
-  lapsed") and a `recipe` to make it again.
+- **Decisions**: what the agent decided and carried on with. A title saying
+  what was decided, and a line or three on what it means for you — what
+  users see, what it costs, what is now harder — and maybe why. No
+  alternatives, no essay.
+- **Proposals**: what the agent wants done and would not do on its own. The
+  same, plus roughly what it takes. You **accept** one (the agent carries it
+  out at its next look at its inbox, and it then reads as a decision, with
+  what was done) or **reject** it (it is dropped from the review, kept in the
+  history). Nothing else takes a verdict.
+- **Assets**: files, versioned. A project file is linked at the commit that
+  last changed it; a derived file (a screenshot, a rendered page, a video) is
+  kept with how to make it again. Version 1 the before, version 2 the after:
+  the review shows them as a diff.
 
 ```sh
-.nock/shared/topics/charge-sweep/decisions/requeue-dead-only/
-  events/…json                     {"kind": "created", "title": "The sweep requeues dead charges only"}
-  versions/1/decision.json         {"answer": "…", "alternatives": [{"option": "…", "why_not": "…"}]}
-  assets/lapsed-email/
-    events/…json                   {"kind": "created", "title": "The lapsed payment email"}
-    versions/1/assets.json         {"files": [{"kind": "derived", "name": "lapsed.png", "from": […],
-                                    "when": "the payment lapsed", "recipe": {"command": "…"}}]}
+.nock/shared/topics/charge-sweep/
+  events/…json                       {"kind": "created", "description": "The nightly sweep of failed charges."}
+                                     {"kind": "plan", "steps": [{"title": "Requeue logic", "estimate": 40}, …]}
+  items/dead-only/events/…json       {"kind": "created", "type": "decision", "title": "The sweep requeues dead charges only",
+                                      "means": "A card that failed for funds is retried by the bank, not us."}
+  items/notify/events/…json          {"kind": "created", "type": "proposal", "title": "Email the customer on the third failure",
+                                      "means": "…", "takes": "a template and a hook, half a day"}
+  assets/lapsed-email/versions/2/    asset.json {"file": {"kind": "derived", "name": "lapsed.png", "recipe": {…}}}
+  review/versions/1/review.json      {"summary": "…", "blocks": [ … ]}
 ```
 
-A file that needs your eye but holds no real choice gets a plain decision,
-"Review: the lapsed payment email", holding it. **Before and after** are two
-versions of one asset: version 1 the before (rendered from git history, say),
-version 2 the after, and the studio compares them side by side or with a
-toggle; that is how a change is reviewed. **Variants** are for "pick one of
-these": takes on one thing, such as three banners, in one asset version with
-`"variants": true`, for you to star the one you prefer; the decision is
-accepted only once each asset with variants has one starred. An asset may also
-hold **views**, HTML pages with nock's look that lay its variants out, such as
-each favicon at three sizes.
+## The review
 
-A decision is recorded only when a later reader would ask "why": a choice
-between real alternatives you haven't already made, a deliberate
-simplification, a reading of something ambiguous, or, as a todo, something
-that should be done and isn't yet. Carrying out your explicit instruction is
-not a decision; the instruction is the record. And what only you can settle,
-while you are away, is recorded as the answer the agent proposes ("Refunds
-never exceed the charge"), the others as its alternatives, and the agent
-carries on with it.
+The review is the task's main page. The agent composes it when the work is
+built, from **blocks**, as a story: a few sentences on what changed for you,
+then each part with what shows it — a decision or a proposal inline with its
+controls, a diff of a prompt or a schema, an excerpt of a long file, a
+screenshot, a table or a chart of the numbers, and, for what nothing
+built-in shows, a small page of its own (an html block, sandboxed, which can
+leave notes and accept or reject like the rest). A toggle shows the same
+review as a **list**: its decisions, proposals and assets flat, by kind, with
+the same controls. When the work changes, the agent writes a new version of
+the review.
 
-Everything is kept in the main checkout's `.nock/shared/`, one file per
-event, committed whichever worktree wrote it, so you see it at once; pictures,
-videos and other media go in `.nock/shared/media/` by their content, which
-the project may commit, put under git LFS or ignore. Every event keeps who
-wrote it, down to the subagent.
+The agents follow `nock docs review` to compose it, and the project's own
+preferences, which reflection learns from your notes and from what you skip:
+the more you review, the better the reviews fit you.
 
-## Reviewing in Topics
+## What you do
 
-`nock studio` serves your page on your machine, and its **Topics** tab is the
-queue. Each topic is a row: its name and status, what it holds ("4 decisions ·
-9 assets"), its verdicts ("3 open · 12 accepted"), its state and how long ago
-it moved. It opens in place on its decisions, each a bubble that opens on the answer
-and its alternatives, with its assets under it, a grid of cards or a list of
-rows once it has more than one. A card shows the asset (the preferred variant,
-else the first), a star for a variant preferred or how many variants wait for
-one at its top right, and along its foot as much of its title and description
-as fits, then when it last changed and its decision's chat; hovering it shows
-the whole title and description.
+The minimum:
 
-An asset opens in a viewer, one size whatever it holds, with the decision it
-belongs to at its foot (its title, its verdict and the start of its answer,
-linking to it); its chat icon opens it with the decision's chat beside it.
-There is no verdict in the viewer: it is the decision's. **Compare** puts two versions side by
-side, a text as a line diff with the changed words marked, a picture zoomed
-and panned in step with its other version, so you can check a detail. A video
-plays with its captions, and two versions play together. ← and → step through
-the topic.
+- **Accept** or **Reject** a proposal.
+- **Note** anything: a block, an item, an asset, a span of text, a line of a
+  diff. A note is a draft, pinned where you left it.
+- **Send** a message in the task's one chat. It carries all your unsent
+  notes, each pointing at what it is on, and asks for an answer now; it may
+  be empty ("go through my notes and redo"). An agent waiting on its inbox
+  gets it at once; otherwise nock starts one in the background to answer,
+  and the chat shows it working — its reasoning and each command, as it
+  goes. Its reply is a short summary, which can show things (an item, a
+  diff, a chart) rather than only describe them. Notes you leave without
+  sending are context for the agent's next reply.
+- **Done** on the review: every decision you left no note on counts as fine.
+  With nothing left for agents, the task is done.
 
-Above the list, **Search** filters as you type, across names, statuses,
-decisions, threads, file names and the text of text files, and opens what it
-finds. **Ask** sends a question to a fresh agent that reads the topics and
-answers with the items it relied on. The filters keep what matters at hand:
-**Needs me** (topics in review, open items, chats answered since you looked),
-**Waiting on agent**, **Todo** and **Active**; done topics and dropped items
-stay hidden until you show them.
+## The studio
 
-The **Timeline** tab shows the same topics as a feed of notifications, the
-newest first: an agent answered you, an item came up for review or a new
-version of one, a topic opened, changed state or status, or came back. Each
-card says what happened beside its topic's name, then a title and a few lines
-of description, and an asset's pictures and videos; a topic's status changes
-in a row are one card. A card leads to the thing itself, opened: the item in
-the viewer, the chat with the answer; its topic's name opens the topic.
-Hovered, a decision waiting for you offers Accept and Reject, and an answer
-Reply. A dot marks what came since you last looked. It searches and asks as
-Topics does, and its filters keep the answers, what is for review, or the
-topics' own changes.
+`nock studio` serves your page on your machine. The front lists the tasks,
+each with what waits on you and what it holds; at the top, only how many are
+active and how many items wait for you, each opening the list of them.
+Anything referenced — an item, an asset, a task, a file — opens a card with
+its details and its actions on a click; Esc or a click outside closes it.
+The page updates as agents write.
 
-You don't have to keep looking. When a topic is your turn again (it moved to
-review, an agent answered you, or an item you rejected has a new version),
-nock tells you once, however many items the burst brought, on the desktop, or
-in the studio while it is open (its settings turn on the browser's
-notifications for when it is away), and a click opens what it tells of. These
-are the Timeline's own events. `notifications = false` turns it off.
+**Notifications** keep a history of every change, overall and per task: an
+item added or revised, a review ready, a reply in the chat, a task changing
+state. When a task is your turn (its review is ready, an agent answered you,
+or proposed something), nock tells you once per burst: in the studio while
+it is open, through the browser's notifications when you turn them on, on
+the desktop when no page watches (`terminal-notifier`, if installed, opens
+the place on a click). `notifications = false` turns it off.
 
-## Verdicts
+**Rounds** that are due show as hints (see [Agents that build their own
+tools](#agents-that-build-their-own-tools)): Run starts one in the
+background, its result a task like any other; or remind you in some days,
+after twice the changes, or never.
 
-The verdict is the decision's: accepting it accepts its assets' current
-versions; rejecting it asks for rework, as its thread says; dropping it
-closes it, nothing to rework. An agent may write a verdict too (Tidy up drops
-what is stale), and each says who wrote it, so you can reverse one. The
-session that recorded a decision hears your verdict or message the next time
-you type there, once; `nock inbox` gives any agent what you said that waits
-on one. A new version of the decision or of one of its assets opens it again,
-with its history beside it to compare. And when a later session edits a file
-a decision's asset holds or shows, it's told which decision, the first time.
+## The memory
 
-## Chatting
-
-Every word goes through a chat: a topic's, a decision's, a file's, each
-opened by the icon beside it. You leave a question on a decision, a comment on
-a screenshot; your message waits for the agent's answer, and the agent answers
-in that thread, with a new version when the comment asks for one.
-Files dropped into a chat go with your message, and the microphone records
-what you say and has it made text, by a Whisper server you name in the studio's
-settings, for you to edit before you send.
-
-You don't have to wait for a session to answer. Under your waiting message,
-**Address now** sends an agent to answer it at once; while an agent waits
-on its inbox (the studio's summary says "an agent listens"), Address now and
-the global chat go to that agent instead. **Address my
-comments**, over the chat's composer while comments wait ("Address my 3
-comments"), starts an agent that answers them all, each in its own thread, as
-an agent working the threads would: a reply, a new version of the item, a
-change to the project's files checked with the project's gate. It gives no
-verdict and commits no code; the changes are left for you to look at.
-
-**The chat** beside the settings gear talks with a headless agent session
-in the project, from every tab. It reads the topics, the items and nock's docs,
-and changes nothing. Chats are your conversations, not the project's records:
-they stay on your machine, never committed.
-
-## Tidy up
-
-The topics get messy: items filed under the wrong topic, two topics that are one,
-one that sprawls, statuses gone stale. **Tidy up**, at the end of the filters'
-line, sends an agent to reorganize it, after a short confirm. It moves misplaced
-items, merges near-duplicate topics and splits sprawling ones, sets each
-topic's state and status from what is there, drops stale or superseded items
-with a comment (it never accepts, nor asks for rework), and gives the open
-topics a priority, a reason in each status. Its changes land as one commit,
-"Topics tidied up: …", and **Undo** reverts it.
-
-## The map and consulting
-
-A queue of verdicts is also a record: what was chosen, what was rejected, and
-why. nock turns it into the project's memory.
-
-**The map**, `.nock/shared/map.md`, says what the topics and items mean for
-the work: when each matters and how they bear on each other. Each reflection
-round rewrites it, within three rules: triggers, not facts ("if you touch X,
-then Y, because Z [charge-sweep/dead-charges-only]"); a rejected option comes
-with what would make it viable again; and what was inferred rather than read
-is marked so. A check fails when the map cites an item that doesn't exist.
-
-**Consulting** is how an agent reads it. Before it changes code, unless the task
-is really straightforward, it asks:
-
-```sh
-$ .nock/nock consult '{"intent": "Move orders to Postgres.", "context": "SQLite locks under load."}'
-```
-
-A fresh agent is given the map, the project's tools and checks, and reads the
-topics and items about what the work touches. It changes nothing, and takes
-the intent as given. It advises in a few lines: first, plainly, an accepted
-decision the intent goes against; then what the items mean for the work (what
-to keep to, a rejected option it would bring back, a todo it could close), the
-topic to submit into, the tools that do its steps, a choice it's about to make
-that should be submitted, and the checks to pass. Or it says that nothing in
-nock bears on it. Every item, tool and check it names is checked to exist.
-
-So the decision you accepted a month ago reaches the agent about to undo it,
-and your product's direction holds across sessions that start knowing nothing.
-`consult.enabled = false` turns it off.
+What is decided is also a record. `.nock/shared/memory.md` is the one place
+for what nock has learned about the project and you: short lines saying what
+is where, each pointing to the task, item or doc with the detail. The agent
+you work with reads it first and points every agent it launches at the lines
+and files that bear on its work, so a decision you settled a month ago
+reaches the agent about to undo it. It stays small; the fit round keeps it,
+reshaping it from how it was used, and you can read and edit it in the
+studio, or leave a note on a line to correct it.

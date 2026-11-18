@@ -17,14 +17,13 @@ import json
 import posixpath
 import shutil
 import subprocess
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from nock.errors import Failed, PreconditionError
 from nock.git import Git, GitError
-from nock.topics import Author, Topics, Verdict
-from nock.utils import parse_moment, read_json
+from nock.topics import Topics
+from nock.utils import read_json
 
 if TYPE_CHECKING:
     from nock.project import Project
@@ -127,37 +126,6 @@ class Logika:
 
     def unavailable(self) -> str:
         return self.ledger.unavailable()
-
-    def due(self, last: dict[str, Any] | None, days_needed: float) -> str:
-        """Why a logika round is worth offering, or nothing: never run while the
-        ledger declares events, or `days_needed` since the last one with the
-        ledger changed since. It is only ever offered, never run unasked."""
-        if self.ledger.unavailable():
-            return ""
-        try:
-            ledger = self.ledger.read()
-        except Failed:
-            return ""
-        if last is None:
-            events = self.ledger.counts(ledger)["events"]
-            return (
-                f"no logika round has run, and the ledger declares {events} events"
-                if events
-                else ""
-            )
-        since = parse_moment(last.get("finished"))
-        if since is None:
-            return ""
-        days = (datetime.now(UTC) - since).total_seconds() / 86400
-        if days < days_needed:
-            return ""
-        changes = self.changes(last.get("finished"))
-        return (
-            f"a logika round is due ({len(changes)} commits changed {LEDGER} in the "
-            f"{days:.0f} days since the last)"
-            if changes
-            else ""
-        )
 
     def changes(self, since: str | None) -> list[str]:
         """The commits that changed the ledger since `since`, newest first."""
@@ -356,23 +324,19 @@ class Material:
         topics = Topics(self.logika.project)
         found = topics.items(TOPIC) if TOPIC in topics.names() else []
         if not found:
-            return f"# Decisions and suggestions\n\nNothing in the `{TOPIC}` topic yet."
+            return f"# Decisions and proposals\n\nNothing in the `{TOPIC}` topic yet."
         lines = [
-            "# Decisions and suggestions",
+            "# Decisions and proposals",
             "",
-            f"The items of the `{TOPIC}` topic, the open ones first. Each title is what was"
-            " decided, or proposed for the owner to settle: accepted, it holds; rejected, its"
-            " thread says what holds instead. An accepted todo is on the owner's backlog.",
+            f"The items of the `{TOPIC}` topic, the open proposals first. A decision holds;"
+            " an open proposal waits for the owner; an accepted one is to be carried out; a"
+            " rejected one is dropped: don't bring it back.",
             "",
         ]
         for item in sorted(
-            found, key=lambda item: (item["verdict"] != Verdict.OPEN, item["created"]["moment"])
+            found, key=lambda item: (item["status"] != "open", item["created"]["moment"])
         ):
-            said = [entry["text"] for entry in item["thread"] if entry["author"] == Author.OWNER]
-            note = f" — the owner: {said[-1]}" if said else ""
-            decision = topics.decision(item, item["versions"][-1])
-            status = f"{decision['status']}, " if decision else ""
-            lines.append(f"- [{item['ref']}] {status}{item['verdict']}: {item['title']}{note}")
+            lines.append(f"- [{item['ref']}] {item['status']}: {item['title']} — {item['means']}")
         return "\n".join(lines)
 
 

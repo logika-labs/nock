@@ -23,8 +23,8 @@ from nock.studio import Studio
 from nock.usage import IDENTITY, QUESTION, QUESTION_VERSION, UNMADE, Moment, Usage
 
 from .conftest import git, nock, write_tool
+from .store import propose, topics_in
 from .test_telemetry_and_reflection import transcript
-from .test_topics import judge, submit
 
 
 def configure(project: Project, old: str, new: str) -> Project:
@@ -44,7 +44,7 @@ def test_with_reminders_off_nock_says_nothing_unasked_and_still_records(
     project: Project,
 ) -> None:
     write_tool(project, "work", "import nock\n\n@nock.command\ndef deploy():\n    '''Ship it.'''\n")
-    judge(project.root, submit(project.root), "rejected", "Postgres")
+    topics_in(project.root).judge(propose(project.root), "accepted")
     quiet = configure(project, "reminders = true", "reminders = false")
     assert HookRunner(quiet, {"session_id": "s1"}).handle("SessionStart") is None
     assert HookRunner(quiet, {"session_id": "s1"}).handle("UserPromptSubmit") is None
@@ -57,9 +57,9 @@ def test_with_reminders_off_nock_says_nothing_unasked_and_still_records(
     HookRunner(quiet, {"session_id": "s1", "transcript_path": str(path)}).handle("SessionEnd")
     assert quiet.store.rows("SELECT id FROM sessions") == [{"id": "s1"}]
     assert "deploy" in nock(project.root).stdout
-    assert json.loads(nock(project.root, "status", "--json").stdout)["topics"]["awaiting_you"][
-        "rejected"
-    ]
+    assert json.loads(nock(project.root, "status", "--json").stdout)["topics"]["awaiting_agents"][
+        "orders"
+    ] == ["orders/archive"]
 
 
 class Receiver(BaseHTTPRequestHandler):
@@ -119,7 +119,6 @@ def test_unanswered_is_asked_once_and_sends_nothing(
     assert "`.nock/nock config share true`" in started["ask_the_owner"]
     again = json.loads(nock(project.root, "reflect", "nock.fit", "--json").stdout)
     assert "ask_the_owner" not in again
-    assert "ask_the_owner" not in judge(project.root, submit(project.root), "accepted")
     path = project.root / ".nock" / "local" / "usage.json"
     state = json.loads(path.read_text())
     assert state["asked"]["moment"] == "round" and state["asked"]["prompt"] == QUESTION_VERSION
@@ -259,7 +258,7 @@ def test_the_page_asks_until_the_owner_answers_with_its_buttons(project: Project
         assert (
             "\nshare = false\n" in (project.root / ".nock" / "shared" / "settings.toml").read_text()
         )
-        assert 'id="usage"' not in urllib.request.urlopen(studio.address).read().decode()
+        assert 'data-ask-usage="false"' in urllib.request.urlopen(studio.address).read().decode()
     finally:
         studio.shutdown()
         studio.server_close()

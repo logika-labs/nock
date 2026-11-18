@@ -1,11 +1,12 @@
 title = "Toolbox"
 summary = "Improve the project's .nock/ toolbox from its telemetry."
 relevant = "Every project with nock."
-adopted = "always"
 
 [due]
-sessions = 15
-days = 7
+# Due after 50 tool runs, or any tool failing 3 times, since the last run.
+measure = "tools"
+threshold = 50
+
 
 [material.process]
 python = "process"

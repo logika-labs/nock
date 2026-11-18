@@ -24,5 +24,5 @@ Return each finding with: a one-line title; severity (critical, high,
 medium, low, info) and why; confidence (proven, read in the code,
 suspected); the evidence (file:line, the repro command and what it
 printed, the path of any log or script you wrote); the fix you propose and
-its alternatives. Then what you checked and found sound, in a line each,
+roughly what it takes. Then what you checked and found sound, in a line each,
 and what you could not check and why. Nothing else.

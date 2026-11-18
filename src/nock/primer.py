@@ -2,8 +2,7 @@
 Code session reads it, and which AGENTS.md holds between nock's markers for
 the harnesses that read AGENTS.md and follow no import (Codex, Cursor): what
 nock is for here and what to do with it — as the committed settings have it,
-so `reminders = false` leaves only a word on what nock is, and
-`consult.enabled = false` leaves out consulting."""
+so `reminders = false` leaves only a word on what nock is."""
 
 from __future__ import annotations
 
@@ -26,43 +25,41 @@ sessions, and nock keeps what they decided, what the owner said about it, and
 the tools agents built.
 """
 
-CONSULT = """\
-- **Consult before you change code,** unless the task is really
-  straightforward and unambiguous: `.nock/nock consult "what you are about
-  to do" --context "what you know"`. A fresh agent reads the project and
-  tells you the topics, decisions, tools and checks that bear on what you
-  are about to do; do as it says, or say why not.
+MEMORY = """\
+- **Read `.nock/shared/memory.md` first:** what nock has learned about this
+  project and its owner, in short lines, each pointing to the files that hold
+  the detail. Follow the lines that bear on your work. Tell the owner (or
+  your orchestrator) what you learn that is worth remembering; reflection
+  keeps the file.
 """
 
 TOPICS = """\
-- **Put your work before the owner in Topics:** they are files you write in
-  `.nock/shared/topics/` (`.nock/nock docs files` has each kind; nock fills
-  in the rest and commits them). Find the topic for what you are doing
-  (`.nock/nock search …`, then its view in `.nock/local/views/`) or open
-  one; a done one that comes back is revived, not made again. Into it,
-  record decisions bare: one when a later reader would ask "why" (a choice
-  between real alternatives the owner hasn't made, a deliberate
-  simplification, your reading of something ambiguous, a todo you leave;
-  never the owner's own instruction or a routine detail), with the assets
-  that show it: project files, or something you made to show part of the
-  project (a screenshot, a page) with how to make it again. If it is the
-  owner's call, record the answer you would propose and carry on; the owner
-  gives verdicts later, so don't wait.
+- **Put your work before the owner in Topics** (tasks, to the owner): files
+  you write in `.nock/shared/topics/` (`.nock/nock docs files` has each
+  kind; nock fills in the rest and commits them). Find the topic for what
+  you are doing (`.nock/nock search …`, then its view in
+  `.nock/local/views/`) or open one; a done one that comes back is revived.
+  Into it, as you go, short: a **decision** for what you decided and carried
+  on with (a title, 1–3 lines on what it means for the owner, maybe why), a
+  **proposal** for a todo you want done (the same, plus what it takes), and
+  **assets** for files the owner should look at, versioned (before and
+  after). Never the owner's own instruction or a routine detail. What only
+  the owner can settle: propose it and carry on; don't wait.
 - **Keep your topic's state and status current:** when you start work, set
   it active with a status (a `state` event, `{"kind": "state", "state":
   "active", "status": "…"}`); update the status at each milestone ("waiting
-  for the gate on main", "benchmarks running, about 2 h"); set it `review` when
-  you have finished and only the owner's verdicts remain, `done` or
-  `abandoned` when the work is over. Work you dispatch is tracked the same way, in
-  the topic it serves.
+  for the gate on main", "benchmarks running, about 2 h"). When you have
+  finished, compose its review if there is anything for the owner
+  (`.nock/nock docs review`) and set it `review`; `done` or `abandoned`
+  when the work is over. Work you dispatch is tracked the same way, in the
+  topic it serves.
 - **Check what awaits you** with `.nock/nock inbox` when you start and
-  before you finish: what the owner said that no agent has answered,
-  decisions they rejected (rework one as a new version: `docs
-  topics.versions`). When the owner is in the session, discuss with them
-  here and leave at most a line in the thread; when they are away, or told
-  you to work in the background, answer briefly in the thread (a message
-  event), and say nothing if you just did what was asked and the new
-  version shows it.
+  before you finish: the owner's messages and the notes they carry,
+  proposals they accepted (carry them out, then mark them `implemented`) or
+  rejected. When the owner is in the session, discuss with them here and
+  leave at most a line in the chat; when they are away, answer in the
+  topic's chat (a message event): a short summary, with blocks where
+  something is better shown.
 - **Run noisy or long commands through `.nock/nock run -- COMMAND`**
   (Claude Code asks about it as about the command itself), and
   `.nock/nock check` before you finish: the checks your changes can affect
@@ -85,23 +82,16 @@ QUIET = """\
 This project has nock (`.nock/nock`): a toolbox agents build for the project,
 and the topics where they put their work before the owner. It stays quiet here:
 use it when the human asks. `.nock/nock` lists the tools, `.nock/nock status`
-says where things stand{consult}. When the human needs something nock lacks
-or finds it broken, offer to send that to nock's makers with
+says where things stand, `.nock/shared/memory.md` what it has learned. When
+the human needs something nock lacks or finds it broken, offer to send that to nock's makers with
 `.nock/nock report`, only on their go-ahead.
 """
 
 
 def primer(configuration: Configuration) -> str:
-    consulting = configuration.get("consult.enabled") is not False
     if configuration.get("reminders") is False:
-        consult = (
-            ", and `.nock/nock consult` has a fresh agent find the items and tools that"
-            " bear on a task"
-            if consulting
-            else ""
-        )
-        return QUIET.format(consult=consult)
-    return INTRODUCTION + "\n" + (CONSULT if consulting else "") + TOPICS + REPORT
+        return QUIET
+    return INTRODUCTION + "\n" + MEMORY + TOPICS + REPORT
 
 
 def with_section(text: str, section: str) -> str:

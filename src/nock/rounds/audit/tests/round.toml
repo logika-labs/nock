@@ -1,10 +1,13 @@
 title = "Tests"
 summary = "Audit the tests: coverage of what matters, weak assertions, fakes, flakes, slow tests and promises no test holds."
 relevant = "Projects with a test suite."
-adopted = "recommended"
 
 [due]
-days = 30
+# Due once 500 lines of source and test code changed since the last run.
+measure = "lines"
+paths = ["**/*.py", "**/*.ts", "**/*.tsx", "**/*.js", "**/*.jsx", "**/*.rs", "**/*.go", "**/*.rb", "**/*.java", "**/*.kt", "**/*.swift", "**/*.c", "**/*.cpp", "**/*.cs", "**/*.php"]
+threshold = 500
+
 
 [material.tests]
 command = "git ls-files | grep -E '(^|/)(tests?|__tests__|spec|e2e)/|(_test|_spec|\\.test|\\.spec)\\.[a-z]+$|(^|/)test_[^/]+$' | awk -F/ '{print ($2 == \"\" ? \".\" : $1)}' | sort | uniq -c | sort -rn"

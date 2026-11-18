@@ -58,7 +58,7 @@ DEFAULTS: dict[str, Any] = {
         "unaffected": [],
     },
     "agent": {
-        # The headless agent nock dispatches (consult, the studio's Ask) and its model
+        # The headless agent nock dispatches (the studio's answers and rounds, the sharer) and its model
         # ("" is Claude Code's default); bounds in seconds.
         "command": ["claude"],
         "model": "",
@@ -69,30 +69,14 @@ DEFAULTS: dict[str, Any] = {
         # The port `nock studio` serves on, and the one a notification's link
         # names while no studio runs.
         "port": 8765,
-        # Where the studio's recorder sends what the owner says, to have it
-        # written into the chat: a Whisper server speaking OpenAI's
-        # `/v1/audio/transcriptions` (OpenAI itself, whisper.cpp's server,
-        # faster-whisper-server). Empty turns the recorder off. A bare server, or
-        # one ending in `/v1`, gets `/v1/audio/transcriptions` added.
-        "transcribe_url": "",
-        # The `model` sent with each recording: OpenAI's is "whisper-1"; whisper.cpp
-        # ignores it; faster-whisper-server takes its own ("Systran/faster-whisper-small").
-        "transcribe_model": "whisper-1",
-        # The name of the environment variable holding the server's key, sent as
-        # a bearer token ("OPENAI_API_KEY"); empty sends none. Never the key itself.
-        "transcribe_key_variable": "",
     },
     "inbox": {
         # How long `nock inbox --wait` waits, in seconds: under Claude Code's
         # ten-minute limit on a command.
         "wait": 540,
-        # How long the owner is quiet after a verdict or a comment before the
-        # waiting agent hears them, so a triage lands as one batch.
+        # How long the owner is quiet after a verdict or Done before the waiting
+        # agent hears them, so a look through the studio lands as one batch.
         "settle": 60,
-    },
-    "consult": {
-        # Whether the consultant runs, and the primer asks agents to consult.
-        "enabled": True,
     },
     "upgrade": {
         # Whether a session the human starts says when a newer nock is out
@@ -210,7 +194,7 @@ def with_table_settings(text: str, table: str, values: dict[str, Any]) -> str:
 # writes: the team's in `.nock/shared/settings.toml`, committed with the topics;
 # one machine's in `.nock/local/config.toml`. The code's (checks, environment,
 # permissions, …) stay in `.nock/config.toml`, written by hand.
-TEAM = ("share", "reminders", "inbox", "consult", "agent")
+TEAM = ("share", "reminders", "inbox", "agent")
 MACHINE = (
     "notifications",
     "studio.port",

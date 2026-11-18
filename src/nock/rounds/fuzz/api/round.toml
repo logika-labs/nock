@@ -4,10 +4,16 @@ relevant = "Projects that serve an HTTP API they can run locally, best with an O
 agents = []
 
 [due]
-days = 30
+# Due on any change to the API's schema, or once 300 lines changed in route
+# code (the fit round names it; until it does, all source).
+measure = "lines"
+paths = ["**/*.py", "**/*.ts", "**/*.tsx", "**/*.js", "**/*.jsx", "**/*.rs", "**/*.go", "**/*.rb", "**/*.java", "**/*.kt", "**/*.swift", "**/*.c", "**/*.cpp", "**/*.cs", "**/*.php"]
+any = ["**/openapi*.json", "**/openapi*.yaml", "**/openapi*.yml", "**/swagger*.json"]
+threshold = 300
+
 
 [material.past]
-topic = "fuzz-api"
+topic = "round-fuzz-api"
 
 [lead]
 reads = ["past"]

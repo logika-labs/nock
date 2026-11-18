@@ -129,7 +129,7 @@ def test_nock_docs_lists_the_terms_reads_them_and_answers_a_miss(project: Projec
     assert listed.returncode == 0, listed.stderr
     index = json.loads(listed.stdout)
     assert index["tools.caching"] == Docs().find("cache").description  # pyright: ignore[reportOptionalMemberAccess]
-    assert "topics.verdicts" in index and "studio" in index
+    assert "topics.items" in index and "review" in index and "studio" in index
 
     by_alias = nock(project.root, "docs", "CACHE")
     assert by_alias.returncode == 0 and by_alias.stdout.startswith("`@nock.command(cache=")
@@ -168,7 +168,7 @@ def test_the_briefs_point_only_at_terms_and_the_toolbox_brief_at_the_framework()
     for term in docs.terms:
         if term.term.split(".")[0] in FRAMEWORK:
             assert term.term in toolbox, f"the toolbox brief doesn't point at {term.term}"
-    for brief in ("consult.md", "reflection.map.md", "reflection.nock.md"):
+    for brief in ("answer.md", "round.md", "reflection.nock.md"):
         assert brief in named, brief
 
 
@@ -179,7 +179,7 @@ def test_every_skill_and_subagent_nock_installs_points_at_its_brief() -> None:
     docs = Docs()
     skills = list(PACKAGE.joinpath("briefs").rglob("SKILL.md"))
     agents = list(PACKAGE.joinpath("rounds").glob("*/*/agents/*.md"))
-    assert (len(skills), len(agents)) == (2, 8)
+    assert (len(skills), len(agents)) == (2, 7)
     for path in skills + agents:
         front, _, body = path.read_text()[4:].partition("\n---\n")
         named = f"name: {path.parent.name}\n" if path.name == "SKILL.md" else ""
@@ -193,7 +193,7 @@ def test_every_skill_and_subagent_nock_installs_points_at_its_brief() -> None:
 def test_every_shipped_protocol_has_its_lead_s_brief_and_one_for_each_agent() -> None:
     manifests = rounds.manifests(None)
     assert set(manifests) == {
-        "nock.toolbox", "nock.map", "nock.fit", "logika.rules", "logika.analytics",
+        "nock.toolbox", "nock.fit", "logika.rules", "logika.analytics",
         "logika.instrument", "audit.performance", "audit.security", "audit.tests", "fuzz.api",
         "fuzz.ui",
     }  # fmt: skip

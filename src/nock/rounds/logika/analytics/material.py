@@ -17,11 +17,17 @@ def unavailable(protocol: Any) -> str:
     return Logika(protocol.project).unavailable()
 
 
-def due(protocol: Any) -> str:
-    days = protocol.setting("days")
-    return Logika(protocol.project).due(
-        protocol.rounds.last(), float(days if days is not None else 30)
-    )
+def measure(protocol: Any, base: dict[str, Any]) -> tuple[int | None, str]:
+    """How many events logika.json gained since the round's baseline."""
+    logika = Logika(protocol.project)
+    try:
+        events = logika.ledger.counts(logika.ledger.read())["events"]
+    except Exception:
+        return None, "events added"
+    before = (base.get("ledger") or {}).get("events")
+    if before is None:
+        before = 0 if base.get("protocol") != protocol.name else events
+    return max(events - int(before), 0), "events added to logika.json"
 
 
 def begun(protocol: Any) -> dict[str, Any]:

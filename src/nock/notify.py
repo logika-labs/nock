@@ -1,6 +1,5 @@
-"""Review notifications: when it is the owner's turn in a topic (it moved to
-review, or an agent answered where the owner wrote last, or made a new version
-of an item they rejected), the nock process that records it tells them, once
+"""Review notifications: when it is the owner's turn in a topic (its review
+is ready, an agent answered them in its chat, or proposed something), the nock process that records it tells them, once
 per topic per `WINDOW`: in the studio's page while one is watching (`WATCH`,
 which the running studio keeps), else as a native desktop notification whose
 click opens the studio at what it tells of. What it tells is the timeline's
@@ -40,11 +39,11 @@ WATCHED = 90
 
 class Reason(StrEnum):
     REVIEW = "review"
-    """The topic moved to review: only the owner's verdicts remain."""
+    """The topic's review is ready (a new version of it, or the topic moved to review)."""
     ANSWERED = "answered"
-    """An agent wrote in a thread where the owner wrote last."""
-    REWORKED = "reworked"
-    """An agent made a new version of an item the owner rejected."""
+    """An agent answered the owner in the topic's chat."""
+    PROPOSED = "proposed"
+    """An agent proposed something for the owner to accept or reject."""
 
 
 class Watching(StrEnum):
@@ -69,22 +68,15 @@ def plural(count: int, word: str) -> str:
     return f"{count} {word}{'' if count == 1 else 's'}"
 
 
-def waiting(items: list[dict[str, Any]]) -> str:
-    """The open decisions, as the owner would count them: "3 decisions"."""
-    decisions = sum(1 for item in items if item["verdict"] == "open")
-    return plural(decisions, "decision") if decisions else ""
-
-
-def wording(topic: str, reason: Reason, items: list[dict[str, Any]]) -> str:
-    open_items = waiting(items)
+def wording(topic: str, reason: Reason, row: dict[str, Any]) -> str:
+    """What the notification says: why it is the owner's turn, and what waits."""
+    proposals = row.get("open") or 0
+    waiting = f"{plural(proposals, 'proposal')} to decide" if proposals else ""
     if reason is Reason.REVIEW:
-        return f"{topic} is ready for review" + (f": {open_items}" if open_items else "")
-    what = (
-        "an agent answered you"
-        if reason is Reason.ANSWERED
-        else "a new version of an item you rejected"
-    )
-    return f"{topic} is your turn again: {what}" + (f"; {open_items} open" if open_items else "")
+        return f"{topic}: the review is ready" + (f", {waiting}" if waiting else "")
+    if reason is Reason.ANSWERED:
+        return f"{topic}: an agent answered you"
+    return f"{topic}: a new proposal" + (f" ({waiting})" if proposals > 1 else "")
 
 
 def display() -> bool:
@@ -185,7 +177,7 @@ class Notifications:
         one's address, else the configured port's."""
         running = (self.studio() or {}).get("address")
         base = running or f"http://127.0.0.1:{self.project.configuration.get('studio.port')}/"
-        return f"{base}{fragment or f'#topics/{topic}'}"
+        return f"{base}{fragment or f'#/t/{topic}'}"
 
     def page_watching(self, at: str) -> bool:
         record = self.studio()
@@ -197,7 +189,7 @@ class Notifications:
         self,
         topic: str,
         reason: Reason,
-        items: list[dict[str, Any]],
+        row: dict[str, Any],
         at: str | None = None,
         event: dict[str, Any] | None = None,
     ) -> dict[str, Any] | None:
@@ -215,25 +207,25 @@ class Notifications:
             )
             if last and seconds_between(last[0]["moment"], at) < WINDOW:
                 return None
-            text = wording(topic, reason, items)
+            text = wording(topic, reason, row)
             if self.page_watching(at):
                 shown = Shown.STUDIO
             else:
                 shown = Shown.DESKTOP if display() else Shown.NOWHERE
-            row: dict[str, Any] = {
+            kept: dict[str, Any] = {
                 "moment": at,
                 "topic": topic,
                 "reason": str(reason),
                 "text": text,
                 "shown": str(shown),
                 "event": (event or {}).get("key"),
-                "address": (event or {}).get("address") or f"#topics/{topic}",
+                "address": (event or {}).get("address") or f"#/t/{topic}",
                 "preview": (event or {}).get("preview") or "",
             }
-            row["id"] = self.project.store.insert("notifications", row)
+            kept["id"] = self.project.store.insert("notifications", kept)
         if shown is Shown.DESKTOP:
-            self.show(topic, text, row["address"])
-        return row
+            self.show(topic, text, kept["address"])
+        return kept
 
     def show(self, topic: str, text: str, address: str | None = None) -> None:
         """On the desktop, left to run on its own: the caller does not wait."""
@@ -261,5 +253,5 @@ class Notifications:
             "SELECT * FROM notifications WHERE id > ? ORDER BY id LIMIT 20", (after,)
         )
         for row in rows:
-            row["address"] = row.get("address") or f"#topics/{row['topic']}"
+            row["address"] = row.get("address") or f"#/t/{row['topic']}"
         return {"latest": latest, "notifications": rows}

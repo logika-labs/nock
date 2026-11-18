@@ -1,142 +1,158 @@
-"""What the tests do to the topics, through the store's own interface
-(`nock.topics.Topics`, which writes events into `.nock/shared/` and settles
-them) — the decisions, versions, verdicts and messages an agent or the owner
-writes — and what they read back. Each takes the directory the work is in,
-a worktree's as well as the main checkout's."""
+"""What the tests do to the topics: an agent's work written as the files an
+agent writes under `.nock/shared/topics/` and settled as that agent's
+(`Shared.settle`, then `Topics.heard`, as the hooks do); the owner's through
+`nock.topics.Topics`, as the studio does. Each takes the directory the work
+is in, a worktree's as well as the main checkout's."""
 
 from __future__ import annotations
 
+import json
+import secrets
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 
 from nock.project import Project
-from nock.topics import (
-    Author,
-    ItemChange,
-    ItemDraft,
-    TopicChange,
-    TopicDraft,
-    Topics,
-    Word,
-    in_order,
-)
+from nock.shared import Settled, Shared, by_for
+from nock.topics import Topics
 
-TOPIC: dict[str, Any] = {
-    "name": "orders",
-    "description": "Where orders are kept, for the checkout work.",
-}
-DECISION: dict[str, Any] = {
-    "title": "Orders live in SQLite",
-    "decision": {
-        "answer": "One file is enough for **orders** at today's load.",
-        "alternatives": [{"option": "Postgres", "why_not": "a server to run, for load we lack"}],
-    },
-}
+AGENT = {"session": "agent-session", "role": "interactive"}
 
 
 def topics_in(directory: Path) -> Topics:
     return Topics(Project.discover(directory))
 
 
-def open_topic(directory: Path, topic: dict[str, Any] = TOPIC) -> str:
-    record, _ = topics_in(directory).create_topic(cast(TopicDraft, topic))
-    return record["name"]
+def shared_root(directory: Path) -> Path:
+    return Project.discover(directory).root / ".nock" / "shared" / "topics"
 
 
-def submit(directory: Path, item: dict[str, Any] = DECISION, topic: str = "orders") -> str:
-    """A decision in TOPIC (opened first when it is new), as an agent records it."""
-    topics = topics_in(directory)
-    if topic not in topics.names():
-        open_topic(directory, {**TOPIC, "name": topic})
-    record, _ = topics_in(directory).create_item(topic, cast(ItemDraft, item))
-    return record["ref"]
+def draft(folder: Path, record: dict[str, Any]) -> Path:
+    path = folder / "events" / f"new-{secrets.token_hex(4)}.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(record))
+    return path
 
 
-def judge(directory: Path, ref: str, verdict: str, comment: str = "") -> dict[str, Any]:
-    """The owner's verdict, told to whoever recorded it as said (it is theirs)."""
-    word = {"verdict": verdict, **({"comment": comment} if comment else {})}
-    topics = topics_in(directory)
-    record, _ = topics.judge(ref, cast(Word, word))
-    topics.tell_writer([record["ref"]])
-    return {"ref": record["ref"], "verdict": record["verdict"]}
+def settle(directory: Path, writer: dict[str, Any] | None = None) -> Settled:
+    """Everything an agent wrote under the store, settled as its own."""
+    project = Project.discover(directory)
+    own = project.writer()
+    chosen = dict(writer or (own if own.get("session") else AGENT))
+    settled = Shared(project).settle_changes(lambda: by_for(project, writer=chosen))
+    Topics(project).heard(settled)
+    return settled
 
 
-def judge_topic(
-    directory: Path, name: str, verdict: str, comment: str = "", rework: bool = True
-) -> list[str]:
-    """The owner's verdict on every open decision of a topic, told to whoever
-    recorded each as said."""
-    word: dict[str, Any] = {"verdict": verdict}
-    if comment:
-        word["comment"] = comment
-    if not rework:
-        word["rework"] = False
-    topics = topics_in(directory)
-    judged, _ = topics.judge_topic(name, cast(Word, word))
-    topics.tell_writer(judged)
-    return judged
+def held(directory: Path, writer: dict[str, Any] | None = None) -> Settled:
+    """`settle`, failing the test on a problem."""
+    settled = settle(directory, writer)
+    assert not settled.problems, settled.problems
+    return settled
 
 
-def update_topic(
+def open_topic(
     directory: Path,
+    name: str = "orders",
+    description: str = "Where orders are kept, for the checkout work.",
+    status: str | None = None,
+) -> str:
+    folder = shared_root(directory) / name
+    draft(folder, {"kind": "created", "description": description})
+    if status:
+        draft(folder, {"kind": "state", "state": "active", "status": status})
+    held(directory)
+    return name
+
+
+def state(directory: Path, topic: str, **fields: Any) -> None:
+    draft(shared_root(directory) / topic, {"kind": "state", **fields})
+    held(directory)
+
+
+def item(
+    directory: Path,
+    topic: str,
+    slug: str,
+    kind: str = "decision",
+    title: str = "Orders live in SQLite",
+    means: str = "One file to back up; no server to run.",
+    writer: dict[str, Any] | None = None,
+    **fields: Any,
+) -> str:
+    """A decision (or a proposal) in TOPIC, opened first when it is new."""
+    if not (shared_root(directory) / topic / "events").is_dir():
+        open_topic(directory, topic)
+    folder = shared_root(directory) / topic / "items" / slug
+    draft(folder, {"kind": "created", "type": kind, "title": title, "means": means, **fields})
+    held(directory, writer)
+    return f"{topic}/{slug}"
+
+
+def submit(directory: Path, topic: str = "orders", slug: str = "sqlite") -> str:
+    """A decision, as an agent records it."""
+    return item(directory, topic, slug)
+
+
+def propose(
+    directory: Path, topic: str = "orders", slug: str = "archive", takes: str = "a day"
+) -> str:
+    return item(
+        directory,
+        topic,
+        slug,
+        kind="proposal",
+        title="Archive orders after a year",
+        means="Old orders leave the hot table.",
+        takes=takes,
+    )
+
+
+def item_event(directory: Path, ref: str, record: dict[str, Any]) -> Settled:
+    topic, slug = ref.split("/")
+    draft(shared_root(directory) / topic / "items" / slug, record)
+    return settle(directory)
+
+
+def asset(
+    directory: Path,
+    topic: str,
     name: str,
-    change: dict[str, Any] | None = None,
-    reply: str | None = None,
-    revive: str | None = None,
-) -> dict[str, Any]:
-    record, _ = topics_in(directory).update_topic(
-        name, cast(TopicChange, change or {}), reply, revive
+    content: str | bytes = "first\n",
+    file_name: str = "notes.md",
+    title: str = "Notes",
+    **entry: Any,
+) -> None:
+    """An asset's first version, or its next one: a derived file."""
+    folder = shared_root(directory) / topic / "assets" / name
+    if not (folder / "events").is_dir():
+        draft(folder, {"kind": "created", "title": title})
+    version = folder / "versions" / "next"
+    version.mkdir(parents=True, exist_ok=True)
+    data = content.encode() if isinstance(content, str) else content
+    (version / file_name).write_bytes(data)
+    (version / "asset.json").write_text(
+        json.dumps({"file": {"kind": "derived", "name": file_name, **entry}})
     )
-    return record
+    held(directory)
 
 
-def update_item(
+def compose(
     directory: Path,
-    ref: str,
-    change: dict[str, Any] | None = None,
-    version: dict[str, Any] | None = None,
-    reply: str | None = None,
-    author: Author = Author.AGENT,
-) -> dict[str, Any]:
-    record, _ = topics_in(directory).update_item(
-        ref,
-        cast(ItemChange, change) if change else None,
-        cast(ItemChange, version) if version is not None else None,
-        reply,
-        author,
-    )
-    return record
+    topic: str,
+    blocks: list[dict[str, Any]],
+    summary: str = "What changed",
+    files: dict[str, str] | None = None,
+) -> Settled:
+    """A new version of the topic's review."""
+    version = shared_root(directory) / topic / "review" / "versions" / "next"
+    version.mkdir(parents=True, exist_ok=True)
+    (version / "review.json").write_text(json.dumps({"summary": summary, "blocks": blocks}))
+    for name, text in (files or {}).items():
+        (version / name).write_text(text)
+    return settle(directory)
 
 
-def shown(directory: Path, ref: str) -> dict[str, Any]:
-    """A decision with its versions' answers, its assets' files where they are, its thread."""
-    topics = topics_in(directory)
-    return topics.shown(topics.item(ref))
-
-
-def topic_shown(directory: Path, name: str) -> dict[str, Any]:
-    """A topic: its row, its decisions' rows, its thread with each file's `where`."""
-    topics = topics_in(directory)
-    record = topics.topic(name)
-    return {
-        **topics.row(name),
-        "items": [topics.item_row(item) for item in topics.items(name)],
-        "thread": topics.thread_shown(record["thread"], record["name"]),
-    }
-
-
-def rows(directory: Path, state: str | None = None) -> list[dict[str, Any]]:
-    """Every topic's row in the owner's order (priority, then newest activity)."""
-    topics = topics_in(directory)
-    found = in_order([topics.row(name) for name in topics.names()])
-    return [row for row in found if state is None or row["state"] == state]
-
-
-def item_rows(directory: Path) -> list[dict[str, Any]]:
-    topics = topics_in(directory)
-    return [topics.item_row(item) for item in topics.every()]
-
-
-def answered(record: dict[str, Any]) -> bool:
-    """Whether the last message in a record's thread answers the owner's."""
-    return bool(record["thread"]) and "answers" in record["thread"][-1]
+def reply(directory: Path, topic: str, text: str, **fields: Any) -> Settled:
+    """An agent's message in the topic's chat."""
+    draft(shared_root(directory) / topic, {"kind": "message", "text": text, **fields})
+    return settle(directory)

@@ -1,14 +1,17 @@
 title = "Performance"
 summary = "Measure what users wait for, find what costs the most, and put each finding before the owner as a decision."
 relevant = "Projects whose speed users feel: a server, a pipeline or scheduled job, a CLI, or a web app."
-adopted = "recommended"
 agents = []
 
 [due]
-days = 60
+# Due once 1,500 lines of source changed since the last run.
+measure = "lines"
+paths = ["**/*.py", "**/*.ts", "**/*.tsx", "**/*.js", "**/*.jsx", "**/*.rs", "**/*.go", "**/*.rb", "**/*.java", "**/*.kt", "**/*.swift", "**/*.c", "**/*.cpp", "**/*.cs", "**/*.php"]
+threshold = 1500
+
 
 [material.earlier]
-topic = "audit-performance"
+topic = "round-audit-performance"
 
 [lead]
 reads = ["earlier"]

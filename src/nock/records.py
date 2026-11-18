@@ -1,7 +1,7 @@
 """The file kinds of `.nock/shared/`: each event's schema by where it lives
-(a topic, a decision, an asset of a decision), a decision version's
-`decision.json` and an asset version's `assets.json`, and how an event file
-is named. Agents write these files; `nock.shared` validates, completes and
+(a topic, an item, an asset, the review), an asset version's `asset.json`,
+a review version's `review.json` and its blocks, and how an event file is
+named. Agents write these files; `nock.shared` validates, completes and
 commits them, and `nock docs files` documents each with an example."""
 
 from __future__ import annotations
@@ -16,17 +16,23 @@ from nock.schema import Validator
 EVENT_FILE = re.compile(r"^(?P<stamp>\d{8}T\d{6}\.\d{3}Z)-(?P<id>[0-9a-f]{8})\.json$")
 # The folder an agent writes a new version into; completing it numbers it.
 NEXT = "next"
-DECISION_FILE = "decision.json"
-ASSETS_FILE = "assets.json"
+ASSET_FILE_NAME = "asset.json"
 # Text kept beside a version in git; anything larger, or not text, is media.
 SMALL_TEXT = 256 * 1024
 # The fields an event's writer never gives: completing the event fills them.
 ENVELOPE = ("moment", "id", "by")
 
 STATES = ["planned", "active", "review", "done", "abandoned"]
-VERDICTS = ["open", "accepted", "rejected", "dropped"]
+# What an item is: a decision, done and carried on with; a proposal, a todo the
+# agent wants done, which the owner accepts (it becomes a decision once done)
+# or rejects (dropped).
+TYPES = ["decision", "proposal"]
+VERDICTS = ["accepted", "rejected"]
 TEXT = {"type": "string"}
 LINE = {"type": "string", "maxLength": 2000}
+# A few lines on what it means for the owner: behaviour, cost, what users see.
+MEANS = {"type": "string", "maxLength": 1200}
+REVIEW_FILE = "review.json"
 
 ATTACHMENT = {
     "type": "object",
@@ -39,16 +45,37 @@ ATTACHMENT = {
     },
     "additionalProperties": False,
 }
+# What a note is pinned on: an item, an asset (a version, a line of it), a block
+# of the review (a span of its text); at least one of item, asset, block.
+TARGET = {
+    "type": "object",
+    "properties": {
+        "item": TEXT,
+        "asset": TEXT,
+        "version": {"type": "integer", "minimum": 1},
+        "line": {"type": "integer", "minimum": 1},
+        "side": {"enum": ["before", "after"]},
+        "block": TEXT,
+        "review": {"type": "integer", "minimum": 1},
+        "quote": {"type": "string", "maxLength": 2000},
+        "memory": {"type": "boolean", "description": "a line of .nock/shared/memory.md"},
+    },
+    "additionalProperties": False,
+}
 MESSAGE = {
     "text": TEXT,
     "attachments": {"type": "array", "items": ATTACHMENT},
     "answers": {**TEXT, "description": "the id of the message it answers"},
-    "now": {"type": "boolean", "description": "sent with Address now"},
-    "withdraws": {**TEXT, "description": "the id of the owner's message it takes back"},
-    "verdict": {"enum": VERDICTS, "description": "the verdict a comment came with"},
-    "note": {
-        "enum": ["task", "split", "revival"],
-        "description": "nock's own note, kept from an earlier layout",
+    "notes": {
+        "type": "array",
+        "items": {"type": "string", "pattern": "^[0-9a-f]{8}$"},
+        "description": "the owner's notes it carries, by id",
+    },
+    "now": {"type": "boolean", "description": "the owner asked for an answer now"},
+    "blocks": {
+        "type": "array",
+        "items": {"type": "object"},
+        "description": "what an agent's reply shows: the review's blocks",
     },
 }
 
@@ -73,27 +100,63 @@ TOPIC_EVENTS: dict[str, dict[str, Any]] = {
         }
     },
     "message": {"properties": MESSAGE},
-}
-DECISION_EVENTS: dict[str, dict[str, Any]] = {
-    "created": {
-        "required": ["title"],
+    "note": {
+        "required": ["on", "text"],
         "properties": {
-            "title": LINE,
-            "description": TEXT,
-            "aliases": {"type": "array", "items": TEXT},
+            "on": TARGET,
+            "text": TEXT,
+            "replaces": {**TEXT, "description": "the note it edits; empty text removes it"},
         },
     },
-    "titled": {"properties": {"title": LINE, "description": TEXT}},
-    "version": {
+    "reviewed": {
         "required": ["version"],
         "properties": {"version": {"type": "integer", "minimum": 1}},
     },
-    "verdict": {
-        "required": ["verdict"],
-        "properties": {"verdict": {"enum": VERDICTS}, "comment": TEXT},
+    "plan": {
+        "required": ["steps"],
+        "properties": {
+            "steps": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                    "type": "object",
+                    "required": ["title", "estimate"],
+                    "properties": {
+                        "title": LINE,
+                        "estimate": {
+                            "type": "number",
+                            "minimum": 0,
+                            "description": "minutes",
+                        },
+                    },
+                    "additionalProperties": False,
+                },
+            }
+        },
     },
-    "moved": {"required": ["to"], "properties": {"from": TEXT, "to": TEXT}},
-    "message": {"properties": MESSAGE},
+    "step": {
+        "required": ["title", "state"],
+        "properties": {"title": LINE, "state": {"enum": ["started", "done"]}},
+    },
+}
+ITEM_EVENTS: dict[str, dict[str, Any]] = {
+    "created": {
+        "required": ["type", "title", "means"],
+        "properties": {
+            "type": {"enum": TYPES},
+            "title": LINE,
+            "means": MEANS,
+            "why": LINE,
+            "takes": LINE,
+        },
+    },
+    "revised": {
+        "properties": {"title": LINE, "means": MEANS, "why": LINE, "takes": LINE},
+    },
+    "verdict": {"required": ["verdict"], "properties": {"verdict": {"enum": VERDICTS}}},
+    "implemented": {
+        "properties": {"means": MEANS, "why": LINE},
+    },
 }
 ASSET_EVENTS: dict[str, dict[str, Any]] = {
     "created": {"required": ["title"], "properties": {"title": LINE, "description": TEXT}},
@@ -102,15 +165,19 @@ ASSET_EVENTS: dict[str, dict[str, Any]] = {
         "required": ["version"],
         "properties": {"version": {"type": "integer", "minimum": 1}},
     },
-    "preferred": {
+}
+REVIEW_EVENTS: dict[str, dict[str, Any]] = {
+    "version": {
         "required": ["version"],
-        "properties": {
-            "version": {"type": "integer", "minimum": 1},
-            "name": {"type": ["string", "null"]},
-        },
+        "properties": {"version": {"type": "integer", "minimum": 1}},
     },
 }
-PLACES = {"topic": TOPIC_EVENTS, "decision": DECISION_EVENTS, "asset": ASSET_EVENTS}
+PLACES = {
+    "topic": TOPIC_EVENTS,
+    "item": ITEM_EVENTS,
+    "asset": ASSET_EVENTS,
+    "review": REVIEW_EVENTS,
+}
 
 BY = {
     "type": "object",
@@ -126,24 +193,6 @@ BY = {
     "required": ["author"],
 }
 
-DECISION = {
-    "type": "object",
-    "required": ["answer"],
-    "properties": {
-        "answer": {"type": "string", "minLength": 1},
-        "alternatives": {
-            "type": "array",
-            "items": {
-                "type": "object",
-                "required": ["option", "why_not"],
-                "properties": {"option": TEXT, "why_not": TEXT},
-                "additionalProperties": False,
-            },
-        },
-        "status": {"enum": ["done", "todo"]},
-    },
-    "additionalProperties": False,
-}
 RECIPE = {
     "type": "object",
     "properties": {"command": TEXT, "instruction": TEXT},
@@ -165,24 +214,14 @@ ASSET_FILE = {
         "recipe": {"anyOf": [RECIPE, {"type": "null"}]},
         "captions": TEXT,
         "poster": TEXT,
-        "local": {"type": "boolean"},
     },
     "additionalProperties": False,
 }
-ASSETS = {
+ASSET = {
     "type": "object",
+    "required": ["file"],
     "properties": {
-        "variants": {"type": "boolean"},
-        "files": {"type": "array", "items": ASSET_FILE},
-        "views": {
-            "type": "array",
-            "items": {
-                "type": "object",
-                "required": ["name"],
-                "properties": {"name": TEXT, "title": TEXT, "bytes": {"type": "integer"}},
-                "additionalProperties": False,
-            },
-        },
+        "file": ASSET_FILE,
         "blobs": {
             "type": "object",
             "additionalProperties": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
@@ -190,6 +229,102 @@ ASSETS = {
     },
     "additionalProperties": False,
 }
+
+# The review's blocks, by kind: each block's own fields, the required first.
+SERIES = {
+    "type": "object",
+    "required": ["name", "values"],
+    "properties": {"name": TEXT, "values": {"type": "array", "items": {"type": "number"}}},
+    "additionalProperties": False,
+}
+BLOCKS: dict[str, dict[str, Any]] = {
+    "text": {"required": ["text"], "properties": {"text": TEXT}},
+    "item": {"required": ["item"], "properties": {"item": TEXT}},
+    "diff": {
+        "required": ["asset"],
+        "properties": {
+            "asset": TEXT,
+            "from": {"type": "integer", "minimum": 1},
+            "to": {"type": "integer", "minimum": 1},
+        },
+    },
+    "doc": {
+        "required": ["asset"],
+        "properties": {"asset": TEXT, "version": {"type": "integer", "minimum": 1}},
+    },
+    "excerpt": {
+        "required": ["asset", "lines"],
+        "properties": {
+            "asset": TEXT,
+            "version": {"type": "integer", "minimum": 1},
+            "lines": {
+                "type": "array",
+                "items": {"type": "integer", "minimum": 1},
+                "minItems": 2,
+                "maxItems": 2,
+            },
+        },
+    },
+    "image": {
+        "required": ["asset"],
+        "properties": {"asset": TEXT, "version": {"type": "integer", "minimum": 1}},
+    },
+    "table": {
+        "required": ["columns", "rows"],
+        "properties": {
+            "columns": {"type": "array", "items": TEXT},
+            "rows": {"type": "array", "items": {"type": "array"}},
+        },
+    },
+    "chart": {
+        "required": ["chart", "labels", "series"],
+        "properties": {
+            "chart": {"enum": ["bar", "line"]},
+            "labels": {"type": "array", "items": TEXT},
+            "series": {"type": "array", "items": SERIES, "minItems": 1},
+            "unit": TEXT,
+        },
+    },
+    "html": {
+        "required": ["file"],
+        "properties": {
+            "file": TEXT,
+            "height": {"type": "integer", "minimum": 40, "maximum": 4000},
+        },
+    },
+}
+BLOCK_COMMON = {
+    "kind": TEXT,
+    "id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"},
+    "caption": LINE,
+    "title": LINE,
+}
+REVIEW = {
+    "type": "object",
+    "required": ["summary", "blocks"],
+    "properties": {
+        "summary": LINE,
+        "blocks": {"type": "array", "items": {"type": "object"}, "minItems": 1},
+    },
+    "additionalProperties": False,
+}
+
+
+def block_problems(block: Any) -> list[str]:
+    """What is wrong with one block of a review: its kind and its fields."""
+    if not isinstance(block, dict):
+        return ["a block is a JSON object"]
+    kind = block.get("kind")
+    if kind not in BLOCKS:
+        return [f"`kind` is one of {', '.join(BLOCKS)}, not {kind!r}"]
+    own = BLOCKS[kind]
+    schema = {
+        "type": "object",
+        "required": ["kind", *own["required"]],
+        "properties": {**BLOCK_COMMON, **own["properties"]},
+        "additionalProperties": False,
+    }
+    return Validator().problems(block, schema)
 
 
 def event_schema(kinds: dict[str, dict[str, Any]], kind: str, complete: bool) -> dict[str, Any]:
