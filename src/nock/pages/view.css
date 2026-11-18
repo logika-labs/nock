@@ -1,7 +1,8 @@
-/* nock's look for a view: an HTML page an agent writes to lay out an asset's variants, served
-   with this sheet and `window.nock` (`assets`: each of the version's files by name, type, title,
-   address and whether it is preferred; `title`: the item's). Plain HTML gets nock's type and
-   colours; the classes below are the parts a view is made of (`nock docs topics.views`). */
+/* nock's look for an html block: a page an agent writes into its task's review, for what no
+   built-in block shows. It is served with this sheet and `window.nock`, the bridge to the studio:
+   `nock.note(text, quote)` leaves the owner's note on the block, `nock.accept(item)` and
+   `nock.reject(item)` judge a proposal (`slug` or `task/slug`), `nock.open("#/t/…")` goes there.
+   Plain HTML gets nock's type and colours; the classes below are the usual parts. */
 @import url("https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Unbounded:wght@600;800&display=swap");
 :root {
   --background: #ffffff;

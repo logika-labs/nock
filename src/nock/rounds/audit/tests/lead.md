@@ -23,16 +23,15 @@ matters most.
    an error path, a promise or a slow suite that costs every run; **low**
    the rest. Give each a confidence: confirmed (reproduced), likely (read in
    the code), or possible.
-5. Record each finding as a decision in the round's topic (`audit-tests`;
-   `.nock/nock docs topics.decisions`): the title says the problem and where
-   ("Billing's refund path has no test"); the answer is the fix you propose,
-   with the severity, the confidence, the test or code at `file:line` and the
-   case that is missing; the alternatives are the other fixes, "don't" among
-   them where it is a real choice. Its derived files are the evidence, each
-   with its recipe: a coverage excerpt, a log of a flaky run, a repro script,
-   a duration table, a screenshot.
+5. Record each finding as a proposal in the round's task (`round-audit-tests`;
+   `.nock/nock docs topics.items`): the title says the fix and where ("Test
+   billing's refund path"); `means` the problem, with the severity, the
+   confidence, the test or code at `file:line` and the case that is missing;
+   `takes` what the fix takes. The evidence goes in the task's assets, each a
+   derived file with its recipe: a coverage excerpt, a log of a flaky run, a
+   repro script, a duration table, a screenshot.
 6. Write `report.md`: the findings in order of severity, one line each with
    its item, then the numbers (coverage per package, the slowest tests, the
-   flakes seen). Submit it as a file in the topic too, then submit the round
+   flakes seen). Then submit the round (it puts the report in the task's review)
    with one change per finding (kinds coverage, assertion, fake, flaky, slow,
    gap, other).

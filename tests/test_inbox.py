@@ -1,7 +1,8 @@
-"""What the owner said reaches agents through `nock inbox`: Address now
-first, then the global chat, comments, verdicts; each reader shown an entry
-once, and an entry gone for everyone once an agent addressed it. `search`,
-`config` and `query` are the other ways in."""
+"""What the owner said reaches agents through `nock inbox`: a message sent
+for an answer now first, then other messages with the notes they carry,
+proposals accepted (to carry out) and rejected, Done on a review; each reader
+shown an entry once, and an entry gone for everyone once an agent acted on
+it. `search`, `config` and `query` are the other ways in."""
 
 from __future__ import annotations
 
@@ -13,10 +14,9 @@ import pytest
 
 from nock.inbox import Inbox, listeners
 from nock.project import Project
-from nock.topics import Author, Topics
 
 from .conftest import git, nock
-from .test_topics import DECISION, submit
+from .store import compose, item_event, open_topic, propose, reply, submit, topics_in
 
 
 def inbox(project: Project, *arguments: str) -> list[dict[str, Any]]:
@@ -28,43 +28,56 @@ def inbox(project: Project, *arguments: str) -> list[dict[str, Any]]:
 def test_the_owner_s_word_comes_most_urgent_first_and_once_per_reader(
     project: Project, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "maker")
-    mine = submit(project.root)
-    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "other")
-    theirs = submit(project.root, {**DECISION, "title": "Refunds are capped"})
-    topics = Topics(project)
-    topics.reply(theirs, "Capped at what?", Author.OWNER)
-    topics.reply(mine, "Why not Postgres?", Author.OWNER)
-    topics.judge(theirs, {"verdict": "accepted"})  # type: ignore[typeddict-item]
-    folder = topics.shared.topic_folder("orders")
-    path = topics.shared.draft(folder, {"kind": "message", "text": "Look now.", "now": True})
-    topics.shared.settle({"author": "owner", "on_behalf": "interactive"}, only=[path])
-    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "maker")
+    root = project.root
+    submit(root)
+    accepted = propose(root, slug="archive")
+    rejected = propose(root, slug="purge")
+    open_topic(root, "refunds")
+    topics = topics_in(root)
+    topics.judge(accepted, "accepted")
+    topics.judge(rejected, "rejected")
+    topics.note("orders", {"item": "sqlite"}, "Why not Postgres?")
+    topics.send("orders", "Look at my note.", now=True)
+    topics.send("refunds", "Capped at what?", now=False)
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "agent-session")
     found = inbox(project)
     assert [(entry["kind"], entry["ref"]) for entry in found] == [
         ("now", "orders"),
-        ("comment", mine),
-        ("verdict", theirs),
+        ("message", "refunds"),
+        ("accepted", accepted),
+        ("rejected", rejected),
     ]
-    assert found[1]["yours"] is True and found[2]["verdict"] == "accepted"
-    # Shown once to this reader; another still sees what is not addressed — an
-    # acceptance asks nothing more once an agent has heard it.
+    assert found[0]["yours"] is True
+    assert found[0]["notes"] == [{"on": "item sqlite", "text": "Why not Postgres?"}]
+    # Shown once to this reader; another still sees what is not acted on — a
+    # rejection asks nothing more once an agent has heard it.
     assert inbox(project) == []
-    assert [entry["kind"] for entry in inbox(project, "--all")] == ["now", "comment"]
+    assert [entry["kind"] for entry in inbox(project, "--all")] == ["now", "message", "accepted"]
     monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "helper")
-    assert [entry["kind"] for entry in inbox(project)] == ["now", "comment"]
-    # An agent's answer addresses a comment for everyone.
-    topics.reply(mine, "One file is enough.", Author.AGENT)
+    assert [entry["kind"] for entry in inbox(project)] == ["now", "message", "accepted"]
+    # An agent's answer and a proposal carried out are acted on for everyone.
+    reply(root, "orders", "Load is low.")
+    item_event(root, accepted, {"kind": "implemented", "means": "Archived nightly."})
     monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "late")
-    assert [entry["kind"] for entry in inbox(project)] == ["now"]
+    assert [entry["kind"] for entry in inbox(project)] == ["message"]
+
+
+def test_done_on_a_review_reaches_agents_once(project: Project) -> None:
+    root = project.root
+    submit(root)
+    compose(root, "orders", [{"kind": "item", "item": "sqlite"}])
+    topics_in(root).done("orders")
+    first = Inbox(project, "s1").entries()
+    assert [entry["kind"] for entry in first] == ["reviewed"]
+    Inbox(project, "s1").mark_shown(first)
+    assert Inbox(project, "s2").entries() == []
 
 
 def test_waiting_returns_a_message_at_once_and_verdicts_once_the_owner_is_quiet(
     project: Project,
 ) -> None:
-    ref = submit(project.root)
-    topics = Topics(project)
-    topics.judge(ref, {"verdict": "rejected", "comment": "Postgres."})  # type: ignore[typeddict-item]
+    ref = propose(project.root)
+    topics_in(project.root).judge(ref, "rejected")
     clock = [2_000_000_000.0]
     waited: list[float] = []
 
@@ -75,19 +88,19 @@ def test_waiting_returns_a_message_at_once_and_verdicts_once_the_owner_is_quiet(
     reader = Inbox(project, "s1")
     # The verdict came "now" by the store's clock, long before this one: quiet already.
     found = reader.wait(30, 60, now=lambda: clock[0], pause=pause)
-    assert [entry["kind"] for entry in found] == ["verdict"] and waited == []
+    assert [entry["kind"] for entry in found] == ["rejected"] and waited == []
     reader.mark_shown(found)
     assert reader.wait(5, 60, now=lambda: clock[0], pause=pause) == []
     assert sum(waited) >= 5
     assert listeners(project, now=clock[0]) == []
 
 
-def test_search_finds_decisions_and_topics_with_their_views(project: Project) -> None:
+def test_search_finds_items_and_topics_with_their_views(project: Project) -> None:
     ref = submit(project.root)
     found = json.loads(nock(project.root, "search", "sqlite", "--json").stdout)
-    (decision,) = found["decisions"]
-    assert decision["ref"] == ref and decision["view"].endswith("views/orders.md")
-    assert Path(decision["view"]).read_text().startswith("# orders")
+    (item,) = found["items"]
+    assert item["ref"] == ref and item["view"].endswith("views/orders.md")
+    assert Path(item["view"]).read_text().startswith("# orders")
 
 
 def test_config_writes_the_team_s_settings_and_the_machine_s_where_each_belongs(

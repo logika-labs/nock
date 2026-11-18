@@ -34,12 +34,12 @@ fires on nothing normal; `logika check` passes; and `.nock/nock reflect
    or `reflect logika.analytics` one) and prints each one's material and
    the report you write for it. The material shows what the ledger already says
    and measures, per component, event and param, what
-   changed since the last round, and the decisions earlier rounds left in the
-   `logika` topic.
+   changed since the last round, and the decisions and proposals earlier
+   rounds left in the `logika` topic.
 2. Start with what is owed:
-   - the decisions the owner rejected or wrote on: act on each, as a new
-     version (`.nock/nock docs topics.versions`), answering in its thread
-     when the version doesn't say it;
+   - the proposals the owner accepted: carry each out and mark it
+     `implemented`; the owner's notes: act on each, answering in the task's
+     chat (`.nock/nock inbox`, `.nock/nock docs topics.items topics.threads`);
    - the last round's rules that raised false alarms: fix them or take them
      out (`logika query` shows them).
 3. Find the open items: `logika map` (`logika docs map`) prints the
@@ -68,9 +68,9 @@ fires on nothing normal; `logika check` passes; and `.nock/nock reflect
    the code's intent leave the intended behaviour open. Ask a few at a time,
    each with the rule it settles and the answer you propose, and carry on
    with your answer meanwhile; if they would rather answer later, record it
-   as a decision in the `logika` topic, your answer as its title
-   (`.nock/nock docs topics.items topics.decisions`; create the topic the
-   first time). Thresholds aren't questions: they come from the
+   as a proposal in the `logika` topic, your answer as its title, and your
+   answer, carried on with, as a decision (`.nock/nock docs topics.items`;
+   create the topic the first time). Thresholds aren't questions: they come from the
    data, with the margin you chose stated in the rule's evidence.
 6. Add the instrumentation the rules need, as Logika's docs describe
    (`logika docs instrument`): the raw input a decision read beside its

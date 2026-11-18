@@ -2,12 +2,12 @@ title = "Analytics"
 summary = "Propose what the owner wants measured: identities, dimensions, funnels, milestones, views."
 relevant = "Logika projects: logika.json at the root."
 requires = { files = ["logika.json"], commands = ["logika"] }
-adopted = "when-files"
 
 [due]
-first = true
-days = 30
-changed = ["logika.json"]
+# Due once 5 events were added to logika.json since the last run.
+measure = "python"
+threshold = 5
+
 
 [material.analytics]
 python = "analytics"

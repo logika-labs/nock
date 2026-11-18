@@ -2,14 +2,17 @@ title = "UI fuzz"
 summary = "Drive every page and dialog of the web UI with odd input, sizes, themes and states; record each break as a decision."
 relevant = "Projects with a web UI that runs locally against a dev stack."
 requires = { commands = ["node"] }
-adopted = "recommended"
 agents = []
 
 [due]
-days = 30
+# Due once 300 lines changed in the web UI.
+measure = "lines"
+paths = ["**/*.tsx", "**/*.jsx", "**/*.vue", "**/*.svelte", "**/*.css", "**/*.scss", "**/*.html"]
+threshold = 300
+
 
 [material.earlier]
-topic = "fuzz-ui"
+topic = "round-fuzz-ui"
 
 [lead]
 reads = ["earlier"]

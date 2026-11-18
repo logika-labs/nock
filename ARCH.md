@@ -61,52 +61,46 @@ src/nock/
                      audit/tests, fuzz/api, fuzz/ui (round.toml, lead.md, agents/, material.py)
   reflect.py         Rounds (a protocol's records and scratch), the Record schema, Reflection
                      (nock's window and its metrics, over nock.fit's rounds), and the material
-                     builders: Material (the toolbox), Knowledge (the map), Evidence (fit)
+                     builders: Material (the toolbox), Knowledge (the memory, for fit),
+                     Evidence (fit)
   logika.py          Ledger (logika.json read and counted), Logika (where its rounds can run,
-                     when due, the ledger's problems), Map (`logika map --json`'s open items),
+                     the ledger's problems), Map (`logika map --json`'s open items),
                      and its rounds' material: Material, Analytics, Instrument
   records.py         the file kinds of `.nock/shared/`: each event's schema by where it lives
-                     (topic, decision, asset), decision.json, assets.json, event file names
-  shared.py          Shared, the store: its root, media and committer; `settle`, the write
-                     path (validate, complete, commit with trailers) every writer goes through
-  fold.py            Fold: the store's events read as topics, decisions and their assets
-  topics.py          Topics: topics and their decisions (each holding its assets, a project or
-                     a derived file, its variants and views, by version), read from the fold
-                     and written as events; where files are (`located`: the one layer
-                     reading them), the owner's verdicts, the threads, search, what waits on
-                     an agent, what an edited file's decisions are, the map's problems
+                     (topic, item, asset, review), asset.json, review.json and its blocks,
+                     event file names
+  shared.py          Shared, the store: its root, media, memory and committer; `settle`, the
+                     write path (validate, complete, commit with trailers) every writer goes through
+  fold.py            Fold: the store's events read as topics (their chat, notes, plan, reviews
+                     done), items (decisions and proposals), assets by version, the review
+  topics.py          Topics: read from the fold and written as events; where files are
+                     (`located`: the one layer reading them); what waits on the owner and on
+                     agents; the owner's notes, Send, Accept/Reject, Done; a plan's progress;
+                     search; what the hooks read (news, an edited file's tasks, unstated
+                     topics); the memory and its check; `heard`, what every settle does after
   timeline.py        Timeline: what happened in the topics, read from them as events, newest
                      first; the notifications are these events
   inbox.py           Inbox: what the owner said that waits on an agent, by priority; each
-                     reader's shown entries (`inbox_shown`); `wait`, settling a triage's batch
+                     reader's shown entries (`inbox_shown`); `wait`, settling a batch
   views.py           Views: each topic folded into markdown in `.nock/local/views/`
-  chats.py           Chats: the studio's chat with a headless agent (a session per chat,
-                     streamed, resumed or re-briefed with its transcript, named on leaving),
-                     Tidy up (its writes as one commit, Undo a revert), Address my
-                     comments and Address now (one thread); `.nock/local/chats/`
-  studio.py          the owner's page (`nock studio`): a local server, a Tab per tab, the chat's
-                     routes; `code_moment`, so a studio older than its code offers to restart
+  runs.py            Runs: the headless sessions the studio starts on the owner's click — an
+                     answer now in a task's chat (resuming its session), a round run whole —
+                     each turn's stream kept beside it; `.nock/local/runs/`
+  studio.py          the owner's page (`nock studio`): a local server, `Api` the page's JSON;
+                     `code_moment`, so a studio older than its code offers to restart
                      in place (`POST /restart`, a re-exec on the same port)
-  transcription.py   Transcription: the studio's recorder, a recording forwarded to the
-                     Whisper server `studio.transcribe_url` names and made text
-  pages/             studio.html, the shell (band with the title and the menu, routing by
-                     `#NAME/ROUTE`; every tab's tokens, `--time` the one grey of every
-                     timestamp); studio.css, its look (`--foil-ring` the verdict marks'), put in the shell;
-                     NAME.html, each tab's fragment (markup, style, a script registering it);
-                     topics.css, the topics tab's own look, put before its fragment;
-                     chat.css, the topics' filters and Tidy up and the global chat, with topics.css;
-                     timeline.css, the Timeline's (on the topics' look); view.css, the look a
-                     view is served with; icon.png, nock's logo, shown with every notification
-  status.py          Standing: a round due, the open items by topic, what waits on agents in
-                     Topics, an unshared summary; `nock status`'s nudges (consult, record, gen)
+  pages/             studio.html, the shell; studio.css, its look; app.js, the page (routes by
+                     `#/…`, the front, a task's review, the chat and its runs, the memory,
+                     notifications, the settings and the rounds); view.css, the look an html
+                     block is served with; icon.png, nock's logo, shown with every notification
+  status.py          Standing: a round due, what waits on the owner and on agents, an
+                     unshared summary; `nock status`'s nudges (record, gen)
   share.py           Sharing: a round's summary, held to naming nothing, sent on the owner's word
   usage.py           Usage: the report shared with nock's makers on the owner's yes (`share`),
                      the question asked once, the project's random id, the weekly send
   reports.py         Reports: what the user writes to nock's makers (`nock report`), shown and
                      asked on a terminal, sent with no terminal only with `--yes`
-  consult.py         Consultant: a fresh agent answers — advice on a task, or the studio's Ask —
-                     submitting through `nock consult --submit`
-  dispatch.py        Dispatcher: launch a headless `claude -p` session and ingest it
+  dispatch.py        Dispatcher: launch a headless `claude -p` session in a seat and ingest it
   hooks.py           `nock hook EVENT [HARNESS]`: nock's own handlers, then the project's
   harnesses.py       Harness: Claude Code, Codex, Cursor; which are found, and each one's
                      skills directory, hooks file and events
@@ -116,10 +110,11 @@ src/nock/
   terms/             one article per term (`tools.caching.md`): front matter term, aliases,
                      description; at most 500 characters. The briefs point at the terms
     briefs/          the long texts the installed skills and subagents follow: the
-                     rounds' agents reflection.toolbox, .map, .nock (fit's); the logika
+                     rounds' agents reflection.toolbox, .nock (fit's); the logika
                      rounds' lead reflection.logika.lead and agents .rules, .analytics;
                      the audits' agents reflection.security, .tests (its package agent), .tests.promises;
-                     topics.triage; work and work.subagent (the orchestrator, and what it dispatches)
+                     topics.triage; work and work.subagent (the orchestrator, and what it
+                     dispatches); review (composing a task's review)
     guides/          the documentation for people: a few long essays (guide.why, guide.review, …)
                      and the reference (guide.commands), nock.dev's docs built from them; at most
                      16,000 characters, printed whole
@@ -127,13 +122,9 @@ src/nock/
     nock-triage/     the `/nock-triage` skill, a pointer to `topics.triage`
     nock-work/       the `/nock-work` skill, a pointer to `work`, in `.agents/skills/` too
                      where Codex is found
-    ask.md           the brief of the agent that answers the studio's Ask
-    consult.md       the consultant's brief
     share.md         the brief of the agent that vets a summary before it is shared
-    chat.md          the studio's chat agent's brief, with its first message
-    name.md          the brief of the agent that names a chat the owner leaves
-    tidy.md          Tidy up's brief: regroup, set states, drop what is stale, prioritize
-    address.md       Address my comments' brief: answer each waiting comment in its thread
+    answer.md        the answerer's brief: the owner's message and its notes, answered now
+    round.md         the reflector's brief: run the round whole, its result a task
 
   # the rest of the toolbox
   checks.py          Checks: command checks and @check functions → one Verdict;
@@ -153,8 +144,8 @@ src/nock/
 
 tests/               real git repositories and processes; no mocks
   conftest.py        a fresh repository with nock installed, per test; the `nock()` runner
-  fake_agent.py      the scripted stand-in for the dispatched agents (consultant, sharer,
-                     the studio's chatter, namer, tidier and addresser)
+  fake_agent.py      the scripted stand-in for the dispatched agents (sharer, the studio's
+                     answerer and reflector)
 scripts/release.py   cut a release: checks, asks, then tags vVERSION and pushes it (standard library)
 web/                 nock.dev, never vendored or packaged: layout.html, home.html, legal/, site/
                      (style, fonts, the built pages), build.py (the docs pages from the
@@ -169,7 +160,7 @@ server/              api.nock.dev, where `nock share`, the usage reports and `no
 
 ```
              ┌─────────────────────────────────────────────────────┐
-  the loop   │ hooks.py  reflect.py  topics.py  consult.py …     │
+  the loop   │ hooks.py  reflect.py  topics.py  runs.py …        │
              ├─────────────────────────────────────────────────────┤
  telemetry   │ telemetry.py   sessions.py   store.py (nock.db)      │
              ├─────────────────────────────────────────────────────┤
@@ -309,7 +300,7 @@ evidence, or it returns the `Output` when `check=False`.
 | `calls` | `telemetry.Calls` | every call, including refusals |
 | `runs` | `processes.Supervisor` | every supervised process |
 | `sessions`, `prompts`, `events`, `transcripts` | `sessions.Sessions.ingest` | at SessionEnd, after a dispatched session, and whenever telemetry is read (`catch_up`: a window, `usage`, `query`, `sessions`) |
-| `told` | `topics.Topics.news_for` | when a session is told the owner's verdict or message on an item it submitted |
+| `told` | `topics.Topics.news_for` | when a session is told what the owner said in a topic it worked in, by the event's id |
 | `shown_items` | `topics.Topics.governing` | when a session is shown the items about a file it edited |
 | `nudged` | `hooks.HookRunner.standing` | when a session start says the day's standing, a round's unshared summary, or a logika round's offer |
 
@@ -411,8 +402,9 @@ re-execution; the project's modules are left as the variable says).
      a logika round), so something new is said at once and the same thing
      not again that day. What calls for the human is said to them too, as
      `systemMessage`;
-   - **UserPromptSubmit** tells the session the owner's verdicts and
-     messages on the items it submitted, once per change (the `told` table);
+   - **UserPromptSubmit** tells the session what the owner said in the
+     topics it worked in — messages with their notes, their word on
+     proposals, Done on a review — once each (the `told` table);
    - **PreToolUse**, wired with a Bash matcher and the hook `if` rule
      `Bash(*.nock/nock *)` unless a project hook wants every tool, notes the
      `.nock/nock` command about to run with the subagent running it
@@ -429,8 +421,9 @@ re-execution; the project's modules are left as the variable says).
      a session (the `stated` table) the end of a turn when the session, or
      a subagent of it, did its own work in a planned or active topic (review,
      like done and abandoned, says where it stands: `FINISHED`) (opened
-     it, or submitted, versioned or answered an item there: the `wrote`
-     table, so the owner's verdicts never count)
+     it, or wrote an item, an asset, a review or a message there: the
+     `wrote` table, which `Topics.heard` fills from each settle's agent
+     events, so the owner's word never counts)
      and never set its state or status (`Topics.unstated`);
    - **PostToolUse**, wired with an edit-tools-and-Bash matcher unless a
      project hook wants every tool, first settles what the tool wrote in the
@@ -476,7 +469,7 @@ payloads not being Claude Code's. The background-agents wait at a stop reads
 Claude Code's transcript, so it applies there only.
 
 `reminders = false` turns off everything nock's own handlers would add to
-the context (SessionStart's tools and standing, the prompt's verdicts, the
+the context (SessionStart's tools and standing, the prompt's news, the
 edit's items), and the primer becomes a short note on what nock is;
 ingest, the usage send and the project's own hooks go on.
    A broken toolbox must never block the tool call that would fix it.
@@ -503,218 +496,122 @@ still has one), or a command has no allow rule yet.
 
 The store (`shared.Shared`) is the main checkout's `.nock/shared/`, committed
 in the project's repository whichever worktree writes it: a directory per
-topic (`topics/NAME/events/`), its decisions (`decisions/SLUG/events/` and
-`versions/N/decision.json`), each decision's assets (`assets/NAME/events/`
-and `versions/N/assets.json` with the small text beside it), media by sha256
-in `media/`, and `map.md`. Each event is one immutable file,
-`<stamp>-<id>.json` (`records.EVENT_FILE`), holding its `kind`, its fields
-and its envelope (`moment`, `id`, `by`: author, on behalf of whom, user,
-sessions, role, host); `records` has each kind's schema by where it lives.
-`fold.Fold` reads the events in name order into the records the rest of nock
-reads: a topic with its thread, a decision (`item`) with its versions,
-verdict, thread and assets, each asset with its versions and preferred
-variant. A decision's verdict stands only while no version of it or of one
-of its assets came after it.
+topic (`topics/NAME/events/`: its state, its chat, the owner's notes, Done,
+its plan), its items (`items/SLUG/events/`: a decision or a proposal, its
+revisions, a proposal's verdict and its being carried out), its assets
+(`assets/NAME/events/` and `versions/N/asset.json` with the small text
+beside it) and its review (`review/versions/N/review.json` with its html
+blocks' files; `review/events/` the versions); media by sha256 in `media/`;
+and `memory.md`, what nock has learned here. Each event is one immutable
+file, `<stamp>-<id>.json` (`records.EVENT_FILE`), holding its `kind`, its
+fields and its envelope (`moment`, `id`, `by`: author, on behalf of whom,
+user, sessions, role, host); `records` has each kind's schema by where it
+lives, and the review's blocks (`records.BLOCKS`). `fold.Fold` reads the
+events in name order into the records the rest of nock reads: a topic with
+its chat (messages, Done, status entries), its notes as they stand (each the
+latest of its edits, with the message that carried it, `notes_of`) and its
+plan (`plan_of`); an item with its status (decision; a proposal open,
+accepted or rejected; carried out, a decision with what was done) and its
+history; an asset with its versions; the review with its versions and every
+block's id. Each is folded again only once its folders changed
+(`folder_stamp`).
 
 Every write — an agent's own files, `Topics`' methods, the studio — goes
-through `Shared.settle`: it reads `git status` under the
-root, groups the changes by topic and by decision (a topic's first, so a
-decision may come with its new topic), checks each group whole (no committed
-event changed, every draft fitting its kind, a new decision or asset with
-its first version, an asset version one file or variants of one type, an
-acceptance only once every asset with variants has one preferred), and
-completes the groups that hold no problem: the envelope filled in, drafts
-renamed, `versions/next/` numbered with its `version` event, a project file
-linked at the last commit that changed it (or kept by content when it has
-uncommitted changes), media moved to `media/`. It commits only those paths,
-with `git commit --only` and the trailers `Nock-User`, `Nock-On-Behalf`,
-`Nock-Session`, `Nock-Parent-Session`, `Nock-Host`, waiting for another
-git process's `index.lock` (`Git.changing`). A change it cannot commit now
-(the main checkout mid-merge or mid-rebase, git failing) is kept in
-`.nock/local/uncommitted.json` with its writer, and the next settle commits it
-as theirs before anything else (`commit_or_keep`, `commit_pending`); Tidy up's
-writes it never commits, `Chats.gather` commits them together. Every commit
-of the store is made under the `shared` lock, which `Project.lock` lets the
-thread holding it take again. A group with a problem is left uncommitted and
-its problems returned. `Topics` writes its changes as drafts (`Topics.draft`,
-`decision_version`, `asset_version`) and settles only those (`only`), all
-under the `shared` lock (`Topics.drafting`, waiting at most `STORE_PATIENCE`,
-then refusing the change), so no other process's sweep takes them as its own;
-it discards them, and any folder they leave empty, when the change fails. A
-reply may carry the id its sender chose (the studio's, one per message): a
-thread holding it already is not written again. A ref is `topic/slug`; `resolve` also takes a ref it had before it moved,
-or an asset item's that the move to the store made its asset.
+through `Shared.settle`: it reads `git status` under the root, groups the
+changes by topic, item, asset and review (a topic's first, then its items
+and assets, then the review that shows them), checks each group whole (no
+committed event changed, every draft fitting its kind, a verdict only on a
+proposal, `implemented` only on one accepted, a new item or asset in an
+open topic, an asset version one file, a review's blocks naming items and
+asset versions that exist and html files beside it, a message's notes
+existing, its blocks valid), and completes the groups that hold no problem:
+the envelope filled in, drafts renamed, `versions/next/` numbered with its
+`version` event, a project file linked at the last commit that changed it
+(or kept by content when it has uncommitted changes), media moved to
+`media/`. It commits only those paths, with `git commit --only` and the
+trailers `Nock-User`, `Nock-On-Behalf`, `Nock-Session`,
+`Nock-Parent-Session`, `Nock-Host`, waiting for another git process's
+`index.lock` (`Git.changing`). A change it cannot commit now (the main
+checkout mid-merge or mid-rebase, git failing) is kept in
+`.nock/local/uncommitted.json` with its writer, and the next settle commits
+it as theirs before anything else (`commit_or_keep`, `commit_pending`).
+Every commit of the store is made under the `shared` lock. `Topics` writes
+its changes as drafts (`Topics.draft`) and settles only those (`only`),
+under the lock (`Topics.drafting`, waiting at most `STORE_PATIENCE`), so no
+other process's sweep takes them as its own. A message or a note may carry
+the id the studio chose: one already there is not written again.
 
-A topic's `state` (`State`: planned, active, review, done, abandoned) and `status`
-change through `update_topic`, which writes a `state` event with both (a
-change of state without a status clears it), read into the thread as a
-status entry (`kind: "status"`); `talk` leaves status entries out wherever
-the thread is a conversation (`pending`, `said_in`, `chat_state`,
-`awaiting`, `withdraw`). `create_item` refuses a done or abandoned topic
-(`CLOSED`): `update_topic --revive` writes a `state` event setting it active,
-`revived` with its `note`, which `current_description` reads (or an older
-`kind: "revival"` note) as the description. Every event's `by` is
-`shared.by_for`: `Project.writer()` (`session`, `role`, and `parent` for a
-subagent or a dispatched session), the author, on behalf of whom, the user
-and the host.
-`create_item` maps an item draft onto a decision and its assets: its
-`decision` (or, for files to review with no choice in them, a plain
-"Review: TITLE." answer) a decision version, each project file an asset of
-its own, the derived files one asset (`check_assets`: several only as
-variants of one type); `update_item` with `--version` writes new versions of
-the decision and of the assets the change names (by project path or derived
-file name), or, given nothing, the decision again and every project-file
-asset linked afresh; an in-place change (open items only) writes `titled`
-and new versions likewise. `prefer` writes an asset's `preferred`; `judge`
-and `judge_topic` (a `Word`: verdict and comment, the comment in the
-decision's thread) write `verdict` events, refusing an acceptance while an
-asset's variants have none preferred (`judge_topic` accepting all leaves
-those out), from the studio (the owner) or the `judge` commands
-(`confirm=True`); Tidy up's drops are its own. A thread is a chat: `said_in`
-refuses the owner a second message while their last is `pending` (no answer
-yet, no verdict since), and an agent's message after it answers it
-(`answers`, its id); `withdraw` writes a message withdrawing the pending one.
-A message may carry files (`attachments`: name, type, bytes, sha256), kept
-in `media/` and addressed as `attachments/SHA256/NAME`; `thread_shown` adds
-`where`, the absolute path an agent reads.
-`summary` is the open items by topic and `awaiting` (threads where
-the owner wrote last, with `attachments`, the paths their last message
-carries, when it carries any; rejected items), for the lists and `status.Standing`;
-`search_items` and `search_topics` rank plain full text. `news_for` and
-`governing` are the prompt and edit hooks'. `citation_problems` is the
-`nock-map` check, on `[topic/slug]` citations. `nock init` writes
-an empty `map.md`.
+After every settle, `Topics.heard` writes the touched topics' views, counts
+the agents' work (`wrote`, for the stop hook) and tells the owner when it
+is their turn (`turn_of`: a review version or a move to review, an agent's
+answer in the chat, a new proposal) through `notify.Notifications.tell`,
+with the timeline's event (`Timeline.latest`). The hooks' settles and the
+studio's runs go through it too.
 
-`timeline.Timeline` reads the topics as events (`Event`: a topic opened, its
-state or status changed, it was revived, an item submitted, a version made,
-an agent's message, marked when it answers the owner), newest first, each
-with a stable `key`, a `phrase` for what happened, a `title`, a preview and
-its address in the studio (`#topics/REF~chat` opens the chat, `~reply` with
-its field focused, `~vN` a version); a topic's status changes with nothing
-between them fold into the latest, with their `count`. Nothing is stored, so
-it covers all of the topics' history and reads the same on every machine.
-`Topics.owners_turn` hands `notify.Notifications.tell` the event the agent
-just wrote (`TURNS`, by reason), whose key and address the notification row
-keeps: the Timeline and the notifications are one source.
+The owner's side is `Topics.note` (a note on an item, an asset — a version,
+a line — a block of the review — a span of its text — or a line of the
+memory; `replaces` edits or, empty, removes one not sent), `send` (a
+message carrying every unsent note, maybe empty, `now` for an answer now),
+`judge` (a proposal accepted or rejected) and `done` (Done on the current
+review: unsent notes go as a message, a `reviewed` event, and the topic
+done when nothing waits on agents). What waits on the owner
+(`waiting_on_owner`: open proposals, a review not done) and on agents
+(`waiting_on_agent`: their message unanswered, proposals accepted and not
+carried out) make each topic's `row`, with its `progress` (`topics.progress`:
+the share of the plan's estimate done, the current step, the minutes left —
+the estimates left times the pace so far, less the current step's time).
+`news_for` and `governing` are the prompt and edit hooks'. `memory_problems`
+is the `nock-memory` check (at most `MEMORY_LIMIT` characters, citations
+`[topic/slug]` that exist). The word the owner reads for a topic is
+`topics.WORD`, "task".
 
-`consult.Consultant` renders `briefs/consult.md` with the caller's question
-(`nock consult TEXT`, an agent's intent or the owner's question from the
-studio's Ask) and `--context`, the map, the project's tools and the checks,
-and dispatches a read-only consultant in the caller's working tree under
-`consult.DEADLINE`, with `NOCK_CONSULTATION` naming the file its submission
-goes to. The consultant ends with `nock consult --submit JSON` (`Advice`:
-answer, items, tools, checks, docs, feedback), which only that role may run
-and which refuses a decision, tool or check that doesn't exist. The caller
-prints the answer as submitted, then each named decision's title and
-verdict, each tool's usage and the checks to run, and, when
-`NOCK_CONSULT_RESULT` names a file (the studio's Ask does), writes the answer
-and the decisions it rests on there as JSON; a consultant that submits nothing (a project's own
-brief) is heard by its last message. The consultation is kept in
-`.nock/local/consultations/`, and its `feedback` goes to the next round's
-nock material. `consult.enabled = false` returns a line saying the
-consultant is off, dispatching nothing, and drops consulting from the
-primer.
+`timeline.Timeline` reads the topics as events (`Kind`: opened, state,
+review, reviewed, item, revised, implemented, verdict, asset, reply,
+message), newest first, each with a stable `key`, a `phrase`, a `title`, a
+preview and its address in the studio (`#/t/TOPIC`, `/item/SLUG`,
+`/asset/NAME`, `/chat`). Nothing is stored, so it covers all of the topics'
+history and reads the same on every machine.
 
 ### The studio
 
 `nock studio` serves one page from one process, `studio.Studio`, a
-`ThreadingHTTPServer` on 127.0.0.1. The page is `pages/studio.html` with
-its look (`pages/studio.css`), each tab's link in the menu and its fragment
-(`pages/NAME.html`) put in; the browser
-shows the tab the address names (`#NAME`, or `#NAME/ROUTE` for something in
-it; an address naming no tab goes to the first, so `#7` opens the item a
-decision 7 became).
-A tab away keeps what it drew, and the shell keeps where each tab was
-scrolled, so coming back shows it at once as it was left: a link within the
-studio changes the address with `history.pushState` (no element's id is a
-tab's name, and the browser's own jump to the fragment is never taken), and
-Work arrives at its address again only when it changed.
-On the server, `/NAME/ROUTE` goes to that tab's `get` or `post`, JSON both
-ways, a nock `Error` becoming 404 or 400. A tab is a `studio.Tab` subclass
-listed in `TABS`, and a fragment whose script calls
-`studio.register(NAME, {show(route), hide()})`; the studio gives it
-`studio.summary` (the counts under the title) and `studio.toast`. Fragments
-share the page's scripts and styles, so a tab keeps its script in a closure
-and its style under its own class. The band's title is nock's name; the menu
-holds the tabs and the settings, each group of them (sharing, notifications,
-transcription) folding on its own. Two tabs: `TimelineTab`, the timeline's
-events (`GET /timeline?query=&filter=&limit=`: searched as the topics are,
-kept to one filter of kinds, `FILTERS`); and `TopicsTab`, which serves every
-topic with its decisions, each holding its assets, and where each chat stands (`topics.chat_state`:
-pending, unseen since `studio.Seen`'s last look, kept in
-`.nock/local/studio/seen.json`), a version's files as they are, the owner's
-verdicts, preferred options and messages (`withdraw` takes back one still waiting), the
-files dropped into a composer (`studio.Uploads`: a POST whose body is not JSON
-is an `Upload`, staged in `.nock/local/studio/uploads/TOKEN/` until the
-message they go with is sent; a withdrawn message's come back there), a
-recording made text (`transcription.Transcription`: multipart, as OpenAI's
-`/v1/audio/transcriptions` takes it, to the configured URL, the key from the
-environment variable the configuration names; refused while no URL is set,
-which the page shows as a faded recorder saying how to set one), and the Ask (`studio.Asking`: one `nock consult` process at a
-time, cancelled by stopping it, its answer and the decisions it rests on read
-back from the file `NOCK_CONSULT_RESULT` names; `GET /topics/ask` where it stands, for the Timeline's bar). Its search
-ranks as `Topics.score` does (every word first, more often higher, then all
-but one, a word found where a word starts). An asset version's file is
-`/topics/file/TOPIC/SLUG/ASSET/N/NAME`, typed by its name (the store keeps
-media by hash), and its view `/topics/view/TOPIC/SLUG/ASSET/N/NAME` with
-`view.css` and `window.nock` put in its head, any other name there the
-version's file of that name, so a view reaches the asset's files by relative
-addresses; a preference posts the decision, the `asset`, the version and the
-name. The page lays each decision out with its assets under it (`TOPIC/SLUG:ASSET`
-in its addresses), whose thread and verdict are the decision's: a grid of
-cards or a list of rows, and a viewer of one size that names its decision and
-carries no verdict. Serving every topic folds every decision, so `fold.Fold`
-keeps each decision's folded record (as JSON, a fresh copy each read) under
-`folder_stamp` (its event and asset folders' stamps), and `TopicsTab` keeps
-the whole list under `HEAD` and `git status` of `.nock/shared`; only chat
-states are worked out on each call. Under the owner's waiting message,
-Address now (`POST /chat/address` with the thread) sends the addresser to
-that one thread, and `chat.addressing` (the threads a running one answers) is
-in each thread's `chat`. `GET /topics` also names the agents waiting on `nock
-inbox` (`inbox.listeners`, as `listening`): while one is, the global chat
-starts no turn and Address now dispatches nobody, `inbox.urge` marking the
-thread's waiting message so the inbox gives it as `now`
-(`.nock/local/inbox-now.json`).
+`ThreadingHTTPServer` on 127.0.0.1: `pages/studio.html` with `studio.css`
+and `app.js` put in. The page routes by the address's hash (`#/`, `#/t/TASK`
+and what is in it, `#/memory`) and keeps the scroll offset everywhere a link
+lands. `studio.Api` answers `/api/…`, JSON both ways, a nock `Error`
+becoming 404 or 400: `GET topics` (every task's row with what it holds,
+the two counts' lists, the rounds due, the round runs), `topic/NAME` (a task
+whole: its items, its assets with each version's address and small text,
+its review, its chat with each message's notes, its runs), `asset/…` and
+`attachment/…` (files as they are, a byte range when asked), `html/…` (an
+html block with `view.css` and the bridge, `studio.BRIDGE`: `nock.note`,
+`accept`, `reject`, `open`, its size, posted to the page), `history`,
+`runs`, `run/ID` (a run with its turn's events, live), `rounds`,
+`settings`, `memory`, and `stamp`, which the page polls to read again when
+the store, the runs or the notifications moved. `POST note`, `send` (then
+an answer now), `verdict`, `done`, `upload`, `memory` (the owner's edit),
+`runs/stop`, `rounds/run`, `rounds/snooze`, `rounds/set`. `GET
+/notifications` is the page's poll for what to tell the owner (in the page,
+or through the browser's notifications), `POST /usage` their answer on
+sharing, `/restart` whether the code changed and a restart in place.
 
-The global chat is no tab: `studio.ChatRoutes` answers `/chat/…` for
-`chats.Chats`, and the topics tab's fragment draws it in `#topics-global`,
-marked `data-everywhere`, so it writes with the same composer as every chat;
-on another tab the shell sets the topics panel `data-away` instead of
-hidden (no room, nothing visible but that). Its button sits in the shell
-beside the gear. A turn runs `Dispatcher.launch` in a thread with the
-`chatter` seat, `--include-partial-messages`, and a `listener` the
-Supervisor calls with each chunk of output: `chats.Turn` reads the
-stream-json into whole text blocks, the block being written and the tools
-run, which `GET /chat/ID` serves while it runs (the page polls every 350 ms
-then); a `stop` event kills it. The next turn resumes the session
-(`--resume`) when `sessions.find_transcript` finds it and Claude Code takes
-it; otherwise, or when the resume fails before a word, a new session is
-briefed with the chat's transcript. Files a message carries go up as in
-every chat (the topics tab's `Uploads`) and are moved to
-`.nock/local/chats/ID/STAMP/`, the agent told where to read them. Leaving a chat for a new one dispatches
-the `namer` (no tools) for a title and summary. `GET /chat/search/QUERY` is
-the Chats list's search: the chats holding every word in their title,
-summary or messages (`Chats.search`), the page marking the words as the topics'
-search does. Tidy up is a chat whose
-agent is the `tidier`: `Topics.commit` commits nothing for that role, and
-when it ends `Chats.gather` commits `.nock/shared` once; Undo is `git
-revert` of that commit, aborted when it conflicts. The tidier writes events in the store (its seat may
-write `.nock/shared/` and nothing else); when its turn ends `Chats.settled`
-settles them as its own and `gather` commits what that wrote, moved or
-removed. Address my comments is a chat whose agent is the `addresser` (Edit
-and Write inside the project and the store, the project's check and test, and
-the recipe commands of the assets it answers on, each allowed for that launch
-alone, `Chats.recipes`), its writes settled when its turn ends: `Topics.comments`
-lists the threads where the owner's comment waits (`pending`), quoted in the
-chat's first message (`chats.address_request`). A topic's `priority` orders the list
-(`topics.in_order`) in the studio and in `topics list`.
+`runs.Runs` keeps the studio's headless sessions, one per task or round at a
+time, in `.nock/local/runs/ID.json` with each turn's stream-json beside it
+(`ID.jsonl`, read into events: reasoning, text, each tool call and its
+result). **Answer now**: an agent waiting on `nock inbox --wait`
+(`inbox.listeners`) gets the message first (`inbox.urge`); otherwise the
+`answerer` is dispatched with `briefs/answer.md`, resuming the task's chat
+session when Claude Code still has it (`runs-sessions.json`), allowed the
+task's assets' recipes; what it wrote in the store is settled as its own and
+its reply linked to the run. **Run** on a round dispatches the `reflector`
+with `briefs/round.md`: it runs `nock reflect NAME` whole, whose submit
+writes the round's task.
 
 ### Dispatch
 
 `dispatch.Dispatcher.launch` runs `claude -p --output-format stream-json
 --session-id …` (`agent.command`, `agent.model`) for the sessions no human
-sits in: the consultant, the sharer, and the studio's chatter,
-namer, tidier and addresser. (A reflection
+sits in: the sharer, and the studio's answerer and reflector. (A reflection
 round's parts are the lead's own subagents, not dispatched: the types in
 `briefs/KIND/agents/`, which `nock init` installs in `.claude/agents/`, each
 with only the tools its part needs.) It:
@@ -732,9 +629,8 @@ with only the tools its part needs.) It:
   must not run (git's `--output`, `dispatch.GIT_WRITING`). A role with no seat is refused, and so is an `agent.command` with a
   bypass flag (`dispatch.BYPASS`) or one of these flags of its own;
 - reads what Claude Code refused from the result's `permission_denials`
-  into `Session.denied`, and appends it to the run's log; the consultant
-  keeps it in the consultation's record and its failure, the studio's Ask in its
-  log, the sharer in `outgoing.json` and the share's failure;
+  into `Session.denied`, and appends it to the run's log; the sharer keeps
+  it in `outgoing.json` and the share's failure, a studio run in its problem;
 
 - runs under a Supervisor, with `agent.deadline` (or the caller's) and
   `agent.silence`;
@@ -748,32 +644,41 @@ A round is one protocol run once. A protocol is a folder
 `rounds/<namespace>/<protocol>/` (`rounds.manifests`: the shipped ones in
 `nock/rounds/`, then the project's `.nock/rounds/`, which override by name):
 `round.toml` (title, summary, relevant, `requires` files and commands,
-`adopted` — always, `when-files`, or recommended — `[due]`,
+`[due]` — its measure, paths, `any`, threshold —
 `[material.NAME]` with one source of python, command, topic or git, `[lead]`
 reads, writes and `share`, `[[agents]]` with name, reads, changes and
 `fan_out`, `[end]` checks, quick, commit and kinds), `lead.md`,
 `agents/NAME.md`, and `material.py` for material no command gives. Its
 functions are the `python` materials and, where a protocol needs them,
-hooks `rounds.Protocol` calls: `unavailable`, `due`, `begun` (kept in
+hooks `rounds.Protocol` calls: `unavailable`, `measure`, `begun` (kept in
 `round.json`), `kept` (kept in the record) and `problems` (the end's own).
 
 `rounds.Protocol` does the rest the same for every protocol. `unavailable`
-names a required file or command missing; `adopted` reads the manifest, or
-for a recommended protocol an accepted decision in the topic `rounds`
-titled with its name (the fit round's lead records them). `setting(key)`
-reads the manifest's `[due]` (a project changes it with its own protocol
-folder in `.nock/rounds/`); `due` says why:
-never run (`first`), `days` since the last with `changed` paths committed
-since, or `sessions` or `days` over the sessions since the last. `start`
+names a required file or command missing; `adopted` is on: every protocol
+that can run here, unless `.nock/config.toml` turns it off (`[rounds."NAME"]
+enabled = false`), and never one whose measure is `never`. `setting(key)`
+reads that config, then the manifest's `[due]`. `measure` counts from the
+baseline — its last run, or never run the fit round's — what it is about:
+`lines` changed (`git diff --numstat` from the commit that run started at,
+lockfiles and `.nock/` left out unless its paths name them) in its `paths`,
+a file among `any` changed at all; `sessions`; project `tools` run and
+failing; `topics` events; or `python`, its `material.py`'s `measure`. `due`
+says why, against its threshold, unless snoozed (`snooze_until`, or
+`snooze_at` a measure): the fit round at once where it never ran, the
+others only once it has. `snooze` and `configure` write the config and
+commit it. `start`
 names the round by date (`Rounds.new_name`, or picks up `Rounds.current`),
 writes each material into `.nock/local/reflections/<name>/DATE/` with
-`round.json` (the sessions that started it), and returns what the lead
+`round.json` (the sessions that started it, the commit), opens or revives
+the round's task (`round-NAMESPACE-PROTOCOL`, `ensure_task`), and returns what the lead
 does: its brief, each agent's subagent type (`<namespace>-<protocol>` for a
 protocol's one agent, else with `-<agent>` after it), brief and material,
 the files to write in `.nock/shared/rounds/<name>/DATE/`, and the submit.
 `submit` checks the changes' kinds, requires the files, runs the end's
-checks, writes `record.json` beside them, and commits the manifest's
-`commit` paths in the working tree and the record in the main checkout.
+checks, writes `record.json` beside them, commits the manifest's `commit`
+paths in the working tree and the record in the main checkout, and writes
+the round's task (`write_task`: its changes as decisions, a review of the
+summary, the report and the items its lead recorded, the task to review).
 
 `builtin.reflect` is one command: bare, every protocol's `standing`; NAME
 starts a protocol, or every adopted one of a namespace at once; `--submit
@@ -800,24 +705,25 @@ its snapshot; then per-tool calls, failures by kind, duration, bytes,
 capping, caching and retire candidates below ½·log₁₀(total calls), unknown
 commands, Bash commands grouped by `shape()`, the files read most, the
 sessions; its record keeps the per-tool snapshot; its end runs `nock-tools`
-and `nock-generators`), `nock.map` (`knowledge`, `reflect.Knowledge`: the
-items changed since its last round, every topic with its items in a line,
-the map; `nock-map`) and `nock.fit` (`evidence`, `reflect.Evidence`: the
+and `nock-generators`) and `nock.fit` (`evidence`, `reflect.Evidence`: the
 window's metrics beside every earlier fit round's, the first being the
-baseline; `catalogue`, every protocol with its standing; its record keeps
-the metrics and `shared`; `nock-share`). Each is due after 15 sessions or 7
-days, given at least one session. nock's window (`Reflection.window`, for
+baseline; `catalogue`, every protocol with its settings and measure, to set
+them up here; `presentation`, the html blocks agents wrote, the owner's
+notes on blocks and what they skipped; `knowledge`, `reflect.Knowledge`: the
+memory, the owner's notes on its lines, the items changed, every topic, and
+each finished step's estimate beside its actual time; its record keeps the
+metrics and `shared`; its end runs `nock-share` and `nock-memory` and
+commits `.nock/config.toml`). nock's window (`Reflection.window`, for
 the metrics, `nock query stats` and the usage report) opens at the latest
 fit round's `finished`. Rounds are directories named by date, so records
 from different machines merge as plain files.
 
 **The logika protocols.** `logika.rules`, `logika.analytics` and `logika.instrument` require
 `logika.json` in the working tree and `logika` on PATH (`Logika.unavailable`);
-the first two are adopted where the ledger is, and are due (`Logika.due`) when never run
-while the ledger declares events, or its `[due]` `days` (30) after the
-last with commits to `logika.json` since; `status.Standing` offers them
-(`rounds`), and the session start says so at most once a week (`nudged`
-keys `KIND:LAST:WEEK`). Their material comes from the ledger, git and the
+the first two are on where the ledger is, due by their measures (the rules:
+`logika map`'s open items grown by 5; the analytics: 5 events added);
+`status.Standing` offers them (`rounds`), and the session start says so at
+most once a week (`nudged` keys `KIND:LAST:WEEK`). Their material comes from the ledger, git and the
 items of the `logika` topic: `rules.md` (`logika.Material`) and
 `analytics.md` (`logika.Analytics`: params and their flags, funnels,
 milestones, views); `reflection.logika.lead` is the lead's guide and
@@ -825,7 +731,7 @@ milestones, views); `reflection.logika.lead` is the lead's guide and
 material lists what each event already says must hold; the round's work
 list is `logika map`'s open items (unread and verdicts events), and the
 lead dispatches a rules agent per directory with open items.
-`logika.instrument` is never adopted or due and has no agents: an agent
+`logika.instrument` is never on or due (its measure is `never`) and has no agents: an agent
 runs it by name for one area. Several share one round, so its material
 (`logika.Instrument`) is the whole repository's `logika map --json` at the
 start (`logika.Map`, a subprocess at the working tree's root): the counts,
@@ -910,7 +816,7 @@ Everything a project adds lives in `.nock/` and is committed:
 | hook | `.nock/tools/*.py` | `@nock.hook(event)` | `hooks.HookRunner` |
 | generated file | `.nock/tools/*.py` | `@nock.generator(path)` | `generators.Generators` |
 | catalog | `.nock/generators/NAME/` | its files, written by hand | `generators.Catalog` |
-| brief | `.nock/briefs/NAME.md` (consult, ask) | the file's presence | `templates.Library`, before the packaged briefs |
+| brief | `.nock/briefs/NAME.md` (answer, round, share) | the file's presence | `templates.Library`, before the packaged briefs |
 | skill | `.claude/skills/nock-reflect/`, `.claude/skills/nock-triage/`, `.claude/skills/nock-work/` (and `.agents/skills/nock-work/` where Codex is found), a skill per other adopted round (`.claude/skills/logika/`, `logika-rules/`, `logika-analytics/` in Logika projects), and the rounds' agents in `.claude/agents/` | `nock init` | Claude Code and Cursor, and Codex for `/nock-work`; `nock init` rewrites them |
 | settings | `.nock/config.toml`, `.nock/local/config.toml` | — | `configuration.Configuration` |
 | the core itself | `.nock/core/nock/` | edit it | kept by `nock upgrade`'s three-way merge |
@@ -1025,7 +931,7 @@ a GitHub release.
 - `tests/` runs the vendored `.nock/nock` in real temporary repositories,
   with real git and real processes. The dispatched agents are
   `tests/fake_agent.py`, configured as `agent.command`: it answers as the
-  consultant (the Ask's too). It will not start with permissions bypassed, keeps its
+  sharer, the answerer and the reflector. It will not start with permissions bypassed, keeps its
   command line for a test to read, and refuses and reports a call its
   seat's rules don't allow, as Claude Code does in `dontAsk`. There are no
   mocks.

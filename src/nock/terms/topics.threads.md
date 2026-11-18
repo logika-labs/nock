@@ -1,7 +1,7 @@
 ---
 term: topics.threads
-aliases: [thread, reply, message, messages, discuss, attachment, attachments]
-description: The threads: what to say there, and when to say nothing
+aliases: [thread, chat, reply, message, messages, notes, attachment]
+description: The topic's one chat: the owner's messages and notes, your replies
 ---
 
-Each topic and decision has a markdown thread: write a message event in its `events/`, `{"kind": "message", "text": "…"}`, with `"attachments": [{"path": FILE}]` for files. The owner's message waits for one answer: give it (yours after it answers it). Owner in the session: discuss there, a line in the thread at most; away: answer briefly there; nothing if the new version shows it. Files the owner attaches have a `where`, their path in media/, in the views and `.nock/nock inbox`: Read them first.
+Each topic has one chat. The owner leaves notes on anything (a block, an item, an asset line) and sends them with a message, maybe empty; `.nock/nock inbox` gives it with each note and what it is on. Answer with a message event in the topic's `events/`: a short summary, with `blocks` (as the review's, no html) where something is better shown than told. Owner in the session: discuss there, a line in the chat at most. Read their attachments first.

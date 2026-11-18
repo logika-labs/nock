@@ -1,10 +1,9 @@
-"""Review notifications: the owner is told when a topic is their turn again (it
-moved to review, an agent answered them, an item they rejected has a new
-version), once per topic per few minutes, in the studio's page while one is
-watching and on the desktop otherwise; never for what the owner did, never
-without a display. No test shows a real notification: the suite has no
-display (`CI`), and the desktop's command is only built, against stand-in
-programs on PATH."""
+"""Review notifications: the owner is told when a task is their turn again
+(its review is ready, an agent answered them, or proposed something), once
+per task per few minutes, in the studio's page while one is watching and on
+the desktop otherwise; never for what the owner did, never without a display.
+No test shows a real notification: the suite has no display (`CI`), and the
+desktop's command is only built, against stand-in programs on PATH."""
 
 from __future__ import annotations
 
@@ -28,13 +27,9 @@ from nock.notify import (
     display,
 )
 from nock.project import Project
-from nock.topics import Author, Topics
 from nock.utils import now, parse_moment
 
-from . import store
-from .test_topics import DECISION, judge, page, run, submit  # noqa: F401  (page is a fixture)
-
-FILE = {"title": "The README", "files": ["README.md"]}
+from .store import compose, open_topic, propose, reply, state, submit, topics_in
 
 
 def told(project: Project) -> list[dict[str, Any]]:
@@ -47,122 +42,108 @@ def later(moment: str, seconds: float) -> str:
     return (start + timedelta(seconds=seconds)).isoformat().replace("+00:00", "Z")
 
 
-def test_a_topic_moving_to_review_tells_the_owner_once_with_what_waits(project: Project) -> None:
-    submit(project.root)
-    submit(project.root, {**DECISION, "title": "Orders keep their history"})
-    submit(project.root, FILE)
-    store.update_topic(project.root, "orders", change={"state": "active", "status": "building"})
+def test_a_review_ready_tells_the_owner_once_with_what_waits(project: Project) -> None:
+    root = project.root
+    submit(root)
+    state(root, "orders", state="active", status="building")
     assert told(project) == []
-    store.update_topic(project.root, "orders", change={"state": "review", "status": "built"})
+    compose(root, "orders", [{"kind": "item", "item": "sqlite"}])
+    state(root, "orders", state="review", status="built")
     assert told(project) == [
         {
             "topic": "orders",
             "reason": "review",
-            "text": "orders is ready for review: 3 decisions",
+            "text": "orders: the review is ready",
             "shown": "nowhere",
         }
     ]
-    # A burst: more items and a reply in the same few minutes add nothing.
-    submit(project.root, {**DECISION, "title": "Orders are never deleted"})
-    store.update_topic(project.root, "orders", change={"status": "built, one more"})
+    # A burst: a proposal and a status in the same few minutes add nothing.
+    propose(root)
+    state(root, "orders", status="built, one more")
     assert len(told(project)) == 1
-    # Another topic is told of on its own.
-    submit(project.root, FILE, topic="billing")
-    store.update_topic(project.root, "billing", change={"state": "review"})
+    # Another task is told of on its own.
+    open_topic(root, "billing")
+    compose(root, "billing", [{"kind": "text", "text": "Done."}])
     assert [row["topic"] for row in told(project)] == ["orders", "billing"]
 
 
-def test_it_is_the_owners_turn_when_an_agent_answers_them_or_reworks_what_they_rejected(
-    project: Project,
-) -> None:
-    topics = Topics(project)
-    asked = submit(project.root, topic="asked")
-    topics.update_item(asked, None, reply="Why SQLite?", author=Author.OWNER)
-    store.update_item(project.root, asked, reply="One file is enough at today's load.")
-    rejected = submit(project.root, FILE, topic="rejected")
-    judge(project.root, rejected, "rejected", "Bolder.")
-    store.update_item(project.root, rejected, version={})
-    submit(project.root, topic="talked")
-    topics.update_topic("talked", {}, reply="Where are we?", author=Author.OWNER)
-    store.update_topic(project.root, "talked", reply="Halfway.")
+def test_it_is_the_owners_turn_when_an_agent_answers_them_or_proposes(project: Project) -> None:
+    root = project.root
+    open_topic(root, "asked")
+    topics_in(root).send("asked", "Why SQLite?", now=False)
+    reply(root, "asked", "One file is enough at today's load.")
+    propose(root, topic="proposed")
     assert [(row["topic"], row["reason"], row["text"]) for row in told(project)] == [
-        ("asked", "answered", "asked is your turn again: an agent answered you; 1 decision open"),
-        (
-            "rejected",
-            "reworked",
-            "rejected is your turn again: a new version of an item you rejected; 1 decision open",
-        ),
-        ("talked", "answered", "talked is your turn again: an agent answered you; 1 decision open"),
+        ("asked", "answered", "asked: an agent answered you"),
+        ("proposed", "proposed", "proposed: a new proposal"),
     ]
 
 
 def test_nothing_is_told_of_the_owners_own_doing_or_an_agent_talking_on(project: Project) -> None:
-    topics = Topics(project)
-    ref = submit(project.root)
-    store.update_item(project.root, ref, reply="A note, unasked.")
-    store.update_item(project.root, ref, version={})
-    topics.update_item(ref, None, reply="Fine.", author=Author.OWNER)
-    judge(project.root, ref, "accepted")
-    topics.update_topic("orders", {}, reply="Thanks.", author=Author.OWNER)
-    assert told(project) == []
+    root = project.root
+    ref = propose(root)
+    before = len(told(project))
+    reply(root, "orders", "A note, unasked.")
+    topics = topics_in(root)
+    topics.judge(ref, "accepted")
+    topics.note("orders", {"item": "archive"}, "Fine.")
+    topics.send("orders", "Thanks.", now=False)
+    assert len(told(project)) == before
 
 
 def test_a_burst_is_one_notification_per_topic_per_window(project: Project) -> None:
     notifications = Notifications(project)
     start = now()
-    assert notifications.tell("orders", Reason.REVIEW, [], start) is not None
-    assert notifications.tell("orders", Reason.ANSWERED, [], later(start, 60)) is None
-    assert notifications.tell("orders", Reason.ANSWERED, [], later(start, WINDOW - 1)) is None
-    assert notifications.tell("billing", Reason.REVIEW, [], later(start, 60)) is not None
-    again = notifications.tell("orders", Reason.REWORKED, [], later(start, WINDOW + 1))
-    assert again is not None and again["text"] == (
-        "orders is your turn again: a new version of an item you rejected"
-    )
+    assert notifications.tell("orders", Reason.REVIEW, {}, start) is not None
+    assert notifications.tell("orders", Reason.ANSWERED, {}, later(start, 60)) is None
+    assert notifications.tell("orders", Reason.ANSWERED, {}, later(start, WINDOW - 1)) is None
+    assert notifications.tell("billing", Reason.REVIEW, {}, later(start, 60)) is not None
+    again = notifications.tell("orders", Reason.PROPOSED, {"open": 2}, later(start, WINDOW + 1))
+    assert again is not None and again["text"] == "orders: a new proposal (2 proposals to decide)"
 
 
 def test_one_setting_turns_them_off(project: Project) -> None:
     config = project.local / "config.toml"
     config.write_text("notifications = false\n" + config.read_text())
     submit(project.root)
-    store.update_topic(project.root, "orders", change={"state": "review"})
+    compose(project.root, "orders", [{"kind": "item", "item": "sqlite"}])
     assert told(project) == []
 
 
 def test_a_studio_page_watching_takes_them_and_its_poll_hands_them_over(
-    project: Project,
-    page: str,  # noqa: F811
+    project: Project, page: str
 ) -> None:
     def poll(query: str) -> dict[str, Any]:
         with urllib.request.urlopen(f"{page}notifications?{query}") as response:
             return json.loads(response.read())
 
     notifications = Notifications(project)
-    assert notifications.address("orders") == f"{page}#topics/orders"
+    assert notifications.address("orders") == f"{page}#/t/orders"
     first = poll("seen=focused")
     assert first == {"latest": 0, "notifications": []}
     submit(project.root)
-    store.update_topic(project.root, "orders", change={"state": "review"})
+    compose(project.root, "orders", [{"kind": "item", "item": "sqlite"}])
     [shown] = poll("after=0&seen=notifying")["notifications"]
-    assert shown["shown"] == "studio" and shown["address"] == "#topics/orders"
-    assert shown["text"] == "orders is ready for review: 1 decision"
+    assert shown["shown"] == "studio" and shown["address"] == "#/t/orders"
+    assert shown["text"] == "orders: the review is ready"
     assert poll(f"after={shown['id']}&seen=focused")["notifications"] == []
     # A page away without the browser's notifications, or silent too long, leaves it to the desktop.
     start = now()
     poll("seen=unwatched")
-    away = notifications.tell("billing", Reason.REVIEW, [], start)
+    away = notifications.tell("billing", Reason.REVIEW, {}, start)
     notifications.watched(Watching.FOCUSED, start)
-    silent = notifications.tell("other", Reason.REVIEW, [], later(start, WATCHED + 1))
+    silent = notifications.tell("other", Reason.REVIEW, {}, later(start, WATCHED + 1))
     assert away is not None and silent is not None
     assert away["shown"] == silent["shown"] == "nowhere"
 
 
 def test_with_no_studio_running_the_link_names_the_configured_port(project: Project) -> None:
     notifications = Notifications(project)
-    assert notifications.address("orders") == "http://127.0.0.1:8765/#topics/orders"
+    assert notifications.address("orders") == "http://127.0.0.1:8765/#/t/orders"
     config = project.local / "config.toml"
     config.write_text(config.read_text() + "[studio]\nport = 9001\n")
     assert Notifications(Project.discover(project.root)).address("eval") == (
-        "http://127.0.0.1:9001/#topics/eval"
+        "http://127.0.0.1:9001/#/t/eval"
     )
 
 
@@ -182,7 +163,7 @@ def stand_in(directory: Path, name: str) -> Path:
 def test_the_desktop_command_opens_the_topic_on_a_click_where_the_platform_can(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    address = "http://127.0.0.1:8765/#topics/eval"
+    address = "http://127.0.0.1:8765/#/t/eval"
     monkeypatch.setenv("PATH", str(tmp_path))
     plain = desktop_command("nock · demo", "eval is ready for review", address, "eval", "darwin")
     assert plain is not None and plain[0] == "osascript"

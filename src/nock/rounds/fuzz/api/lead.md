@@ -1,12 +1,12 @@
 # The API fuzzing round
 
 The round sends edge-case inputs to every route of the project's API and
-records what breaks. It changes no code: each finding becomes a decision
-the owner gives a verdict on.
+records what breaks. It changes no code: each finding becomes a proposal
+the owner accepts or rejects.
 
 Set aside whatever this session was doing: the round works from the API's
-description, a local server and its material (below), the topic
-`fuzz-api` as the last round left it.
+description, a local server and its material (below), the round's task
+`round-fuzz-api` as the last round left it.
 
 1. **Find the surface.** Read the project's instructions and the API's
    description (an OpenAPI document, else the route table in the code),
@@ -21,7 +21,7 @@ description, a local server and its material (below), the topic
 3. **Script the fuzzing.** Write one script that the next round reruns:
    schemathesis or Hypothesis against the OpenAPI document where there is
    one, plus the cases a schema can't generate. Start from the last
-   round's script (its asset in `fuzz-api`) when there is one. For each
+   round's script (its asset in `round-fuzz-api`) when there is one. For each
    route, send:
    - empty bodies, missing and extra fields, nulls, wrong types;
    - empty, huge and Unicode strings (RTL, combining marks, NUL, lone
@@ -44,19 +44,19 @@ description, a local server and its material (below), the topic
 5. **Confirm each finding** by hand with a single request, and cut it to
    the smallest repro. Read the code that handled it and name the line.
    Drop what you can't reproduce, or record it as unconfirmed.
-6. **Record each finding as a decision** in the topic `fuzz-api`
-   (`.nock/nock docs topics.items`): the title says what breaks; the
-   problem with its file:line and severity (critical: a leak or a write
-   across tenants; high: a 5xx or wrong acceptance a client can trigger
-   at will; medium: a hang, or a broken state; low: the rest) and how
-   confident you are; the proposed fix as the answer and the others as
-   alternatives. Attach the evidence as assets: the repro command or file,
-   the server log of the failure, a screenshot as a derived file with its
-   recipe when a page shows it. One decision per root cause, however many
-   routes it breaks. A finding the last round recorded and still holds is
-   a new version of that item, not a new one.
-7. **Keep the script** as a file item in the topic, with its recipe: how
-   to start the server and the accounts, and the command that runs it.
+6. **Record each finding as a proposal** in the round's task,
+   `round-fuzz-api` (`.nock/nock docs topics.items`): the title says the fix;
+   `means` what breaks, with its file:line and severity (critical: a leak or
+   a write across tenants; high: a 5xx or wrong acceptance a client can
+   trigger at will; medium: a hang, or a broken state; low: the rest) and
+   how confident you are; `takes` what the fix takes. Add the evidence as
+   assets of the task: the repro command or file, the server log of the
+   failure, a screenshot as a derived file with its recipe when a page shows
+   it. One proposal per root cause, however many routes it breaks. A
+   finding the last round recorded and still holds is revised (a `revised`
+   event), not recorded again.
+7. **Keep the script** as an asset of the task, with its recipe: how to
+   start the server and the accounts, and the command that runs it.
 8. Write `report.md` for the owner: the routes and requests covered, the
    findings by severity with their items, what the round could not reach.
    Submit with one change per finding (kinds error, accepted, leak, hang,

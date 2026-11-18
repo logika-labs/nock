@@ -36,6 +36,6 @@ and ports of your own.
 Return your findings, each with: the kind (coverage, assertion, fake, flaky,
 slow, other), the test or code at `file:line`, the specific missing or wrong
 case, the repro command, the evidence file you wrote, the fix you would
-propose and its alternatives, and how sure you are (confirmed, likely,
+propose and roughly what it takes, and how sure you are (confirmed, likely,
 possible). Then the numbers: coverage line and branch, test count, total
 time, the slowest 20.

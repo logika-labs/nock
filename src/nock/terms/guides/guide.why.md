@@ -44,10 +44,10 @@ agent to use is in [A CLI agents can use](#a-cli-agents-can-use).
 
 To keep track of work, I created a central queue into which the agent could
 submit its decisions: first in the form of potentially blocking questions.
-But then I found that it's better to let it work, submit decisions for me to
-review, and discuss them with it on demand, and to use the established corpus
-for a special "consult" procedure, whereby the agent, as it makes decisions,
-makes sure it's aligned with decisions that were already made.
+But then I found that it's better to let it work, record what it decided and
+what it proposes for me to review, and discuss them with it on demand, and to
+keep a small memory of what is where, which the orchestrating agent reads
+first and uses to point every agent it launches at what was already decided.
 
 I wanted to avoid a complex task management system, so I realized it's
 simplest to group these decisions by topics, which I can manipulate in bulk,

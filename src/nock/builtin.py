@@ -15,8 +15,7 @@ from typing import Annotated, Any
 from nock.checks import Checks
 from nock.commands import Group, Option
 from nock.configuration import Confirm, scope_of, with_key
-from nock.consult import Consultant
-from nock.docs import Docs
+from nock.docs import Article, Docs
 from nock.errors import Error, ExitCode, Failed, UsageError
 from nock.fixtures import Shell
 from nock.generators import Catalogs, Generators
@@ -41,15 +40,12 @@ from nock.setup import (
 )
 from nock.share import Request as ShareRequest
 from nock.share import Sharing
-from nock.shared import SETTINGS, Shared, by_for
+from nock.shared import MEMORY, SETTINGS, Shared, by_for
 from nock.status import Standing
 from nock.studio import Studio
 from nock.telemetry import UNRECORDED_VARIABLE
 from nock.tools import Tool, check, command
-from nock.topics import (
-    SHORT,
-    Topics,
-)
+from nock.topics import Topics
 from nock.usage import QUESTION, Answer, Moment, Usage, sharing
 from nock.utils import payload
 
@@ -105,14 +101,25 @@ def run_command(
 
 
 @command(examples=["tools", "tools.caching fixtures"])
-def docs(terms: list[str] | None = None) -> str | dict[str, str]:
+def docs(project: Project, terms: list[str] | None = None) -> str | dict[str, str]:
     """nock's documentation, a short article per term: how to write a tool, a
-    check, a hook or a generator, and how decisions, consultation and
-    reflection work. With no term, the terms; with several, each in turn."""
+    check, a hook or a generator, how topics, their review and
+    reflection work. With no term, the terms; with several, each in turn.
+    `review` ends with this project's memory, where its review preferences are."""
     documentation = Docs()
     if not terms:
         return documentation.index()
-    return documentation.read(terms)
+    article = documentation.read(terms)
+    found = [documentation.find(word) for word in terms]
+    if any(term is not None and term.term == "review" for term in found):
+        path = project.root / ".nock" / "shared" / MEMORY
+        said = path.read_text().strip() if path.is_file() else ""
+        article = Article(
+            f"{article}\n\n# This project's memory (`.nock/shared/{MEMORY}`)\n\n"
+            "Its review preferences, as the owner's notes and reflection have shaped them:\n\n"
+            + (said or "Empty so far.")
+        )
+    return article
 
 
 # --- telemetry -------------------------------------------------------------------
@@ -238,11 +245,11 @@ def sessions(project: Project, *, limit: int) -> list[dict[str, Any]]:
 @command
 def status(project: Project) -> dict[str, Any]:
     """Where the project stands with nock: whether a reflection round is due,
-    the open decisions by topic, what waits on an agent (threads where the
-    owner wrote last, rejected decisions, and `nock inbox` by kind), changes
+    what waits on the owner by topic (open proposals, reviews), what waits on
+    an agent (messages unanswered, accepted proposals, `nock inbox` by kind), changes
     in `.nock/shared/` that don't hold, a round summary not yet shared,
-    whether a newer nock is out, and its nudges for the session asking: files
-    changed with no consultation, commits with nothing recorded in the
+    whether a newer nock is out, and its nudges for the session asking:
+    commits with nothing recorded in the
     topics, generated files edited by hand."""
     return Standing(project).collect(nudging=True)
 
@@ -256,8 +263,8 @@ def studio(
     ] = None,
     open: Annotated[bool, Option(help="Open it in the browser.")] = False,
 ) -> None:
-    """Serve the owner's page, the topics with their decisions and assets,
-    until stopped."""
+    """Serve the owner's page — each task's review, its decisions, proposals
+    and assets, its chat — until stopped."""
     if Usage(project).ask(Moment.STUDIO):
         print(f"nock: {QUESTION} The page asks too; answer there.", flush=True)
     Studio(project, port if port is not None else project.configuration.get("studio.port")).run(
@@ -276,31 +283,6 @@ def ask(project: Project, result: dict[str, Any], moment: Moment) -> None:
         result["ask_the_owner"] = question
 
 
-# --- consulting -----------------------------------------------------------------------
-
-
-@command
-def consult(
-    project: Project,
-    question: str | None = None,
-    *,
-    context: Annotated[str | None, Option(help="What you know already.")] = None,
-    submit: Annotated[
-        str | None, Option(help="The consultant's answer, as JSON; only the consultant's.")
-    ] = None,
-) -> str:
-    """Have a fresh agent read the project and answer: what bears on a change
-    you are about to make (when you are unsure, or it touches something with
-    history), or a question about the topics (the studio's Ask); waits for it.
-    `--submit JSON` is the consultant's own answer."""
-    consultant = Consultant(project)
-    if submit is not None:
-        return consultant.submit(payload(submit))
-    if not question or not question.strip():
-        raise UsageError('say what you are about to do, or ask: `.nock/nock consult "…"`')
-    return consultant.consult({"intent": question.strip(), "context": (context or "").strip()})
-
-
 # --- the topics: found, and what the owner said --------------------------------------
 
 
@@ -309,9 +291,9 @@ def search(
     project: Project,
     query: str,
     *,
-    topic: Annotated[str | None, Option(help="Only this topic's decisions.")] = None,
+    topic: Annotated[str | None, Option(help="Only this topic's items.")] = None,
 ) -> dict[str, Any]:
-    """The topics and decisions matching QUERY, the strongest first: what holds
+    """The topics and items (decisions, proposals) matching QUERY, the strongest first: what holds
     every word, then all but one, and so on. Each with its view, the topic's
     page in `.nock/local/views/` to read."""
     topics = Topics(project)
@@ -319,15 +301,15 @@ def search(
     names = [] if topic else topics.search_topics(query)
     items = topics.search_items(query, topic)
     return {
-        "topics": [{"name": name, "view": str(views / f"{name}.md")} for name in names[:SHORT]],
-        "decisions": [
+        "topics": [{"name": name, "view": str(views / f"{name}.md")} for name in names[:15]],
+        "items": [
             {
                 "ref": item["ref"],
                 "title": item["title"],
-                "verdict": item["verdict"],
+                "status": item["status"],
                 "view": str(views / f"{item['topic']}.md"),
             }
-            for item in items[:SHORT]
+            for item in items[:15]
         ],
     }
 
@@ -342,11 +324,12 @@ def inbox(
     ] = None,
     all: Annotated[bool, Option(help="What you were shown already, too.")] = False,
 ) -> list[dict[str, Any]]:
-    """What the owner said that no agent has addressed and you have not been
-    shown: a message sent with Address now, the global chat, comments waiting
-    in threads, verdicts — the most urgent first, yours first within each.
-    `--wait` blocks until there is something (verdicts and comments once the
-    owner has been quiet a minute, so a triage lands as one batch)."""
+    """What the owner said that no agent has acted on and you have not been
+    shown: a message in a topic's chat (with the notes it carries), a
+    proposal accepted (carry it out) or rejected (leave it), Done on a review
+    — the most urgent first, yours first within each. `--wait` blocks until
+    there is something (the rest once the owner has been quiet a minute, so a
+    look through the studio lands as one batch)."""
     found = Inbox(project)
     if wait:
         entries = found.wait(
@@ -674,10 +657,10 @@ def generated_files_in_step(project: Project, root: Path) -> list[str]:
     return problems
 
 
-@check(name="nock-map", paths=[".nock/**"])
-def map_holds(project: Project) -> list[Problem]:
-    """Every item the map of topics cites exists."""
-    return Topics(project).citation_problems()
+@check(name="nock-memory", paths=[".nock/**"])
+def memory_holds(project: Project) -> list[Problem]:
+    """The memory is small enough to read every time, and every item it cites exists."""
+    return Topics(project).memory_problems()
 
 
 @check(name="nock-share", paths=[".nock/**"])

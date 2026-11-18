@@ -11,34 +11,25 @@ from pathlib import Path
 
 import pytest
 
-from nock.chats import ADDRESSER, CHATTER, NAMER
-from nock.consult import ROLE as CONSULTANT
 from nock.dispatch import ARGUMENT_LIMIT, BYPASS, SEATS, Dispatcher
+from nock.errors import PolicyError
 from nock.project import Project
 from nock.rounds import named
+from nock.runs import REFLECTOR
 from nock.share import ROLE as SHARER
-from nock.topics import TIDIER
+from nock.topics import ANSWERER
 
 from .conftest import FAKE_AGENT, nock, write_tool
+from .store import submit
 from .test_telemetry_and_reflection import RECORD
 from .test_telemetry_and_reflection import submit as submit_round
-from .test_topics import submit
 
 ROOT = Path(__file__).resolve().parents[1]
 READING = "Read,Grep,Glob,Bash"
 GIT = ["Bash(git log:*)", "Bash(git show:*)"]
 EXPECTED = {
-    CONSULTANT: [
-        "Bash(.nock/nock search:*)",
-        "Bash(.nock/nock docs:*)",
-        "Bash(.nock/nock consult --submit:*)",
-        *GIT,
-    ],
     SHARER: ["Bash(git log:*)"],
-    CHATTER: ["Bash(.nock/nock search:*)", "Bash(.nock/nock docs:*)", *GIT],
-    NAMER: [],
-    TIDIER: ["Bash(.nock/nock search:*)", "Bash(.nock/nock docs:*)", *GIT],
-    ADDRESSER: [
+    ANSWERER: [
         "Bash(.nock/nock search:*)",
         "Bash(.nock/nock docs:*)",
         "Bash(.nock/nock check:*)",
@@ -49,9 +40,30 @@ EXPECTED = {
         "Bash(git diff:*)",
         "Bash(git status:*)",
     ],
+    REFLECTOR: [
+        "Bash(.nock/nock reflect:*)",
+        "Bash(.nock/nock search:*)",
+        "Bash(.nock/nock docs:*)",
+        "Bash(.nock/nock query:*)",
+        "Bash(.nock/nock status:*)",
+        "Bash(.nock/nock check:*)",
+        "Bash(.nock/nock test:*)",
+        "Bash(.nock/nock gen:*)",
+        "Bash(.nock/nock inbox:*)",
+        "Bash(logika map:*)",
+        "Bash(logika docs:*)",
+        "Bash(logika check:*)",
+        "Bash(logika test:*)",
+        "Bash(logika replay:*)",
+        "Edit(./**)",
+        "Write(./**)",
+        *GIT,
+        "Bash(git diff:*)",
+        "Bash(git status:*)",
+    ],
 }
 # What each seat may do in the store: read it and the views, or write it too.
-STORE = {CONSULTANT: "read", CHATTER: "read", TIDIER: "write", ADDRESSER: "write"}
+STORE = {ANSWERER: "write", REFLECTOR: "write"}
 
 
 def allowed_of(project: Project, role: str) -> list[str]:
@@ -69,18 +81,14 @@ def allowed_of(project: Project, role: str) -> list[str]:
 
 WRITING_GIT = ["--disallowedTools", "Bash(git * --ou*)"]
 DENIED = {
-    CONSULTANT: WRITING_GIT,
     SHARER: WRITING_GIT,
-    CHATTER: WRITING_GIT,
-    NAMER: [],
-    TIDIER: WRITING_GIT,
-    ADDRESSER: WRITING_GIT,
+    ANSWERER: WRITING_GIT,
+    REFLECTOR: WRITING_GIT,
 }
-# The namer has no tools at all, so no rules either; the addresser edits.
+# The answerer edits; the reflector edits and dispatches the round's subagents.
 TOOLS: dict[str, str] = {
-    NAMER: "",
-    ADDRESSER: "Read,Grep,Glob,Bash,Edit,Write",
-    TIDIER: "Read,Grep,Glob,Bash,Write,Edit",
+    ANSWERER: "Read,Grep,Glob,Bash,Edit,Write",
+    REFLECTOR: "Read,Grep,Glob,Bash,Edit,Write,Agent,Task",
 }
 
 
@@ -119,52 +127,26 @@ def test_each_seat_gets_exactly_its_tools_and_rules(
     monkeypatch.setenv("FAKE_ARGUMENTS", str(arguments))
     brief = (
         "NOTHING TO SHARE: <question> <intent> When each of the project's topics and items matters:"
-        " nock's studio # The conversation # Tidy up the topics # Address my comments"
-        " # Their message <message>\nhi\n</message>"
+        " # Answer now: the task `orders` # Run the round: `.nock/nock reflect nock.fit`"
+        " <message>\nhi\n</message>"
     )
     session = Dispatcher(project).launch(role, brief, project.root)
     assert session.exit_code == 0 and session.denied == []
     assert launched(arguments) == seat_flags(role, allowed_of(project, role)) + DENIED[role]
 
 
-def test_the_consultant_runs_with_its_rules_and_a_refusal_is_kept(
-    project: Project, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    arguments = tmp_path / "arguments.json"
-    monkeypatch.setenv("FAKE_ARGUMENTS", str(arguments))
-    monkeypatch.setenv("FAKE_TRY", json.dumps(["rm", "-rf", "src"]))
-    result = nock(
-        project.root, "consult", "Move orders to Postgres.", "--context", "SQLite is slow."
-    )
-    assert result.returncode == 0, result.stdout + result.stderr
-    assert "Nothing in nock bears on it." in result.stdout
-    rules = allowed_of(project, CONSULTANT)
-    assert launched(arguments)[-len(rules) - 2 : -2] == rules
-    [kept] = (project.root / ".nock" / "local" / "consultations").glob("*.json")
-    assert json.loads(kept.read_text())["denied"] == ["Bash: rm -rf src"]
-    [log] = (project.root / ".nock" / "local" / "logs").glob("run-*.log")
-    assert "nock: Claude Code refused Bash: rm -rf src" in log.read_text()
-
-
-def test_a_consultant_refused_its_only_way_to_answer_says_what_was_refused(
-    project: Project, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    monkeypatch.setenv("FAKE_ADVICE", "nothing")
-    monkeypatch.setenv("FAKE_TRY", json.dumps([".nock/nock", "topics", "create", "x", "{}"]))
-    result = nock(project.root, "consult", "Move orders to Postgres.")
-    assert "refused: Bash: .nock/nock topics create x {}" in result.stdout + result.stderr
-
-
-def test_a_consultant_that_tried_more_than_its_seat_allows_says_so(
+def test_a_refusal_is_kept_with_the_session_and_in_its_log(
     project: Project, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     submit(project.root)
     monkeypatch.setenv("FAKE_TRY", json.dumps([".nock/nock", "run", "--", "curl", "example.com"]))
-    result = nock(project.root, "consult", "Where do orders live?")
-    assert result.returncode == 0, result.stdout + result.stderr
-    assert "Nothing in nock bears on it." in result.stdout
-    [log] = (project.root / ".nock" / "local" / "logs").glob("run-*.log")
-    assert "nock: Claude Code refused Bash: .nock/nock run -- curl example.com" in log.read_text()
+    brief = "# Answer now: the task `orders` <message>\nhi\n</message>"
+    session = Dispatcher(project).launch(ANSWERER, brief, project.root)
+    assert session.exit_code == 0
+    assert session.denied == ["Bash: .nock/nock run -- curl example.com"]
+    assert "nock: Claude Code refused Bash: .nock/nock run -- curl example.com" in (
+        session.log.read_text()
+    )
 
 
 def test_a_long_brief_is_readable_and_nothing_else_outside(project: Project) -> None:
@@ -182,10 +164,8 @@ def test_an_agent_command_that_sets_permissions_itself_is_refused(
 ) -> None:
     local = project.root / ".nock" / "local" / "config.toml"
     local.write_text(local.read_text().replace(f'"{FAKE_AGENT}"]', f'"{FAKE_AGENT}", "{flag}"]', 1))
-    consultation = {"intent": "Move orders to Postgres.", "context": "SQLite is slow."}
-    result = nock(project.root, "consult", json.dumps(consultation))
-    assert result.returncode != 0
-    assert "never bypasses them" in result.stdout + result.stderr
+    with pytest.raises(PolicyError, match="never bypasses them"):
+        Dispatcher(Project.discover(project.root)).launch(SHARER, "NOTHING TO SHARE:", project.root)
     assert project.store.rows("SELECT id FROM sessions") == []
 
 
@@ -245,8 +225,11 @@ def test_a_round_s_parts_are_subagents_with_only_the_tools_they_need(project: Pr
     }
     assert {name: found and found.group(1) for name, found in tools.items()} == {
         "nock-toolbox": "Read, Grep, Glob, Edit, Write, Bash",
-        "nock-map": "Read, Grep, Glob, Edit, Bash",
         "nock-fit": "Read, Grep, Glob, Bash",
+        # Every round that can run here is on: the audits' agents too.
+        "audit-security": "Read, Grep, Glob, Bash",
+        "audit-tests-package": "Read, Grep, Glob, Bash",
+        "audit-tests-promises": "Read, Grep, Glob, Bash",
     }
     started = json.loads(nock(project.root, "reflect", "nock", "--json").stdout)
     for begun in started["rounds"]:
@@ -255,7 +238,7 @@ def test_a_round_s_parts_are_subagents_with_only_the_tools_they_need(project: Pr
 
 
 @pytest.mark.parametrize("option", ["--output=leak.txt", "--outp=leak.txt", "--ou=leak.txt"])
-@pytest.mark.parametrize("role", [CONSULTANT, SHARER])
+@pytest.mark.parametrize("role", [SHARER])
 def test_git_that_would_write_a_file_is_refused(
     project: Project, role: str, option: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:

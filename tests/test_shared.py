@@ -55,13 +55,14 @@ def open_topic(shared: Shared, name: str = "orders") -> None:
 
 
 def submit_decision(shared: Shared, topic: str = "orders", slug: str = "sqlite") -> Path:
-    folder = shared.topics / topic / "decisions" / slug
-    write(folder / "events" / "a.json", {"kind": "created", "title": "Orders live in SQLite"})
+    folder = shared.topics / topic / "items" / slug
     write(
-        folder / "versions" / "next" / "decision.json",
+        folder / "events" / "a.json",
         {
-            "answer": "One file is enough.",
-            "alternatives": [{"option": "Postgres", "why_not": "a server"}],
+            "kind": "created",
+            "type": "decision",
+            "title": "Orders live in SQLite",
+            "means": "One file.",
         },
     )
     settled = shared.settle(AGENT)
@@ -127,91 +128,75 @@ def test_a_bad_edit_is_left_uncommitted_and_named(shared: Shared, project: Proje
     assert "leave out by" in " ".join(shared.settle(AGENT).problems)
 
 
-def test_an_item_needs_a_topic_and_a_first_version(shared: Shared) -> None:
-    folder = shared.topics / "orders" / "decisions" / "sqlite"
-    write(folder / "events" / "a.json", {"kind": "created", "title": "Orders live in SQLite"})
+def test_an_item_needs_its_topic(shared: Shared) -> None:
+    folder = shared.topics / "orders" / "items" / "sqlite"
+    write(
+        folder / "events" / "a.json",
+        {"kind": "created", "type": "decision", "title": "Orders live in SQLite", "means": "m"},
+    )
     assert "no topic orders" in " ".join(shared.settle(AGENT).problems)
     write(
         shared.topics / "orders" / "events" / "new.json",
         {"kind": "created", "description": "Where orders are kept."},
     )
-    # The topic lands; the item, still lacking a version, waits.
-    settled = shared.settle(AGENT)
-    assert settled.commit and "first version" in " ".join(settled.problems)
-    assert Fold(shared.root).topic("orders")
-    write(folder / "versions" / "3" / "decision.json", {"answer": "x"})
-    assert "nock numbers it" in " ".join(shared.settle(AGENT).problems)
-    (folder / "versions" / "3" / "decision.json").rename(folder / "versions" / "next.json")
-    (folder / "versions" / "3").rmdir()
-    (folder / "versions" / "next.json").unlink()
-    write(folder / "versions" / "next" / "decision.json", {"answer": "One file."})
+    # The topic first, then its item, in one settle.
     settled = shared.settle(AGENT)
     assert not settled.problems, settled.problems
     item = Fold(shared.root).item("orders", "sqlite")
-    assert item is not None
-    assert [version["version"] for version in item["versions"]] == [1]
-    assert item["verdict"] == "open" and item["title"] == "Orders live in SQLite"
-    kinds = [event["kind"] for event in settled.events]
-    assert kinds == ["created", "version"]
+    assert item is not None and item["status"] == "decision"
+    assert [event["kind"] for event in settled.events] == ["created", "created"]
 
 
-def test_verdicts_and_versions_fold_in_order(shared: Shared) -> None:
+def test_a_proposals_verdict_and_what_was_done_fold_in_order(shared: Shared) -> None:
     open_topic(shared)
-    folder = submit_decision(shared)
+    folder = shared.topics / "orders" / "items" / "archive"
     write(
-        folder / "events" / "v.json",
-        {"kind": "verdict", "verdict": "rejected", "comment": "Use Postgres."},
+        folder / "events" / "a.json",
+        {"kind": "created", "type": "proposal", "title": "Archive", "means": "m", "takes": "a day"},
     )
-    shared.settle(OWNER)
-    item = Fold(shared.root).item("orders", "sqlite")
-    assert item and item["verdict"] == "rejected" and item["decided"]["author"] == "owner"
-    assert (
-        item["thread"][-1]["text"] == "Use Postgres."
-        and item["thread"][-1]["verdict"] == "rejected"
-    )
-    write(folder / "versions" / "next" / "decision.json", {"answer": "Postgres, then."})
-    assert not shared.settle(AGENT).problems
-    item = Fold(shared.root).item("orders", "sqlite")
-    assert item and item["verdict"] == "open" and len(item["versions"]) == 2
-    assert (
-        json.loads((folder / "versions" / "2" / "decision.json").read_text())["answer"]
-        == "Postgres, then."
-    )
-    # An agent may judge too (Tidy up drops what is stale); the event says who.
-    write(folder / "events" / "d.json", {"kind": "verdict", "verdict": "dropped"})
     shared.settle(AGENT)
-    item = Fold(shared.root).item("orders", "sqlite")
-    assert item and item["verdict"] == "dropped" and item["decided"]["author"] == "agent"
+    write(folder / "events" / "v.json", {"kind": "verdict", "verdict": "accepted"})
+    shared.settle(OWNER)
+    item = Fold(shared.root).item("orders", "archive")
+    assert item and item["status"] == "accepted" and item["verdict"]["author"] == "owner"
+    write(folder / "events" / "r.json", {"kind": "revised", "takes": "two days"})
+    write(folder / "events" / "i.json", {"kind": "implemented", "means": "Archived nightly."})
+    assert not shared.settle(AGENT).problems
+    item = Fold(shared.root).item("orders", "archive")
+    assert item and item["status"] == "decision" and item["takes"] == "two days"
+    assert [entry["kind"] for entry in item["history"]] == ["verdict", "revised", "implemented"]
+    write(folder / "events" / "w.json", {"kind": "verdict", "verdict": "rejected"})
+    assert "carried out already" in " ".join(shared.settle(OWNER).problems)
 
 
-def test_threads_answer_and_withdraw(shared: Shared) -> None:
+def test_the_chat_answers_and_carries_notes(shared: Shared) -> None:
     open_topic(shared)
     events = shared.topics / "orders" / "events"
-    write(events / "o.json", {"kind": "message", "text": "Which region?", "now": True})
+    write(events / "n.json", {"kind": "note", "on": {"item": "sqlite"}, "text": "Why?"})
+    shared.settle(OWNER)
+    topic = Fold(shared.root).topic("orders")
+    assert topic
+    (note,) = topic["notes"]
+    assert note["sent"] is None
+    write(events / "o.json", {"kind": "message", "text": "", "notes": [note["id"]], "now": True})
     shared.settle(OWNER)
     asked = Fold(shared.root).topic("orders")
     assert asked
     question = asked["thread"][-1]
     assert question["author"] == "owner" and question["now"] is True
-    write(events / "a.json", {"kind": "message", "text": "eu-west."})
+    assert asked["notes"][0]["sent"] == question["id"]
+    write(events / "a.json", {"kind": "message", "text": "Load is low."})
     shared.settle(AGENT)
     answered = Fold(shared.root).topic("orders")
-    assert answered and answered["thread"][-1]["answers_id"] == question["id"]
-    write(events / "o2.json", {"kind": "message", "text": "Oops."})
-    shared.settle(OWNER)
-    oops = Fold(shared.root).topic("orders")
-    assert oops
-    write(events / "w.json", {"kind": "message", "withdraws": oops["thread"][-1]["id"]})
-    shared.settle(OWNER)
-    after = Fold(shared.root).topic("orders")
-    assert after and [
-        entry["text"] for entry in after["thread"] if entry.get("kind") != "status"
-    ] == [
-        "Which region?",
-        "eu-west.",
-    ]
+    assert answered and answered["thread"][-1]["answers"] == question["id"]
     write(events / "bad.json", {"kind": "message", "text": "x", "answers": "deadbeef"})
     assert "names no message" in " ".join(shared.settle(AGENT).problems)
+    (events / "bad.json").unlink()
+    write(events / "nn.json", {"kind": "note", "on": {}, "text": "on nothing"})
+    assert "a note is on" in " ".join(shared.settle(OWNER).problems)
+    (events / "nn.json").unlink()
+    write(events / "e.json", {"kind": "message", "text": " "})
+    assert "the message is empty" in " ".join(shared.settle(OWNER).problems)
 
 
 def test_a_topics_state_rename_and_revival(shared: Shared) -> None:
@@ -222,12 +207,13 @@ def test_a_topics_state_rename_and_revival(shared: Shared) -> None:
     shared.settle(AGENT)
     topic = Fold(shared.root).topic("orders")
     assert topic and topic["state"] == "done" and topic["status"] == "" and topic["priority"] == 2
-    folder = shared.topics / "orders" / "decisions" / "late"
-    write(folder / "events" / "a.json", {"kind": "created", "title": "Late"})
-    write(folder / "versions" / "next" / "decision.json", {"answer": "x"})
+    folder = shared.topics / "orders" / "items" / "late"
+    write(
+        folder / "events" / "a.json",
+        {"kind": "created", "type": "decision", "title": "Late", "means": "m"},
+    )
     assert "revive it first" in " ".join(shared.settle(AGENT).problems)
     (folder / "events" / "a.json").unlink()
-    (folder / "versions" / "next" / "decision.json").unlink()
     write(events / "r.json", {"kind": "state", "state": "active", "revived": True, "note": "Back."})
     write(events / "n.json", {"kind": "renamed", "name": "storage"})
     settled = shared.settle(AGENT)
@@ -238,110 +224,57 @@ def test_a_topics_state_rename_and_revival(shared: Shared) -> None:
     assert topic["thread"][-1]["revived"] is True
 
 
-def add_asset(
-    shared: Shared, decision: Path, name: str, files: dict[str, Any], assets: dict[str, Any]
-) -> None:
-    folder = decision / "assets" / name
+def add_asset(shared: Shared, name: str, files: dict[str, Any], record: dict[str, Any]) -> Path:
+    folder = shared.topics / "orders" / "assets" / name
     if not (folder / "events").is_dir():
         write(folder / "events" / "a.json", {"kind": "created", "title": name.title()})
     for file_name, content in files.items():
         write(folder / "versions" / "next" / file_name, content)
-    write(folder / "versions" / "next" / "assets.json", assets)
+    write(folder / "versions" / "next" / "asset.json", record)
+    return folder
 
 
-def test_a_decisions_assets_link_project_files_and_keep_media(
-    shared: Shared, project: Project
-) -> None:
+def test_an_asset_links_project_files_and_keeps_media(shared: Shared, project: Project) -> None:
     open_topic(shared)
     (project.root / "app.py").write_text("print('hi')\n")
     git(project.root, "add", "app.py")
     git(project.root, "commit", "-qm", "app")
     head = git(project.root, "rev-parse", "HEAD")
-    decision = submit_decision(shared)
-    add_asset(shared, decision, "app", {}, {"files": [{"kind": "project", "path": "app.py"}]})
+    asset = add_asset(shared, "app", {}, {"file": {"kind": "project", "path": "app.py"}})
     assert not shared.settle(AGENT).problems
-    asset = decision / "assets" / "app"
-    (entry,) = json.loads((asset / "versions" / "1" / "assets.json").read_text())["files"]
+    entry = json.loads((asset / "versions" / "1" / "asset.json").read_text())["file"]
     assert entry["commit"] == head and entry["type"] == "text" and "sha256" not in entry
     # The after: a second version of the same asset; a file with uncommitted
     # changes is kept by its content.
     (project.root / "app.py").write_text("print('changed')\n")
-    add_asset(shared, decision, "app", {}, {"files": [{"kind": "project", "path": "app.py"}]})
+    add_asset(shared, "app", {}, {"file": {"kind": "project", "path": "app.py"}})
     assert not shared.settle(AGENT).problems
-    (entry,) = json.loads((asset / "versions" / "2" / "assets.json").read_text())["files"]
+    entry = json.loads((asset / "versions" / "2" / "asset.json").read_text())["file"]
     assert entry["sha256"] == digest(b"print('changed')\n") and "commit" not in entry
-    item = Fold(shared.root).item("orders", "sqlite")
-    assert item
-    (app,) = item["assets"]
-    assert app["name"] == "app" and [version["version"] for version in app["versions"]] == [1, 2]
+    found = Fold(shared.root).asset("orders", "app")
+    assert found and [version["version"] for version in found["versions"]] == [1, 2]
     # A picture goes to media by sha256; small text stays beside its version.
     picture = b"\x89PNG\r\n\x1a\n" + bytes(range(256))
-    add_asset(
+    shot = add_asset(
         shared,
-        decision,
         "receipt",
         {"receipt.png": picture},
-        {"files": [{"kind": "derived", "name": "receipt.png", "recipe": {"command": "make shot"}}]},
+        {"file": {"kind": "derived", "name": "receipt.png", "recipe": {"command": "make shot"}}},
     )
     assert not shared.settle(AGENT).problems
-    shot = decision / "assets" / "receipt" / "versions" / "1"
-    (entry,) = json.loads((shot / "assets.json").read_text())["files"]
+    entry = json.loads((shot / "versions" / "1" / "asset.json").read_text())["file"]
     assert entry["sha256"] == digest(picture) and entry["type"] == "image"
-    assert not (shot / "receipt.png").exists()
+    assert not (shot / "versions" / "1" / "receipt.png").exists()
     assert shared.blob(entry["sha256"]).read_bytes() == picture
     assert f".nock/shared/media/{entry['sha256']}" in git(project.root, "ls-files")
 
 
-def test_a_new_asset_version_reopens_its_decision(shared: Shared) -> None:
+def test_a_new_version_goes_in_versions_next(shared: Shared) -> None:
     open_topic(shared)
-    decision = submit_decision(shared)
-    add_asset(
-        shared,
-        decision,
-        "shot",
-        {"a.md": "before"},
-        {"files": [{"kind": "derived", "name": "a.md"}]},
-    )
-    shared.settle(AGENT)
-    write(decision / "events" / "v.json", {"kind": "verdict", "verdict": "accepted"})
-    shared.settle(OWNER)
-    item = Fold(shared.root).item("orders", "sqlite")
-    assert item and item["verdict"] == "accepted"
-    add_asset(
-        shared,
-        decision,
-        "shot",
-        {"a.md": "after"},
-        {"files": [{"kind": "derived", "name": "a.md"}]},
-    )
-    shared.settle(AGENT)
-    item = Fold(shared.root).item("orders", "sqlite")
-    assert item and item["verdict"] == "open"
-
-
-def test_asset_rules_hold(shared: Shared) -> None:
-    open_topic(shared)
-    decision = submit_decision(shared)
-    two = {"a.md": "a", "b.md": "b"}
-    files = [{"kind": "derived", "name": "a.md"}, {"kind": "derived", "name": "b.md"}]
-    add_asset(shared, decision, "two", two, {"files": files})
-    assert "an asset holds one file" in " ".join(shared.settle(AGENT).problems)
-    add_asset(shared, decision, "two", two, {"variants": True, "files": files})
+    asset = add_asset(shared, "notes", {"a.md": "a"}, {"file": {"kind": "derived", "name": "a.md"}})
     assert not shared.settle(AGENT).problems
-    write(decision / "events" / "v.json", {"kind": "verdict", "verdict": "accepted"})
-    assert "prefer one" in " ".join(shared.settle(OWNER).problems)
-    (decision / "events" / "v.json").unlink()
-    preferred = decision / "assets" / "two" / "events" / "p.json"
-    write(preferred, {"kind": "preferred", "version": 1, "name": "b.md"})
-    write(decision / "events" / "v.json", {"kind": "verdict", "verdict": "accepted"})
-    assert not shared.settle(OWNER).problems
-    item = Fold(shared.root).item("orders", "sqlite")
-    assert item and item["verdict"] == "accepted"
-    assert item["assets"][0]["preferred"] == {"version": 1, "name": "b.md"}
-    # A decision's version is its decision.json alone: files are its assets.
-    write(decision / "versions" / "next" / "decision.json", {"answer": "x"})
-    write(decision / "versions" / "next" / "shot.png", b"\x89PNG")
-    assert "a decision holds no files" in " ".join(shared.settle(AGENT).problems)
+    write(asset / "versions" / "7" / "asset.json", {"file": {"kind": "derived", "name": "a.md"}})
+    assert "nock numbers it" in " ".join(shared.settle(AGENT).problems)
 
 
 def test_nock_settles_only_what_it_wrote(shared: Shared) -> None:

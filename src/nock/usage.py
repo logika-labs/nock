@@ -3,7 +3,7 @@ categories, and a random id for the project so they can count projects
 without knowing which, never the project's code, paths, names or text. Only
 with the owner's yes: `share` unset is unanswered, and nothing is sent. nock
 asks once per machine, the first time the owner engages with it (a
-reflection round, the page, their verdict on an item), and their answer is
+reflection round, the page, their word on a proposal), and their answer is
 written to `share` in the config, with when they gave it and which question
 they answered kept in the machine's state."""
 
@@ -256,7 +256,6 @@ class Usage:
             "platform": sys.platform,
             "settings": {
                 "reminders": project.configuration.get("reminders") is not False,
-                "consult": project.configuration.get("consult.enabled") is not False,
                 "logika": (project.here / LEDGER).is_file(),
             },
             "metrics": Reflection(project).metrics(window),

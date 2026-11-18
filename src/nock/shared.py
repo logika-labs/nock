@@ -27,24 +27,29 @@ from pathlib import Path
 from typing import Any
 
 from nock.fold import ASSETS as ASSETS_DIR
-from nock.fold import EVENTS, ITEMS, TOPICS, VERSIONS, Fold, read_events
+from nock.fold import EVENTS, ITEMS, REVIEW, TOPICS, VERSIONS, Fold, read_events
 from nock.git import Git, GitError
 from nock.records import (
-    ASSETS,
-    ASSETS_FILE,
-    DECISION,
-    DECISION_FILE,
+    ASSET,
+    ASSET_FILE_NAME,
     EVENT_FILE,
     NEXT,
+    REVIEW_FILE,
     SMALL_TEXT,
+    block_problems,
     event_problems,
-    shape_problems,
 )
+from nock.records import REVIEW as REVIEW_SHAPE
+from nock.schema import Validator
 from nock.utils import write_json
 
 SHARED = Path(".nock") / "shared"
 MEDIA = "media"
-MAP = "map.md"
+# What nock has learned about the project and its owner: short lines by
+# subject, each pointing to the files with the detail; reflection keeps it.
+MEMORY = "memory.md"
+# The memory's size at most, in characters: the orchestrator reads it every time.
+MEMORY_LIMIT = 8000
 SETTINGS = "settings.toml"
 # In `.nock/local/`: the settled changes not committed yet (`Shared.commit_or_keep`).
 PENDING = "uncommitted.json"
@@ -207,14 +212,20 @@ class Shared:
         return self.root / MEDIA
 
     @property
-    def map(self) -> Path:
-        return self.root / MAP
+    def memory(self) -> Path:
+        return self.root / MEMORY
 
     def topic_folder(self, name: str) -> Path:
         return self.topics / name
 
     def item_folder(self, topic: str, slug: str) -> Path:
         return self.topics / topic / ITEMS / slug
+
+    def asset_folder(self, topic: str, name: str) -> Path:
+        return self.topics / topic / ASSETS_DIR / name
+
+    def review_folder(self, topic: str) -> Path:
+        return self.topics / topic / REVIEW
 
     # --- media ----------------------------------------------------------------------
 
@@ -320,8 +331,8 @@ class Shared:
             groups = self.grouped(changes, removed)
             clock = Clock()
             touched: list[str] = []
-            # A topic before its decisions: a new decision may be in a topic made with it.
-            ordered = sorted(groups.values(), key=lambda group: len(group.key.split("/")))
+            # A topic first, then its items and assets, then the review that shows them.
+            ordered = sorted(groups.values(), key=lambda group: depth(group.key))
             for group in ordered:
                 if group.problems:
                     settled.problems += group.problems
@@ -334,7 +345,7 @@ class Shared:
             if not touched:
                 return settled
             settled.written = sorted(set(touched))
-            if commit and by.get("role") != "tidier":
+            if commit:
                 settled.commit, settled.note = self.commit_or_keep(settled.written, by, settled)
         return settled
 
@@ -344,10 +355,10 @@ class Shared:
         found = set()
         for path in wanted:
             parts = path.split("/")
-            if len(parts) > 6 and parts[4] == VERSIONS:
+            if len(parts) > 6 and parts[2] in (ITEMS, ASSETS_DIR) and parts[4] == VERSIONS:
                 found.add("/".join(parts[:6]))
-            if len(parts) > 8 and parts[4] == ASSETS_DIR and parts[6] == VERSIONS:
-                found.add("/".join(parts[:8]))
+            if len(parts) > 5 and parts[2] == REVIEW and parts[3] == VERSIONS:
+                found.add("/".join(parts[:5]))
         return sorted(found)
 
     def grouped(self, changes: list[tuple[str, str]], removed: list[str]) -> dict[str, Group]:
@@ -355,11 +366,12 @@ class Shared:
         for code, path in changes:
             parts = path.split("/")
             if parts[0] == TOPICS and len(parts) >= 3:
-                key = (
-                    "/".join(parts[:4])
-                    if parts[2] == ITEMS and len(parts) >= 4
-                    else "/".join(parts[:2])
-                )
+                if parts[2] in (ITEMS, ASSETS_DIR) and len(parts) >= 4:
+                    key = "/".join(parts[:4])
+                elif parts[2] == REVIEW:
+                    key = "/".join(parts[:3])
+                else:
+                    key = "/".join(parts[:2])
             else:
                 key = path
             group = groups.setdefault(key, Group(key))
@@ -375,7 +387,7 @@ class Shared:
         """What is wrong with one changed file, by where it is."""
         new = code == "??" or code.strip() == "A"
         where = f".nock/shared/{path}"
-        if parts[0] in (MAP, SETTINGS) and len(parts) == 1:
+        if parts[0] in (MEMORY, SETTINGS) and len(parts) == 1:
             return []
         if parts[0] == MEDIA and len(parts) == 2:
             if code.strip() == "D":
@@ -387,28 +399,27 @@ class Shared:
             return []
         if parts[0] != TOPICS or len(parts) < 4:
             return [
-                f"{where}: not a file nock keeps — topics/<topic>/events/, "
-                "topics/<topic>/decisions/<decision>/events/, versions/ or assets/<asset>/,"
-                " media/, map.md, settings.toml"
-                " (`.nock/nock docs files`)"
+                f"{where}: not a file nock keeps — topics/<topic>/events/,"
+                " topics/<topic>/items/<item>/events/, topics/<topic>/assets/<asset>/,"
+                " topics/<topic>/review/versions/next/, media/, memory.md,"
+                " settings.toml (`.nock/nock docs files`)"
             ]
         if not new:
             return [
                 f"{where}: events and versions are never changed or removed — write a new event"
-                " (a verdict back to open, a state back) or a new version in versions/next/"
+                " (a state back, a note replaced) or a new version in versions/next/"
             ]
         if parts[2] == EVENTS and len(parts) == 4:
             return []
-        if parts[2] == ITEMS and len(parts) >= 6:
+        if parts[2] == ITEMS and len(parts) == 6 and parts[4] == EVENTS:
+            return []
+        if parts[2] == ASSETS_DIR and len(parts) >= 6:
             if parts[4] == EVENTS and len(parts) == 6:
                 return []
             if parts[4] == VERSIONS and len(parts) >= 7:
                 return []
-            if parts[4] == ASSETS_DIR and len(parts) >= 8:
-                if parts[6] == EVENTS and len(parts) == 8:
-                    return []
-                if parts[6] == VERSIONS and len(parts) >= 9:
-                    return []
+        if parts[2] == REVIEW and parts[3] == VERSIONS and len(parts) >= 6:
+            return []
         return [f"{where}: not where an event or a version goes (`.nock/nock docs files`)"]
 
     # --- completing -----------------------------------------------------------------
@@ -421,8 +432,12 @@ class Shared:
         parts = group.key.split("/")
         if parts[0] == TOPICS and len(parts) == 2:
             return self.complete_topic(group, by, clock, settled)
-        if parts[0] == TOPICS and len(parts) == 4:
+        if parts[0] == TOPICS and len(parts) == 4 and parts[2] == ITEMS:
             return self.complete_item(group, by, clock, settled)
+        if parts[0] == TOPICS and len(parts) == 4 and parts[2] == ASSETS_DIR:
+            return self.complete_asset(group, by, clock, settled)
+        if parts[0] == TOPICS and len(parts) == 3 and parts[2] == REVIEW:
+            return self.complete_review(group, by, clock, settled)
         return group.paths
 
     def drafts(self, folder: Path, paths: list[str]) -> list[Path]:
@@ -470,6 +485,31 @@ class Shared:
         }
         return complete, f"{stamp_of(moment)}-{identifier}.json"
 
+    def records_of(
+        self, folder: Path, place: str, paths: list[str], group: Group
+    ) -> list[tuple[Path, dict[str, Any]]]:
+        """A folder's new drafts, each checked against its kind."""
+        records: list[tuple[Path, dict[str, Any]]] = []
+        for path in self.drafts(folder, paths):
+            record = self.load(path, group)
+            if record is None:
+                continue
+            if EVENT_FILE.match(path.name):
+                group.problems += [
+                    f"{self.shown(path)}: {problem}"
+                    for problem in event_problems(record, place, complete=True)
+                ]
+                continue
+            problems = event_problems(record, place, complete=False)
+            group.problems += [f"{self.shown(path)}: {problem}" for problem in problems]
+            if record.get("kind") == "version":
+                group.problems.append(
+                    f"{self.shown(path)}: a version is a folder, versions/next/, not an event"
+                )
+            elif not problems:
+                records.append((path, record))
+        return records
+
     def complete_topic(
         self, group: Group, by: dict[str, Any], clock: Clock, settled: Settled
     ) -> list[str]:
@@ -484,21 +524,7 @@ class Shared:
             return group.paths
         committed = read_events(folder / EVENTS)
         thread = [event for event in committed if event.get("kind") == "message"]
-        records: list[tuple[Path, dict[str, Any]]] = []
-        for path in self.drafts(folder, group.paths):
-            record = self.load(path, group)
-            if record is None:
-                continue
-            if EVENT_FILE.match(path.name):
-                group.problems += [
-                    f"{self.shown(path)}: {problem}"
-                    for problem in event_problems(record, "topic", complete=True)
-                ]
-                continue
-            problems = event_problems(record, "topic", complete=False)
-            group.problems += [f"{self.shown(path)}: {problem}" for problem in problems]
-            if not problems:
-                records.append((path, record))
+        records = self.records_of(folder, "topic", group.paths, group)
         has_created = any(event.get("kind") == "created" for event in committed) or any(
             record["kind"] == "created" for _, record in records
         )
@@ -509,15 +535,37 @@ class Shared:
             )
         if committed and any(record["kind"] == "created" for _, record in records):
             group.problems.append(f".nock/shared/topics/{name}: the topic exists already")
+        notes = {event["id"] for event in committed if event.get("kind") == "note"}
+        reviews = {
+            int(path.name)
+            for path in (self.review_folder(name) / VERSIONS).glob("*")
+            if path.name.isdigit()
+        }
         for path, record in records:
-            if record["kind"] == "renamed":
+            kind = record["kind"]
+            if kind == "renamed":
                 target = str(record.get("name") or "")
                 if not NAME.match(target) or (self.topics / target).exists():
                     group.problems.append(
                         f"{self.shown(path)}: rename to a free topic name, not {target!r}"
                     )
-            if record["kind"] == "message":
-                self.check_message(record, thread, path, group)
+            elif kind == "message":
+                self.check_message(record, thread, notes, path, group)
+            elif kind == "note":
+                on = record["on"]
+                if not any(on.get(key) for key in ("item", "asset", "block", "memory")):
+                    group.problems.append(
+                        f"{self.shown(path)}: a note is on an item, an asset or a block of the"
+                        " review: `on` names one"
+                    )
+                if record.get("replaces") and record["replaces"] not in notes:
+                    group.problems.append(f"{self.shown(path)}: `replaces` names no note here")
+            elif kind == "reviewed" and record["version"] not in reviews:
+                group.problems.append(
+                    f"{self.shown(path)}: the review has no version {record['version']}"
+                )
+            if kind == "note":
+                notes.add(self.chosen.get(path.name) or path.name)
         if group.problems:
             return []
         written = [
@@ -559,18 +607,37 @@ class Shared:
         return path.relative_to(self.root).as_posix()
 
     def check_message(
-        self, record: dict[str, Any], thread: list[dict[str, Any]], path: Path, group: Group
+        self,
+        record: dict[str, Any],
+        thread: list[dict[str, Any]],
+        notes: set[str],
+        path: Path,
+        group: Group,
     ) -> None:
         ids = {event["id"] for event in thread}
-        for field_name in ("answers", "withdraws"):
-            if record.get(field_name) and record[field_name] not in ids:
-                group.problems.append(
-                    f"{self.shown(path)}: `{field_name}` names no message of this thread"
-                )
+        if record.get("answers") and record["answers"] not in ids:
+            group.problems.append(f"{self.shown(path)}: `answers` names no message of this chat")
+        for identifier in record.get("notes") or []:
+            if identifier not in notes:
+                group.problems.append(f"{self.shown(path)}: no note {identifier} in this topic")
+        topic = path.parent.parent.name
+        for place, block in enumerate(record.get("blocks") or [], start=1):
+            label = f"{self.shown(path)}, block {place}"
+            group.problems += [f"{label}: {problem}" for problem in block_problems(block)]
+            if not isinstance(block, dict):
+                continue
+            if block.get("kind") == "html":
+                group.problems.append(f"{label}: a message shows no html block; the review does")
+            if block.get("kind") == "item" and block.get("item") not in self.fold.slugs(topic):
+                group.problems.append(f"{label}: no item {block.get('item')!r} in topic {topic}")
+            if "asset" in block and block["asset"] not in self.fold.slugs(topic, ASSETS_DIR):
+                group.problems.append(f"{label}: no asset {block['asset']!r} in topic {topic}")
+        empty = not str(record.get("text") or "").strip()
         if (
-            not str(record.get("text") or "").strip()
+            empty
             and not record.get("attachments")
-            and not record.get("withdraws")
+            and not record.get("notes")
+            and not record.get("now")
         ):
             group.problems.append(f"{self.shown(path)}: the message is empty")
         for file in record.get("attachments") or []:
@@ -613,434 +680,375 @@ class Shared:
         self, record: dict[str, Any], thread: list[dict[str, Any]], by: dict[str, Any]
     ) -> None:
         """An agent's message after the owner's waiting one answers it."""
-        if by.get("author") != "agent" or record.get("answers") or record.get("withdraws"):
+        if by.get("author") != "agent" or record.get("answers"):
             return
-        shown = [event for event in thread if not event.get("withdraws")]
-        withdrawn = {event["withdraws"] for event in thread if event.get("withdraws")}
-        shown = [event for event in shown if event["id"] not in withdrawn]
-        if shown and (shown[-1].get("by") or {}).get("author") == "owner":
-            record["answers"] = shown[-1]["id"]
+        if thread and (thread[-1].get("by") or {}).get("author") == "owner":
+            record["answers"] = thread[-1]["id"]
 
-    def complete_item(
-        self, group: Group, by: dict[str, Any], clock: Clock, settled: Settled
-    ) -> list[str]:
-        """A decision's change: its own drafts and new version, and each of its
-        assets' drafts and new versions; checked whole, then completed."""
-        _, topic, _, slug = group.key.split("/")
-        folder = self.item_folder(topic, slug)
-        if not folder.exists():
-            return group.paths
-        where = f".nock/shared/{group.key}"
-        if not NAME.match(slug):
-            group.problems.append(
-                f"{where}: a decision's name is lowercase letters, digits and `-`"
-            )
-            return []
-        topic_record = self.fold.topic(topic)
-        if topic_record is None:
+    def open_topic(self, topic: str, where: str, group: Group, creating: bool) -> bool:
+        """Whether a part's topic exists (and, for something new, is not closed)."""
+        record = self.fold.topic(topic)
+        if record is None:
             group.problems.append(
                 f"{where}: no topic {topic} — start it with a `created` event in"
                 f" topics/{topic}/events/"
             )
-            return []
-        own = self.part(folder, "decision", group)
-        assets = {
-            name: self.part(folder / ASSETS_DIR / name, "asset", group)
-            for name in sorted(
-                {
-                    Path(path).parts[5]
-                    for path in group.paths
-                    if len(Path(path).parts) > 6 and Path(path).parts[4] == ASSETS_DIR
-                }
-            )
-        }
-        creating = own.creates
-        if own.committed and creating:
-            group.problems.append(f"{where}: the decision exists already")
-        if not own.committed and not creating:
+            return False
+        if creating and record["state"] in CLOSED:
             group.problems.append(
-                f"{where}/events/: a new decision starts with a `created` event"
-                " (`.nock/nock docs files.decision`)"
-            )
-        if creating and not own.next:
-            group.problems.append(
-                f"{where}: a new decision holds its first version: versions/next/decision.json"
-            )
-        if creating and topic_record["state"] in CLOSED:
-            group.problems.append(
-                f"{where}: topic {topic} is {topic_record['state']} — revive it first (a `state`"
+                f"{where}: topic {topic} is {record['state']} — revive it first (a `state`"
                 " event setting it active, with a `note` saying why it is back)"
             )
-        for name, part in assets.items():
-            place = f"{where}/{ASSETS_DIR}/{name}"
-            if not NAME.match(name):
-                group.problems.append(
-                    f"{place}: an asset's name is lowercase letters, digits and `-`"
-                )
-            if part.committed and part.creates:
-                group.problems.append(f"{place}: the asset exists already")
-            if not part.committed and not part.creates:
-                group.problems.append(
-                    f"{place}/events/: a new asset starts with a `created` event"
-                    " (`.nock/nock docs files.asset`)"
-                )
-            if part.creates and not part.next:
-                group.problems.append(
-                    f"{place}: a new asset holds its first version: versions/next/assets.json"
-                )
-        thread = [event for event in own.committed if event.get("kind") == "message"]
-        for path, record in own.records:
-            if record["kind"] == "message":
-                self.check_message(record, thread, path, group)
-            if record["kind"] == "moved":
-                target = str(record.get("to") or "")
-                if target == topic or self.fold.topic(target) is None:
-                    group.problems.append(
-                        f"{self.shown(path)}: `to` names another existing topic, not {target!r}"
-                    )
-        if group.problems:
-            return []
-        decision_version = (
-            self.complete_version(folder, own.next, group, "decision") if own.next else None
-        )
-        asset_versions: dict[str, dict[str, Any]] = {}
-        for name, part in assets.items():
-            if part.next:
-                checked = self.complete_version(
-                    folder / ASSETS_DIR / name, part.next, group, "asset"
-                )
-                if checked is not None:
-                    asset_versions[name] = checked
-        for name, part in assets.items():
-            for path, record in part.records:
-                if record["kind"] == "preferred":
-                    self.check_preferred(
-                        record, folder / ASSETS_DIR / name, path, group, asset_versions.get(name)
-                    )
-        for path, record in own.records:
-            if record["kind"] == "verdict" and record["verdict"] == "accepted":
-                self.check_accepted(folder, assets, asset_versions, path, group)
-        if group.problems:
-            return []
-        written: list[str] = []
-        moved_to = None
+            return False
+        return True
 
-        def write(
-            place: Path, path: Path | None, record: dict[str, Any], asset: str | None
-        ) -> None:
+    def write_events(
+        self,
+        place: Path,
+        records: list[tuple[Path | None, dict[str, Any]]],
+        by: dict[str, Any],
+        clock: Clock,
+        settled: Settled,
+        context: dict[str, Any],
+    ) -> list[str]:
+        written: list[str] = []
+        for path, record in records:
             complete, file_name = self.envelope(record, by, clock, path)
             target = place / EVENTS / file_name
             write_json(target, complete)
             if path is not None:
                 path.unlink()
                 written.append(self.relative(path))
-            if complete["kind"] == "message":
-                thread.append(complete)
-            settled.events.append(
-                {**complete, "topic": topic, "item": slug, **({"asset": asset} if asset else {})}
-            )
+            settled.events.append({**complete, **context})
             written.append(self.relative(target))
-
-        for path, record in own.records:
-            if record["kind"] == "created":
-                write(folder, path, record, None)
-        if decision_version is not None:
-            written += self.apply_version(decision_version)
-            write(folder, None, {"kind": "version", "version": decision_version["number"]}, None)
-        for name, part in assets.items():
-            place = folder / ASSETS_DIR / name
-            for path, record in part.records:
-                if record["kind"] == "created":
-                    write(place, path, record, name)
-            if name in asset_versions:
-                version = asset_versions[name]
-                written += self.apply_version(version)
-                write(place, None, {"kind": "version", "version": version["number"]}, name)
-            for path, record in part.records:
-                if record["kind"] != "created":
-                    write(place, path, record, name)
-        for path, record in own.records:
-            if record["kind"] == "created":
-                continue
-            if record["kind"] == "message":
-                self.attachments(record, group)
-                self.answering(record, thread, by)
-            if record["kind"] == "moved":
-                record["from"] = f"{topic}/{slug}"
-                moved_to = record["to"]
-            write(folder, path, record, None)
-        written += [self.relative(self.media / sha) for sha in self.kept(own.records)]
-        settled.topics.add(topic)
-        if moved_to:
-            target_folder = self.item_folder(moved_to, slug)
-            moved_slug = slug
-            counter = 2
-            while target_folder.exists():
-                moved_slug = f"{slug}-{counter}"
-                target_folder = self.item_folder(moved_to, moved_slug)
-                counter += 1
-            target_folder.parent.mkdir(parents=True, exist_ok=True)
-            folder.rename(target_folder)
-            written += [self.relative(folder), self.relative(target_folder)]
-            settled.topics.add(moved_to)
         return written
 
-    def part(self, folder: Path, place: str, group: Group) -> Part:
-        """A decision's or an asset's share of a change: its committed events,
-        its drafts checked, its new version folder."""
-        part = Part(committed=read_events(folder / EVENTS))
-        paths = [
-            path
-            for path in group.paths
-            if (self.root / path).is_relative_to(folder)
-            and not (place == "decision" and (self.root / path).is_relative_to(folder / ASSETS_DIR))
-        ]
-        for path in self.drafts(folder, paths):
-            record = self.load(path, group)
-            if record is None:
-                continue
-            if EVENT_FILE.match(path.name):
-                group.problems += [
-                    f"{self.shown(path)}: {problem}"
-                    for problem in event_problems(record, place, complete=True)
-                ]
-                continue
-            problems = event_problems(record, place, complete=False)
-            group.problems += [f"{self.shown(path)}: {problem}" for problem in problems]
-            if record.get("kind") == "version":
-                group.problems.append(
-                    f"{self.shown(path)}: a version is a folder, versions/next/, not an event"
-                )
-            elif not problems:
-                part.records.append((path, record))
-        next_folder = folder / VERSIONS / NEXT
-        for path in paths:
+    def complete_item(
+        self, group: Group, by: dict[str, Any], clock: Clock, settled: Settled
+    ) -> list[str]:
+        """A decision's or a proposal's events, checked whole, then completed."""
+        _, topic, _, slug = group.key.split("/")
+        folder = self.item_folder(topic, slug)
+        if not folder.exists():
+            return group.paths
+        where = f".nock/shared/{group.key}"
+        if not NAME.match(slug):
+            group.problems.append(f"{where}: an item's name is lowercase letters, digits and `-`")
+            return []
+        committed = read_events(folder / EVENTS)
+        records = self.records_of(folder, "item", group.paths, group)
+        creating = any(record["kind"] == "created" for _, record in records)
+        if not self.open_topic(topic, where, group, creating):
+            return []
+        if committed and creating:
+            group.problems.append(f"{where}: the item exists already")
+        if not committed and not creating:
+            group.problems.append(
+                f"{where}/events/: a new item starts with a `created` event"
+                " (`.nock/nock docs files.item`)"
+            )
+        events = [*committed, *(record for _, record in records)]
+        created = next((event for event in events if event.get("kind") == "created"), {})
+        proposal = created.get("type") == "proposal"
+        verdict: str | None = None
+        done = False
+        for event in committed:
+            if event.get("kind") == "verdict":
+                verdict = event["verdict"]
+            if event.get("kind") == "implemented":
+                done = True
+        for path, record in records:
+            kind = record["kind"]
+            if kind == "verdict":
+                if not proposal:
+                    group.problems.append(
+                        f"{self.shown(path)}: only a proposal takes a verdict; a decision is done"
+                    )
+                elif done:
+                    group.problems.append(
+                        f"{self.shown(path)}: the proposal is carried out already"
+                    )
+                verdict = record["verdict"]
+            if kind == "implemented":
+                if not proposal or verdict != "accepted":
+                    group.problems.append(
+                        f"{self.shown(path)}: only a proposal the owner accepted is implemented"
+                    )
+                done = True
+        if group.problems:
+            return []
+        written = self.write_events(
+            folder, list(records), by, clock, settled, {"topic": topic, "item": slug}
+        )
+        settled.topics.add(topic)
+        return written
+
+    def complete_asset(
+        self, group: Group, by: dict[str, Any], clock: Clock, settled: Settled
+    ) -> list[str]:
+        """An asset's events and its new version, checked whole, then completed."""
+        _, topic, _, name = group.key.split("/")
+        folder = self.asset_folder(topic, name)
+        if not folder.exists():
+            return group.paths
+        where = f".nock/shared/{group.key}"
+        if not NAME.match(name):
+            group.problems.append(f"{where}: an asset's name is lowercase letters, digits and `-`")
+            return []
+        committed = read_events(folder / EVENTS)
+        records = self.records_of(folder, "asset", group.paths, group)
+        creating = any(record["kind"] == "created" for _, record in records)
+        if not self.open_topic(topic, where, group, creating):
+            return []
+        next_folder = self.next_of(folder, group)
+        if committed and creating:
+            group.problems.append(f"{where}: the asset exists already")
+        if not committed and not creating:
+            group.problems.append(
+                f"{where}/events/: a new asset starts with a `created` event"
+                " (`.nock/nock docs files.asset`)"
+            )
+        if creating and next_folder is None:
+            group.problems.append(
+                f"{where}: a new asset holds its first version: versions/next/asset.json"
+            )
+        version = self.checked_asset(folder, next_folder, group) if next_folder else None
+        if group.problems:
+            return []
+        context = {"topic": topic, "asset": name}
+        written = self.write_events(
+            folder,
+            [(path, record) for path, record in records if record["kind"] == "created"],
+            by,
+            clock,
+            settled,
+            context,
+        )
+        if version is not None:
+            written += self.apply_asset(version)
+            written += self.write_events(
+                folder,
+                [(None, {"kind": "version", "version": version["number"]})],
+                by,
+                clock,
+                settled,
+                context,
+            )
+        written += self.write_events(
+            folder,
+            [(path, record) for path, record in records if record["kind"] != "created"],
+            by,
+            clock,
+            settled,
+            context,
+        )
+        settled.topics.add(topic)
+        return written
+
+    def next_of(self, folder: Path, group: Group) -> Path | None:
+        """The folder's versions/next/, when the change holds one; any other
+        new version folder is a problem."""
+        found = None
+        for path in group.paths:
             full = self.root / path
             if full.is_relative_to(folder / VERSIONS):
-                if full.is_relative_to(next_folder):
-                    part.next = next_folder
+                if full.is_relative_to(folder / VERSIONS / NEXT):
+                    found = folder / VERSIONS / NEXT
                 else:
                     group.problems.append(
                         f".nock/shared/{path}: a new version goes in versions/next/; nock numbers it"
                     )
-        part.creates = any(record["kind"] == "created" for _, record in part.records)
-        return part
+        return found
 
-    def check_preferred(
-        self,
-        record: dict[str, Any],
-        folder: Path,
-        path: Path,
-        group: Group,
-        new: dict[str, Any] | None,
-    ) -> None:
-        asset = self.fold.asset(folder)
-        versions = list((asset or {}).get("versions") or [])
-        if new is not None:
-            versions.append(
-                {"version": new["number"], "files": new["files"], "variants": new["variants"]}
-            )
-        version = next((v for v in versions if v["version"] == record["version"]), None)
-        if version is None or not version.get("variants"):
-            group.problems.append(
-                f"{self.shown(path)}: version {record['version']} of the asset has no variants to"
-                " prefer one of"
-            )
-            return
-        if record.get("name") is None:
-            return
-        if record["name"] not in [entry_name(entry) for entry in version["files"]]:
-            group.problems.append(
-                f"{self.shown(path)}: version {record['version']} has no variant {record['name']!r}"
-            )
-
-    def check_accepted(
-        self,
-        folder: Path,
-        assets: dict[str, Part],
-        new: dict[str, dict[str, Any]],
-        path: Path,
-        group: Group,
-    ) -> None:
-        """A decision is accepted only once each asset with variants has one preferred."""
-        names = sorted(
-            {p.name for p in (folder / ASSETS_DIR).iterdir() if p.is_dir()}
-            if (folder / ASSETS_DIR).is_dir()
-            else set()
-        )
-        for name in names:
-            asset = self.fold.asset(folder / ASSETS_DIR / name) or {
-                "versions": [],
-                "preferred": None,
-            }
-            asset = {**asset, "versions": list(asset["versions"])}
-            if name in new:
-                version = new[name]
-                asset["versions"].append(
-                    {
-                        "version": version["number"],
-                        "files": version["files"],
-                        "variants": version["variants"],
-                    }
-                )
-            for _, record in assets[name].records if name in assets else []:
-                if record["kind"] == "preferred":
-                    asset["preferred"] = {"version": record["version"], "name": record.get("name")}
-            if unpreferred(asset):
-                group.problems.append(
-                    f"{self.shown(path)}: asset {name} has variants — prefer one (a `preferred`"
-                    " event in its events/) before accepting the decision"
-                )
-
-    def complete_version(
-        self, folder: Path, next_folder: Path, group: Group, place: str
-    ) -> dict[str, Any] | None:
-        """Check a decision's or an asset's versions/next/ (nothing changed
-        yet): what making it the next numbered version will write."""
-        where = self.shown(next_folder)
+    def number(self, folder: Path) -> int:
         numbers = [
             int(path.name)
             for path in (folder / VERSIONS).iterdir()
             if path.is_dir() and path.name.isdigit()
         ]
-        number = max(numbers, default=0) + 1
+        return max(numbers, default=0) + 1
+
+    def checked_asset(self, folder: Path, next_folder: Path, group: Group) -> dict[str, Any] | None:
+        """Check an asset's versions/next/ (nothing changed yet): what making
+        it the next numbered version will write."""
+        where = self.shown(next_folder)
         found = {
             path.relative_to(next_folder).as_posix()
             for path in next_folder.rglob("*")
             if path.is_file()
         }
-        if place == "decision":
-            stray = sorted(found - {DECISION_FILE})
-            if DECISION_FILE not in found:
-                group.problems.append(f"{where}: a decision's version is its decision.json")
-                return None
-            decision = self.load(next_folder / DECISION_FILE, group)
-            if decision is not None:
-                group.problems += [
-                    f"{where}/{DECISION_FILE}: {problem}"
-                    for problem in shape_problems(decision, DECISION)
-                ]
-            group.problems += [
-                f"{where}/{name}: a decision holds no files — they are its assets, each in"
-                " assets/<asset>/versions/next/"
-                for name in stray
-            ]
-            if group.problems:
-                return None
-            return {
-                "place": place,
-                "folder": folder,
-                "next": next_folder,
-                "number": number,
-                "decision": decision,
-                "files": [],
-                "variants": False,
-            }
-        assets_path = next_folder / ASSETS_FILE
-        if not assets_path.is_file():
-            group.problems.append(f"{where}: an asset's version is its assets.json and its files")
+        record_path = next_folder / ASSET_FILE_NAME
+        if not record_path.is_file():
+            group.problems.append(f"{where}: an asset's version is its asset.json and its file")
             return None
-        assets = self.load(assets_path, group) or {}
+        record = self.load(record_path, group) or {}
         group.problems += [
-            f"{where}/{ASSETS_FILE}: {problem}" for problem in shape_problems(assets, ASSETS)
+            f"{where}/{ASSET_FILE_NAME}: {problem}"
+            for problem in Validator().problems(record, ASSET)
         ]
         if group.problems:
             return None
-        if not assets.get("files"):
-            group.problems.append(f"{where}/{ASSETS_FILE}: an asset's version holds a file")
-            return None
-        named = {ASSETS_FILE}
-        files, _ = self.collected(assets, next_folder, named, where, group, apply=False)
-        views = []
-        for view in assets.get("views") or []:
-            target = next_folder / view["name"]
-            if "/" in view["name"] or not target.is_file() or kind_of(view["name"], b"") != "html":
-                group.problems.append(
-                    f"{where}: a view is an HTML file beside the version, not {view['name']!r}"
-                )
-                continue
-            named.add(view["name"])
-            views.append({**view, "bytes": target.stat().st_size})
+        named = {ASSET_FILE_NAME}
+        entry, _ = self.collected(record, next_folder, named, where, group, apply=False)
         group.problems += [
-            f"{where}: {problem}" for problem in asset_rules(files, bool(assets.get("variants")))
-        ]
-        group.problems += [
-            f".nock/shared/{self.relative(next_folder / name)}: a version holds only the files"
-            " its assets.json names"
+            f".nock/shared/{self.relative(next_folder / name)}: a version holds only the file"
+            " its asset.json names (and a video's captions and poster)"
             for name in sorted(found - named)
         ]
         if group.problems:
             return None
         return {
-            "place": place,
             "folder": folder,
             "next": next_folder,
-            "number": number,
-            "assets": assets,
-            "views": views,
-            "files": files,
-            "variants": bool(assets.get("variants")),
+            "number": self.number(folder),
+            "record": record,
+            "file": entry,
             "where": where,
             "group": group,
         }
 
     def collected(
         self,
-        assets: dict[str, Any],
+        record: dict[str, Any],
         next_folder: Path,
         named: set[str],
         where: str,
         group: Group,
         apply: bool,
-    ) -> tuple[list[dict[str, Any]], dict[str, str]]:
-        """A version's files as its record keeps them: first only looked at,
-        and only once everything holds, kept (media moved by sha256)."""
-        blobs: dict[str, str] = dict(assets.get("blobs") or {})
-        files = []
-        for given in assets.get("files") or []:
-            entry = dict(given)
-            if entry["kind"] == "project":
-                entry = self.linked(entry, where, group, apply)
-            else:
-                entry = self.derived(entry, next_folder, blobs, where, group, apply)
-                named.add(entry.get("name") or "")
-            for role in ("captions", "poster"):
-                if entry.get(role):
-                    named.add(entry[role])
-                    self.companion(next_folder, entry[role], blobs, where, group, apply)
-            files.append(entry)
-        return files, blobs
+    ) -> tuple[dict[str, Any], dict[str, str]]:
+        """A version's file as its record keeps it: first only looked at, and
+        only once everything holds, kept (media moved by sha256)."""
+        blobs: dict[str, str] = dict(record.get("blobs") or {})
+        entry = dict(record["file"])
+        if entry["kind"] == "project":
+            entry = self.linked(entry, where, group, apply)
+        else:
+            entry = self.derived(entry, next_folder, where, group, apply)
+            named.add(entry.get("name") or "")
+        for role in ("captions", "poster"):
+            if entry.get(role):
+                named.add(entry[role])
+                self.companion(next_folder, entry[role], blobs, where, group, apply)
+        return entry, blobs
 
-    def apply_version(self, version: dict[str, Any]) -> list[str]:
+    def apply_asset(self, version: dict[str, Any]) -> list[str]:
         """Make a checked versions/next/ the next numbered version."""
         next_folder: Path = version["next"]
         written = [self.relative(path) for path in next_folder.rglob("*") if path.is_file()]
-        if version["place"] == "decision":
-            write_json(
-                next_folder / DECISION_FILE,
-                {"alternatives": [], "status": "done", **version["decision"]},
-            )
-        else:
-            files, blobs = self.collected(
-                version["assets"], next_folder, set(), version["where"], version["group"], True
-            )
-            record: dict[str, Any] = {"files": files}
-            if version["variants"]:
-                record["variants"] = True
-            if version["views"]:
-                record["views"] = version["views"]
-            if blobs:
-                record["blobs"] = blobs
-            write_json(next_folder / ASSETS_FILE, record)
-            written += [self.relative(self.media / sha) for sha in blobs.values()]
-            written += [
-                self.relative(self.media / entry["sha256"])
-                for entry in files
-                if entry.get("sha256") and (self.media / entry["sha256"]).is_file()
-            ]
+        entry, blobs = self.collected(
+            version["record"], next_folder, set(), version["where"], version["group"], True
+        )
+        record: dict[str, Any] = {"file": entry}
+        if blobs:
+            record["blobs"] = blobs
+        write_json(next_folder / ASSET_FILE_NAME, record)
+        written += [self.relative(self.media / sha) for sha in blobs.values()]
+        if entry.get("sha256") and (self.media / entry["sha256"]).is_file():
+            written.append(self.relative(self.media / entry["sha256"]))
         target = version["folder"] / VERSIONS / str(version["number"])
         next_folder.rename(target)
         written += [self.relative(path) for path in target.rglob("*") if path.is_file()]
+        return written
+
+    def complete_review(
+        self, group: Group, by: dict[str, Any], clock: Clock, settled: Settled
+    ) -> list[str]:
+        """A new version of a topic's review: its blocks checked against the
+        topic's items and assets, its HTML blocks' files beside it."""
+        topic = group.key.split("/")[1]
+        folder = self.review_folder(topic)
+        where = f".nock/shared/{group.key}"
+        if not self.open_topic(topic, where, group, creating=False):
+            return []
+        next_folder = self.next_of(folder, group)
+        if next_folder is None:
+            group.problems.append(f"{where}: a review is written in versions/next/review.json")
+            return []
+        shown = self.shown(next_folder)
+        found = {
+            path.relative_to(next_folder).as_posix()
+            for path in next_folder.rglob("*")
+            if path.is_file()
+        }
+        if REVIEW_FILE not in found:
+            group.problems.append(f"{shown}: a review's version is its review.json")
+            return []
+        review = self.load(next_folder / REVIEW_FILE, group)
+        if review is None:
+            return []
+        group.problems += [
+            f"{shown}/{REVIEW_FILE}: {problem}"
+            for problem in Validator().problems(review, REVIEW_SHAPE)
+        ]
+        if group.problems:
+            return []
+        items = set(self.fold.slugs(topic))
+        assets = {
+            name: len((self.fold.asset(topic, name) or {}).get("versions") or [])
+            for name in self.fold.slugs(topic, ASSETS_DIR)
+        }
+        named = {REVIEW_FILE}
+        ids: set[str] = set()
+        for place, block in enumerate(review["blocks"], start=1):
+            label = f"{shown}/{REVIEW_FILE}, block {place}"
+            problems = block_problems(block)
+            group.problems += [f"{label}: {problem}" for problem in problems]
+            if problems:
+                continue
+            identifier = block.get("id") or f"b{place}"
+            if identifier in ids:
+                group.problems.append(f"{label}: another block has the id {identifier!r}")
+            ids.add(identifier)
+            kind = block["kind"]
+            if kind == "item" and block["item"] not in items:
+                group.problems.append(
+                    f"{label}: no item {block['item']!r} in topic {topic} (its items/)"
+                )
+            if "asset" in block:
+                count = assets.get(block["asset"])
+                if count is None:
+                    group.problems.append(
+                        f"{label}: no asset {block['asset']!r} in topic {topic} (its assets/)"
+                    )
+                    continue
+                for key in ("version", "from", "to"):
+                    if block.get(key) and block[key] > count:
+                        group.problems.append(
+                            f"{label}: asset {block['asset']} has no version {block[key]}"
+                        )
+                if kind == "diff" and count < 2 and not block.get("from"):
+                    group.problems.append(
+                        f"{label}: a diff shows two versions; asset {block['asset']} has {count}"
+                    )
+            if kind == "html":
+                name = block["file"]
+                if "/" in name or name not in found or kind_of(name, b"") != "html":
+                    group.problems.append(
+                        f"{label}: an html block's file is an .html file beside review.json,"
+                        f" not {name!r}"
+                    )
+                named.add(name)
+        group.problems += [
+            f".nock/shared/{self.relative(next_folder / name)}: a review's version holds only"
+            " review.json and its html blocks' files"
+            for name in sorted(found - named)
+        ]
+        if group.problems:
+            return []
+        number = self.number(folder) if (folder / VERSIONS).is_dir() else 1
+        written = [self.relative(path) for path in next_folder.rglob("*") if path.is_file()]
+        target = folder / VERSIONS / str(number)
+        next_folder.rename(target)
+        written += [self.relative(path) for path in target.rglob("*") if path.is_file()]
+        written += self.write_events(
+            folder,
+            [(None, {"kind": "version", "version": number})],
+            by,
+            clock,
+            settled,
+            {"topic": topic, "review": True},
+        )
+        settled.topics.add(topic)
         return written
 
     def linked(
@@ -1081,7 +1089,6 @@ class Shared:
         self,
         entry: dict[str, Any],
         next_folder: Path,
-        blobs: dict[str, str],
         where: str,
         group: Group,
         apply: bool = True,
@@ -1092,9 +1099,9 @@ class Shared:
             if not self.blob(entry["sha256"]).is_file():
                 group.problems.append(f"{where}: no media {entry['sha256']} for {name}")
             return entry
-        if not name or "/" in name or name in (DECISION_FILE, ASSETS_FILE) or not source.is_file():
+        if not name or "/" in name or name == ASSET_FILE_NAME or not source.is_file():
             group.problems.append(
-                f"{where}: a derived file is named in assets.json and put beside it, not {name!r}"
+                f"{where}: a derived file is named in asset.json and put beside it, not {name!r}"
             )
             return entry
         data = source.read_bytes()
@@ -1241,7 +1248,9 @@ def summary(settled: Settled) -> str:
     """A commit's subject: what the events were, in a line."""
     said = []
     for event in settled.events:
-        where = f"{event['topic']}/{event['item']}" if event.get("item") else event.get("topic", "")
+        where = "/".join(
+            str(event[key]) for key in ("topic", "item", "asset") if event.get(key)
+        ) + ("/review" if event.get("review") else "")
         kind = event.get("kind", "")
         detail = {
             "verdict": event.get("verdict"),
@@ -1254,39 +1263,18 @@ def summary(settled: Settled) -> str:
     return f"nock: {text}" if text else "nock: shared files"
 
 
+def depth(key: str) -> int:
+    """The order groups are completed in: a topic, its items and assets, its review."""
+    parts = key.split("/")
+    if parts[0] != TOPICS:
+        return 3
+    if len(parts) == 2:
+        return 0
+    return 2 if len(parts) == 3 else 1
+
+
 def entry_name(entry: dict[str, Any]) -> str:
     return entry.get("path") or entry["name"]
-
-
-def unpreferred(asset: dict[str, Any]) -> bool:
-    """An asset whose latest version holds variants, none of them preferred:
-    its decision cannot be accepted yet."""
-    if not asset["versions"]:
-        return False
-    latest = asset["versions"][-1]
-    files = latest["files"]
-    if not latest.get("variants") or len(files) < 2:
-        return False
-    preferred = asset.get("preferred") or {}
-    return not (
-        preferred.get("version") == latest["version"]
-        and any(entry_name(entry) == preferred.get("name") for entry in files)
-    )
-
-
-def asset_rules(files: list[dict[str, Any]], variants: bool) -> list[str]:
-    """An asset's version: one file, or variants of one type, of which the
-    owner prefers one."""
-    if len(files) > 1 and not variants:
-        return [
-            "an asset holds one file — several only as variants to prefer one of"
-            ' (`"variants": true`); before and after are versions of one asset, and files'
-            " shown with a decision are each an asset of it"
-        ]
-    types = sorted({entry.get("type") or "" for entry in files})
-    if variants and len(types) > 1:
-        return [f"variants are takes on one asset, of one type — not {' and '.join(types)}"]
-    return []
 
 
 def remove_tree(path: Path) -> None:

@@ -16,7 +16,6 @@ from nock.inbox import Inbox
 from nock.reflect import Reflection
 from nock.releases import Updates
 from nock.rounds import Protocol, protocols, skill_of
-from nock.sessions import Sessions
 from nock.share import Sharing
 from nock.shared import Shared
 from nock.topics import Topics
@@ -31,32 +30,6 @@ SHOWN = 3
 EDITING = ("Edit", "MultiEdit", "Write", "NotebookEdit")
 # How many commits since the session last recorded anything ask it to record.
 UNRECORDED_COMMITS = 3
-
-
-def consult_nudge(project: Project, session: str | None) -> str:
-    """Files this session changed, and no `nock consult` run in it."""
-    if not session:
-        return ""
-    Sessions(project).catch_up()
-    placeholders = ", ".join("?" for _ in EDITING)
-    edited = {
-        row["input"]
-        for row in project.store.rows(
-            f"SELECT input FROM events WHERE session = ? AND tool IN ({placeholders})",
-            (session, *EDITING),
-        )
-        if row["input"]
-    }
-    consulted = project.store.rows(
-        "SELECT 1 FROM calls WHERE session = ? AND tool = 'consult' LIMIT 1", (session,)
-    )
-    if not edited or consulted:
-        return ""
-    return (
-        f"nock: this session changed {len(edited)} file(s) and consulted on none —"
-        ' `.nock/nock consult "what you are about to do"` when unsure, or touching something'
-        " with history."
-    )
 
 
 def record_nudge(project: Project, session: str | None) -> str:
@@ -77,8 +50,8 @@ def record_nudge(project: Project, session: str | None) -> str:
         return ""
     return (
         f"nock: {len(commits)} commit(s) since this session last recorded anything in Topics —"
-        " a choice a later reader would ask about is a decision to record, and what you made"
-        " to show the work an asset of it (`.nock/nock docs topics.items`)."
+        " what you decided is a decision to record, what you want done a proposal, and what"
+        " you made to show the work an asset (`.nock/nock docs topics.items`)."
     )
 
 
@@ -96,7 +69,7 @@ def gen_nudge(project: Project) -> str:
 
 def nudges(project: Project, session: str | None) -> list[str]:
     """What the session asking `nock status` might do next, each when it applies."""
-    found = [consult_nudge(project, session), record_nudge(project, session), gen_nudge(project)]
+    found = [record_nudge(project, session), gen_nudge(project)]
     return [text for text in found if text]
 
 
@@ -143,7 +116,7 @@ class Standing:
                 "sessions_since": len(window.sessions),
                 "days_since": round(reflection.days(window), 1),
             },
-            # The open decisions by topic, and what waits on an agent.
+            # What waits on the owner by topic, and on agents.
             "topics": topics.summary(),
             # What the owner said that no agent has addressed, by kind.
             "inbox": dict(
@@ -164,39 +137,27 @@ class Standing:
         lines = []
         due = standing["reflection"]["due"]
         if due:
-            lines.append(f"nock: {due} — offer the human `/nock-reflect`, which runs one.")
+            lines.append(
+                f"nock: {due} — the studio offers it (Run); or offer the human `/nock-reflect`."
+            )
         summary = standing["topics"]
-        opened = summary["open"]
-        if opened:
-            total = sum(opened.values())
-            by_topic = ", ".join(f"{name}: {count}" for name, count in list(opened.items())[:5])
-            more = ", …" if len(opened) > 5 else ""
+        waiting = summary["awaiting_you"]
+        if waiting:
+            total = sum(waiting.values())
+            by_topic = ", ".join(f"{name}: {count}" for name, count in list(waiting.items())[:5])
+            more = ", …" if len(waiting) > 5 else ""
             lines.append(
-                f"nock: {total} new in Topics ({by_topic}{more}) — on"
-                " `.nock/nock studio`, or with `/nock-triage`."
+                f"nock: {total} waiting on the owner in their tasks ({by_topic}{more}) — reviews"
+                " and proposals, on `.nock/nock studio`."
             )
-        awaiting = summary["awaiting_you"]
-        threads, rejected = awaiting["owner_wrote_last"], awaiting["rejected"]
-        if threads or rejected:
-            parts = [
-                f"{count} {what}"
-                for count, what in (
-                    (len(threads), "thread(s) where the owner wrote last"),
-                    (len(rejected), "rejected item(s) to rework"),
-                )
-                if count
-            ]
+        agents = summary["awaiting_agents"]
+        if agents:
+            refs = [ref for found in agents.values() for ref in found]
             lines.append(
-                f"nock: waiting on you in Topics — {', '.join(parts)}: `.nock/nock inbox`."
+                f"nock: waiting on agents in Topics — {len(refs)}: `.nock/nock inbox` has them."
             )
-            attached = awaiting.get("attachments", {})
-            lines += [
-                f"- answer in {ref}"
-                + (f" (attached: {', '.join(attached[ref])})" if ref in attached else "")
-                for ref in threads[:SHOWN]
-            ]
-            lines += [f"- rework {ref} (a new version)" for ref in rejected[:SHOWN]]
-            if len(threads) > SHOWN or len(rejected) > SHOWN:
+            lines += [f"- {ref}" for ref in refs[:SHOWN]]
+            if len(refs) > SHOWN:
                 lines.append("- and more — `.nock/nock inbox` has them all")
         lines += standing.get("nudges") or []
         if standing.get("uncommitted"):

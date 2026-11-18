@@ -9,9 +9,8 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Unbounded:wght@600;800&display=swap">
 <style>
-/* The studio's frame: a band with the open tab's title, its counts under it and the menu beside
-   it, then the tab's one centred column. Its look — tokens, surfaces, type, the field behind —
-   is in pages/studio.css, put in below; each tab's own look is in its fragment. */
+/* The studio's frame and its parts. Its look — tokens, surfaces, type, the field behind — is in
+   pages/studio.css, put in below; the page's script is pages/app.js, put in at the end. */
 :root {
   --background: #f4f4f6;
   --foreground: #16161c;
@@ -30,364 +29,37 @@
   --warning: #a35f00;
   --error: #b0151b;
   --info: #1666a6;
-
   --sans: "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
   --display: var(--sans);
-  /* Every tab's width, and nock.dev's (web/site/style.css): one measure for both. */
   --column: 60rem;
-  --number: 2.25rem;
   --radius: 12px;
-  /* Every timestamp, on every tab: one light gray. */
+  /* Every timestamp: one light gray. */
   --time: #9b9da7;
+  /* Room left above whatever the page scrolls to. */
+  --offset: max(96px, 16vh);
   color-scheme: light;
 }
-
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
 html, body { background: var(--background); color: var(--foreground); }
-body { margin: 0; font: 400 15px/1.6 var(--sans); -webkit-font-smoothing: antialiased; min-height: 100vh; }
+html { scroll-padding-top: var(--offset); }
+body { margin: 0; font: 400 15px/1.6 var(--sans); -webkit-font-smoothing: antialiased; min-height: 100vh; overflow-x: hidden; }
 button:not(:disabled), label[for] { cursor: pointer; }
+button { font: inherit; color: inherit; }
 .frame {
   max-width: calc(var(--column) + 32px); margin: 0 auto;
   padding-left: max(16px, env(safe-area-inset-left, 0px));
   padding-right: max(16px, env(safe-area-inset-right, 0px));
 }
-.label { font: 500 12px/16px var(--sans); letter-spacing: .04em; text-transform: uppercase; }
-.numeral { font-variant-numeric: tabular-nums; }
-.stage { position: relative; z-index: 1; }
-
-/* The band: the title with its counts under it, the menu — one link per tab — beside it. */
-.band .frame { padding-block: 24px 4px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; }
-/* The menu stays on the title's line, whatever the counts say: they wrap under the title instead. */
-.heading { display: flex; flex-wrap: nowrap; align-items: center; justify-content: space-between; gap: 12px 20px; min-width: 0; }
-.titles { display: grid; gap: 4px; min-width: 0; flex: 1 1 auto; }
-.band h1 { margin: 0; font: 700 30px/1.15 var(--display); letter-spacing: -.02em; }
-.band #summary { margin: 0; font: 500 13px/20px var(--mono); color: var(--muted); font-variant-numeric: tabular-nums; }
-.menu { display: flex; flex-wrap: nowrap; align-items: center; gap: 4px; white-space: nowrap; }
-.menu a {
-  display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px; border-radius: 999px;
-  color: inherit; text-decoration: none; font: 500 14px/20px var(--sans);
-}
-.menu a::before {
-  content: ""; width: 16px; height: 16px; flex: none; background: currentColor;
-  -webkit-mask: var(--icon) center / contain no-repeat; mask: var(--icon) center / contain no-repeat;
-}
-.menu a[data-tab-link="topics"] { --icon: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><path d='M2 2h12v3H2zM2 6.5h12v3H2zM2 11h8v3H2z'/></svg>"); }
-.menu a[data-tab-link="timeline"] { --icon: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><path d='M3 1.5h2v13H3z'/><circle cx='4' cy='4' r='2.5'/><circle cx='4' cy='11.5' r='2.5'/><path d='M8 3h6v2H8zM8 10.5h6v2H8z'/></svg>"); }
-.top { display: flex; flex: none; align-items: center; gap: 8px; }
-.menu a:focus-visible, .notice button:focus-visible, .gear:focus-visible, .switch:focus-visible, .popover summary:focus-visible {
-  outline: 2px solid var(--ring); outline-offset: 3px;
-}
-
-/* The sharing question, while unanswered: one slim, quiet line. */
-.notice { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; font-size: 13px; color: var(--muted); }
-.notice p { margin: 0; }
-.notice .choices { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
-.notice button {
-  font: 500 12px/18px var(--sans); padding: 2px 10px; border-radius: 999px;
-  border: 1px solid var(--input); background: transparent; color: var(--foreground);
-}
-.notice button[data-share="true"] { background: var(--selection); border-color: var(--selection); color: var(--selection-foreground); }
-.notice button.quiet { border-color: transparent; color: var(--muted); text-decoration: underline; text-underline-offset: 2px; }
-
-/* The settings: a gear beside the menu opening a small popover. */
-.settings { position: relative; }
-.gear {
-  display: grid; place-items: center; width: 36px; height: 36px; border-radius: 50%;
-  border: 0; background: transparent; color: var(--foreground);
-}
-.gear svg { width: 18px; height: 18px; }
-.popover {
-  position: absolute; right: 0; top: calc(100% + 8px); z-index: 20; width: min(23rem, calc(100vw - 32px));
-  display: grid; gap: 14px; padding: 18px 20px; border-radius: 16px;
-  background: var(--card); color: var(--foreground); border: 1px solid var(--border);
-  box-shadow: 0 12px 32px rgb(0 0 0 / .14); font-size: 14px;
-}
-.popover .setting { display: flex; align-items: center; gap: 8px; font-weight: 600; }
-.popover .state { margin-left: auto; font: 500 12px/1 var(--mono); color: var(--muted); }
-.popover .hint { margin: 2px 0 4px; color: var(--muted); font-size: 13px; line-height: 1.45; }
-.popover summary { cursor: pointer; width: max-content; font-size: 13px; text-decoration: underline; text-underline-offset: 2px; }
-/* Each group of settings folds: its name and where it stands on one line, the rest under it. */
-.popover details.group { display: grid; gap: 12px; }
-.popover details.group[open] > :not(summary) { margin-left: 18px; }
-.popover details.group .setting { min-height: 32px; }
-.popover details.group + details.group { padding-top: 14px; border-top: 1px solid var(--border); }
-.popover details.group > summary {
-  width: auto; display: flex; align-items: center; gap: 8px; list-style: none; text-decoration: none;
-  font: 600 14px/20px var(--sans);
-}
-.popover details.group > summary::-webkit-details-marker { display: none; }
-.popover details.group > summary::before {
-  content: ""; width: 7px; height: 7px; flex: none; margin: 0 3px 0 1px; border: solid currentColor; border-width: 0 1.6px 1.6px 0;
-  transform: rotate(-45deg); transition: transform .15s;
-}
-.popover details.group[open] > summary::before { transform: rotate(45deg); }
-.popover details.group > summary .state { margin-left: auto; }
-.popover details.group .setting { font-weight: 500; }
-.popover details.group .setting .switch { margin-left: auto; }
-.popover details.group .fields { margin-top: 0; padding-top: 0; border-top: 0; }
-.popover details p { margin: 6px 0 0; font-size: 12px; line-height: 1.5; color: var(--muted); max-height: 14rem; overflow: auto; }
-/* The recorder's server: labelled fields and Save, under the sharing switch. */
-.popover .fields { display: grid; gap: 12px; margin-top: 6px; padding-top: 14px; border-top: 1px solid var(--border); }
-.popover .fields label { display: grid; gap: 3px; font: 500 12px/1.3 var(--sans); color: var(--muted); }
-.popover .fields input {
-  width: 100%; padding: 7px 10px; border: 1px solid var(--input); border-radius: 8px; background: var(--card);
-  font: 13px/1.4 var(--mono); color: var(--foreground); outline: none;
-}
-.popover .fields input:focus-visible { border-color: var(--ring); }
-.popover .fields input:invalid { border-color: var(--error); }
-.popover .save {
-  justify-self: end; padding: 4px 14px; border-radius: 999px; border: 1px solid var(--selection);
-  background: var(--selection); color: var(--selection-foreground); font: 500 12px/18px var(--sans);
-}
-.switch {
-  position: relative; flex: none; width: 40px; height: 24px; border-radius: 999px; padding: 0;
-  border: 1px solid var(--input); background: var(--selection-tint); transition: background-color .15s;
-}
-.switch span {
-  position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%;
-  background: #fff; box-shadow: 0 1px 3px rgb(0 0 0 / .25); transition: transform .15s;
-}
-.switch[aria-checked="true"] { background: var(--selection); border-color: var(--selection); }
-.switch[aria-checked="true"] span { transform: translateX(16px); }
-
-.empty { text-align: center; padding: 64px 16px; color: var(--muted); display: grid; gap: 6px; justify-items: center; }
-.empty strong { color: var(--foreground); font: 700 17px/24px var(--sans); }
-.empty code { font: 13px var(--mono); background: var(--card); padding: 1px 5px; border-radius: 4px; }
-
-.toast {
-  position: fixed; z-index: 30; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom, 0px)); transform: translate(-50%, 8px);
-  background: var(--foreground); color: var(--background); padding: 10px 16px; border-radius: 8px; font-size: 14px;
-  opacity: 0; pointer-events: none; transition: opacity .15s, transform .15s; max-width: calc(100vw - 32px);
-}
-.toast.shown { opacity: 1; transform: translate(-50%, 0); }
-/* A studio older than its code: a toast that stays, with Restart, and what a restart would cut off. */
-.toast.restart { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; width: max-content; pointer-events: auto; line-height: 1.45; }
-.toast.restart[hidden] { display: none; }
-body:has(#restart:not([hidden])) #toast { bottom: calc(84px + env(safe-area-inset-bottom, 0px)); }
-.toast.restart .busy { flex-basis: 100%; color: #ffd36e; font-size: 13px; }
-.toast.restart .busy:empty { display: none; }
-.toast.restart button {
-  border: 0; padding: 0; background: none; color: #8fe9ff; font: 600 14px var(--sans); text-decoration: underline; text-underline-offset: 3px; cursor: pointer;
-}
-.toast.restart button:disabled { color: rgb(255 255 255 / .45); text-decoration: none; cursor: default; }
-.toast.restart button:focus-visible { outline: 2px solid #fff; outline-offset: 2px; border-radius: 2px; }
-
-/* A topic that is the owner's turn again, while the page is in front of them: a link to it. */
-.toast.cue a { color: #8fe9ff; font-weight: 600; text-underline-offset: 3px; }
-body:has(#cue:not([hidden])) #restart { bottom: calc(84px + env(safe-area-inset-bottom, 0px)); }
-
-/* A tab away that holds something shown on every tab: nothing of it shows or takes room but that. */
-[data-tab-panel][data-away] { height: 0; overflow: hidden; visibility: hidden; }
-[data-tab-panel][data-away] [data-everywhere] { visibility: visible; }
-/* The global chat's button beside the gear: a foil dot while its agent works. */
-#chat-button { position: relative; }
-#chat-button[aria-expanded="true"] { background: #111116; color: #fff; }
-#chat-button.running::after {
-  content: ""; position: absolute; top: 5px; right: 5px; width: 8px; height: 8px; border-radius: 50%;
-  background: conic-gradient(#ff9ad5, #c3b2ff, #8fe9ff, #fff2a0, #ff9ad5); box-shadow: 0 0 6px rgb(90 220 255 / .9);
-}
-/* Pinned, the global chat docks to the right half: the studio keeps the left. */
-@media (min-width: 900px) {
-  html.chat-pinned .stage { width: 50vw; }
-}
-
-/* Decoration behind everything; never under text. */
+.stage { position: relative; z-index: 1; padding-bottom: 96px; }
 .backdrop { position: fixed; inset: 0; z-index: 0; overflow: hidden; pointer-events: none; }
 .sprites { position: absolute; width: 0; height: 0; overflow: hidden; }
-
-@media (max-width: 720px) {
-  .heading { flex-wrap: wrap; }
-}
-@media (max-width: 560px) {
-  .menu a { padding: 8px 12px; }
-  .band h1 { font-size: 24px; }
-}
-/* The filters a tab puts under its bar: the verdicts as tabs, each with its count. */
-nav.reviews { display: flex; flex-wrap: wrap; align-items: center; gap: 0 24px; border-bottom: 1px solid var(--border); margin-top: 8px; }
-
-/* Search, with what a tab adds beside it, on one line; a row of chips that scrolls. */
-.tools { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px; padding-top: 20px; }
-.search { position: relative; flex: 1 1 16rem; min-width: 0; display: flex; align-items: center; }
-.search svg { position: absolute; left: 0; width: 15px; height: 15px; color: var(--muted); pointer-events: none; }
-.search input[type="search"] { padding-left: 24px; font-size: 14px; }
-.search input::-webkit-search-cancel-button { filter: grayscale(1); }
-/* Chips: toggles, several at once, each with how many it would show. */
-.chips { display: flex; gap: 8px; }
-.controls > .tags { margin-top: 12px; }
-.tags {
-  overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; scroll-padding-inline: 16px;
-  --start: 0px; --end: 0px;
-  -webkit-mask-image: linear-gradient(to right, transparent 0, #000 var(--start), #000 calc(100% - var(--end)), transparent 100%);
-  mask-image: linear-gradient(to right, transparent 0, #000 var(--start), #000 calc(100% - var(--end)), transparent 100%);
-}
-/* An edge fades only where there is more to scroll to. */
-.tags.more-before { --start: 24px; }
-.tags.more-after { --end: 32px; }
-.tags::-webkit-scrollbar { display: none; }
-.tags .chips { width: max-content; padding: 2px; }
-.chip { flex: none; white-space: nowrap; }
-.chip {
-  display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 11px; border-radius: 999px;
-  border: 1px solid var(--input); background: transparent; color: var(--foreground);
-  font: 500 11px/1 var(--sans); letter-spacing: .05em; text-transform: uppercase; transition: background .12s, border-color .12s;
-}
-.chip .count { color: var(--muted); font-variant-numeric: tabular-nums; letter-spacing: 0; }
-.chip:hover { background: var(--card); }
-.chip { --tone: var(--foreground); }
-.chip[aria-pressed="true"] { border-color: var(--tone); color: var(--tone); background: color-mix(in oklab, var(--tone) 10%, var(--card)); }
-.chip[aria-pressed="true"] .count { color: inherit; }
-.chip:disabled { opacity: .4; cursor: default; background: transparent; }
-.chip:focus-visible, .reviews [role="tab"]:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
-.reviews [role="tab"] {
-  display: inline-flex; align-items: center; gap: 8px; margin-bottom: -1px;
-  padding: 14px 2px 12px; border: 0; border-bottom: 2px solid transparent; background: none;
-  color: var(--muted); font: 500 12px/16px var(--sans); letter-spacing: .04em; text-transform: uppercase;
-}
-.reviews [role="tab"]:hover { color: var(--foreground); }
-.reviews [role="tab"][aria-selected="true"] { color: var(--foreground); border-bottom-color: var(--selection); }
-.reviews .count { color: var(--muted); font-variant-numeric: tabular-nums; }
-
-input[type="search"] {
-  width: 100%; padding: 4px 0; border: 0; border-bottom: 1px solid var(--input); border-radius: 0;
-  font: 15px/24px var(--sans); color: var(--foreground); background: transparent; outline: none;
-}
-input[type="search"]::placeholder { color: color-mix(in oklab, var(--muted) 60%, transparent); }
-input[type="search"]:focus-visible { border-bottom-color: var(--ring); }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition: none !important; animation: none !important; }
 }
 </style>
 <!-- nock:styles -->
-<script>
-// The studio: tabs register here, and the address says which is open (`#NAME`,
-// or `#NAME/ROUTE` for something in it). An address naming no tab goes to the
-// first, whole, as its route — so `#7` still opens what was decision 7. No
-// element's id is a tab's name (a tab's fragment is `NAME-tab`): the browser
-// would scroll to it on its own when the address changes.
-const studio = {
-  tabs: new Map(),
-  summaries: new Map(),
-  current: null,
-  // tab: { show(route) — it is opened, or its route changes; hide() — another is opened }.
-  register(name, tab) { this.tabs.set(name, tab); },
-  // The counts under the title, kept per tab and shown for the open one.
-  summary(name, text) {
-    this.summaries.set(name, text);
-    if (name === this.current) document.getElementById("summary").textContent = text;
-  },
-  toast(message) {
-    const element = document.getElementById("toast");
-    element.textContent = message;
-    element.classList.add("shown");
-    clearTimeout(this.toastTimer);
-    this.toastTimer = setTimeout(() => element.classList.remove("shown"), 2600);
-  },
-  // Make ELEMENT's content the markup given, changing in place only what differs, so a poll that
-  // brings something new leaves the rest alone: a picture, page or video whose address is the same
-  // is not loaded again, and focus, scroll, selection and hover stay where they were. A child with
-  // `data-key` (or an `id`) is matched by it wherever it moved; others by position and tag. An
-  // element marked `data-own` keeps its content, which the tab's script fills (a text fetched, a
-  // note being typed); a `<details>` the owner opened stays open.
-  morph(element, markup) {
-    const template = document.createElement("template");
-    template.innerHTML = markup;
-    morphChildren(element, template.content);
-  },
-  escape(text) {
-    return String(text ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
-  },
-  // The verdict tabs (their look is above): NAV's tabs, each `data-verdict` and holding a
-  // `.count`, the chosen one selected, each counting what it holds (none: blank).
-  verdicts(nav, chosen, counts) {
-    for (const tab of nav.querySelectorAll('[role="tab"][data-verdict]')) {
-      tab.setAttribute("aria-selected", String(tab.dataset.verdict === chosen));
-      tab.querySelector(".count").textContent = counts[tab.dataset.verdict] || "";
-    }
-  },
-  // A scrolling row of chips fades at an edge only where there is more to scroll to.
-  fade(row) {
-    row.classList.toggle("more-before", row.scrollLeft > 2);
-    row.classList.toggle("more-after", row.scrollLeft + row.clientWidth < row.scrollWidth - 2);
-  },
-  route() {
-    const hash = decodeURIComponent(location.hash.slice(1));
-    const [name, ...rest] = hash.split("/");
-    if (this.tabs.has(name)) return [name, rest.join("/")];
-    return [this.tabs.keys().next().value, hash];
-  },
-  // Where each tab was scrolled when the owner left it: coming back, it is where they left it. A
-  // tab away keeps what it drew, so it shows at once as it was, nothing drawn again.
-  scrolls: new Map(),
-  open() {
-    const [name, route] = this.route();
-    const switching = this.current !== name;
-    if (this.current && switching) { this.scrolls.set(this.current, scrollY); this.tabs.get(this.current).hide(); }
-    this.current = name;
-    // A panel holding something shown on every tab (`data-everywhere`: the global chat) is set away
-    // instead of hidden: it takes no room and shows nothing but that.
-    for (const panel of document.querySelectorAll("[data-tab-panel]")) {
-      const away = panel.dataset.tabPanel !== name, everywhere = !!panel.querySelector("[data-everywhere]");
-      panel.hidden = away && !everywhere;
-      panel.toggleAttribute("data-away", away && everywhere);
-    }
-    for (const link of document.querySelectorAll(".menu a")) {
-      if (link.dataset.tabLink === name) link.setAttribute("aria-current", "page");
-      else link.removeAttribute("aria-current");
-    }
-    const title = document.querySelector(`[data-tab-link="${name}"]`).textContent;
-    document.title = `nock — ${title}`;
-    document.getElementById("summary").textContent = this.summaries.get(name) ?? "…";
-    if (switching) scrollTo({ top: this.scrolls.get(name) ?? 0, behavior: "instant" });
-    this.tabs.get(name).show(route);
-  },
-};
-
-// Scrolling does not bubble: one listener, capturing, for every row of chips.
-document.addEventListener("scroll", event => { if (event.target.classList?.contains("tags")) studio.fade(event.target); }, { capture: true, passive: true });
-addEventListener("resize", () => document.querySelectorAll(".tags").forEach(row => studio.fade(row)));
-
-const keyOf = node => node.nodeType === Node.ELEMENT_NODE ? (node.getAttribute("data-key") ?? (node.id || null)) : null;
-
-function morphChildren(into, from) {
-  const keyed = new Map();
-  for (const child of into.childNodes) { const key = keyOf(child); if (key !== null) keyed.set(key, child); }
-  const wanted = new Set([...from.childNodes].map(keyOf).filter(key => key !== null));
-  const unwanted = node => keyOf(node) !== null && !wanted.has(keyOf(node));
-  let cursor = into.firstChild;
-  for (const next of [...from.childNodes]) {
-    // A keyed node no longer wanted is passed over here, and removed at the end.
-    while (cursor && unwanted(cursor)) cursor = cursor.nextSibling;
-    const key = keyOf(next);
-    let match = null;
-    if (key !== null) match = keyed.get(key) ?? null;
-    else if (cursor && keyOf(cursor) === null) match = cursor;
-    if (match && match.nodeName !== next.nodeName) match = null;
-    if (!match) { into.insertBefore(next, cursor); continue; }
-    if (key !== null) keyed.delete(key);
-    if (match === cursor) cursor = cursor.nextSibling;
-    else into.insertBefore(match, cursor);
-    if (match.nodeType === Node.ELEMENT_NODE) morphElement(match, next);
-    else if (match.nodeValue !== next.nodeValue) match.nodeValue = next.nodeValue;
-  }
-  while (cursor) {
-    const after = cursor.nextSibling;
-    if (keyOf(cursor) === null || unwanted(cursor)) cursor.remove();
-    cursor = after;
-  }
-  for (const node of keyed.values()) node.remove();
-}
-
-function morphElement(element, next) {
-  for (const { name } of [...element.attributes]) {
-    if (next.hasAttribute(name) || (name === "open" && element.tagName === "DETAILS")) continue;
-    element.removeAttribute(name);
-  }
-  for (const { name, value } of [...next.attributes]) if (element.getAttribute(name) !== value) element.setAttribute(name, value);
-  if (!next.hasAttribute("data-own")) morphChildren(element, next);
-}
-</script>
 </head>
 <body>
 <svg class="sprites" aria-hidden="true" focusable="false">
@@ -422,186 +94,32 @@ function morphElement(element, next) {
 <header class="band">
   <div class="frame">
     <div class="heading">
-      <div class="titles"><h1 id="title">nock</h1><p id="summary">…</p></div>
+      <div class="titles">
+        <h1><a href="#/" id="title">nock</a></h1>
+        <p id="summary"></p>
+      </div>
       <div class="top">
-      <nav class="menu" aria-label="Studio">
-<!-- nock:tabs -->
-      </nav>
-      <!-- The global chat's button: pages/topics.html draws the chat and drives it. -->
-      <button type="button" class="gear" id="chat-button" aria-label="Chat with the agent" title="Chat with the agent" aria-expanded="false">
-        <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 4.5h12a1.5 1.5 0 0 1 1.5 1.5v7a1.5 1.5 0 0 1-1.5 1.5H9l-3.5 3v-3H4A1.5 1.5 0 0 1 2.5 13V6A1.5 1.5 0 0 1 4 4.5z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M6.5 8.5h7M6.5 11h4.5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
-      </button>
-<!-- nock:settings -->
+        <a class="memory-link" href="#/memory" id="memory-link">Memory</a>
+        <button type="button" class="gear" id="bell" aria-label="What changed" title="What changed" aria-expanded="false">
+          <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2.5a5 5 0 0 0-5 5v3.2L3.5 13.5h13L15 10.7V7.5a5 5 0 0 0-5-5z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M8 15.5a2 2 0 0 0 4 0" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>
+          <span class="dot" id="bell-dot" hidden></span>
+        </button>
+        <button type="button" class="gear" id="gear" aria-label="Settings" title="Settings" aria-expanded="false">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" d="M6.6 1h2.8l.4 1.9 1.2.7 1.8-.6 1.4 2.4-1.4 1.3v1.4l1.4 1.3-1.4 2.4-1.8-.6-1.2.7-.4 1.9H6.6l-.4-1.9-1.2-.7-1.8.6-1.4-2.4L3.2 8.7V7.3L1.8 6l1.4-2.4 1.8.6 1.2-.7zM8 10.2a2.2 2.2 0 1 0 0-4.4 2.2 2.2 0 0 0 0 4.4z"/></svg>
+        </button>
       </div>
     </div>
-<!-- nock:notice -->
+    <div class="notice" id="usage" data-ask-usage="false" role="region" aria-label="Usage reports" hidden>
+      <p>May nock share a weekly usage report with its makers?</p>
+      <p class="choices"><button type="button" data-share="true">Share</button> <button type="button" data-share="false">Don't share</button> <button type="button" class="quiet" data-open-settings>What it holds</button></p>
+    </div>
   </div>
 </header>
-<!-- nock:panels -->
+<main class="frame" id="main" data-word="<!-- nock:word -->"></main>
 </div>
+<div id="layers"></div>
 <div class="toast" id="toast" role="status"></div>
-<div class="toast restart cue shown" id="cue" role="status" hidden><a href="#topics"></a> <button type="button" aria-label="Dismiss">Dismiss</button></div>
 <div class="toast restart shown" id="restart" role="status" hidden><span>nock was updated since this studio started.</span> <button type="button">Restart</button><span class="busy"></span></div>
-<script>
-// The owner's answer to whether nock shares its usage report: asked under the title until
-// given, changed later with the switch in the settings; the same answer either way.
-const settings = {
-  gear: document.querySelector(".settings .gear"),
-  panel: document.getElementById("settings"),
-  open(shown) {
-    this.panel.hidden = !shown;
-    this.gear.setAttribute("aria-expanded", String(shown));
-    if (shown) this.panel.querySelector(".switch").focus();
-  },
-  async answer(share) {
-    const response = await fetch("/usage", { method: "POST", body: JSON.stringify({ share }) });
-    if (!response.ok) { studio.toast((await response.json()).error); return; }
-    document.getElementById("usage")?.remove();
-    document.getElementById("share-switch").setAttribute("aria-checked", String(share));
-    document.getElementById("share-state").textContent = share ? "On" : "Off";
-    studio.toast(share ? "nock will share its weekly usage report" : "nock shares nothing");
-  },
-};
-for (const button of document.querySelectorAll("#usage [data-share]")) {
-  button.addEventListener("click", () => settings.answer(button.dataset.share === "true"));
-}
-document.querySelector("[data-settings]")?.addEventListener("click", event => {
-  event.stopPropagation();
-  settings.open(true);
-  document.getElementById("sharing").open = true;
-  settings.panel.querySelector("details.holds").open = true;
-});
-settings.gear.addEventListener("click", event => { event.stopPropagation(); settings.open(settings.panel.hidden); });
-// The recorder's Whisper server, saved to this machine's config.
-document.getElementById("transcription")?.addEventListener("submit", async event => {
-  event.preventDefault();
-  const form = event.currentTarget;
-  const body = Object.fromEntries(["transcribe_url", "transcribe_model", "transcribe_key_variable"].map(name => [name, form.elements[name].value.trim()]));
-  const response = await fetch("/settings", { method: "POST", body: JSON.stringify(body) });
-  const answer = await response.json();
-  if (!response.ok) { studio.toast(answer.error); return; }
-  document.getElementById("transcription-state").textContent = answer.transcribe_url ? "On" : "Off";
-  studio.toast(answer.transcribe_url ? "Transcription saved: the recorder in every chat uses it" : "Transcription is off");
-});
-document.getElementById("share-switch").addEventListener("click", event => {
-  settings.answer(event.currentTarget.getAttribute("aria-checked") !== "true");
-});
-document.addEventListener("click", event => {
-  if (!settings.panel.hidden && !event.target.closest(".settings")) settings.open(false);
-});
-document.addEventListener("keydown", event => {
-  if (event.key === "Escape" && !settings.panel.hidden) { settings.open(false); settings.gear.focus(); }
-});
-// A studio older than its code serves new pages to old routes: a toast offers to restart it in
-// place (`POST /restart`), held back while a chat, Tidy up or a question would be cut off; the
-// page then waits for the studio to answer again and reloads.
-const restart = {
-  toast: document.getElementById("restart"),
-  restarting: false,
-  async check() {
-    if (this.restarting) return;
-    let standing;
-    try { standing = await (await fetch("/restart")).json(); } catch { return; }
-    this.instance = standing.instance;
-    this.toast.hidden = !standing.stale;
-    const busy = standing.busy.join(", ");
-    this.toast.querySelector(".busy").textContent = busy ? `Restart once it is done: ${busy}.` : "";
-    this.toast.querySelector("button").disabled = Boolean(busy);
-  },
-  async go() {
-    const button = this.toast.querySelector("button");
-    const response = await fetch("/restart", { method: "POST", body: "{}" });
-    if (!response.ok) { this.toast.querySelector(".busy").textContent = (await response.json()).error; return; }
-    this.restarting = true;
-    button.disabled = true;
-    button.textContent = "Restarting…";
-    for (let tries = 0; tries < 120; tries++) {
-      await new Promise(resolve => setTimeout(resolve, 500));
-      try {
-        const standing = await (await fetch("/restart")).json();
-        if (standing.instance !== this.instance) { location.reload(); return; }
-      } catch { /* not answering yet */ }
-    }
-    this.toast.querySelector(".busy").textContent = "The studio did not come back: start it again with nock studio.";
-  },
-};
-restart.toast.querySelector("button").addEventListener("click", () => restart.go());
-restart.check();
-setInterval(() => { if (!document.hidden) restart.check(); }, 5000);
-// When a topic is the owner's turn again (nock.notify), the page polls for it, saying how it is
-// watched: in front of the owner it shows a cue; away, with the browser's notifications allowed, a
-// notification whose click brings the topic up; away without them, nock tells the desktop instead.
-// The browser is asked for permission only from the control in the settings, never on load.
-const alerts = {
-  control: document.getElementById("alerts"),
-  cue: document.getElementById("cue"),
-  latest: null,
-  supported: "Notification" in window,
-  seen() {
-    if (!document.hidden && document.hasFocus()) return "focused";
-    return this.supported && Notification.permission === "granted" ? "notifying" : "unwatched";
-  },
-  draw() {
-    if (!this.control?.hasAttribute("data-enabled")) return;
-    const permission = this.supported ? Notification.permission : "unsupported";
-    document.getElementById("alerts-state").textContent = { granted: "On", denied: "Blocked", unsupported: "Unavailable" }[permission] ?? "Off";
-    document.getElementById("alerts-allow").hidden = permission !== "default";
-  },
-  async allow() {
-    if (!this.supported) return;
-    await Notification.requestPermission();
-    this.draw();
-    studio.toast(Notification.permission === "granted" ? "This browser tells you when a topic is your turn" : "The browser will not show nock's notifications");
-  },
-  show(told) {
-    if (this.seen() === "focused") {
-      const link = this.cue.querySelector("a");
-      link.textContent = told.text;
-      link.setAttribute("href", told.address);
-      this.cue.hidden = false;
-      clearTimeout(this.timer);
-      this.timer = setTimeout(() => { this.cue.hidden = true; }, 15000);
-      return;
-    }
-    if (told.shown !== "studio" || !this.supported || Notification.permission !== "granted") return;
-    const shown = new Notification("nock", { body: told.text, tag: `nock-${told.topic}`, icon: "/icon.png" });
-    shown.onclick = () => { focus(); location.hash = told.address; shown.close(); };
-  },
-  async poll() {
-    if (!this.control?.hasAttribute("data-enabled")) return;
-    let answer;
-    try {
-      const after = this.latest === null ? "" : `after=${this.latest}&`;
-      answer = await (await fetch(`/notifications?${after}seen=${this.seen()}`)).json();
-    } catch { return; }
-    if (this.latest !== null) for (const told of answer.notifications) this.show(told);
-    this.latest = answer.latest;
-  },
-};
-document.getElementById("alerts-allow")?.addEventListener("click", () => alerts.allow());
-alerts.cue.querySelector("a").addEventListener("click", () => { alerts.cue.hidden = true; });
-alerts.cue.querySelector("button").addEventListener("click", () => { alerts.cue.hidden = true; });
-alerts.draw();
-alerts.poll();
-// Hidden, it still polls: an away page is where a browser notification comes from.
-setInterval(() => alerts.poll(), 5000);
-for (const kind of ["focus", "blur"]) addEventListener(kind, () => alerts.poll());
-document.addEventListener("visibilitychange", () => alerts.poll());
-// The studio keeps each tab's place itself; the browser restoring one as well would jump. A link
-// within the studio changes the address without the browser's own jump to the fragment (to the
-// top, as no element is named so), and Back and Forward still step through what was opened.
-history.scrollRestoration = "manual";
-document.addEventListener("click", event => {
-  const link = event.target.closest?.('a[href^="#"]');
-  if (!link || event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-  event.preventDefault();
-  const address = link.getAttribute("href");
-  if (decodeURIComponent(address) === decodeURIComponent(location.hash)) return;
-  history.pushState(null, "", address);
-  studio.open();
-});
-addEventListener("hashchange", () => studio.open());
-studio.open();
-</script>
+<!-- nock:app -->
 </body>
 </html>

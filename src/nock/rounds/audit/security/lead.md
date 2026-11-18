@@ -31,17 +31,17 @@ freely, send it no traffic. Never print a secret; name the file and key.
    point at in the code, merge duplicates, and rank them by severity
    (critical, high, medium, low, info) with how confident you are (proven
    by a repro, read in the code, suspected).
-4. Record each finding as a decision in the topic `audit-security`
-   (`.nock/nock docs topics.items`): its title the problem in a line; its
-   answer the fix you propose, with the severity, the confidence, the
-   evidence (file:line, the repro command and what it printed) and the
-   alternatives (another fix, accept the risk and why). Attach what proves
-   it as files: the log, the repro script, a screenshot with the recipe
-   that makes it again. Put nothing exploitable against production in an
+4. Record each finding as a proposal in the round's task,
+   `round-audit-security` (`.nock/nock docs topics.items`): its title the fix
+   you propose; `means` the problem in a line or two, with the severity, the
+   confidence and the evidence (file:line, the repro command and what it
+   printed); `takes` what the fix takes. Add what proves it as assets of
+   the task: the log, the repro script, a screenshot with the recipe that
+   makes it again. Put nothing exploitable against production in an
    item: describe the class and the local repro.
 5. Write `report.md` for the owner: the findings ranked, top first, each in
    a line with its severity, confidence and item; the areas covered and
-   those not; what blocked the parts. Submit it as a file item in the
-   topic too, and set the topic to `review`.
+   those not; what blocked the parts. Submitting puts it at the head of
+   the task's review, with the proposals.
 6. Submit with one change per finding (kind risk, target the item, why
    its severity) and kind other for an area left uncovered.

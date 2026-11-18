@@ -1,7 +1,7 @@
 ---
 term: topics.items
-aliases: [item, items, submit, derived, screenshot, screenshots, asset, assets, description]
-description: An item is a decision, with the assets that show it
+aliases: [item, items, submit, todo, todos, proposal, accept, reject, verdict]
+description: Decisions and proposals: what to record, and what the owner does with them
 ---
 
-A decision (`docs topics.decisions`) with the assets that show it, in `topics/T/decisions/SLUG/`: `events/x.json` `{"kind": "created", "title": "…", "description": "…"}` and `versions/next/decision.json`. Each asset (a screenshot, a project file, a page) in `assets/NAME/`: its `created` event and `versions/next/assets.json` with its file beside it (`docs files.asset`). A file to review with no choice in it gets a plain "Review: …" decision. Ref: `topic/slug`; move it with a `moved` event.
+A decision is done and carried on with: a title saying what was decided, `means` in 1–3 lines for the owner (behaviour, cost, what users see, what is now harder), maybe a one-line `why`. A proposal is a todo you want done, plus `takes`. The owner accepts a proposal (carry it out at your next inbox, then write `implemented`: it reads as a decision) or rejects it (dropped). No verdicts on decisions; no alternatives (`docs files.item`).
