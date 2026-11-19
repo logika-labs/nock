@@ -258,7 +258,7 @@ def test_the_page_asks_until_the_owner_answers_with_its_buttons(project: Project
         assert (
             "\nshare = false\n" in (project.root / ".nock" / "shared" / "settings.toml").read_text()
         )
-        assert 'data-ask-usage="false"' in urllib.request.urlopen(studio.address).read().decode()
+        assert 'id="usage"' not in urllib.request.urlopen(studio.address).read().decode()
     finally:
         studio.shutdown()
         studio.server_close()

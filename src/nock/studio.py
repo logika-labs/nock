@@ -1,19 +1,19 @@
 """The owner's page (`nock studio`): one local server for one page. Its front
-lists the tasks (topics, in nock's files: the word the owner reads is
-`topics.WORD`), each with what waits on the owner and what it holds; a task
-opens on its review, the page its agent composed from blocks, told as a story
-or listed flat, with its decisions, proposals and assets, their notes and its
-one chat. The page polls `/api/stamp` and reads again when the store moved,
-so it updates as agents write; `/notifications` tells the owner when a task
+lists the topics, each opening in place on its review, the story its agent
+composed from blocks, then its decisions, proposals and assets, their notes
+and its one chat; the Timeline is what happened. The page polls and redraws
+in place only what changed, so it updates as agents write; `/notifications` tells the owner when a task
 is their turn (`nock.notify`), and the history is `nock.timeline`'s. Rounds
 that are due show as hints; Run starts one in the background (`nock.runs`).
 
-`GET /` is the page (`pages/studio.html` with `pages/studio.css` and
-`pages/app.js` put in); `/api/…` its JSON, a nock `Error` becoming 404 or 400.
+`GET /` is the page (`pages/studio.html` with `pages/studio.css` and each
+tab's fragment put in: `pages/topics.html`, `pages/timeline.html`); `/api/…`
+its JSON, a nock `Error` becoming 404 or 400.
 Local, and only while `nock studio` runs."""
 
 from __future__ import annotations
 
+import html
 import io
 import json
 import mimetypes
@@ -36,9 +36,9 @@ from nock.inbox import listeners
 from nock.notify import ICON, Notifications, Watching
 from nock.project import Project
 from nock.runs import Runs
-from nock.shared import MEMORY_LIMIT, kind_of
+from nock.shared import kind_of
 from nock.timeline import Timeline
-from nock.topics import MEMORY_TASK, WORD, WORDS, Status, Topics, entry_name, pending, target_of
+from nock.topics import WORD, WORDS, Status, Topics, entry_name, pending, target_of
 from nock.usage import QUESTION, Answer, Usage, sharing
 
 PACKAGE = Path(__file__).resolve().parent
@@ -47,7 +47,11 @@ RESTARTED = "NOCK_STUDIO_RESTARTED"
 PAGES = PACKAGE / "pages"
 SHELL = PAGES / "studio.html"
 LOOK = PAGES / "studio.css"
-APP = PAGES / "app.js"
+# The page's tabs: each a fragment `pages/NAME.html` with its look put in before it.
+TABS = (
+    ("topics", "Topics", ("topics.css", "chat.css")),
+    ("timeline", "Timeline", ("timeline.css",)),
+)
 # The look an html block is served with: nock's styles, for what agents write.
 VIEW_LOOK = PAGES / "view.css"
 # What an html block may say to the page (`window.nock`): leave a note on
@@ -208,8 +212,6 @@ class Api:
             return {"rounds": listing(self.project)}
         if parts == ["settings"]:
             return self.settings()
-        if parts == ["memory"]:
-            return self.memory()
         raise NotFoundError("no such page")
 
     def front(self) -> dict[str, Any]:
@@ -224,10 +226,18 @@ class Api:
             name = row["name"]
             items = self.topics.items(name)
             review = self.topics.current_review(name)
+            thread = self.topics.topic(name)["thread"]
+            said = [entry for entry in thread if entry.get("kind") == "message"]
+            answers = [entry for entry in said if entry.get("author") != "owner"]
             tasks.append(
                 {
                     **row,
                     "summary": review["summary"] if review else "",
+                    "chat": {
+                        "messages": len(said),
+                        "pending": bool(pending(thread)),
+                        "latest": answers[-1]["id"] if answers else None,
+                    },
                     "items": [
                         {
                             "slug": item["slug"],
@@ -281,6 +291,7 @@ class Api:
             "pending": pending_items,
             "hints": hints(self.project),
             "runs": [run for run in self.runs.listing(limit=10) if run.get("kind") == "round"],
+            "working": [run for run in self.runs.listing(limit=20) if run["status"] == "running"],
             "listening": listeners(self.project),
         }
 
@@ -350,27 +361,6 @@ class Api:
             "listening": listeners(self.project),
         }
 
-    def memory(self) -> dict[str, Any]:
-        """The memory as it stands, what holds it back, and the owner's notes
-        on its lines (kept in the task `memory`, with its chat)."""
-        path = self.topics.memory
-        notes = []
-        if MEMORY_TASK in self.topics.names():
-            topic = self.topics.topic(MEMORY_TASK)
-            notes = [
-                {**note, "target": target_of(note)}
-                for note in topic["notes"]
-                if note["on"].get("memory")
-            ]
-        return {
-            "text": path.read_text() if path.is_file() else "",
-            "path": str(path.relative_to(self.project.root)),
-            "limit": MEMORY_LIMIT,
-            "problems": [str(problem) for problem in self.topics.memory_problems()],
-            "notes": notes,
-            "task": MEMORY_TASK,
-        }
-
     def html(self, path: Path) -> str:
         """An html block with nock's look and the bridge put in its head."""
         page = path.read_text(errors="replace")
@@ -404,13 +394,8 @@ class Api:
         if parts == ["upload", "discard"]:
             self.uploads.discard(text(body, "token"))
             return {"discarded": body["token"]}
-        if parts == ["memory"]:
-            self.topics.edit_memory(text(body, "text", required=False))
-            return self.memory()
         if parts == ["note"]:
             on = body.get("on")
-            if body.get("topic") == MEMORY_TASK:
-                self.topics.memory_task()
             if not isinstance(on, dict):
                 raise UsageError("`on` says what the note is on: item, asset, block")
             identifier = body.get("id")
@@ -522,14 +507,89 @@ class Studio(ThreadingHTTPServer):
         return f"http://127.0.0.1:{self.server_address[1]}/"
 
     def page(self) -> bytes:
-        asked = sharing(self.project) is Answer.UNANSWERED
+        """The shell with its look and every tab's link and panel in it."""
+        links = "\n".join(
+            f'      <a href="#{name}" data-tab-link="{name}">{html.escape(title)}</a>'
+            for name, title, _ in TABS
+        )
+        panels = "\n".join(
+            f'<section data-tab-panel="{name}" hidden>\n<style>\n'
+            + "".join((PAGES / look).read_text() for look in looks)
+            + f"</style>\n{(PAGES / f'{name}.html').read_text()}</section>"
+            for name, _, looks in TABS
+        )
         return (
             SHELL.read_text()
             .replace("<!-- nock:styles -->", f"<style>\n{LOOK.read_text()}</style>")
-            .replace("<!-- nock:app -->", f"<script>\n{APP.read_text()}</script>")
-            .replace("<!-- nock:word -->", WORD)
-            .replace('data-ask-usage="false"', f'data-ask-usage="{str(asked).lower()}"')
+            .replace("<!-- nock:tabs -->", links)
+            .replace("<!-- nock:panels -->", panels)
+            .replace("<!-- nock:notice -->", self.question())
+            .replace("<!-- nock:settings -->", self.settings())
             .encode()
+        )
+
+    def question(self) -> str:
+        """Under the title while nobody has answered: a slim line asking, with
+        Share and Don't share; what the report holds is in the settings."""
+        if sharing(self.project) is not Answer.UNANSWERED:
+            return ""
+        return (
+            '    <div class="notice" id="usage" role="region" aria-label="Usage reports">\n'
+            "      <p>May nock share a weekly usage report with its makers?</p>\n"
+            '      <p class="choices"><button type="button" data-share="true">Share</button>'
+            ' <button type="button" data-share="false">Don\'t share</button>'
+            ' <button type="button" class="quiet" data-settings>What it holds</button></p>\n'
+            "    </div>"
+        )
+
+    def settings(self) -> str:
+        """The settings behind the gear in the menu: whether nock shares its
+        usage report, as a switch that gives the same answer the question
+        does, and what the report holds; the notifications."""
+        answer = sharing(self.project)
+        said = {Answer.YES: "On", Answer.NO: "Off", Answer.UNANSWERED: "Not answered"}[answer]
+        return (
+            '      <div class="settings">\n'
+            '        <button type="button" class="gear" aria-label="Settings" aria-expanded="false"'
+            ' aria-controls="settings">'
+            '<svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd"'
+            ' d="M6.6 1h2.8l.4 1.9 1.2.7 1.8-.6 1.4 2.4-1.4 1.3v1.4l1.4 1.3-1.4 2.4-1.8-.6-1.2.7'
+            "-.4 1.9H6.6l-.4-1.9-1.2-.7-1.8.6-1.4-2.4L3.2 8.7V7.3L1.8 6l1.4-2.4 1.8.6 1.2-.7z"
+            'M8 10.2a2.2 2.2 0 1 0 0-4.4 2.2 2.2 0 0 0 0 4.4z"/></svg></button>\n'
+            '        <div class="popover" id="settings" role="dialog" aria-label="Settings" hidden>\n'
+            '          <details class="group" id="sharing" open><summary><span>Sharing</span>'
+            f' <span class="state" id="share-state">{said}</span></summary>\n'
+            '          <div class="setting"><span id="share-label">Share usage reports</span>'
+            ' <button type="button" class="switch" role="switch" id="share-switch"'
+            f' aria-checked="{str(answer is Answer.YES).lower()}" aria-labelledby="share-label">'
+            "<span></span></button></div>\n"
+            '          <p class="hint">Weekly at most, counts and categories only: never code,'
+            " paths, names or what items say.</p>\n"
+            f'          <details class="holds"><summary>What it holds</summary><p>{html.escape(QUESTION)}</p></details>\n'
+            "          </details>\n"
+            f"{self.alerts()}"
+            "        </div>\n"
+            "      </div>"
+        )
+
+    def alerts(self) -> str:
+        """Whether this browser shows nock's notifications while the page is
+        away: the browser is asked only when the owner turns them on here."""
+        if not self.notifications.enabled:
+            return (
+                '          <details class="group" id="alerts"><summary><span>Notifications</span>'
+                ' <span class="state">Off</span></summary>\n'
+                '            <p class="hint"><code>notifications = false</code> in nock\'s config.</p></details>\n'
+            )
+        return (
+            '          <details class="group" id="alerts" data-enabled><summary>'
+            '<span id="alerts-label">Notifications</span>'
+            ' <span class="state" id="alerts-state">Off</span></summary>\n'
+            '            <p class="hint">In this browser, when a task is your turn again: here while'
+            " the studio is in front of you, from the browser while it is away, on the desktop"
+            " when no page is open. The Timeline holds every one.</p>\n"
+            '            <button type="button" class="save" id="alerts-allow">Turn on</button>\n'
+            "          </details>\n"
         )
 
     def run(self, open_browser: bool) -> None:

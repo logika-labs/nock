@@ -1,0 +1,1838 @@
+<div class="frame topics" id="topics-tab">
+  <div class="controls">
+    <div class="bar">
+      <div class="field">
+        <input type="text" id="topics-input" placeholder="search topics and items" autocomplete="off" spellcheck="false" aria-label="Search topics and items">
+        <span class="hit-nav" id="topics-hits" hidden><span class="hit-count" aria-live="polite"></span><button type="button" data-hit="-1" aria-label="The previous hit (Shift+Enter)" title="The previous hit (Shift+Enter)"></button><button type="button" data-hit="1" aria-label="The next hit (Enter)" title="The next hit (Enter)"></button></span>
+        <button type="button" class="inside" id="topics-clear" aria-label="Clear the search" hidden>×</button>
+      </div>
+    </div>
+    <div class="sift" id="topics-sift" role="toolbar" aria-label="Filters and rounds"></div>
+  </div>
+  <main id="topics-main"></main>
+  <div id="topics-modal"></div>
+  <div class="tip" id="topics-tip" role="tooltip" hidden></div>
+  <div id="topics-lightbox"></div>
+</div>
+<script>
+// The topics tab (its look is pages/topics.css): `GET /api/topics` every topic with its items and
+// assets, where its chat stands, the rounds due and the work under way; a topic opened is read
+// whole (`GET /api/topic/NAME`): its review, its items and assets with their versions and notes,
+// its chat. Both are polled while shown and drawn in place (`studio.morph`), so nothing flashes and
+// what is typed stays. The list is the one view: a topic opens in place on its review, the story
+// its agent composed (text, items, diffs, documents, excerpts, pictures, tables, charts, pages),
+// then its open and closed items (bubbles that open in place too) and its assets; a picture or a
+// text opens in a viewer over the list, a picture zooming in place there. A search marks what it
+// finds, and opens and rings the items holding it. The owner's word goes through the topic's one
+// chat, carrying the notes left on its items and assets; Accept and Reject are a proposal's, Done
+// the review's. The address says what is open: `#topics/TOPIC` a topic, `#topics/TOPIC/SLUG` an
+// item, `#topics/TOPIC:ASSET` an asset.
+(() => {
+  const $ = id => document.getElementById(id);
+  const escape = studio.escape;
+  const POLL = 3000;
+  const state = {
+    shown: false, seen: "", topics: [], wholes: new Map(), front: null, search: "", route: "", arrived: null,
+    drafts: new Map(), open: new Set(), expanded: new Set(), chats: new Set(), noting: null,
+    modal: null, compare: false, single: null, left: null, right: null, reveal: null,
+    menu: null, zoom: null, focus: null, reveal_to: null, folded: new Set(),
+    hits: [], hitAt: 0, found: null, reveal_hit: false, opened: { open: new Set(), expanded: new Set(), folded: new Set() }, drag: null, dragged: false,
+    // A composer's files (`attached`, by chat), where each field's cursor was, a picture enlarged.
+    attached: new Map(), carets: new Map(), caretAt: null, picture: null, dropping: null,
+    // The messages being sent, and the id each unsent one keeps for its next try, by chat.
+    sending: new Set(), sendIds: new Map(),
+    // The round whose hint is open, and the open topics' answers seen.
+    hint: null,
+  };
+  const messageId = () => Array.from(crypto.getRandomValues(new Uint8Array(4)), byte => byte.toString(16).padStart(2, "0")).join("");
+  // How decisions look, for the owner to compare (`?decisions=rail` or `lift`); `foil` by default.
+  const LOOKS = ["foil", "rail", "lift"];
+  const look = new URLSearchParams(location.search).get("decisions");
+  document.documentElement.dataset.decisions = LOOKS.includes(look) ? look : LOOKS[0];
+
+  const ICONS = {
+    chat: '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 4.5h12a1.5 1.5 0 0 1 1.5 1.5v7a1.5 1.5 0 0 1-1.5 1.5H9l-3.5 3v-3H4A1.5 1.5 0 0 1 2.5 13V6A1.5 1.5 0 0 1 4 4.5z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>',
+    send: '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 15.5v-11M5.5 9 10 4.5 14.5 9" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+    cancel: '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="m6 6 8 8M14 6l-8 8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>',
+    chevron: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4.5 6.5 3.5 3.5 3.5-3.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+    caret: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="m6 4 4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+    accepted: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="m3.5 8.5 3 3 6-7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+    rejected: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4.5 4.5 7 7m0-7-7 7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>',
+    clip: '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="m15.5 9.5-5.6 5.6a3.5 3.5 0 0 1-5-5l6-6a2.3 2.3 0 0 1 3.3 3.3l-6 6a1.1 1.1 0 0 1-1.6-1.6l5.5-5.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+    mic: '<svg viewBox="0 0 20 20" aria-hidden="true"><rect x="7.25" y="2.75" width="5.5" height="9.5" rx="2.75" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M4.5 9.5a5.5 5.5 0 0 0 11 0M10 15v2.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>',
+    stop: '<svg viewBox="0 0 20 20" aria-hidden="true"><rect x="6" y="6" width="8" height="8" rx="1.5" fill="currentColor"/></svg>',
+    file: '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M11.5 2.75H6A1.75 1.75 0 0 0 4.25 4.5v11A1.75 1.75 0 0 0 6 17.25h8a1.75 1.75 0 0 0 1.75-1.75V7zM11.5 2.75V7h4.25" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>',
+    dropped: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="m5 5 6 6m0-6-6 6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>',
+    star: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="m8 2.2 1.8 3.65 4 .58-2.9 2.83.69 4L8 11.37l-3.59 1.89.69-4-2.9-2.83 4-.58z" fill="currentColor" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg>',
+    pencil: '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M12.75 4.25 15.75 7.25 7.5 15.5H4.5v-3zM11 6l3 3" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>',
+  };
+
+  const REPLY = '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M8 5 3.5 9.5 8 14M3.5 9.5H11c3 0 5.5 2.3 5.5 5.5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
+  // --- time: short, "21m", "3h", "2d" -------------------------------------------------------------
+  function short(moment) {
+    const seconds = Math.max(0, (Date.now() - new Date(moment).getTime()) / 1000);
+    if (seconds < 60) return "now";
+    if (seconds < 3600) return `${Math.floor(seconds / 60)}m`;
+    if (seconds < 86400) return `${Math.floor(seconds / 3600)}h`;
+    if (seconds < 86400 * 60) return `${Math.floor(seconds / 86400)}d`;
+    if (seconds < 86400 * 365) return `${Math.floor(seconds / 86400 / 30)}mo`;
+    return `${Math.floor(seconds / 86400 / 365)}y`;
+  }
+  const time = moment => moment ? `<time datetime="${escape(moment)}" title="${escape(new Date(moment).toLocaleString())}">${escape(short(moment))}</time>` : "";
+
+  // --- syntax highlighting: a small tokenizer per language, enough to read a file by -------------
+
+  const WORDS = {
+    py: "and as assert async await break class continue def del elif else except False finally for from global if import in is lambda None nonlocal not or pass raise return True try while with yield match case self",
+    ts: "abstract as async await break case catch class const continue debugger default delete do else enum export extends false finally for from function if implements import in instanceof interface let new null of private protected public readonly return static super switch this throw true try type typeof undefined var void while yield",
+    rs: "as async await break const continue crate dyn else enum extern false fn for if impl in let loop match mod move mut pub ref return self Self static struct super trait true type unsafe use where while Some None Ok Err",
+    go: "break case chan const continue default defer else fallthrough for func go goto if import interface map package range return select struct switch type var nil true false",
+    sh: "if then else elif fi for while until do done case esac in function return export local readonly echo exit set unset shift source true false",
+    sql: "select from where and or not insert into values update set delete create table index view drop alter add column primary key foreign references join left right inner outer full cross on group by order having limit offset as distinct union all null is in exists case when then else end begin commit rollback returning with default unique constraint check if like between asc desc cascade trigger function returns language",
+    yaml: "true false null yes no on off",
+    toml: "true false",
+    json: "true false null",
+    css: "important",
+  };
+  const LANGUAGES = {
+    py: "py", pyi: "py", ts: "ts", tsx: "ts", js: "ts", jsx: "ts", mjs: "ts", cjs: "ts", rs: "rs", go: "go",
+    sh: "sh", bash: "sh", zsh: "sh", sql: "sql", yaml: "yaml", yml: "yaml", toml: "toml", json: "json", jsonl: "json",
+    html: "html", htm: "html", xml: "html", svg: "html", css: "css", scss: "css",
+  };
+  const STRINGS = String.raw`"(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*'`;
+  // A number standing alone, not a digit inside a name, a version or a date.
+  const NUMBER = String.raw`(?<![\w.:/-])(?:0x[0-9a-fA-F_]+|\d[\d_]*(?:\.\d+)?(?:[eE][+-]?\d+)?)(?![\w.:/-])`;
+  const RULES = {
+    py: [["comment", "#.*"], ["string", String.raw`"""[\s\S]*?"""|'''[\s\S]*?'''|[rbfu]?(?:${STRINGS})`], ["meta", String.raw`@[\w.]+`], ["number", NUMBER]],
+    ts: [["comment", String.raw`//.*|/\*[\s\S]*?\*/`], ["string", String.raw`${STRINGS}|\x60(?:\\.|[^\x60\\])*\x60`], ["number", NUMBER]],
+    rs: [["comment", String.raw`//.*|/\*[\s\S]*?\*/`], ["string", String.raw`r#*"[\s\S]*?"#*|${STRINGS}`], ["meta", String.raw`#!?\[[^\]]*\]|\b\w+!`], ["number", NUMBER]],
+    go: [["comment", String.raw`//.*|/\*[\s\S]*?\*/`], ["string", String.raw`${STRINGS}|\x60[^\x60]*\x60`], ["number", NUMBER]],
+    sh: [["comment", String.raw`(?:^|(?<=\s))#.*`], ["string", STRINGS], ["meta", String.raw`\$\{[^}]*\}|\$\w+|\$[@*#?$!0-9]`], ["number", NUMBER]],
+    sql: [["comment", String.raw`--.*|/\*[\s\S]*?\*/`], ["string", STRINGS], ["number", NUMBER]],
+    yaml: [["comment", String.raw`(?:^|(?<=\s))#.*`], ["key", String.raw`^[ \t]*(?:- +)?[^\s:#'"][^:#\n]*?(?=:(?:\s|$))`], ["string", STRINGS], ["meta", String.raw`^---$|[&*][\w-]+|![\w!-]+`], ["number", NUMBER]],
+    toml: [["comment", "#.*"], ["meta", String.raw`^[ \t]*\[\[?[^\]\n]+\]\]?`], ["key", String.raw`^[ \t]*[\w.\-"']+(?=[ \t]*=)`], ["string", String.raw`"""[\s\S]*?"""|'''[\s\S]*?'''|${STRINGS}`], ["number", NUMBER]],
+    json: [["key", String.raw`"(?:\\.|[^"\\\n])*"(?=\s*:)`], ["string", STRINGS], ["number", NUMBER]],
+    html: [["comment", String.raw`<!--[\s\S]*?-->`], ["meta", String.raw`<![^>]*>`], ["key", String.raw`</?[\w:-]+|/?>`], ["attr", String.raw`[\w:-]+(?==)`], ["string", STRINGS]],
+    css: [["comment", String.raw`/\*[\s\S]*?\*/`], ["string", STRINGS], ["meta", String.raw`@[\w-]+`], ["key", String.raw`[\w-]+(?=\s*:[^{;]*;)`], ["number", String.raw`-?\d*\.?\d+(?:px|rem|em|%|vh|vw|s|ms|deg|fr)?\b|#[0-9a-fA-F]{3,8}\b`]],
+  };
+  const compiled = new Map();
+  function scanner(language) {
+    if (!compiled.has(language)) {
+      const rules = [...RULES[language], ["word", String.raw`[A-Za-z_$][\w$]*`]];
+      const words = new Set((WORDS[language] || "").split(" "));
+      compiled.set(language, { rules, words, pattern: new RegExp(rules.map(([, source]) => `(${source})`).join("|"), "gm") });
+    }
+    return compiled.get(language);
+  }
+  function highlight(source, language) {
+    const { rules, words, pattern } = scanner(language);
+    const caseless = language === "sql";
+    let html = "", at = 0, found;
+    pattern.lastIndex = 0;
+    while ((found = pattern.exec(source))) {
+      if (!found[0]) { pattern.lastIndex++; continue; }
+      html += escape(source.slice(at, found.index));
+      const index = found.slice(1).findIndex(group => group !== undefined);
+      let kind = rules[index][0];
+      if (kind === "word") {
+        const word = caseless ? found[0].toLowerCase() : found[0];
+        kind = words.has(word) ? "keyword" : source[pattern.lastIndex] === "(" ? "call" : /^[A-Z][a-z]/.test(found[0]) && language !== "sql" ? "type" : "";
+      }
+      html += kind ? `<span class="t-${kind}">${escape(found[0])}</span>` : escape(found[0]);
+      at = pattern.lastIndex;
+    }
+    return html + escape(source.slice(at));
+  }
+  const extension = name => (name.match(/\.([^./]+)$/)?.[1] || "").toLowerCase();
+  const rendering = name => ["md", "markdown"].includes(extension(name)) ? "markdown" : LANGUAGES[extension(name)] ? "code" : "plain";
+
+  // --- markdown, as much as agents and the owner write, and as documents need -----------------------
+
+  function inline(text) {
+    return escape(text)
+      .replace(/`([^`]+)`/g, "<code>$1</code>")
+      .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+      .replace(/(^|[^*])\*([^*\s][^*]*)\*/g, "$1<em>$2</em>")
+      .replace(/\[([^\]]+)\]\((https?:[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>')
+      .replace(/\[([a-z0-9][a-z0-9-]*\/[a-z0-9][a-z0-9-]*|D\d+)\]/g, '<a href="#topics/$1">$1</a>');
+  }
+  // A Markdown file's frontmatter, the simple YAML agents write (`key: value`, a list under a key or
+  // in brackets), as a ribbon of keys and values; the file without it.
+  function frontmatter(source) {
+    const found = source.match(/^---\n([\s\S]*?)\n---[ \t]*(?:\n|$)/);
+    if (!found) return ["", source];
+    const bare = value => value.trim().replace(/^(["'])(.*)\1$/, "$2");
+    const rows = [];
+    for (const line of found[1].split("\n")) {
+      const pair = line.match(/^([^\s#:][^:]*):(?:\s+(.*))?$/);
+      const entry = line.match(/^\s*-\s+(.*)$/);
+      if (pair) {
+        const value = (pair[2] || "").trim();
+        const values = /^\[.*\]$/.test(value) ? value.slice(1, -1).split(",").map(bare).filter(Boolean)
+          : value && !/^[|>][+-]?$/.test(value) ? [bare(value)] : [];
+        rows.push({ key: pair[1].trim(), values, list: /^\[.*\]$/.test(value) });
+      } else if (entry && rows.length) { rows[rows.length - 1].values.push(bare(entry[1])); rows[rows.length - 1].list = true; }
+      else if (line.trim() && rows.length) {
+        const row = rows[rows.length - 1];
+        if (row.list || !row.values.length) row.values.push(line.trim()); else row.values[row.values.length - 1] += ` ${line.trim()}`;
+      }
+    }
+    const shown = rows.map(row => `<div class="pair"><dt>${escape(row.key)}</dt><dd>${row.list
+      ? row.values.map(value => `<span class="value">${inline(value)}</span>`).join("") : inline(row.values.join(" "))}</dd></div>`).join("");
+    return [rows.length ? `<dl class="frontmatter">${shown}</dl>` : "", source.slice(found[0].length)];
+  }
+
+  // A list's items, each with its indent, as lists nested by indent: an item indented more than
+  // the one before opens a list inside it; a change of kind at the same depth starts another list.
+  function nested(items) {
+    let at = 0;
+    const level = indent => {
+      const tag = items[at].tag;
+      let html = `<${tag}>`;
+      while (at < items.length && items[at].indent >= indent) {
+        if (items[at].indent > indent) { html = html.replace(/<\/li>$/, "") + level(items[at].indent) + "</li>"; continue; }
+        if (items[at].tag !== tag) break;
+        html += `<li>${inline(items[at].text)}</li>`;
+        at++;
+      }
+      return `${html}</${tag}>`;
+    };
+    let html = "";
+    while (at < items.length) html += level(items[at].indent);
+    return html;
+  }
+
+  // DOCUMENT: a Markdown file, its headings at their own level; otherwise a message's, smaller.
+  // Lines of a paragraph or a list item flow together, as in CommonMark: only a blank line parts them.
+  function markdown(source, document = false) {
+    let ribbon = "";
+    source = String(source || "").replace(/\r/g, "");
+    if (document) [ribbon, source] = frontmatter(source);
+    const lines = source.split("\n");
+    const out = [];
+    let paragraph = [], list = null, quote = [];
+    const flush = () => {
+      if (paragraph.length) out.push(`<p>${inline(paragraph.join(" "))}</p>`);
+      paragraph = [];
+      if (list) out.push(nested(list.items));
+      list = null;
+      if (quote.length) out.push(`<blockquote>${markdown(quote.join("\n"), document)}</blockquote>`);
+      quote = [];
+    };
+    const cells = line => line.trim().replace(/^\||\|$/g, "").split("|").map(cell => cell.trim());
+    for (let index = 0; index < lines.length; index++) {
+      const line = lines[index];
+      const fence = line.trimStart().match(/^```\s*([\w+-]*)/);
+      if (fence) {
+        flush();
+        const code = [];
+        while (++index < lines.length && !lines[index].trimStart().startsWith("```")) code.push(lines[index]);
+        const language = LANGUAGES[fence[1].toLowerCase()] || ({ python: "py", typescript: "ts", javascript: "ts", rust: "rs", shell: "sh", console: "sh" })[fence[1].toLowerCase()];
+        out.push(`<pre><code>${language ? highlight(code.join("\n"), language) : escape(code.join("\n"))}</code></pre>`);
+        continue;
+      }
+      if (/^\s*\|.*\|\s*$/.test(line) && /^\s*\|?[\s:-]+\|[\s|:-]*$/.test(lines[index + 1] || "")) {
+        flush();
+        const head = cells(line);
+        const rows = [];
+        index++;
+        while (index + 1 < lines.length && /^\s*\|.*\|\s*$/.test(lines[index + 1])) rows.push(cells(lines[++index]));
+        out.push(`<div class="table"><table><thead><tr>${head.map(cell => `<th>${inline(cell)}</th>`).join("")}</tr></thead><tbody>${rows.map(row => `<tr>${row.map(cell => `<td>${inline(cell)}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`);
+        continue;
+      }
+      const heading = line.match(/^(#{1,6})\s+(.*)$/);
+      const bullet = line.match(/^(\s*)[-*+]\s+(.*)$/);
+      const numbered = line.match(/^(\s*)\d+[.)]\s+(.*)$/);
+      const quoted = line.match(/^\s*>\s?(.*)$/);
+      if (quoted) { if (paragraph.length || list) { const kept = quote; quote = []; flush(); quote = kept; } quote.push(quoted[1]); continue; }
+      if (quote.length) flush();
+      if (heading) { flush(); const level = Math.min(6, heading[1].length + (document ? 0 : 2)); out.push(`<h${level}>${inline(heading[2])}</h${level}>`); }
+      else if (/^\s*([-*_])(\s*\1){2,}\s*$/.test(line)) { flush(); out.push("<hr>"); }
+      else if (bullet || numbered) {
+        const [, indent, text] = bullet || numbered;
+        if (paragraph.length) flush();
+        list = list || { items: [] };
+        list.items.push({ indent: indent.replace(/\t/g, "    ").length, tag: bullet ? "ul" : "ol", text });
+      }
+      else if (!line.trim()) flush();
+      else if (list) list.items[list.items.length - 1].text += " " + line.trim();
+      else paragraph.push(line.trim());
+    }
+    flush();
+    return ribbon + out.join("");
+  }
+
+  // What another tab draws the same way: the Timeline's previews and its Ask's answer.
+  studio.render = { markdown: source => markdown(source), inline, time: moment => time(moment), titled: text => titled(text) };
+
+  // --- the diff: an LCS over lines, then over the words of a changed line -------------------------
+
+  function steps(before, after) {
+    let start = 0;
+    while (start < before.length && start < after.length && before[start] === after[start]) start++;
+    let end = 0;
+    while (end < before.length - start && end < after.length - start && before[before.length - 1 - end] === after[after.length - 1 - end]) end++;
+    const left = before.slice(start, before.length - end), right = after.slice(start, after.length - end);
+    const head = before.slice(0, start).map(value => ["equal", value, value]);
+    const tail = before.slice(before.length - end).map(value => ["equal", value, value]);
+    const n = left.length, m = right.length, middle = [];
+    if (n * m > 4_000_000) {
+      for (const value of left) middle.push(["removed", value, null]);
+      for (const value of right) middle.push(["added", null, value]);
+      return [...head, ...middle, ...tail];
+    }
+    const table = new Uint32Array((n + 1) * (m + 1));
+    for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--) {
+      table[i * (m + 1) + j] = left[i] === right[j] ? table[(i + 1) * (m + 1) + j + 1] + 1 : Math.max(table[(i + 1) * (m + 1) + j], table[i * (m + 1) + j + 1]);
+    }
+    let i = 0, j = 0;
+    while (i < n && j < m) {
+      if (left[i] === right[j]) { middle.push(["equal", left[i], right[j]]); i++; j++; }
+      else if (table[(i + 1) * (m + 1) + j] >= table[i * (m + 1) + j + 1]) middle.push(["removed", left[i++], null]);
+      else middle.push(["added", null, right[j++]]);
+    }
+    while (i < n) middle.push(["removed", left[i++], null]);
+    while (j < m) middle.push(["added", null, right[j++]]);
+    return [...head, ...middle, ...tail];
+  }
+  function words(before, after) {
+    const split = line => line.match(/\s+|[\p{L}\p{N}_]+|[^\s\p{L}\p{N}_]/gu) || [];
+    const marked = { before: "", after: "" };
+    for (const [kind, left, right] of steps(split(before), split(after))) {
+      if (kind === "equal") { marked.before += escape(left); marked.after += escape(right); }
+      else if (kind === "removed") marked.before += /^\s+$/.test(left) ? escape(left) : `<del>${escape(left)}</del>`;
+      else marked.after += /^\s+$/.test(right) ? escape(right) : `<ins>${escape(right)}</ins>`;
+    }
+    marked.before = marked.before.replace(/<\/del>(\s+)<del>/g, "$1");
+    marked.after = marked.after.replace(/<\/ins>(\s+)<ins>/g, "$1");
+    return marked;
+  }
+  function diff(before, after) {
+    const walked = steps(before.split("\n"), after.split("\n"));
+    const found = [];
+    let numberBefore = 0, numberAfter = 0;
+    for (let index = 0; index < walked.length;) {
+      if (walked[index][0] === "equal") { found.push({ kind: "equal", before: walked[index][1], after: walked[index][2], left: ++numberBefore, right: ++numberAfter }); index++; continue; }
+      const removed = [], added = [];
+      while (index < walked.length && walked[index][0] !== "equal") {
+        if (walked[index][0] === "removed") removed.push(walked[index][1]); else added.push(walked[index][2]);
+        index++;
+      }
+      for (let k = 0; k < Math.max(removed.length, added.length); k++) {
+        const left = removed[k], right = added[k];
+        if (left?.trim() && right?.trim()) { found.push({ kind: "changed", before: left, after: right, left: ++numberBefore, right: ++numberAfter }); continue; }
+        if (left !== undefined) found.push({ kind: "removed", before: left, after: null, left: ++numberBefore, right: null });
+        if (right !== undefined) found.push({ kind: "added", before: null, after: right, left: null, right: ++numberAfter });
+      }
+    }
+    const near = found.map((row, index) => row.kind !== "equal" || found.slice(Math.max(0, index - 3), index + 4).some(other => other.kind !== "equal"));
+    // A long run of unchanged lines folds into one full-width row, which a click unfolds.
+    let html = "", run = "", folded = 0, runs = 0;
+    const fold = () => {
+      if (folded) html += `<tr class="unchanged" data-unfold="${runs}"><td colspan="4">··· ${folded} unchanged ${folded === 1 ? "line" : "lines"}</td></tr>${run}`;
+      folded = 0; run = ""; runs++;
+    };
+    found.forEach((row, index) => {
+      let left = row.before === null ? "" : escape(row.before), right = row.after === null ? "" : escape(row.after);
+      if (row.kind === "changed") ({ before: left, after: right } = words(row.before, row.after));
+      const line = hidden => `<tr class="${row.kind}"${hidden}><td class="number">${row.left ?? ""}</td><td class="before">${left}</td><td class="number after-side">${row.right ?? ""}</td><td class="after">${right}</td></tr>`;
+      if (!near[index] && found.length > 40) { folded++; run += line(` data-run="${runs}" hidden`); return; }
+      fold();
+      html += line("");
+    });
+    fold();
+    return `<table class="diff"><colgroup><col class="number"><col><col class="number"><col></colgroup><tbody>${html}</tbody></table>`;
+  }
+
+  // --- reading the data ---------------------------------------------------------------------------
+
+  // --- reading the data ---------------------------------------------------------------------------
+
+  const topicNamed = name => state.topics.find(topic => topic.name === name);
+  const everyItem = () => state.topics.flatMap(topic => topic.items);
+  const itemAt = ref => everyItem().find(item => item.ref === ref || (item.aliases || []).includes(ref));
+  const last = item => item.versions[item.versions.length - 1];
+  const versionOf = (item, number) => item.versions.find(version => version.version === number) || last(item);
+  // An asset version's file is at its address; what goes with it (a video's poster or captions) under it.
+  const fileUrl = (item, version, name) => name === version.files[0]?.name ? version.address : `${version.address}/${name.split("/").map(encodeURIComponent).join("/")}`;
+  // A topic as the page lists it: its decisions and proposals, then its assets (`TOPIC:ASSET`), from
+  // what the topic read whole holds when it was opened, else from the list's lighter rows.
+  function expand(task, whole) {
+    const notes = whole?.topic.notes || [];
+    const noted = on => notes.filter(note => Object.entries(on).every(([key, value]) => note.on[key] === value) && note.text);
+    const items = (whole?.items || task.items.map(item => ({ ...item, topic: task.name, type: item.proposed ? "proposal" : "decision" }))).map(item => ({
+      ...item, topic: task.name, notes: noted({ item: item.slug }),
+    }));
+    const assets = whole
+      ? whole.assets.map(asset => ({
+        ...asset, ref: `${task.name}:${asset.name}`, topic: task.name, asset: asset.name, notes: noted({ asset: asset.name }),
+        versions: asset.versions.map(version => ({ ...version, files: [{
+          name: version.name, type: version.type, kind: version.kind, from: version.from, when: version.when, recipe: version.recipe,
+          poster: version.poster?.split("/").pop(), captions: version.captions?.split("/").pop(), text: version.text,
+        }] })),
+      }))
+      : task.assets.map(asset => ({ ...asset, ref: `${task.name}:${asset.name}`, topic: task.name, asset: asset.name, notes: [], versions: [] }));
+    return {
+      ...task, whole, current: task.description, thread: whole?.topic.thread || [], notes,
+      noteCount: whole ? notes.filter(note => note.text).length : task.notes || 0,
+      reviewed: whole ? whole.reviewed : task.reviewed,
+      items: [...items, ...assets],
+    };
+  }
+  const texts = new Map();
+  function text(address) {
+    if (!texts.has(address)) texts.set(address, fetch(address).then(response => response.ok ? response.text() : Promise.reject(new Error("gone"))));
+    return texts.get(address);
+  }
+  const said = () => state.search.toLowerCase().split(/\s+/).filter(Boolean);
+
+  // What an item is: a decision or a proposal, or an asset (a file, versioned).
+  const kindOf = item => item.asset ? "asset" : "decision";
+  const SECTIONS = [["decision", "Items", "item", "items"], ["asset", "Assets", "asset", "assets"]];
+  // What the viewer steps through with the arrows: a topic's assets, as the list shows them.
+  const viewable = topic => topic.items.filter(item => kindOf(item) === "asset");
+  // A proposal waits on the owner until accepted or rejected; accepted, it is to do until carried out.
+  const awaitsOwner = item => item.status === "open";
+  const todo = item => item.status === "accepted" && !item.implemented;
+  const joined = parts => parts.filter(Boolean).join(" · ");
+  const moment = value => typeof value === "string" ? value : value?.moment;
+
+  // --- drawing: the small parts -------------------------------------------------------------------
+
+  // A title as it is written, its `code` set as code.
+  const titled = text => escape(text).replace(/`([^`]+)`/g, "<code>$1</code>");
+  // A verdict as a mark: a tick or a cross on a foil circle; an open proposal a dashed foil ring,
+  // waiting; a decision none. A mark's hover card (`#topics-tip`), in plain words: what it is and
+  // when ("Accepted on Nov 8, 2026 at 17:57"), what follows from it, and the line that set it.
+  const tipped = (said, means = "", line = "") =>
+    `data-tip="${escape(said)}"${means ? ` data-tip-means="${escape(means)}"` : ""}${line ? ` data-tip-line="${escape(line)}"` : ""}`;
+  const VERDICTS = {
+    accepted: ["Accepted", "To be carried out"],
+    implemented: ["Done", "Carried out"],
+    rejected: ["Rejected", "Dropped, with nothing to do"],
+  };
+  // "Accepted on Nov 23, 2026 at 14:05", in local time.
+  function decidedOn(word, moment) {
+    const when = moment ? new Date(moment) : null;
+    if (!when || Number.isNaN(when.getTime())) return word;
+    const day = when.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+    const hour = when.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+    return `${word} on ${day} at ${hour}`;
+  }
+  function verdictMark(item) {
+    if (item.status === "open") return `<span class="verdict-mark open" aria-label="Open" role="img" ${tipped("Open", "Waiting for your verdict")}></span>`;
+    const verdict = item.implemented ? "implemented" : item.status;
+    const [word, means] = VERDICTS[verdict] || [];
+    if (!word) return "";
+    const said = decidedOn(word, moment(item.implemented) || moment(item.verdict));
+    const icon = verdict === "rejected" ? ICONS.rejected : ICONS.accepted;
+    return `<span class="verdict-mark ${verdict === "rejected" ? "rejected" : "accepted"}" aria-label="${escape(said)}" role="img" ${tipped(said, means)}>${icon}</span>`;
+  }
+  // An accepted proposal is to do until carried out: a chip under its corner.
+  const todoPill = '<span class="todo-pill" aria-label="To do">Todo</span>';
+  // Where a topic's work stands, beside its time: active a turning foil spinner, planned a foil
+  // ring, done and abandoned a full foil circle with a tick or a cross. A topic in review (built,
+  // only the owner's word remains) shows none: waiting on the owner needs no mark.
+  const STATES = {
+    active: ["Active", "An agent is working on it"],
+    planned: ["Planned", "Set out, not started"],
+    done: ["Done", "The work is finished"],
+    abandoned: ["Abandoned", "Stopped before it was finished"],
+  };
+  function stateMark(topic) {
+    if (topic.state === "review") return "";
+    const known = STATES[topic.state] ? topic.state : "active";
+    const [word, means] = STATES[known];
+    const icon = known === "done" ? ICONS.accepted : known === "abandoned" ? ICONS.rejected : "";
+    const said = decidedOn(word, topic.active);
+    return `<span class="state-mark ${known}" aria-label="${escape(said)}" role="img" ${tipped(said, means, topic.status || "")}>${icon}</span>`;
+  }
+  function showTip(mark) {
+    const tip = $("topics-tip");
+    const { tip: said, tipMeans: means, tipLine: line } = mark.dataset;
+    tip.innerHTML = `<strong>${escape(said)}</strong>${means ? `<span class="means">${escape(means)}</span>` : ""}${line ? `<span class="line">${escape(line)}</span>` : ""}`;
+    tip.hidden = false;
+    const anchor = mark.getBoundingClientRect();
+    const below = anchor.bottom + 8 + tip.offsetHeight < innerHeight - 8;
+    tip.style.top = `${below ? anchor.bottom + 8 : Math.max(8, anchor.top - 8 - tip.offsetHeight)}px`;
+    tip.style.left = `${Math.max(8, Math.min(anchor.right - tip.offsetWidth + 10, innerWidth - tip.offsetWidth - 8))}px`;
+  }
+
+  // Where a topic's chat stands: the owner's message waiting for its answer, or an answer they have
+  // not seen (the latest agent message since they last had the chat open, kept per browser).
+  const seenKey = name => `nock.topics.seen.${name}`;
+  function standing(topic) {
+    const chat = topic.chat || {};
+    const unseen = chat.latest && !state.chats.has(`topic:${topic.name}`) && stored(seenKey(topic.name), "") !== chat.latest;
+    const answering = (state.front?.working || []).some(run => run.topic === topic.name && run.kind !== "round");
+    return { pending: chat.pending, unseen: unseen ? 1 : 0, answered: !!unseen, answering };
+  }
+  function chatButton(key, standing) {
+    const open = state.chats.has(key);
+    const mark = standing?.unseen ? "a reply" : "";
+    const title = open ? "Close the chat" : mark ? `Chat: ${mark}` : standing?.pending ? "Chat: waiting for the agent's answer" : "Chat";
+    return `<button type="button" class="chat-toggle${standing?.unseen ? " unseen" : ""}${standing?.pending ? " pending" : ""}" data-chat="${escape(key)}" aria-pressed="${open}" aria-label="${escape(title)}" title="${escape(title)}">${ICONS.chat}<span class="swirl" aria-hidden="true"><span></span></span>${standing?.unseen ? '<span class="mark" aria-hidden="true"></span>' : ""}</button>`;
+  }
+  // The chat's icon, and the chat itself floating from it over what is under it: the icon stays
+  // where it is, on the chat's corner, whether it is open or not.
+  const chatCorner = (topic) => {
+    const key = `topic:${topic.name}`;
+    const shown = standing(topic);
+    return `<span class="chat-anchor${state.chats.has(key) ? " open" : ""}">${chatButton(key, shown)}${state.chats.has(key) ? chat(key, topic, shown) : ""}</span>`;
+  };
+
+  const sizeOf = bytes => bytes < 1024 ? `${bytes} B` : bytes < 1048576 ? `${Math.round(bytes / 1024)} KB` : `${(bytes / 1048576).toFixed(1)} MB`;
+  const topicOf = key => key.startsWith("topic:") ? key.slice(6) : key.split(/[/:]/)[0];
+  const pictureType = name => /\.(png|jpe?g|gif|webp|svg|avif)$/i.test(name || "") ? "image" : "file";
+
+  // What a message carries: pictures as thumbnails that open enlarged, other files as named chips.
+  function carried(key, entry) {
+    const files = (entry.attachments || []).map(file => ({ ...file, type: file.type || pictureType(file.name || file.path) }));
+    if (!files.length) return "";
+    const pictures = files.filter(file => file.type === "image").map(file =>
+      `<button type="button" class="picture" data-picture="${escape(file.address)}" data-name="${escape(file.name || file.path)}" data-topic="${escape(topicOf(key))}" title="${escape(file.name || file.path)}" aria-label="Enlarge ${escape(file.name || file.path)}"><img src="${escape(file.address)}" alt="${escape(file.name || file.path)}" loading="lazy"></button>`).join("");
+    const others = files.filter(file => file.type !== "image").map(file =>
+      `<a class="file-chip" href="${escape(file.address)}" target="_blank" rel="noopener">${ICONS.file}<span class="name">${escape(file.name || file.path)}</span>${file.bytes ? `<span class="size">${sizeOf(file.bytes)}</span>` : ""}</a>`).join("");
+    return `<div class="attachments">${pictures ? `<div class="pictures${files.filter(file => file.type === "image").length === 1 ? " one" : ""}">${pictures}</div>` : ""}${others ? `<div class="chips">${others}</div>` : ""}</div>`;
+  }
+
+  // The files waiting in a composer, each removable; one still uploading spins.
+  function chips(key) {
+    const files = state.attached.get(key) || [];
+    if (!files.length) return "";
+    return `<div class="attached" aria-label="Attached files">${files.map(file => {
+      const face = file.uploading ? '<span class="spinner" aria-hidden="true"></span>'
+        : file.type === "image" && file.preview ? `<img src="${escape(file.preview)}" alt="">` : ICONS.file;
+      return `<span class="file-chip${file.uploading ? " uploading" : ""}" data-key="chip:${escape(file.id)}">${face}<span class="name">${escape(file.name)}</span><span class="size">${sizeOf(file.bytes)}</span>
+        <button type="button" class="remove" data-unattach="${escape(key)}" data-id="${escape(file.id)}" aria-label="Remove ${escape(file.name)}" title="Remove">${ICONS.cancel}</button></span>`;
+    }).join("")}</div>`;
+  }
+
+  // The topic's one chat: the agent's messages and the owner's, each owner message with the notes it
+  // carried; an answer being written shows as the old "answering" line.
+  function chat(key, topic, shown) {
+    // A status the agent set shows as it did before a message: its state, then what it says.
+    const entries = topic.thread.filter(entry => entry.kind === "message" || entry.kind === "status")
+      .map(entry => entry.kind === "status" ? { ...entry, author: "agent", text: entry.status, state: entry.state } : entry);
+    const messages = entries.map((entry, index) => {
+      const held = shown.pending && index === entries.length - 1 && entry.author === "owner";
+      const count = (entry.carried || []).length;
+      const notes = [entry.state || "", count ? `with ${count} ${count === 1 ? "note" : "notes"}` : ""].filter(Boolean).map(note => `<span class="note">${escape(note)}</span>`).join("");
+      const words = entry.text ? `<div class="context">${markdown(entry.text)}</div>` : "";
+      return `<div class="message ${entry.author === "owner" ? "owner" : "agent"}${held ? " waiting" : ""}${entry.attachments?.length ? " carrying" : ""}" data-key="message:${escape(entry.id || entry.moment)}">${notes}${words}${carried(key, entry)}
+        <span class="when">${time(entry.moment)}</span></div>`;
+    }).join("");
+    const unsent = topic.notes.filter(note => !note.sent && note.text).length;
+    const answering = shown.answering ? `<div class="address-now working" data-key="address-now"><span class="spinner" aria-hidden="true"></span><span>An agent is answering…</span></div>` : "";
+    const loading = topic.whole ? "" : '<p class="nothing">…</p>';
+    return `<aside class="chat${state.dropping === key ? " dropping" : ""}" data-key="chat:${escape(key)}" data-drop="${escape(key)}" aria-label="Chat"><div class="chat-head"><span class="label">Chat</span></div>
+      <div class="messages" data-log="${escape(key)}">${loading || messages || '<p class="nothing">Nothing said yet.</p>'}</div>
+      ${answering}${composer(key, shown.pending || shown.answering, unsent)}
+      <div class="drop-veil" aria-hidden="true"><span>Drop to attach</span></div></aside>`;
+  }
+
+  // The field the chat writes in, with its files; closed while the agent answers. Unsent notes go
+  // with the next message: the field says how many.
+  function composer(key, waiting, unsent = 0) {
+    const button = `<button type="button" class="send" data-send="${escape(key)}" ${waiting ? "disabled" : ""} aria-label="Send" title="Send">${ICONS.send}</button>`;
+    const clip = `<button type="button" class="tool" data-attach="${escape(key)}" ${waiting ? "disabled" : ""} aria-label="Attach files" title="${waiting ? "Waiting for the agent's answer" : "Attach files (or drop them here)"}">${ICONS.clip}</button>`;
+    const placeholder = waiting ? "Waiting for the agent's answer" : unsent ? `Write to the agent: your ${unsent} ${unsent === 1 ? "note goes" : "notes go"} with it` : "Write to the agent";
+    return `<div class="composer${waiting ? " frozen" : ""}">${chips(key)}<div class="line">${clip}<textarea data-draft="reply:${escape(key)}" rows="1" ${waiting ? "disabled" : ""}
+        placeholder="${escape(placeholder)}" aria-label="Message"></textarea>${button}</div></div>`;
+  }
+
+  // A proposal's verdict: Reject or Accept while it is open.
+  function verdictButtons(item) {
+    if (!awaitsOwner(item)) return "";
+    return `<button type="button" class="button secondary" data-judge="${escape(item.ref)}" data-verdict-choice="rejected">Reject</button><button type="button" class="button primary" data-judge="${escape(item.ref)}" data-verdict-choice="accepted">Accept</button>`;
+  }
+  // The owner's notes on an item or an asset, each with its time and a way to take it back, and the
+  // field that writes one; a note waits to go with the next message in the chat.
+  function notesOf(item, on) {
+    const key = `note:${item.ref}`;
+    const list = item.notes.map(note => `<p class="note-line" data-key="note:${escape(note.id)}"><span class="said">${inline(note.text)}</span> <span class="when">${note.sent ? "sent" : "to send"} · ${time(note.moment)}</span> <button type="button" class="quiet" data-unnote="${escape(note.id)}" data-topic="${escape(item.topic)}" aria-label="Take the note back" title="Take the note back">${ICONS.cancel}</button></p>`).join("");
+    const field = state.noting === item.ref ? `<div class="composer note-field" data-key="note-field"><div class="line"><textarea data-draft="${escape(key)}" rows="1" placeholder="A note for the agent: it goes with your next message" aria-label="Note"></textarea>
+      <button type="button" class="send" data-note-save="${escape(item.ref)}" data-on="${escape(JSON.stringify(on))}" aria-label="Keep the note" title="Keep the note">${ICONS.send}</button></div></div>` : "";
+    return list || field ? `<div class="notes" data-key="notes:${escape(item.ref)}">${list}${field}</div>` : "";
+  }
+  const noteButton = item => `<button type="button" class="button ghost" data-note="${escape(item.ref)}" aria-expanded="${state.noting === item.ref}">Note</button>`;
+
+  // --- drawing: a topic's parts -------------------------------------------------------------------
+
+  // How many notes an item holds, before its time: a pencil and the count; nothing when none.
+  const noted = item => item.notes?.length
+    ? `<span class="attached" role="img" aria-label="${item.notes.length} ${item.notes.length === 1 ? "note" : "notes"}" title="${item.notes.length} ${item.notes.length === 1 ? "note" : "notes"}">${ICONS.pencil}${item.notes.length}</span>` : "";
+  // A decision or a proposal: a bubble opening in place on what it says, why, and what it takes.
+  function bubble(item) {
+    const open = state.expanded.has(item.ref);
+    const corner = `<span class="corner">${noted(item)}${time(item.updated || moment(item.created))}${todo(item) ? todoPill : ""}</span>`;
+    const title = `<button type="button" class="title" aria-expanded="${open}">${titled(item.title)}</button>`;
+    let body = "";
+    if (open) {
+      const why = item.why ? `<div class="considered"><span class="label">Why</span><div class="context">${markdown(item.why)}</div></div>` : "";
+      const takes = item.takes ? `<div class="considered"><span class="label">What it takes</span><div class="context">${markdown(item.takes)}</div></div>` : "";
+      const done = moment(item.implemented) && item.implemented?.means ? `<div class="considered"><span class="label">Done</span><div class="context">${markdown(item.implemented.means)}</div></div>` : "";
+      const whole = !!topicNamed(item.topic)?.whole;
+      body = `<div class="expanded"><div class="context">${markdown(item.means || "")}</div>${why}${takes}${done}${whole ? notesOf(item, { item: item.slug }) : ""}
+        <div class="actions"><span class="hint" data-problem="${escape(item.ref)}"></span><div class="buttons">${whole ? noteButton(item) : ""}${verdictButtons(item)}</div></div></div>`;
+    }
+    return `<div class="item-bubble decision${open ? " open" : ""}${hitClass(item)}" data-key="${escape(item.ref)}" id="item-${escape(item.ref)}">
+      <div class="head" data-expand="${escape(item.ref)}">${verdictMark(item)}${title}${corner}</div>${body}</div>`;
+  }
+
+  // What an asset shows: its latest version's file.
+  function cover(item) {
+    const version = item.versions.length ? last(item) : null;
+    return { version, file: version?.files[0] || null };
+  }
+  // A video's still: its poster, else its first frame; a play mark, and its length once known.
+  const lengths = new Map();
+  const clock = seconds => `${Math.floor(seconds / 60)}:${String(Math.round(seconds % 60)).padStart(2, "0")}`;
+  function still(item, version, file) {
+    const address = fileUrl(item, version, file.name);
+    if (file.type !== "video") return `<img src="${address}" alt="" loading="lazy">`;
+    const picture = file.poster ? `<img src="${fileUrl(item, version, file.poster)}" alt="" loading="lazy">` : "";
+    const known = lengths.get(address);
+    return `${picture}<video src="${address}#t=0.1" data-length="${address}" preload="metadata" muted playsinline tabindex="-1"${picture ? " hidden" : ""}></video>
+      <span class="play" aria-hidden="true"></span><span class="length">${known ? clock(known) : ""}</span>`;
+  }
+  // An asset's face on its card: the picture, the video's still, the page, the text's first lines,
+  // or the kind of file it is; a file this machine lacks says where it is.
+  function face(item, version, file) {
+    if (!file) return '<span class="face none">Nothing to show</span>';
+    const address = fileUrl(item, version, file.name);
+    if (file.type === "image") return `<img class="face" src="${address}" alt="" loading="lazy">`;
+    if (file.type === "video") return `<span class="face still">${still(item, version, file)}</span>`;
+    if (file.type === "html") return `<span class="face page"><iframe data-key="${address}" src="${address}" sandbox="" loading="lazy" tabindex="-1" title="" aria-hidden="true"></iframe></span>`;
+    if (file.type === "text" && rendering(file.name) === "markdown") return `<div class="face text rendered context" data-text="${address}" data-lines="40" data-render="markdown" data-own>…</div>`;
+    if (file.type === "text") return `<pre class="face text" data-text="${address}" data-lines="40" data-own>…</pre>`;
+    return `<span class="face kind">${ICONS.file}<span>${escape(extension(file.name).toUpperCase() || file.type)}</span></span>`;
+  }
+  // An asset as a card (the grid) or a row (the list): its face, and a banner of as much of its
+  // title and description as fits, then its notes and time; its hover holds the whole title and
+  // description. A click opens it in the viewer. A row of text has no face.
+  function assetCard(item, layout) {
+    const { version, file } = cover(item);
+    const description = item.description ? `<span class="description">${titled(item.description)}</span>` : "";
+    const bare = layout === "list" && (!file || file.type === "text");
+    return `<div class="asset ${layout}${bare ? " bare" : ""}${file?.type === "video" ? " video" : ""}${hitClass(item)}" role="button" tabindex="0" data-key="${escape(item.ref)}" id="item-${escape(item.ref)}" data-view="${escape(item.ref)}" ${tipped(item.title, item.description || "")} aria-label="${escape(item.title)}">
+      ${bare ? "" : `<span class="frame">${face(item, version, file)}</span>`}
+      <span class="banner"><span class="words"><span class="title">${titled(item.title)}</span>${description}</span><span class="meta">${noted(item)}${time(item.updated)}</span></span></div>`;
+  }
+  const LAYOUTS = { grid: "Grid", list: "List" };
+  const LAYOUT_ICONS = {
+    grid: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 2h5v5H2zM9 2h5v5H9zM2 9h5v5H2zM9 9h5v5H9z" fill="currentColor"/></svg>',
+    list: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 2.5h3v3H2zM6.5 3h7.5v2H6.5zM2 6.5h3v3H2zM6.5 7h7.5v2H6.5zM2 10.5h3v3H2zM6.5 11h7.5v2H6.5z" fill="currentColor"/></svg>',
+  };
+  const layoutSwitch = () => `<span class="layouts" role="group" aria-label="Show assets as">${Object.entries(LAYOUTS).map(([name, label]) =>
+    `<button type="button" data-layout="${name}" aria-pressed="${state.layout === name}" aria-label="${label}" title="${label}">${LAYOUT_ICONS[name]}</button>`).join("")}</span>`;
+
+  // --- drawing: the review, the story the topic's agent composed ----------------------------------
+
+  const reviewOf = topic => { const versions = topic.whole?.review?.versions || []; return versions[versions.length - 1] || null; };
+  const assetIn = (topic, name) => topic.items.find(item => item.asset === name);
+  const textOf = (asset, number) => (number ? versionOf(asset, number) : last(asset))?.files[0]?.text ?? null;
+  // A block's own words: its title over it, its caption under it, as an asset card has them.
+  const figure = (block, inner, kind = "", asset = null) => {
+    const head = block.title || asset ? `<span class="block-head"><span class="label">${escape(block.title || "")}</span>${asset && topicNamed(asset.topic)?.whole ? noteButton(asset) : ""}</span>` : "";
+    return `<figure class="block ${kind}" data-key="block:${escape(block.id || "")}">${head}${inner}${block.caption ? `<figcaption>${inline(block.caption)}</figcaption>` : ""}${asset ? notesOf(asset, { asset: asset.asset }) : ""}</figure>`;
+  };
+  function chartOf(block) {
+    const labels = block.labels || [], series = block.series || [];
+    const values = series.flatMap(entry => entry.values || []).filter(Number.isFinite);
+    const top = Math.max(1, ...values);
+    const width = 560, height = 160, band = width / Math.max(1, labels.length), bar = Math.max(4, band / (series.length + 1) - 4);
+    const shades = ["var(--muted)", "var(--input)", "var(--foreground)"];
+    const marks = labels.map((label, index) => series.map((entry, which) => {
+      const value = entry.values?.[index] ?? 0, tall = (value / top) * (height - 36);
+      const x = index * band + (band - series.length * (bar + 4)) / 2 + which * (bar + 4);
+      return block.chart === "line" ? "" : `<rect x="${x.toFixed(1)}" y="${(height - 20 - tall).toFixed(1)}" width="${bar.toFixed(1)}" height="${tall.toFixed(1)}" rx="2" fill="${shades[which % 3]}"><title>${escape(entry.name)}: ${value}${escape(block.unit || "")}</title></rect><text x="${(x + bar / 2).toFixed(1)}" y="${(height - 24 - tall).toFixed(1)}" text-anchor="middle">${value}</text>`;
+    }).join("") + `<text x="${(index * band + band / 2).toFixed(1)}" y="${height - 4}" text-anchor="middle">${escape(label)}</text>`).join("");
+    const lines = block.chart === "line" ? series.map((entry, which) => `<polyline fill="none" stroke="${shades[which % 3]}" stroke-width="2" points="${labels.map((_, index) =>
+      `${(index * band + band / 2).toFixed(1)},${(height - 20 - ((entry.values?.[index] ?? 0) / top) * (height - 36)).toFixed(1)}`).join(" ")}"/>`).join("") : "";
+    const legend = series.length > 1 ? `<span class="legend">${series.map(entry => escape(entry.name)).join(" · ")}</span>` : "";
+    return `<svg class="chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escape(block.title || "Chart")}">${marks}${lines}</svg>${legend}`;
+  }
+  // Each kind of block drawn with the parts the list already has: a text as a decision's words, an
+  // item as its bubble, a document or an excerpt as the viewer shows a file, a diff as the viewer
+  // compares two versions, a picture as an asset's card face, a table as a text's table.
+  function block(topic, entry, index) {
+    const asset = entry.asset ? assetIn(topic, entry.asset) : null;
+    switch (entry.kind) {
+      case "text": return `<div class="context block" data-key="block:${escape(entry.id || index)}">${markdown(entry.text || "")}</div>`;
+      case "item": {
+        const item = topic.items.find(found => found.slug === entry.item);
+        return item ? bubble(item) : "";
+      }
+      case "diff": {
+        if (!asset || asset.versions.length < 2) return "";
+        const to = entry.to || last(asset).version, from = entry.from || versionOf(asset, to - 1).version;
+        const before = textOf(asset, from), after = textOf(asset, to);
+        const inner = before !== null && after !== null ? `<div class="document">${diff(before, after)}</div>`
+          : `<div class="document" data-pair="${escape(`${fileUrl(asset, versionOf(asset, from), versionOf(asset, from).files[0].name)} ${fileUrl(asset, versionOf(asset, to), versionOf(asset, to).files[0].name)}`)}" data-own>…</div>`;
+        return figure({ ...entry, title: entry.title || `${asset.title} · v${from} → v${to}` }, inner, "diff-block", asset);
+      }
+      case "excerpt": case "doc": {
+        if (!asset) return "";
+        const version = entry.version ? versionOf(asset, entry.version) : last(asset);
+        const file = version.files[0], content = file.text;
+        const how = rendering(file.name);
+        let inner;
+        if (entry.kind === "excerpt" && content !== null && content !== undefined) {
+          const [first, end] = entry.lines || [1, 40];
+          const lines = content.split("\n").slice(first - 1, end).join("\n");
+          inner = `<div class="document code"><pre><code>${highlight(lines, LANGUAGES[extension(file.name)] || "")}</code></pre></div>`;
+        } else {
+          inner = `<div class="document ${how}" data-key="${escape(version.address)}" data-text="${escape(version.address)}" data-render="${how}" data-language="${LANGUAGES[extension(file.name)] || ""}" data-own>…</div>`;
+        }
+        const title = entry.title || (entry.kind === "excerpt" && entry.lines ? `${asset.title} · lines ${entry.lines[0]}–${entry.lines[1]}` : asset.title);
+        return figure({ ...entry, title }, `<button type="button" class="open-asset" data-view="${escape(asset.ref)}">${inner}</button>`, entry.kind, asset);
+      }
+      case "image": {
+        if (!asset) return "";
+        const version = entry.version ? versionOf(asset, entry.version) : last(asset);
+        const file = version.files[0];
+        const inner = file.type === "video"
+          ? `<video class="player" src="${version.address}" controls preload="metadata" playsinline></video>`
+          : `<button type="button" class="open-asset" data-view="${escape(asset.ref)}"><img src="${version.address}" alt="${escape(asset.title)}" loading="lazy"></button>`;
+        return figure({ ...entry, title: entry.title || asset.title }, inner, "image", asset);
+      }
+      case "table": {
+        const head = (entry.columns || []).map(column => `<th>${inline(String(column))}</th>`).join("");
+        const rows = (entry.rows || []).map(row => `<tr>${row.map(cell => `<td>${inline(String(cell ?? ""))}</td>`).join("")}</tr>`).join("");
+        return figure(entry, `<div class="context"><div class="table"><table><thead><tr>${head}</tr></thead><tbody>${rows}</tbody></table></div></div>`, "table");
+      }
+      case "chart": return figure(entry, chartOf(entry), "chart");
+      case "html": {
+        const version = reviewOf(topic)?.version;
+        const address = `/api/html/${encodeURIComponent(topic.name)}/${version}/${encodeURIComponent(entry.file)}`;
+        return figure(entry, `<iframe class="page" data-key="${escape(address)}" src="${escape(address)}" sandbox="allow-scripts" style="height:${Number(entry.height) || 320}px" title="${escape(entry.title || entry.file)}"></iframe>`, "html");
+      }
+      default: return "";
+    }
+  }
+  function review(topic) {
+    const current = reviewOf(topic);
+    if (!current) return "";
+    const blocks = current.blocks.map((entry, index) => block(topic, entry, index)).join("");
+    const said = current.summary ? `<p class="summary">${inline(current.summary)}</p>` : "";
+    return `<section class="section review" data-key="section:review"><h3 class="label">Review <span class="count">· v${current.version}</span> <span class="when">${time(current.moment)}</span></h3>${said}<div class="story">${blocks}</div></section>`;
+  }
+
+  // A topic's items outside its review in two groups: the open ones (proposals waiting, accepted
+  // ones to do), the latest first; the closed ones folded until opened. Its assets after them, as
+  // cards, folded too; none, no group.
+  const groupOf = item => awaitsOwner(item) || todo(item) ? "open" : "closed";
+  const newest = moments => Math.max(0, ...moments.filter(Boolean).map(moment => new Date(moment).getTime()));
+  const activity = item => newest([item.updated, moment(item.created)]);
+  const GROUPS = [["open", "Open", (one, two) => activity(two) - activity(one)], ["closed", "Closed", (one, two) => activity(two) - activity(one)]];
+  // A group's fold: the open group is folded once the owner folds it, the closed ones until they open them.
+  const foldedAtFirst = key => key.endsWith("/closed") || key.endsWith("/assets");
+  const isFolded = key => foldedAtFirst(key) !== state.folded.has(key);
+  const setFolded = (key, shut) => { if (shut !== foldedAtFirst(key)) state.folded.add(key); else state.folded.delete(key); };
+  function section(key, group, label, count, body) {
+    const folded = isFolded(key);
+    return `<section class="section ${group}${folded ? " folded" : ""}" data-key="section:${group}"><h3 class="label"><button type="button" class="fold" data-fold="${escape(key)}" aria-expanded="${!folded}">${ICONS.caret}${label} <span class="count">· ${count}</span></button></h3>${folded ? "" : body}</section>`;
+  }
+  function sections(topic, items) {
+    const told = new Set((reviewOf(topic)?.blocks || []).filter(entry => entry.kind === "item").map(entry => entry.item));
+    const decisions = items.filter(item => kindOf(item) === "decision" && !told.has(item.slug));
+    const groups = GROUPS.map(([group, label, order]) => {
+      const kept = decisions.filter(item => groupOf(item) === group).sort(order);
+      if (!kept.length) return "";
+      return section(`${topic.name}/${group}`, group, label, kept.length, `<div class="item-bubbles">${kept.map(bubble).join("")}</div>`);
+    }).join("");
+    const assets = items.filter(item => kindOf(item) === "asset" && item.versions.length);
+    const shelf = assets.length ? section(`${topic.name}/assets`, "assets", "Assets", assets.length,
+      `<div class="decision-assets" data-key="assets"><div class="assets-head">${layoutSwitch()}</div><div class="assets ${state.layout}">${assets.map(entry => assetCard(entry, state.layout)).join("")}</div></div>`) : "";
+    return groups + shelf;
+  }
+
+  // What a topic holds, counted; a count of none says nothing.
+  function kindCounts(topic) {
+    const plural = (count, one, many) => count ? `${count} ${count === 1 ? one : many}` : "";
+    return joined([plural(topic.decisions, "decision", "decisions"), plural(topic.proposals, "proposal", "proposals"), plural(topic.assets?.length || 0, "asset", "assets")]);
+  }
+  function verdictCounts(topic) {
+    const items = topic.items.filter(item => !item.asset);
+    const count = test => items.filter(test).length;
+    return joined([count(awaitsOwner) ? `${count(awaitsOwner)} open` : "", count(todo) ? `${count(todo)} to do` : "", topic.noteCount ? `${topic.noteCount} ${topic.noteCount === 1 ? "note" : "notes"}` : ""]);
+  }
+  // A plan's progress: steps done of all, and the time its estimates leave, corrected by the pace.
+  function minutes(count) {
+    const rounded = Math.max(1, Math.round(count));
+    return rounded < 60 ? `${rounded} min` : `${Math.floor(rounded / 60)} h${rounded % 60 ? ` ${rounded % 60} min` : ""}`;
+  }
+  function planCount(topic) {
+    const plan = topic.progress;
+    if (!plan?.steps?.length) return "";
+    const left = plan.done < plan.steps.length && plan.left > 0 ? `~${minutes(plan.left)} left` : "";
+    return joined([`${plan.done}/${plan.steps.length} steps`, left]);
+  }
+  // Open, the plan shows as a hairline filled as far as it got, with the step under way.
+  function planBar(topic) {
+    const plan = topic.progress;
+    if (!plan?.steps?.length || plan.done >= plan.steps.length) return "";
+    const share = Math.min(1, Math.max(0, plan.share ?? plan.done / plan.steps.length));
+    return `<div class="plan" data-key="plan"><span class="plan-bar" role="progressbar" aria-valuemin="0" aria-valuemax="${plan.steps.length}" aria-valuenow="${plan.done}" aria-label="${escape(planCount(topic))}"><span style="width:${(share * 100).toFixed(1)}%"></span></span>${plan.current ? `<span class="plan-now">${escape(plan.current)}</span>` : ""}</div>`;
+  }
+
+  // "21 minutes", "3 hours", "2 days": how long ago, in words.
+  function ago(moment) {
+    const seconds = Math.max(0, (Date.now() - new Date(moment).getTime()) / 1000);
+    const [count, unit] = seconds < 3600 ? [Math.floor(seconds / 60), "minute"] : seconds < 86400 ? [Math.floor(seconds / 3600), "hour"]
+      : seconds < 86400 * 60 ? [Math.floor(seconds / 86400), "day"] : seconds < 86400 * 365 ? [Math.floor(seconds / 86400 / 30), "month"] : [Math.floor(seconds / 86400 / 365), "year"];
+    return `${count} ${unit}${count === 1 ? "" : "s"}`;
+  }
+  // A topic's status, last, under its description: when it was set, then what it says, as a sentence.
+  function statusLine(topic) {
+    if (!topic.status) return "";
+    const moment = topic.active;
+    const when = Date.now() - new Date(moment).getTime() < 60000 ? "Last updated just now" : `Last updated ${ago(moment)} ago`;
+    const said = /[.!?]$/.test(topic.status.trim()) ? topic.status.trim() : `${topic.status.trim()}.`;
+    return `<p class="status-line"><strong>${when}</strong>: ${escape(said)}</p>`;
+  }
+
+  function sheet(topic, items) {
+    const open = state.open.has(topic.name);
+    const head = `<div class="topic-head" data-toggle="${escape(topic.name)}">
+        <span class="title-line"><button type="button" class="name" aria-expanded="${open}">${escape(topic.name)}</button></span>
+        <span class="corner">${stateMark(topic)}${chatCorner(topic)}${time(topic.active)}</span>
+        <span class="counts"><span>${escape(kindCounts(topic))}</span><span>${escape(verdictCounts(topic))}</span><span>${escape(planCount(topic))}</span></span>
+        <p class="about">${inline(topic.current)}</p>${statusLine(topic)}</div>`;
+    // The review is done once the owner says so: every decision without a note counts as fine.
+    const done = reviewOf(topic) && !topic.reviewed
+      ? `<div class="actions all" data-key="done"><span class="hint" data-problem="topic:${escape(topic.name)}">${topic.notes.some(note => !note.sent && note.text) ? "Your notes go to the agent with Done." : "Every decision without a note counts as fine."}</span><div class="buttons"><button type="button" class="button primary" data-done="${escape(topic.name)}">Done</button></div></div>` : "";
+    const body = open ? (topic.whole
+      ? `<div class="topic-body">${planBar(topic)}${review(topic)}${sections(topic, items) || (reviewOf(topic) ? "" : '<p class="nothing">No items yet.</p>')}${done}</div>`
+      : `<div class="topic-body"><p class="nothing">…</p></div>`) : "";
+    return `<article class="sheet topic${open ? " open" : ""}" data-key="topic:${escape(topic.name)}" id="topic-${escape(topic.name)}">
+      <div class="main">${head}${body}</div></article>`;
+  }
+
+  function drawList() {
+    // Searching, what the search found.
+    const found = said().length ? state.found : null;
+    const shown = [];
+    for (const topic of state.topics) {
+      const kept = sifted(topic);
+      if (!kept) continue;
+      if (!found || found.topics.has(topic.name)) { shown.push([topic, kept]); continue; }
+      const items = kept.filter(item => found.items.has(item.ref));
+      if (items.length) shown.push([topic, items]);
+    }
+    const empty = !state.topics.length
+      ? '<div class="empty" data-key="empty"><strong>No topics yet</strong><span>Agents open a topic for their work in <code>.nock/shared/topics/</code> and record decisions in it; they appear here.</span></div>'
+      : !shown.length ? `<div class="empty" data-key="empty"><strong>No matches</strong><span>No topic or item fits the ${said().length ? "search" : "filter"}${state.sift !== "all" || !state.closed ? " as filtered" : ""}.</span></div>` : "";
+    studio.morph($("topics-main"), empty + shown.map(([topic, items]) => sheet(topic, items)).join(""));
+  }
+
+  // --- drawing: the viewer, a picture or a text over the list -------------------------------------
+
+  // Compare is for versions; a file that is only a link to download (`binary`) has nothing to show
+  // side by side.
+  const comparable = item => item.versions.length > 1 && last(item).files.length > 0 && last(item).files[0].type !== "binary";
+  function chosen(item) {
+    const numbers = item.versions.map(version => version.version);
+    if (!state.compare || !comparable(item)) return [numbers.includes(state.single) ? state.single : numbers[numbers.length - 1]];
+    const right = numbers.includes(state.right) ? state.right : numbers[numbers.length - 1];
+    const left = numbers.includes(state.left) ? state.left : numbers[Math.max(0, numbers.length - 2)];
+    return [left, right];
+  }
+  // The version select: a pill showing the version alone; its list gives each version's time.
+  const versionWords = version => `<span class="label">v<span class="number">${version.version}</span></span><span class="when">${escape(short(version.moment))}</span>`;
+  function picker(item, side, number) {
+    const version = versionOf(item, number);
+    const open = state.menu === side;
+    const options = [...item.versions].reverse().map(entry => `<button type="button" role="option" data-pick="${side}" data-number="${entry.version}" aria-selected="${entry.version === number}" title="${escape(new Date(entry.moment).toLocaleString())}">${versionWords(entry)}</button>`).join("");
+    return `<div class="select" data-key="select:${side}"><button type="button" class="select-button" data-menu="${side}" aria-haspopup="listbox" aria-expanded="${open}" ${item.versions.length < 2 ? "disabled" : ""}>
+        <span class="label">v<span class="number">${version.version}</span></span>${item.versions.length > 1 ? ICONS.chevron : ""}</button>
+        ${open ? `<div class="options" role="listbox" aria-label="${side === "left" ? "Before" : side === "right" ? "After" : "Version"}">${options}</div>` : ""}</div>`;
+  }
+
+  // Where a file comes from, in words: no times, no sizes.
+  function source(file) {
+    const code = path => `<code>${escape(path)}</code>`;
+    const listed = paths => paths.length < 2 ? paths.map(code).join("") : `${paths.slice(0, -1).map(code).join(", ")} and ${code(paths[paths.length - 1])}`;
+    const lines = [];
+    if (file.kind === "project") lines.push(`<p>A copy of ${code(file.name)}, as the repository had it when this version was made.</p>`);
+    else {
+      lines.push(file.from?.length ? `<p>Made to show ${listed(file.from)}.</p>` : "<p>Made by an agent to show part of the project.</p>");
+      if (file.when) lines.push(`<p>It shows the case when ${inline(file.when)}.</p>`);
+      if (file.recipe?.command) lines.push(`<p>To make it again, run ${code(file.recipe.command)}.</p>`);
+      if (file.recipe?.instruction) lines.push(`<p class="how">${file.recipe.command ? "Or, for an agent" : "To make it again, an agent"}: ${inline(file.recipe.instruction)}</p>`);
+    }
+    if (file.local) lines.push("<p>It is large, so it stays on this machine.</p>");
+    return `<div class="source" data-key="source" role="dialog" aria-label="Where it comes from">${lines.join("")}</div>`;
+  }
+  const pathButton = (file, index) => `<span class="path-anchor"><button type="button" class="path" data-path="${index}" aria-expanded="${state.reveal === index}" title="Where it comes from">${escape(file.name)}</button>${state.reveal === index ? source(file) : ""}</span>`;
+
+  function pane(item, version, file, index) {
+    if (!file) return `<div class="pane"><p class="missing">Nothing in version ${version.version}.</p></div>`;
+    const address = fileUrl(item, version, file.name);
+    if (file.type === "image") {
+      return `<div class="pane"><button type="button" class="shot${state.zoom ? " zoomed" : ""}" data-shot="${index}" aria-label="${state.zoom ? "Zoom out" : "Zoom in"}"><img data-key="${address}" src="${address}" style="${zoomStyle(index)}" alt="${escape(file.name)}, version ${version.version}"></button></div>`;
+    }
+    if (file.type === "video") {
+      // Captions on by default: a recording explains each step in its own words.
+      const poster = file.poster ? ` poster="${fileUrl(item, version, file.poster)}"` : "";
+      const track = file.captions ? `<track kind="captions" src="${fileUrl(item, version, file.captions)}" srclang="en" label="Captions" default>` : "";
+      return `<div class="pane"><video class="player" data-key="${address}" src="${address}"${poster} controls preload="metadata" playsinline>${track}</video></div>`;
+    }
+    if (file.type === "pdf") return `<div class="pane"><iframe data-key="${address}" src="${address}" title="${escape(file.name)}"></iframe></div>`;
+    if (file.type === "html") return `<div class="pane"><iframe data-key="${address}" src="${address}" sandbox="" title="${escape(file.name)}"></iframe></div>`;
+    if (file.type === "binary") return `<div class="pane"><a href="${address}" download>${escape(file.name)}</a></div>`;
+    const how = rendering(file.name);
+    return `<div class="pane"><div class="document ${how}" data-key="${address}" data-text="${address}" data-render="${how}" data-language="${LANGUAGES[extension(file.name)] || ""}" data-own>…</div></div>`;
+  }
+
+  // What the viewer shows: compared, the file of each of two versions; otherwise one version's.
+  function shownPanes(item) {
+    const versions = chosen(item).map(number => versionOf(item, number));
+    return versions.map(version => ({ version, file: version.files[0] || null }));
+  }
+
+  function viewer(item) {
+    const numbers = chosen(item);
+    const panes = shownPanes(item);
+    const comparing = numbers.length === 2;
+    const compare = comparable(item) ? `<button type="button" class="toggle" data-compare aria-pressed="${comparing}" title="Compare two versions"><span class="switch" aria-hidden="true"><span></span></span>Compare</button>` : "";
+    const first = panes[panes.length - 1].file;
+    // Compared, each version's select stands over the side it chooses. One version: no select at all.
+    const sides = ["left", "right"];
+    const pickers = comparing || item.versions.length < 2 ? "" : picker(item, "single", numbers[0]);
+    // The file's path on the line with Compare and the notes, at its left, compared or not.
+    const path = first ? pathButton(first, 0) : "";
+    let content, heads = "";
+    if (comparing && panes.every(entry => entry.file?.type === "text")) {
+      const pair = panes.map(entry => fileUrl(item, entry.version, entry.file.name)).join(" ");
+      heads = `<div class="heads" data-key="heads">${sides.map((side, index) => `<div class="head">${picker(item, side, numbers[index])}</div>`).join("")}</div>`;
+      content = `<div class="panes" data-key="pair:${escape(pair)}" data-own data-pair="${escape(pair)}"><p class="missing">…</p></div>`;
+    } else {
+      // Keyed apart from a diff, so a diff filled once is not taken for this.
+      content = `<div class="panes${panes.length > 1 ? " several" : ""}" data-key="panes" style="--panes:${panes.length}">${panes.map((entry, index) =>
+        `<div class="column">${comparing
+          // Compared, each side's select on a line over it, at its left edge.
+          ? `<div class="stack${entry.file?.type === "image" ? " fit" : ""}"><div class="head">${picker(item, sides[index], numbers[index])}</div>${pane(item, entry.version, entry.file, index)}</div>`
+          : pane(item, entry.version, entry.file, index)}</div>`).join("")}</div>`;
+    }
+    const topic = topicNamed(item.topic);
+    const notes = topic?.whole ? `<div class="actions" data-key="notes-line">${notesOf(item, { asset: item.asset }) || '<span class="hint"></span>'}<div class="buttons">${noteButton(item)}</div></div>` : "";
+    // A quiet line over the title says which topic it belongs to, and links to it.
+    const crumbs = `<nav class="crumbs" aria-label="Belongs to"><a href="#topics/${escape(item.topic)}" data-go="${escape(item.topic)}">${escape(item.topic)}</a></nav>`;
+    // Every asset's viewer is one size, most of the screen, whatever it holds: what it holds scrolls inside.
+    const look = first?.type === "image" || first?.type === "video" ? "image" : first?.type === "text" && !comparing ? "text" : "wide";
+    const description = item.description ? `<p class="description">${titled(item.description)}</p>` : "";
+    return `<div class="overlay" data-key="overlay:${escape(item.ref)}" data-backdrop>
+      <article class="sheet open viewer ${look}${comparing ? " comparing" : ""}" role="dialog" aria-modal="true" aria-label="${escape(item.title)}">
+        <div class="ribbon">${crumbs}<div class="titling"><h2>${titled(item.title)}</h2>${description}</div><span class="side">${time(item.updated)}</span><button type="button" class="close" data-close aria-label="Close (Esc)" title="Close (Esc)">×</button></div>
+        <div class="main">
+          <div class="line versions">${pickers ? `<span class="pickers">${pickers}</span>` : ""}${path}<span class="end">${compare}</span></div>
+          ${heads}<div class="content">${content}</div>${notes}</div>
+      </article></div>`;
+  }
+  function drawLightbox() {
+    const picture = state.picture;
+    const markup = picture ? `<div class="overlay lightbox" data-key="lightbox:${escape(picture.address)}" data-lightbox-backdrop>
+      <article class="sheet open viewer image" role="dialog" aria-modal="true" aria-label="${escape(picture.name)}">
+        <div class="ribbon"><h2>${escape(picture.name)}</h2><span class="side"><a class="path" href="${escape(picture.address)}" download="${escape(picture.name)}">Download</a></span><button type="button" class="close" data-lightbox-close aria-label="Close (Esc)" title="Close (Esc)">×</button></div>
+        <div class="main"><div class="content"><div class="panes" data-key="panes"><div class="column">${(() => {
+          return `<div class="pane"><button type="button" class="shot${state.zoom ? " zoomed" : ""}" data-shot="p" aria-label="${state.zoom ? "Zoom out" : "Zoom in"}"><img data-key="${escape(picture.address)}" src="${escape(picture.address)}" style="${zoomStyle("p")}" alt="${escape(picture.name)}"></button></div>`;
+        })()}</div></div></div></div>
+      </article></div>` : "";
+    studio.morph($("topics-lightbox"), markup);
+  }
+
+  function drawModal() {
+    const item = state.modal ? itemAt(state.modal) : null;
+    document.documentElement.classList.toggle("topics-viewing", !!item && state.shown);
+    studio.morph($("topics-modal"), item ? viewer(item) : "");
+    placeSource();
+  }
+  // A path's bubble floats free of the content that scrolls: under its path, or over it when the
+  // screen has no room below.
+  function placeSource() {
+    const bubble = document.querySelector("#topics-tab .source");
+    if (!bubble) return;
+    const anchor = bubble.previousElementSibling.getBoundingClientRect();
+    const below = anchor.bottom + 10 + bubble.offsetHeight < innerHeight - 8;
+    bubble.style.top = `${below ? anchor.bottom + 10 : Math.max(8, anchor.top - 10 - bubble.offsetHeight)}px`;
+    bubble.style.left = `${Math.max(8, Math.min(anchor.left - 10, innerWidth - bubble.offsetWidth - 8))}px`;
+  }
+
+  // --- zoom: a picture magnified over all the viewer's room, the part shown following the cursor ----
+
+  // Zoomed, a picture's frame takes all the room the viewer has (compared, each its half), and the
+  // picture shows at its natural size, or larger when that leaves the frame unfilled; the part
+  // shown follows the cursor. Each picture shown zooms with the others, to the same point, so two
+  // versions compare in detail.
+  const clamp = value => Math.min(1, Math.max(0, value));
+  // Where the pictures that zoom together are: an enlarged attachment's, else the viewer's.
+  const zoomed = () => state.picture ? "#topics-lightbox" : "#topics-modal";
+  const offset = (inner, outer, at) => (inner > outer ? -(inner - outer) * at : (outer - inner) / 2).toFixed(1);
+  const shift = box => `translate(${offset(box.wide, box.width, state.zoom.x)}px, ${offset(box.tall, box.height, state.zoom.y)}px)`;
+  // Until its frame is measured, a zoomed picture is hidden: drawn, measured and drawn again at once.
+  function zoomStyle(index) {
+    if (!state.zoom) return "";
+    const box = state.zoom.boxes?.[index];
+    if (!box) return "visibility:hidden";
+    return `width:${box.wide}px;height:${box.tall}px;transform:${shift(box)}${box.crisp ? ";image-rendering:pixelated" : ""}`;
+  }
+  function zoomIn(shot, event) {
+    const rect = shot.getBoundingClientRect();
+    const keyed = event.detail === 0;
+    state.zoom = { boxes: null, x: keyed ? .5 : clamp((event.clientX - rect.left) / rect.width), y: keyed ? .5 : clamp((event.clientY - rect.top) / rect.height) };
+  }
+  function measureZoom() {
+    const boxes = {};
+    for (const each of document.querySelectorAll(`${zoomed()} .shot.zoomed`)) {
+      const picture = each.querySelector("img");
+      const width = each.clientWidth, height = each.clientHeight;
+      if (!picture.naturalWidth || !width || !height) continue;
+      const scale = Math.max(1, width / picture.naturalWidth, height / picture.naturalHeight);
+      boxes[each.dataset.shot] = { width, height, wide: picture.naturalWidth * scale, tall: picture.naturalHeight * scale, crisp: scale > 2 };
+    }
+    state.zoom.boxes = boxes;
+  }
+  function placeZoom() {
+    for (const shot of document.querySelectorAll(`${zoomed()} .shot.zoomed`)) {
+      const box = state.zoom.boxes?.[shot.dataset.shot];
+      if (box) shot.querySelector("img").style.transform = shift(box);
+    }
+  }
+
+  // --- search: the words found marked, the items they are in opened and ringed, one hit at a time ----
+
+  // Nock finds what is searched for (`GET topics/search/QUERY`) in what the owner sees: titles,
+  // decisions, file names, texts' contents, threads; the answer to the latest query wins.
+
+  // --- search: the words found marked, the items they are in opened and ringed, one hit at a time ----
+
+  // The page finds what is searched for in what the owner sees: topics' names, descriptions and
+  // statuses, items' titles and what they say, assets' titles. Every word must be there.
+  const holds = (words, ...texts) => { const all = texts.filter(Boolean).join(" ").toLowerCase(); return words.every(word => all.includes(word)); };
+  function find(opening) {
+    const words = said();
+    if (!words.length) { state.found = null; if (opening) searched(); draw(); return; }
+    const found = { topics: new Set(), items: new Set() };
+    for (const topic of state.topics) {
+      if (holds(words, topic.name, topic.description, topic.status, topic.summary)) found.topics.add(topic.name);
+      for (const item of topic.items) if (holds(words, item.title, item.means, item.why, item.takes, item.description)) found.items.add(item.ref);
+    }
+    state.found = found;
+    if (opening) searched();
+    else {
+      state.hits = findHits().map(item => item.ref);
+      state.hitAt = Math.min(state.hitAt, Math.max(0, state.hits.length - 1));
+    }
+    draw();
+  }
+  // Opening starts at three letters, so the first keystrokes do not open everything.
+  const searching = () => state.search.trim().length >= 3 && state.found ? said() : [];
+  // Only a picture, a text or a file is ringed: an item opened for what it says shows the words
+  // found, not a ring.
+  const hitClass = item => kindOf(item) !== "decision" && state.hits.includes(item.ref) ? ` hit${state.hits[state.hitAt] === item.ref ? " current" : ""}` : "";
+  // The items holding what is searched for, in the order the list shows them.
+  function findHits() {
+    if (!searching().length) return [];
+    const found = [];
+    for (const topic of state.topics) {
+      const holding = topic.items.filter(item => state.found.items.has(item.ref));
+      for (const [kind] of SECTIONS) found.push(...holding.filter(item => kindOf(item) === kind));
+    }
+    return found;
+  }
+  const placeOf = item => kindOf(item) === "asset" ? `${item.topic}/assets` : `${item.topic}/${groupOf(item)}`;
+  // What the search opened (topics, items, folded sections) it closes again when it no longer
+  // finds anything there; what the owner opened stays as they left it.
+  function searched() {
+    const hits = findHits();
+    const wanted = {
+      open: new Set(hits.map(item => item.topic)),
+      expanded: new Set(hits.filter(item => kindOf(item) === "decision").map(item => item.ref)),
+      folded: new Set(hits.map(placeOf)),
+    };
+    for (const [place, keys] of Object.entries(state.opened)) {
+      for (const key of keys) {
+        if (wanted[place].has(key)) continue;
+        if (place === "folded") setFolded(key, true); else state[place].delete(key);
+        if (place === "open") state.chats.delete(`topic:${key}`);
+        keys.delete(key);
+      }
+    }
+    for (const [place, keys] of Object.entries(wanted)) {
+      for (const key of keys) {
+        const shut = place === "folded" ? isFolded(key) : !state[place].has(key);
+        if (!shut) continue;
+        if (place === "folded") setFolded(key, false); else state[place].add(key);
+        state.opened[place].add(key);
+      }
+    }
+    state.hits = hits.map(item => item.ref);
+    state.hitAt = 0;
+    state.reveal_hit = state.hits.length > 0;
+  }
+  // The owner opening or closing something takes it from the search: it stays as they set it.
+  const owned = (place, key) => state.opened[place].delete(key);
+  function jump(by) {
+    if (!state.hits.length) return;
+    state.hitAt = (state.hitAt + by + state.hits.length) % state.hits.length;
+    const item = itemAt(state.hits[state.hitAt]);
+    if (item && !state.open.has(item.topic)) { state.open.add(item.topic); state.opened.open.add(item.topic); }
+    state.reveal_hit = true;
+    draw();
+  }
+  function markWords(scope, words = said()) {
+    for (const old of scope.querySelectorAll("mark.found")) {
+      const parent = old.parentNode;
+      old.replaceWith(...old.childNodes);
+      parent.normalize();
+    }
+    const wanted = words.filter(word => word.length > 1);
+    if (!wanted.length) return;
+    const source = wanted.map(word => word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|");
+    const pattern = new RegExp(source, "gi"), holds = new RegExp(source, "i");
+    const walker = document.createTreeWalker(scope, NodeFilter.SHOW_TEXT, {
+      acceptNode: node => node.parentElement.closest("time, .when, textarea, script, style, button.select-button") ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT,
+    });
+    const nodes = [];
+    while (walker.nextNode()) if (holds.test(walker.currentNode.nodeValue)) nodes.push(walker.currentNode);
+    for (const node of nodes) {
+      const text = node.nodeValue, parts = [];
+      let at = 0;
+      for (const found of text.matchAll(pattern)) {
+        if (found.index > at) parts.push(document.createTextNode(text.slice(at, found.index)));
+        const mark = document.createElement("mark");
+        mark.className = "found";
+        mark.textContent = found[0];
+        parts.push(mark);
+        at = found.index + found[0].length;
+      }
+      if (at < text.length) parts.push(document.createTextNode(text.slice(at)));
+      node.replaceWith(...parts);
+    }
+  }
+
+  // --- filling what is fetched, keeping what is typed ---------------------------------------------
+
+  function fill(scope) {
+    for (const place of scope.querySelectorAll("[data-text]")) {
+      const address = place.dataset.text;
+      if (place.filled === address) continue;
+      place.filled = address;
+      const lines = Number(place.dataset.lines || 0);
+      text(address).then(content => {
+        if (place.filled !== address) return;
+        // A Markdown file's first lines rendered, past its frontmatter, as the viewer shows it.
+        if (lines && place.dataset.render === "markdown") place.innerHTML = markdown(frontmatter(content.replace(/\r/g, ""))[1].split("\n").slice(0, lines).join("\n"));
+        else if (lines) place.textContent = content.split("\n").slice(0, lines).join("\n");
+        else if (place.dataset.render === "markdown") place.innerHTML = markdown(content, true);
+        else if (place.dataset.render === "code") place.innerHTML = `<pre><code>${highlight(content, place.dataset.language)}</code></pre>`;
+        else place.innerHTML = `<pre>${escape(content)}</pre>`;
+        markWords(place);
+      }).catch(() => { if (place.filled === address) place.textContent = "This file could not be read."; });
+    }
+    for (const place of scope.querySelectorAll("[data-pair]")) {
+      const pair = place.dataset.pair;
+      if (place.filled === pair) continue;
+      place.filled = pair;
+      Promise.all(pair.split(" ").map(text)).then(([left, right]) => { if (place.filled === pair) { place.innerHTML = diff(left, right); markWords(place); } })
+        .catch(() => { if (place.filled === pair) place.innerHTML = '<p class="missing">These files could not be read.</p>'; });
+    }
+  }
+
+  function restoreDrafts() {
+    for (const field of document.querySelectorAll("#topics-tab [data-draft]")) {
+      const kept = field.disabled ? "" : state.drafts.get(field.dataset.draft) ?? "";
+      if (document.activeElement !== field && field.value !== kept) field.value = kept;
+      grow(field);
+    }
+    if (state.focus) {
+      const field = document.querySelector(`#topics-tab [data-draft="${CSS.escape(state.focus)}"]`);
+      if (field && !field.disabled) {
+        const at = state.caretAt ?? field.value.length;
+        field.focus(); field.setSelectionRange(at, at); state.focus = state.caretAt = null;
+      }
+    }
+  }
+  function grow(field) {
+    if (!CSS.supports("field-sizing", "content")) {
+      field.style.height = "auto";
+      field.style.height = `${field.scrollHeight + 1}px`;
+    }
+    edges(field);
+  }
+  // Grown to its limit, a message scrolls inside its field: its edges fade where more is hidden.
+  function edges(field) {
+    field.classList.toggle("more-before", field.scrollTop > 1);
+    field.classList.toggle("more-after", field.scrollTop + field.clientHeight < field.scrollHeight - 6);
+  }
+
+  // An open chat keeps its newest message in sight, and what it shows the owner counts as seen.
+
+  // An open chat keeps its newest message in sight, and the answer it shows counts as seen.
+  function keepChats() {
+    for (const log of document.querySelectorAll("#topics-tab [data-log]")) {
+      const newest = log.lastElementChild?.dataset.key || "";
+      if (log.newest !== newest) { log.newest = newest; log.scrollTop = log.scrollHeight; }
+    }
+    for (const key of state.chats) {
+      const topic = topicNamed(key.slice(6));
+      if (topic?.chat?.latest) store(seenKey(topic.name), topic.chat.latest);
+    }
+  }
+
+  function drawBar() {
+    const input = $("topics-input");
+    $("topics-clear").hidden = !input.value;
+    const navigating = searching().length > 0;
+    $("topics-hits").hidden = !navigating;
+    input.classList.toggle("navigating", navigating);
+    if (navigating) {
+      $("topics-hits").querySelector(".hit-count").textContent = state.hits.length ? `${state.hitAt + 1}/${state.hits.length}` : "none";
+      for (const button of $("topics-hits").querySelectorAll("button")) { button.innerHTML = ICONS.chevron; button.disabled = state.hits.length < 2; }
+    }
+  }
+
+  function drawCounts() {
+    const pending = (state.front?.pending || []).length;
+    const busy = new Set((state.front?.pending || []).map(entry => entry.topic)).size;
+    const words = pending ? `${pending} open in ${busy} ${busy === 1 ? "topic" : "topics"}` : "nothing waits on you";
+    const listening = state.front?.listening?.length ? " · an agent listens" : "";
+    studio.summary("topics", state.topics.length ? words + listening : "no topics yet");
+  }
+
+  // Work under way, a round or an answer, as a toast that stays while it runs: what it is, the way
+  // to its topic, and Stop.
+  function drawWorking() {
+    const toast = document.getElementById("working");
+    const run = (state.front?.working || [])[0];
+    toast.hidden = !run;
+    if (!run) return;
+    const more = state.front.working.length - 1;
+    toast.querySelector(".what").innerHTML = `<span class="spinner" aria-hidden="true"></span><span>Working… ${escape(run.title || run.subject || "")}${more > 0 ? ` and ${more} more` : ""}</span>`;
+    toast.dataset.run = run.id;
+    toast.dataset.topic = run.topic || "";
+    toast.querySelector("[data-working-open]").hidden = !run.topic;
+  }
+
+  function draw() {
+    if (state.route !== state.arrived && state.topics.length) arrive(state.route);
+    drawCounts();
+    drawBar();
+    drawSift();
+    drawList();
+    drawModal();
+    drawLightbox();
+    drawWorking();
+    if (state.zoom && !state.zoom.boxes) { measureZoom(); drawModal(); drawLightbox(); }
+    fill($("topics-tab"));
+    markWords($("topics-main"));
+    markWords($("topics-modal"));
+    restoreDrafts();
+    keepChats();
+    if (state.reveal_to !== null) {
+      const element = state.reveal_to && document.getElementById(state.reveal_to);
+      if (element) element.scrollIntoView({ block: "start", behavior: "instant" });
+      else if (state.reveal_to === "") scrollTo({ top: 0, behavior: "instant" });
+      if (element || state.reveal_to === "" || !state.open.size) state.reveal_to = null;
+    }
+    if (state.reveal_hit && !state.modal) {
+      state.reveal_hit = false;
+      const card = document.getElementById(`item-${state.hits[state.hitAt]}`);
+      const hit = card?.classList.contains("decision") ? card.querySelector("mark.found") || card : card;
+      // A hit taller than most of the screen shows from its top; a smaller one in the middle.
+      hit?.scrollIntoView({ block: hit.offsetHeight > innerHeight * .6 ? "start" : "center", inline: "nearest", behavior: "smooth" });
+      hit?.classList.add("current");
+    }
+  }
+
+  // --- talking to nock ----------------------------------------------------------------------------
+
+  async function api(path, body) {
+    const response = await fetch(path, body === undefined ? {} : { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    const answer = await response.json();
+    if (!response.ok) throw new Error(answer.error);
+    return answer;
+  }
+  // The list, and each open topic whole, read again only when the store moved (`/api/stamp`).
+  async function load(force = false) {
+    try {
+      const { stamp } = await api("/api/stamp");
+      const wanted = new Set([...state.open, ...[...state.chats].map(key => key.slice(6)), ...(state.modal ? [topicOf(state.modal)] : [])]);
+      const missing = [...wanted].filter(name => !state.wholes.has(name));
+      if (!force && stamp === state.seen && !missing.length) return;
+      if (force || stamp !== state.seen) { state.front = await api("/api/topics"); state.wholes.clear(); }
+      state.seen = stamp;
+      const names = new Set(state.front.tasks.map(task => task.name));
+      await Promise.all([...wanted].filter(name => names.has(name) && !state.wholes.has(name)).map(async name => {
+        try { state.wholes.set(name, await api(`/api/topic/${encodeURIComponent(name)}`)); } catch { /* gone meanwhile */ }
+      }));
+      state.topics = state.front.tasks.map(task => expand(task, state.wholes.get(task.name)));
+      if (said().length) find(false);
+      draw();
+    } catch {
+      studio.summary("topics", "Lost touch with nock — is `nock studio` still running?");
+    }
+  }
+  const reload = () => load(true);
+
+  // Where an address leads: a topic opens in the list; an item opens in its topic; an asset in the
+  // viewer. `~chat` after it opens its chat too (`#topics/TOPIC~chat`), `~reply` with its field ready
+  // to write, `~vN` shows version N: where the Timeline's notifications lead.
+  function arrive(route) {
+    state.arrived = route;
+    state.reveal_to = "";
+    const [place, focus = ""] = route.split("~");
+    const topic = topicNamed(place);
+    if (topic) {
+      state.open.add(topic.name); state.reveal_to = `topic-${topic.name}`; state.modal = null;
+      if (focus === "chat" || focus === "reply") state.chats.add(`topic:${topic.name}`);
+      if (focus === "reply") state.focus = `reply:topic:${topic.name}`;
+      if (!topic.whole) load();
+      return;
+    }
+    const item = place ? itemAt(place.includes(":") ? place : place.replace(/^([^/]+)\//, "$1/")) : null;
+    if (!item) { state.modal = null; return; }
+    state.open.add(item.topic);
+    if (kindOf(item) === "decision") {
+      setFolded(`${item.topic}/${groupOf(item)}`, false);
+      state.expanded.add(item.ref);
+      state.modal = null;
+      state.reveal_to = `item-${item.ref}`;
+    } else view(item, false);
+    if (focus === "chat" || focus === "reply") state.chats.add(`topic:${item.topic}`);
+    if (focus === "reply") state.focus = `reply:topic:${item.topic}`;
+    const number = focus.match(/^v(\d+)$/);
+    if (number && kindOf(item) !== "decision") state.single = Number(number[1]);
+    if (!topicNamed(item.topic).whole) load();
+  }
+
+  function view(item, addressed = true) {
+    state.modal = item.ref;
+    state.compare = false;
+    state.single = state.left = state.right = state.menu = state.zoom = state.reveal = null;
+    if (addressed) address(item.ref);
+    if (!topicNamed(item.topic)?.whole) load();
+  }
+  function address(route) {
+    state.route = state.arrived = route;
+    const wanted = route ? `#topics/${route}` : "#topics";
+    if (decodeURIComponent(location.hash) !== wanted) history.replaceState(null, "", wanted);
+  }
+  function closeViewer() {
+    const item = itemAt(state.modal);
+    state.modal = state.zoom = state.menu = state.reveal = null;
+    address(item ? item.topic : "");
+    draw();
+  }
+  function step(by) {
+    const item = itemAt(state.modal);
+    if (!item) return;
+    const sequence = viewable(topicNamed(item.topic)).filter(entry => entry.versions.length);
+    const next = sequence[sequence.findIndex(entry => entry.ref === item.ref) + by];
+    if (next) { view(next); draw(); }
+  }
+  // A problem said where the owner acted: in the hint beside the buttons, else as a toast.
+  function problem(key, message) {
+    const hint = document.querySelector(`[data-problem="${CSS.escape(key)}"]`);
+    if (hint) { hint.textContent = message; hint.className = "hint error"; } else studio.toast(message);
+  }
+
+  async function judge(ref, verdict) {
+    try { await api("/api/verdict", { ref, verdict }); } catch (error) { problem(ref, error.message); return; }
+    studio.toast(`${verdict === "accepted" ? "Accepted" : "Rejected"}.`);
+    await reload();
+  }
+  async function done(name) {
+    let answer;
+    try { answer = await api("/api/done", { topic: name }); } catch (error) { problem(`topic:${name}`, error.message); return; }
+    studio.toast(answer.sent ? "Done: your notes went to the agent." : "Done.");
+    await reload();
+  }
+  async function keepNote(ref, on) {
+    const item = itemAt(ref);
+    const written = (state.drafts.get(`note:${ref}`) || "").trim();
+    if (!item || !written) return;
+    try { await api("/api/note", { topic: item.topic, on, text: written, id: messageId() }); } catch (error) { studio.toast(`Not kept: ${error.message}`); return; }
+    state.drafts.delete(`note:${ref}`);
+    state.noting = null;
+    studio.toast("Kept: it goes to the agent with your next message, or with Done.");
+    await reload();
+  }
+  async function unnote(topic, id) {
+    const note = topicNamed(topic)?.notes.find(entry => entry.id === id);
+    if (!note) return;
+    try { await api("/api/note", { topic, on: note.on, text: "", replaces: id }); } catch (error) { studio.toast(error.message); return; }
+    await reload();
+  }
+
+  async function send(key) {
+    const written = (state.drafts.get(`reply:${key}`) || "").trim();
+    const files = state.attached.get(key) || [];
+    if (!written && !files.length) return;
+    if (files.some(file => file.uploading)) { studio.toast("Still uploading: send once the files are up."); return; }
+    if (state.sending.has(key)) return;
+    // One id per message, kept until it is sent: sent again after a failure, it is written once.
+    const tokens = files.map(file => file.token);
+    const said = JSON.stringify([written, tokens]);
+    const kept = state.sendIds.get(key);
+    const id = kept?.said === said ? kept.id : messageId();
+    state.sendIds.set(key, { said, id });
+    state.sending.add(key);
+    let answer;
+    try { answer = await api("/api/send", { topic: key.slice(6), text: written, id, attachments: tokens }); }
+    catch (error) { studio.toast(`Not sent: ${error.message}`); return; }
+    finally { state.sending.delete(key); }
+    if (answer.run?.problem) studio.toast(answer.run.problem);
+    else if (answer.run?.listening) studio.toast("The agent waiting on its inbox has your message.");
+    state.sendIds.delete(key);
+    for (const file of files) if (file.preview?.startsWith("blob:")) URL.revokeObjectURL(file.preview);
+    state.attached.delete(key);
+    state.drafts.delete(`reply:${key}`);
+    document.activeElement?.blur();
+    await reload();
+  }
+
+  // --- what a composer carries: files ---------------------------------------------------------------
+
+  // Each file is uploaded at once, shown meanwhile from the browser's own copy.
+  let uploads = 0;
+  function attach(key, files) {
+    const list = state.attached.get(key) || [];
+    state.attached.set(key, list);
+    for (const file of files) {
+      const chip = { id: `upload-${++uploads}`, name: file.name || "pasted", bytes: file.size, type: file.type.startsWith("image/") ? "image" : "file", uploading: true,
+        preview: file.type.startsWith("image/") ? URL.createObjectURL(file) : "" };
+      list.push(chip);
+      fetch(`/api/upload?name=${encodeURIComponent(chip.name)}`, { method: "POST", headers: { "Content-Type": "application/octet-stream" }, body: file })
+        .then(async response => { const answer = await response.json(); if (!response.ok) throw new Error(answer.error); return answer; })
+        .then(kept => Object.assign(chip, kept, { uploading: false, id: chip.id }))
+        .catch(error => { studio.toast(`${chip.name}: ${error.message}`); unattach(key, chip.id); })
+        .finally(draw);
+    }
+    draw();
+  }
+  function unattach(key, id) {
+    const list = state.attached.get(key) || [];
+    const chip = list.find(file => file.id === id);
+    if (!chip) return;
+    state.attached.set(key, list.filter(file => file !== chip));
+    if (chip.preview?.startsWith("blob:")) URL.revokeObjectURL(chip.preview);
+    if (chip.token) api("/api/upload/discard", { token: chip.token }).catch(() => {});
+    draw();
+  }
+  function pickFiles(key) {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.multiple = true;
+    input.hidden = true;
+    input.addEventListener("change", () => { if (input.files?.length) attach(key, [...input.files]); input.remove(); });
+    input.addEventListener("cancel", () => input.remove());
+    document.body.append(input);
+    input.click();
+  }
+  const keyOfDraft = field => field?.dataset?.draft?.startsWith("reply:") ? field.dataset.draft.slice(6) : null;
+  function caret(field) {
+    const key = keyOfDraft(field);
+    if (key) state.carets.set(key, [field.selectionStart, field.selectionEnd]);
+  }
+
+  function enlarge(button) {
+    state.picture = { address: button.dataset.picture, name: button.dataset.name, topic: button.dataset.topic };
+    state.zoom = null;
+    draw();
+  }
+  function closePicture() { state.picture = state.zoom = null; draw(); }
+
+  // A chat opens its topic.
+  function toggleChat(key) {
+    if (state.chats.has(key)) state.chats.delete(key);
+    else {
+      state.chats.add(key);
+      state.open.add(key.slice(6));
+      if (!state.drafts.get(`reply:${key}`)) state.focus = `reply:${key}`;
+      load();
+    }
+    draw();
+  }
+
+  function drawModal() {
+    const item = state.modal ? itemAt(state.modal) : null;
+    const shown = item?.versions.length ? item : null;
+    document.documentElement.classList.toggle("topics-viewing", !!shown && state.shown);
+    studio.morph($("topics-modal"), shown ? viewer(shown) : "");
+    placeSource();
+  }
+
+  // --- events -------------------------------------------------------------------------------------
+
+  const root = $("topics-tab");
+  root.addEventListener("click", event => {
+    const target = event.target;
+    if (state.menu && !target.closest(".select")) { state.menu = null; draw(); if (!target.closest("button")) return; }
+    if (state.reveal !== null && !target.closest(".path-anchor")) { state.reveal = null; draw(); if (!target.closest("button")) return; }
+    if (state.hint && !target.closest(".tidy-anchor")) { state.hint = null; draw(); if (!target.closest("button")) return; }
+    const sifting = target.closest("[data-sift]");
+    if (sifting) { siftAction(sifting); return; }
+    const hinting = target.closest("[data-round]");
+    if (hinting) { roundAction(hinting); return; }
+    if (target.closest("#topics-clear")) { $("topics-input").value = ""; state.search = ""; find(true); $("topics-input").focus(); return; }
+    const hopping = target.closest("[data-hit]");
+    if (hopping) { jump(Number(hopping.dataset.hit)); return; }
+    const chatting = target.closest("[data-chat]");
+    if (chatting) { toggleChat(chatting.dataset.chat); return; }
+    const sending = target.closest("[data-send]");
+    if (sending) { send(sending.dataset.send); return; }
+    const attaching = target.closest("[data-attach]");
+    if (attaching) { pickFiles(attaching.dataset.attach); return; }
+    const removing = target.closest("[data-unattach]");
+    if (removing) { unattach(removing.dataset.unattach, removing.dataset.id); return; }
+    const enlarging = target.closest("[data-picture]");
+    if (enlarging) { enlarge(enlarging); return; }
+    if (target.closest("[data-lightbox-close]") || target.matches("[data-lightbox-backdrop]")) { closePicture(); return; }
+    const judging = target.closest("[data-judge]");
+    if (judging) { judge(judging.dataset.judge, judging.dataset.verdictChoice); return; }
+    const finishing = target.closest("[data-done]");
+    if (finishing) { done(finishing.dataset.done); return; }
+    const noting = target.closest("[data-note]");
+    if (noting) {
+      const ref = noting.dataset.note;
+      state.noting = state.noting === ref ? null : ref;
+      if (state.noting) state.focus = `note:${ref}`;
+      draw();
+      return;
+    }
+    const saving = target.closest("[data-note-save]");
+    if (saving) { keepNote(saving.dataset.noteSave, JSON.parse(saving.dataset.on)); return; }
+    const unnoting = target.closest("[data-unnote]");
+    if (unnoting) { unnote(unnoting.dataset.topic, unnoting.dataset.unnote); return; }
+    const shot = target.closest("[data-shot]");
+    if (shot) {
+      if (state.dragged) { state.dragged = false; return; }
+      if (state.zoom) state.zoom = null; else zoomIn(shot, event);
+      draw();
+      return;
+    }
+    const pathing = target.closest("[data-path]");
+    if (pathing) { const index = Number(pathing.dataset.path); state.reveal = state.reveal === index ? null : index; draw(); return; }
+    const unfolding = target.closest("[data-unfold]");
+    if (unfolding) {
+      for (const row of unfolding.closest("table").querySelectorAll(`tr[data-run="${unfolding.dataset.unfold}"]`)) row.hidden = false;
+      unfolding.remove();
+      return;
+    }
+    const folding = target.closest("[data-fold]");
+    if (folding) { const key = folding.dataset.fold; owned("folded", key); setFolded(key, !isFolded(key)); draw(); return; }
+    if (target.closest("[data-close]") || target.matches("[data-backdrop]")) { closeViewer(); return; }
+    const menu = target.closest("[data-menu]");
+    if (menu) { state.menu = state.menu === menu.dataset.menu ? null : menu.dataset.menu; draw(); return; }
+    const pick = target.closest("[data-pick]");
+    if (pick) { state[pick.dataset.pick] = Number(pick.dataset.number); state.menu = state.zoom = null; draw(); return; }
+    if (target.closest("[data-compare]")) { state.compare = !state.compare; state.left = state.right = state.zoom = state.reveal = null; draw(); return; }
+    const laying = target.closest("[data-layout]");
+    if (laying) { state.layout = laying.dataset.layout; store("nock.topics.layout", state.layout === "grid" ? null : state.layout); draw(); return; }
+    const viewing = target.closest("[data-view]");
+    if (viewing) { const item = itemAt(viewing.dataset.view); if (item) { view(item); draw(); } return; }
+    const going = target.closest("[data-go]");
+    if (going) { event.preventDefault(); state.modal = null; state.arrived = null; state.route = going.dataset.go; address(state.route); state.arrived = null; draw(); return; }
+    if (target.closest(".chat, a, textarea, .notes, figure")) return;
+    const expand = target.closest("[data-expand]");
+    if (expand) { const ref = expand.dataset.expand; owned("expanded", ref); state.expanded.has(ref) ? state.expanded.delete(ref) : state.expanded.add(ref); draw(); return; }
+    const toggle = target.closest("[data-toggle]");
+    if (toggle) {
+      const name = toggle.dataset.toggle;
+      owned("open", name);
+      if (state.open.has(name)) { state.open.delete(name); state.chats.delete(`topic:${name}`); } else { state.open.add(name); load(); }
+      draw();
+    }
+  });
+  root.addEventListener("input", event => {
+    const field = event.target;
+    if (field.id === "topics-input") { state.search = field.value; find(true); draw(); return; }
+    if (field.dataset.round === "threshold") return;
+    if (field.dataset.draft) { state.drafts.set(field.dataset.draft, field.value); grow(field); caret(field); }
+  });
+  root.addEventListener("change", event => {
+    const field = event.target;
+    if (field.dataset.round !== "threshold") return;
+    const threshold = Number(field.value);
+    if (!Number.isInteger(threshold) || threshold < 1) return;
+    api("/api/rounds/set", { name: field.dataset.name, threshold }).then(() => { studio.toast("Kept."); reload(); }).catch(error => studio.toast(error.message));
+  });
+  for (const kind of ["keyup", "mouseup", "select", "focusout"]) root.addEventListener(kind, event => caret(event.target), true);
+  root.addEventListener("paste", event => {
+    const key = keyOfDraft(event.target);
+    const files = [...(event.clipboardData?.files || [])];
+    if (key && files.length) { event.preventDefault(); attach(key, files); }
+  });
+  // Files dragged over a chat light it up; dropped there they are attached. Dropped anywhere else,
+  // nothing happens: the browser does not leave the studio to show them.
+  const dragsFiles = event => [...(event.dataTransfer?.types || [])].includes("Files");
+  document.addEventListener("dragover", event => {
+    if (!state.shown || !dragsFiles(event)) return;
+    event.preventDefault();
+    const over = event.target.closest?.("#topics-tab [data-drop]");
+    const key = over && !over.querySelector(".composer.frozen") ? over.dataset.drop : null;
+    event.dataTransfer.dropEffect = key ? "copy" : "none";
+    if (state.dropping !== key) { state.dropping = key; draw(); }
+  });
+  document.addEventListener("dragleave", event => {
+    if (state.dropping && !event.relatedTarget) { state.dropping = null; draw(); }
+  });
+  document.addEventListener("drop", event => {
+    if (!state.shown || !dragsFiles(event)) return;
+    event.preventDefault();
+    const over = event.target.closest?.("#topics-tab [data-drop]");
+    state.dropping = null;
+    if (over) attach(over.dataset.drop, [...event.dataTransfer.files]); else draw();
+  });
+  // A zoomed picture follows the mouse; on a touch screen it is dragged, and a tap leaves the zoom.
+  root.addEventListener("mouseover", event => {
+    // An asset's or a file's name shown whole, with nothing more to say, needs no tooltip.
+    const cropped = name => name && name.scrollWidth > name.clientWidth;
+    const chip = event.target.closest(".file-chip");
+    if (chip) { const name = chip.querySelector(".name"); chip.title = cropped(name) ? name.textContent : ""; }
+    const mark = event.target.closest("[data-tip]");
+    const bare = mark?.matches(".asset") && !mark.dataset.tipMeans && !cropped(mark.querySelector(".words .title"));
+    if (mark && !bare) showTip(mark); else $("topics-tip").hidden = true;
+  });
+  root.addEventListener("mouseleave", () => { $("topics-tip").hidden = true; });
+  addEventListener("scroll", () => { $("topics-tip").hidden = true; }, { passive: true });
+  root.addEventListener("scroll", event => { if (event.target.matches?.("textarea[data-draft]")) edges(event.target); }, true);
+  // A still's length, once its video's metadata comes.
+  root.addEventListener("loadedmetadata", event => {
+    const video = event.target;
+    if (!video.dataset?.length || !Number.isFinite(video.duration)) return;
+    lengths.set(video.dataset.length, video.duration);
+    const label = video.parentElement.querySelector(".length");
+    if (label) label.textContent = clock(video.duration);
+  }, true);
+  // Compared side by side, two versions play, pause and seek together.
+  let syncing = false;
+  for (const kind of ["play", "pause", "seeked", "ratechange"]) {
+    root.addEventListener(kind, event => {
+      const video = event.target;
+      if (syncing || !video.matches?.("#topics-modal .panes.several video.player")) return;
+      syncing = true;
+      for (const other of document.querySelectorAll("#topics-modal .panes.several video.player")) {
+        if (other === video) continue;
+        if (kind === "seeked" && Math.abs(other.currentTime - video.currentTime) > .05) other.currentTime = video.currentTime;
+        if (kind === "ratechange") other.playbackRate = video.playbackRate;
+        if (kind === "play" && other.paused) { other.currentTime = video.currentTime; other.play().catch(() => {}); }
+        if (kind === "pause" && !other.paused) other.pause();
+      }
+      setTimeout(() => { syncing = false; }, 0);
+    }, true);
+  }
+  root.addEventListener("pointerdown", event => {
+    const shot = event.target.closest(".shot.zoomed");
+    state.dragged = false;
+    const box = state.zoom?.boxes?.[shot?.dataset.shot];
+    if (!shot || !box || event.pointerType === "mouse") return;
+    state.drag = { x: event.clientX, y: event.clientY, moved: 0, box };
+    try { shot.setPointerCapture(event.pointerId); } catch { /* a pointer already gone */ }
+  });
+  root.addEventListener("pointermove", event => {
+    if (!state.zoom) return;
+    if (state.drag) {
+      const { box } = state.drag, dx = event.clientX - state.drag.x, dy = event.clientY - state.drag.y;
+      state.drag.moved += Math.abs(dx) + Math.abs(dy);
+      state.drag.x = event.clientX; state.drag.y = event.clientY;
+      if (box.wide > box.width) state.zoom.x = clamp(state.zoom.x - dx / (box.wide - box.width));
+      if (box.tall > box.height) state.zoom.y = clamp(state.zoom.y - dy / (box.tall - box.height));
+      placeZoom();
+      return;
+    }
+    const shot = event.pointerType === "mouse" && event.target.closest(".shot.zoomed");
+    if (!shot) return;
+    const rect = shot.getBoundingClientRect();
+    state.zoom.x = clamp((event.clientX - rect.left) / rect.width);
+    state.zoom.y = clamp((event.clientY - rect.top) / rect.height);
+    placeZoom();
+  });
+  const dropDrag = () => { if (state.drag) { state.dragged = state.drag.moved > 6; state.drag = null; } };
+  root.addEventListener("pointerup", dropDrag);
+  root.addEventListener("pointercancel", dropDrag);
+  addEventListener("resize", () => { if (state.zoom) { state.zoom = null; draw(); } });
+  document.addEventListener("keydown", event => {
+    if (!state.shown) return;
+    const target = event.target;
+    if (target.id === "topics-input") {
+      if (event.key === "Enter" && !event.isComposing) { event.preventDefault(); jump(event.shiftKey ? -1 : 1); }
+      else if (event.key === "Escape") { target.value = ""; state.search = ""; find(true); target.blur(); }
+      return;
+    }
+    if (target.dataset?.draft?.startsWith("reply:")) {
+      if (event.key === "Enter" && !event.shiftKey && !event.isComposing) { event.preventDefault(); send(target.dataset.draft.slice(6)); }
+      else if (event.key === "Escape") target.blur();
+      return;
+    }
+    if (target.dataset?.draft?.startsWith("note:")) {
+      const ref = target.dataset.draft.slice(5);
+      if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
+        event.preventDefault();
+        const button = target.closest(".note-field")?.querySelector("[data-note-save]");
+        if (button) keepNote(ref, JSON.parse(button.dataset.on));
+      } else if (event.key === "Escape") { state.noting = null; draw(); }
+      return;
+    }
+    if (["TEXTAREA", "INPUT"].includes(target.tagName)) return;
+    if ((event.key === "Enter" || event.key === " ") && target.matches?.('[role="button"][data-view]')) {
+      event.preventDefault();
+      target.click();
+      return;
+    }
+    if (event.key === "Escape") {
+      if (state.hint) { state.hint = null; draw(); }
+      else if (state.picture && state.zoom === null) closePicture();
+      else if (state.menu) { state.menu = null; draw(); }
+      else if (state.reveal !== null) { state.reveal = null; draw(); }
+      else if (state.zoom !== null) { state.zoom = null; draw(); }
+      else if (state.modal) closeViewer();
+      else return;
+      event.preventDefault();
+      return;
+    }
+    const players = state.modal && !state.picture ? [...document.querySelectorAll("#topics-modal video.player")] : [];
+    if (players.length && (event.key === " " || event.key === "k") && !target.closest?.("button, video")) {
+      event.preventDefault();
+      const first = players[0];
+      if (first.paused) first.play().catch(() => {}); else first.pause();
+      return;
+    }
+    if (state.modal && !state.picture && (event.key === "ArrowLeft" || event.key === "ArrowRight")) {
+      event.preventDefault();
+      step(event.key === "ArrowLeft" ? -1 : 1);
+      return;
+    }
+    if (event.key === "/" && !state.modal) { event.preventDefault(); $("topics-input").focus(); }
+  });
+
+  // An html block speaks to the page through its bridge: its height, a note on itself, a
+  // proposal's verdict, an address to open.
+  addEventListener("message", event => {
+    const said = event.data;
+    if (!said?.nock) return;
+    const frame = [...document.querySelectorAll("#topics-tab iframe.page")].find(each => each.contentWindow === event.source);
+    if (!frame) return;
+    const figure = frame.closest("figure");
+    const topic = frame.closest("[data-key^='topic:']")?.dataset.key.slice(6);
+    if (said.action === "size" && Number.isFinite(said.height)) frame.style.height = `${Math.min(2000, Math.max(40, said.height))}px`;
+    else if (said.action === "verdict" && topic) judge(`${topic}/${said.item}`, said.verdict);
+    else if (said.action === "open" && typeof said.address === "string") { location.hash = said.address; }
+    else if (said.action === "note" && topic && said.text) {
+      const block = figure?.dataset.key?.slice(6);
+      api("/api/note", { topic, on: { block, ...(said.quote ? { quote: said.quote } : {}) }, text: said.text, id: messageId() })
+        .then(() => { studio.toast("Kept: it goes to the agent with your next message, or with Done."); reload(); })
+        .catch(error => studio.toast(error.message));
+    }
+  });
+
+  // --- the filters beside the bar, and the rounds due ---------------------------------------------
+
+  // One filter at a time, with the search: what needs the owner (open proposals, a review not yet
+  // done, answers they have not seen), what waits on an agent (the owner wrote last), what is to do
+  // (accepted proposals not carried out), active topics. Done and abandoned topics, and rejected
+  // proposals, show only when asked. Kept per browser.
+  const SIFTS = {
+    all: { label: "All" },
+    me: { label: "Needs me", title: "Open proposals, reviews to finish, and answers you have not seen",
+      topic: topic => (reviewOf(topic) || topic.review) && !topic.reviewed || standing(topic).unseen > 0, item: item => awaitsOwner(item) },
+    agent: { label: "Waiting on agent", title: "You wrote last: the agent's answer is due", topic: topic => topic.chat?.pending, item: () => false },
+    todo: { label: "Todo", title: "Accepted proposals still to carry out", item: item => todo(item) },
+    active: { label: "Active", title: "Topics whose work is under way", whole: topic => topic.state === "active" },
+  };
+  const CLOSED_STATES = ["done", "abandoned"];
+  const stored = (key, fallback) => { try { return localStorage.getItem(key) ?? fallback; } catch { return fallback; } };
+  const store = (key, value) => { try { if (value === null) localStorage.removeItem(key); else localStorage.setItem(key, value); } catch { /* a private window */ } };
+  state.sift = SIFTS[stored("nock.work.sift", "all")] ? stored("nock.work.sift", "all") : "all";
+  state.closed = stored("nock.work.closed", "") === "1";
+  // Assets as a grid of cards or a list of rows: kept per browser.
+  state.layout = stored("nock.topics.layout", "grid") === "list" ? "list" : "grid";
+
+  // What a topic shows under the filters: its items that pass, or null to leave it out.
+  function sifted(topic, sift = state.sift, closed = state.closed) {
+    if (!closed && CLOSED_STATES.includes(topic.state)) return null;
+    const filter = SIFTS[sift];
+    const kept = closed ? topic.items : topic.items.filter(item => item.status !== "rejected");
+    if (filter.whole) return filter.whole(topic) ? kept : null;
+    if (!filter.item) return kept;
+    const items = kept.filter(item => !item.asset && filter.item(item));
+    return items.length || filter.topic?.(topic) ? (items.length ? items : kept) : null;
+  }
+  function siftCount(sift) {
+    const kept = state.topics.map(topic => [topic, sifted(topic, sift)]).filter(([, items]) => items);
+    if (SIFTS[sift].whole || sift === "all") return kept.length;
+    return kept.reduce((sum, [topic]) => sum + topic.items.filter(item => !item.asset && SIFTS[sift].item(item)).length + (SIFTS[sift].topic?.(topic) ? 1 : 0), 0);
+  }
+  // A round due, where Tidy up was: one quiet button naming it; open, what it does and why it is
+  // due, how often it comes (after how many changes), Run, Later and Never.
+  const CLOCK = '<svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="6.75" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M10 6.5V10l2.5 1.75" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  function roundHint() {
+    const due = (state.front?.hints || []).filter(hint => hint.on && !hint.unavailable);
+    const running = new Set((state.front?.working || []).filter(run => run.kind === "round").map(run => run.subject));
+    const hint = due.find(entry => !running.has(entry.protocol));
+    if (!hint) return "";
+    const open = state.hint === hint.protocol;
+    const others = due.length - 1;
+    const measure = hint.measure || {};
+    const often = measure.threshold ? `<p class="often">Due after <input type="number" min="1" value="${escape(measure.threshold)}" data-round="threshold" data-name="${escape(hint.protocol)}" aria-label="How many"> ${escape(measure.measure || "changes")}${measure.value !== null && measure.value !== undefined ? `; ${escape(measure.value)} so far` : ""}.</p>` : "";
+    const confirm = open ? `<div class="tidy-confirm" role="dialog" aria-label="${escape(hint.title)}" data-key="round-confirm">
+        <p><strong>${escape(hint.title)} is due: ${escape(hint.due)}.</strong> ${escape(hint.summary)}</p>${often}
+        <div class="buttons"><button type="button" class="button ghost" data-round="never" data-name="${escape(hint.protocol)}">Never</button><button type="button" class="button secondary" data-round="later" data-name="${escape(hint.protocol)}">In a week</button><button type="button" class="button primary" data-round="run" data-name="${escape(hint.protocol)}">Run</button></div></div>` : "";
+    return `<span class="tidy-anchor" data-key="round"><button type="button" class="tidy" data-round="open" data-name="${escape(hint.protocol)}" aria-expanded="${open}" title="${escape(`${hint.title} is due: ${hint.due}`)}">${CLOCK}<span>${escape(hint.title)} is due${others > 0 ? ` · ${others} more` : ""}</span></button>${confirm}</span>`;
+  }
+  function drawSift() {
+    const chips = Object.entries(SIFTS).map(([name, filter]) =>
+      `<button type="button" class="chip" data-sift="${name}" data-key="sift:${name}" aria-pressed="${state.sift === name}"${filter.title ? ` title="${escape(filter.title)}"` : ""}>${escape(filter.label)} <span class="count">${siftCount(name)}</span></button>`).join("");
+    const closedCount = state.topics.filter(topic => CLOSED_STATES.includes(topic.state)).length
+      + state.topics.flatMap(topic => topic.items).filter(item => item.status === "rejected").length;
+    const closed = `<button type="button" class="chip closed" data-sift="closed" data-key="sift:closed" aria-pressed="${state.closed}" title="${state.closed ? "Hide" : "Show"} done and abandoned topics, and rejected proposals">Show closed <span class="count">${closedCount}</span></button>`;
+    studio.morph($("topics-sift"), `<div class="chips" role="group" aria-label="Filter" data-key="sifts">${chips}${closed}</div>${roundHint()}`);
+  }
+  function siftAction(button) {
+    const what = button.dataset.sift;
+    if (what === "closed") { state.closed = !state.closed; store("nock.work.closed", state.closed ? "1" : null); }
+    else if (SIFTS[what]) { state.sift = what; store("nock.work.sift", what === "all" ? null : what); }
+    draw();
+  }
+  async function roundAction(button) {
+    const { round: what, name } = button.dataset;
+    if (what === "open") { state.hint = state.hint === name ? null : name; draw(); return; }
+    if (what === "threshold") return;
+    state.hint = null;
+    try {
+      if (what === "run") { await api("/api/rounds/run", { name }); studio.toast("Started: it runs in the background."); }
+      else if (what === "later") { await api("/api/rounds/snooze", { name, days: 7 }); studio.toast("It will remind you in a week."); }
+      else if (what === "never") { await api("/api/rounds/snooze", { name, never: true }); studio.toast("Turned off: it won't remind you again."); }
+    } catch (error) { studio.toast(error.message); }
+    await reload();
+  }
+
+  // The work-under-way toast (after this tab in the page): Open goes to its topic, Stop stops it.
+  document.addEventListener("click", event => {
+    const toast = event.target.closest?.("#working");
+    if (!toast) return;
+    if (event.target.closest("[data-working-open]") && toast.dataset.topic) location.hash = `#topics/${toast.dataset.topic}`;
+    if (event.target.closest("[data-working-stop]")) api("/api/runs/stop", { id: toast.dataset.run }).then(() => { studio.toast("Stopped."); reload(); }).catch(error => studio.toast(error.message));
+  });
+
+  // Shown, the tab keeps up with what agents submit: it asks again every few seconds.
+  studio.register("topics", {
+    // Coming back to the same address, the list is as it was left: nothing is arrived at again (which
+    // would scroll), and the poll redraws in place only what changed meanwhile.
+    show(route) {
+      state.shown = true;
+      if ((route || "") !== state.route || state.arrived === null) { state.route = route || ""; state.arrived = null; }
+      load();
+    },
+    hide() { state.shown = false; document.documentElement.classList.remove("topics-viewing"); },
+  });
+  // The work under way shows on every tab: the list is read while hidden too, less often.
+  setInterval(() => { if (state.shown || !document.hidden) load(); }, POLL);
+  // Times move on with the clock, though nothing new arrives.
+  setInterval(() => { if (state.shown) draw(); }, 30000);
+})();
+</script>

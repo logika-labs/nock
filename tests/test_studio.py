@@ -2,7 +2,8 @@
 page calls it: the tasks and their counts, a task whole, notes, Send (an
 answer now: an agent waiting on its inbox, else one dispatched in the
 background, its turn streamed), Accept and Reject, Done, the html blocks with
-their bridge, the memory, and the rounds' hints with Run, snooze and settings."""
+their bridge, where each chat stands, and the rounds' hints with Run, snooze and
+settings; the page itself, the Topics and Timeline tabs."""
 
 from __future__ import annotations
 
@@ -14,7 +15,7 @@ from typing import Any
 from nock.project import Project
 
 from .conftest import get, git, post
-from .store import asset, compose, propose, submit, topics_in
+from .store import asset, compose, propose, reply, submit, topics_in
 
 
 def settled_run(page: str, identifier: str) -> dict[str, Any]:
@@ -124,19 +125,32 @@ def test_done_on_the_review_closes_the_task(project: Project, page: str) -> None
     assert status == 200 and done == {"sent": False, "state": "done", "run": None}
 
 
-def test_the_memory_is_read_edited_and_noted(project: Project, page: str) -> None:
+def test_the_page_is_its_two_tabs_and_has_no_memory_view(project: Project, page: str) -> None:
+    html = urllib.request.urlopen(page).read().decode()
+    assert 'data-tab-link="topics"' in html and 'data-tab-link="timeline"' in html
+    assert 'id="topics-tab"' in html and 'id="timeline-tab"' in html
+    assert 'id="settings"' in html and 'id="alerts"' in html
+    assert "memory" not in html.lower()
+    status, _ = post(page, "memory", {"text": "- orders live in SQLite\n"})
+    assert status == 404
+
+
+def test_the_front_says_where_each_chat_stands(project: Project, page: str) -> None:
     root = project.root
-    memory = get(page, "memory")
-    assert memory["text"].startswith("# What nock has learned here") and memory["notes"] == []
-    status, saved = post(page, "memory", {"text": "- orders live in SQLite\n"})
-    assert status == 200 and saved["text"] == "- orders live in SQLite\n"
-    assert "memory.md" in git(root, "show", "--name-only", "--format=", "HEAD")
-    status, _ = post(
-        page, "note", {"topic": "memory", "on": {"memory": True, "line": 1}, "text": "Postgres now"}
-    )
-    assert status == 200
-    (note,) = get(page, "memory")["notes"]
-    assert note["target"] == "the memory, line 1"
+    submit(root)
+    (task,) = get(page, "topics")["tasks"]
+    assert task["chat"] == {"messages": 0, "pending": False, "latest": None}
+    topics_in(root).send("orders", "Why SQLite?", [])
+    (task,) = get(page, "topics")["tasks"]
+    assert task["chat"]["messages"] == 1 and task["chat"]["pending"]
+    reply(root, "orders", "One file to back up.")
+    (task,) = get(page, "topics")["tasks"]
+    said = [
+        entry
+        for entry in get(page, "topic/orders")["topic"]["thread"]
+        if entry["kind"] == "message"
+    ]
+    assert task["chat"] == {"messages": 2, "pending": False, "latest": said[-1]["id"]}
 
 
 def test_a_round_runs_from_its_hint_and_is_snoozed_or_set(project: Project, page: str) -> None:

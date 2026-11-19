@@ -10,9 +10,9 @@ The review is the task's main page: what the owner reads to know, at a
 glance, what changed, what it means for them, and what needs them. You
 compose it from blocks, as a story, when the work is built (and again when
 it changes: a new version replaces it). The owner reads it in the studio,
-told as you composed it or listed flat by kind; both show the same items
-and assets with the same controls (Accept and Reject on proposals, a note on
-anything). They press Done when they have been through it: every decision
+as you composed it, with the task's other items and assets listed under it,
+each with the same controls (Accept and Reject on proposals, a note on an
+item or an asset). They press Done when they have been through it: every decision
 without a note counts as fine.
 
 Write it in `.nock/shared/topics/TOPIC/review/versions/next/review.json`:
