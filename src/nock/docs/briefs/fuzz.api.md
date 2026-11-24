@@ -1,4 +1,12 @@
+---
+term: fuzz.api
+aliases: []
+description: "The fuzz.api lead's brief: edge-case inputs to every API route on a local server, each break told"
+---
+
 # The fuzz.api subround
+
+Start the run with `.nock/nock reflect fuzz.api`, or pick up the one under way: it prints the run's material, its agents with their briefs, the files to write and the submit.
 
 The subround sends edge-case inputs to every route of the project's API and
 reports what breaks. It changes no code: each finding goes to the owner,

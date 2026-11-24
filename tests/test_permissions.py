@@ -163,7 +163,8 @@ def test_a_subround_s_parts_are_subagents_with_only_the_tools_they_need(project:
     for name in ("nock.fit", "nock.toolbox"):
         begun = json.loads(nock(project.root, "reflect", name, "--json").stdout)
         (agent,) = begun["agents"]
-        assert agent["type"] in tools and f"`{agent['type']}`" in begun["brief"]
+        brief = nock(project.root, "docs", name).stdout
+        assert agent["type"] in tools and f"`{agent['type']}`" in brief
 
 
 @pytest.mark.parametrize("option", ["--output=leak.txt", "--outp=leak.txt", "--ou=leak.txt"])

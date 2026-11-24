@@ -58,7 +58,8 @@ src/nock/
                      run started, picked up, left open and submitted; the run's commit
   rounds/            the shipped subrounds, a folder each, by round: nock/toolbox, nock/fit,
                      logika/instrument, logika/analytics, audit/performance, audit/security,
-                     audit/tests, fuzz/api, fuzz/ui (round.toml, lead.md, agents/, material.py)
+                     audit/tests, fuzz/api, fuzz/ui (round.toml, agents/, material.py; each
+                     lead's brief is the term of its name in docs/briefs/)
   reflect.py         Runs (a subround's records and scratch), the Record schema, Reflection
                      (nock's window and its metrics, over nock.fit's runs), and the material
                      builders: Material (the toolbox), Knowledge (the memory, for fit),
@@ -82,10 +83,14 @@ src/nock/
   primer.py          the primer `.nock/context.md`, as the committed settings have it, and
                      its copy between nock's markers in AGENTS.md
   docs.py            Docs: the terms of `nock docs`, parsed and validated; the closest to a miss
+  hosted.py          the hosted docs: a bundle built, signed and verified; Hosted, the one
+                     kept in `.nock/local/docs.json`, asked of api.nock.dev at most hourly
+  signing.py         Ed25519 (RFC 8032) in plain Python: a bundle's signature
   docs/              one article per term (`tools.caching.md`): front matter term, aliases,
                      description; at most 500 characters. The briefs point at the terms
     briefs/          the long texts the installed skills and subagents follow: the
-                     subrounds' agents reflection.toolbox, .nock (fit's); the logika
+                     rounds' and the subrounds' leads (audit, audit.security, …, by the
+                     subround's name); the subrounds' agents reflection.toolbox, .nock (fit's); the logika
                      subrounds' agents reflection.logika.instrument, .analytics;
                      the audits' agents reflection.security, .tests (its package agent), .tests.promises;
                      work and work.subagent (the orchestrator, and what it dispatches)
@@ -335,8 +340,32 @@ each is for and why, where its agents already look.
 
 Every skill and subagent nock installs is its front matter (the trigger)
 and one line, "Run `.nock/nock docs TERM` and do what it says.": the text
-it follows is a brief term, so it always matches the vendored core, and an
-upgrade changes what a skill says without rewriting the skill.
+it follows is a brief term, so it always matches the docs nock shows, and an
+upgrade or a hosted bundle changes what a skill says without rewriting the
+skill.
+
+### Hosted docs
+
+nock's own docs also live on api.nock.dev, so they improve between releases
+(`hosted.py`). A bundle is one JSON document: `manifest`, a JSON string of
+`{"format": 1, "version": N, "min_cli": "X.Y.Z", "docs": {PATH: SHA256}}`
+(the version the Unix time of the last commit to `docs/`, the oldest nock
+that may show it), `signature`, standard base64 of an Ed25519 signature over
+the manifest's UTF-8 bytes, and `docs`, each file's text by its path in
+`docs/` (`tools.md`, `briefs/work.md`). A bundle stands only when it
+verifies with nock's built-in public key (`PUBLIC_KEY`;
+`NOCK_DOCS_PUBLIC_KEY` stands in for it in tests), its files are exactly the
+manifest's with their hashes, and its terms hold to the rules. `nock docs`,
+and nothing else, asks `endpoints.docs` (`GET /docs/{VERSION}`) at most once
+an hour with a 2-second timeout, recording the ask whatever the answer, and
+keeps a bundle that stands and fits this nock in `.nock/local/docs.json`;
+the docs it shows are the kept bundle's while it stands, fits and is newer
+than the core's own (`hosted.committed`: the last commit to the core's
+`docs/`, 0 where git cannot say), else the core's, with the project's own on
+top either way. `NOCK_DOCS=bundled` shows the core's alone and asks
+nothing. `scripts/publish_docs.py` builds a bundle from the committed docs,
+signs it with `NOCK_DOCS_SIGNING_KEY`, and posts it on the owner's yes
+(`server/README.md` has the routes).
 
 ## The loop
 
@@ -468,8 +497,11 @@ a folder `rounds/<round>/<subround>/` (`rounds.manifests`: the shipped ones in
 `[material.NAME]` with one source of python, command, git or records (the
 subround's last N records, what each found and changed), `[lead]`
 reads, writes and `share`, `[[agents]]` with name, reads, changes and
-`fan_out`, `[end]` checks, quick, commit and kinds), `lead.md`,
-`agents/NAME.md`, and `material.py` for material no command gives. Its
+`fan_out`, `[end]` checks, quick, commit and kinds),
+`agents/NAME.md`, and `material.py` for material no command gives. Its lead's
+brief is the `nock docs` term of its name (`docs/briefs/audit.security.md`; a
+project's own in `.nock/docs/briefs/`), and the round's the term of the
+round's name (`audit`, `nock`, `logika`). Its
 functions are the `python` materials and, where a subround needs them,
 hooks `rounds.Subround` calls: `unavailable`, `measure`, `begun` (kept in
 `run.json`), `kept` (kept in the record) and `problems` (the end's own).
@@ -490,7 +522,7 @@ others only once it has. `start`
 names the run by date (`Runs.new_name`, or picks up `Runs.current`),
 writes each material into `.nock/local/reflections/<name>/DATE/` with
 `run.json` (the sessions that started it, the commit), and returns what
-the lead does: its brief, each agent's subagent type
+the lead works with: where its brief is (`nock docs NAME`), each agent's subagent type
 (`<round>-<subround>` for a subround's one agent, else with `-<agent>`
 after it), brief and material, the files to write beside the material (its
 `report.md`), the submit, and that its final message reports the subround to
@@ -504,7 +536,8 @@ that ran it.
 `builtin.reflect` is one command: bare, every subround's `standing`;
 ROUND.SUBROUND starts a run of it; ROUND, `rounds.plan`, starts nothing and
 prints the plan: one general-purpose subagent per subround on here, each
-told to run `reflect ROUND.SUBROUND` and lead it, all dispatched at once in
+told to follow its lead's brief (`nock docs ROUND.SUBROUND`, whose first step is
+`reflect ROUND.SUBROUND`) and lead it, all dispatched at once in
 the background, so the owner sees each one's report in the session; a
 subround fans out its own agents from there. `--submit JSON` checks the
 record against the `Record` TypedDict (subround, summary, changes, verdicts,
@@ -516,9 +549,10 @@ still open, with `Subround.left_open`: the files unwritten, else what the
 quick checks find, and the submit to run.
 
 `setup.Installer.install_rounds` installs a skill for nock's round
-(`/nock-reflect`, `reflect nock`), per other round with two or more
-subrounds on (`/audit`, `reflect audit`) and per subround on outside nock's
-(`/audit-security`), each a single line naming its `reflect`, and each
+(`/nock-reflect`, `nock docs nock`), per other round with two or more
+subrounds on (`/audit`, `nock docs audit`) and per subround on outside nock's
+(`/audit-security`, `nock docs audit.security`), each a single line naming
+its brief, and each
 subround's agents into `.claude/agents/`, their name added to the
 front matter; it removes the skills and subagents of the kinds of round
 that came before.

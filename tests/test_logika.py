@@ -130,7 +130,7 @@ def test_init_installs_the_logika_skills_in_a_logika_project(logika: Project) ->
     ):
         lead = (skills / name / "SKILL.md").read_text()
         assert lead.startswith(f"---\nname: {name}\n")
-        assert lead.endswith(f"Run `.nock/nock reflect {target}` and do what it says.\n")
+        assert lead.endswith(f"Run `.nock/nock docs {target}` and do what it says.\n")
         assert {path.name for path in (skills / name).iterdir()} == {"SKILL.md"}
     assert not (skills / "logika-rules").exists()
     agents = logika.root / ".claude" / "agents"
@@ -152,7 +152,7 @@ def test_a_skill_of_the_project_s_own_keeps_its_name_from_a_round(logika: Projec
     assert nock(logika.root, "init").returncode == 0
     assert own.read_text().endswith("Log it.\n")
     analytics = (logika.root / ".claude" / "skills" / "logika-analytics" / "SKILL.md").read_text()
-    assert analytics.endswith("Run `.nock/nock reflect logika.analytics` and do what it says.\n")
+    assert analytics.endswith("Run `.nock/nock docs logika.analytics` and do what it says.\n")
 
 
 def test_the_round_s_plan_is_an_agent_per_subround_and_starts_none(logika: Project) -> None:
@@ -163,7 +163,7 @@ def test_the_round_s_plan_is_an_agent_per_subround_and_starts_none(logika: Proje
         "logika.instrument",
     ]
     assert plan["subrounds"][1]["prompt"].startswith(
-        "Run `.nock/nock reflect logika.instrument` and do what it says"
+        "Run `.nock/nock docs logika.instrument` and do what it says"
     )
     assert not (logika.local / "reflections").exists()
     started = start(logika, "logika.analytics")
@@ -316,7 +316,9 @@ def test_the_instrument_subround_splits_the_code_and_starts_from_the_map(
     started = start(logika, "logika.instrument")
     (agent,) = started["agents"]
     assert agent["type"] == "logika-instrument" and agent["one per"] == "each area of the code"
-    assert "logika-instrument" in started["brief"] and "logika map" in started["brief"]
+    assert started["brief"] == ".nock/nock docs logika.instrument"
+    brief = nock(logika.root, "docs", "logika.instrument").stdout
+    assert "logika-instrument" in brief and "logika map" in brief
     material = Path(started["material"]["instrument"]).read_text()
     assert "logika, 12 files, 9 events; open: 2 silent, 1 verdicts, 2 unread." in material
     assert "- app/: 9 events, 5 open" in material

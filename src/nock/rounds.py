@@ -2,10 +2,13 @@
 a subround is one part of it (`audit.security`), a folder `rounds/<round>/<subround>/`
 — its manifest (`round.toml`: title, who it serves, when it is due, what its
 lead reads and writes, its agents, what its end checks and commits), its
-lead's brief (`lead.md`), its agents' briefs (`agents/NAME.md`) and, only for
-material no command gives, `material.py`. nock ships some (`nock/rounds/`); a
-project adds or overrides its own in `.nock/rounds/`. `nock reflect ROUND`
-gives the plan, one agent per enabled subround; `nock reflect
+agents (`agents/NAME.md`, each pointing at its brief in `nock docs`) and, only
+for material no command gives, `material.py`. Its lead's brief is the term of
+its name in `nock docs` (`docs/briefs/audit.security.md`), the round's the
+term of the round's name (`audit`). nock ships some (`nock/rounds/`); a
+project adds or overrides its own in `.nock/rounds/`, their briefs in
+`.nock/docs/briefs/`. `nock reflect ROUND` gives the plan, one agent per
+enabled subround, each told to follow its lead's brief; `nock reflect
 ROUND.SUBROUND` starts a run of one (or picks it up), and `nock reflect
 --submit JSON` checks and records it: its record committed at
 `.nock/shared/rounds/<round.subround>/<date>/`, its material and the lead's
@@ -41,7 +44,6 @@ if TYPE_CHECKING:
 SHIPPED = Path(__file__).resolve().parent / "rounds"
 LOCAL = Path(".nock") / "rounds"
 MANIFEST = "round.toml"
-LEAD = "lead.md"
 # The subround that sets the others up, and runs first.
 FIT = "nock.fit"
 # Files no count of changed lines takes in, unless a subround names them.
@@ -122,7 +124,7 @@ def plan(project: Project, name: str) -> dict[str, Any]:
                 "subround": subround.name,
                 "title": subround.title,
                 "due": subround.due() or None,
-                "prompt": f"Run `.nock/nock reflect {subround.name}` and do what it says: you"
+                "prompt": f"Run `.nock/nock docs {subround.name}` and do what it says: you"
                 " lead this subround, and your final message reports it.",
             }
             for subround in every
@@ -445,9 +447,8 @@ class Subround:
         return self.started(name, material)
 
     def started(self, name: str, material: dict[str, str]) -> dict[str, Any]:
-        """What the lead does: its brief, its agents with theirs and their
-        material, the files to write and the submit."""
-        lead = self.manifest.folder / LEAD
+        """What the lead does: where its brief is, its agents with theirs and
+        their material, the files to write and the submit."""
         agents = []
         for agent in self.manifest.data.get("agents") or []:
             agents.append(
@@ -467,7 +468,7 @@ class Subround:
             "since": self.since,
             "report": "your final message reports the subround to the session that ran it: what it"
             " found and changed, what needs the owner's word, and where the report file is",
-            "brief": lead.read_text().strip() if lead.is_file() else "",
+            "brief": f".nock/nock docs {self.name}",
             "material": material,
             "agents": agents,
             "write": [str(self.runs.scratch / name / file) for file in self.files],

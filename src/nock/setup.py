@@ -327,7 +327,7 @@ class Installer:
         registry (`rounds`): `/nock-reflect` for nock's round, `/<round>` for
         another round with two or more subrounds on and
         `/<round>-<subround>` for each one on outside nock's, each
-        saying only which `reflect` to run, with each subround's agents as
+        pointing only at its brief in `nock docs`, with each subround's agents as
         Claude Code subagents; `/nock-work`, which any harness can follow,
         also in the skills directory of each other harness found that reads
         none written already (Codex's), and taken out of a directory no
@@ -390,7 +390,7 @@ class Installer:
             self.put(
                 relative,
                 f"---\nname: {skill}\ndescription: {description}\n---\n\n"
-                f"Run `.nock/nock reflect {target}` and do what it says.\n",
+                f"Run `.nock/nock docs {target}` and do what it says.\n",
                 f"the /{skill} skill, for Claude Code",
             )
         for subround in wanted:
@@ -407,7 +407,7 @@ class Installer:
         """A skill the project wrote itself, which a round's of the same name
         must not replace: Logika's own repository has a `logika` skill."""
         path = self.root / relative
-        return path.is_file() and "Run `.nock/nock reflect " not in path.read_text()
+        return path.is_file() and "Run `.nock/nock " not in path.read_text()
 
     def ours(self, relative: str, text: str) -> bool:
         path = self.root / relative

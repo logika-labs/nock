@@ -54,7 +54,8 @@ session start says so, in its one line; `nock status` always says.
 
 ## How a run goes
 
-1. **`nock reflect logika.instrument`** starts a run and writes its
+1. **`nock reflect logika.instrument`**, the first step of its brief (`nock
+   docs logika.instrument`), starts a run and writes its
    material: the repository's `logika map` when it starts, each open item
    with the reason an earlier run left it with.
 2. **The lead splits the code** into areas, a component's directory or part

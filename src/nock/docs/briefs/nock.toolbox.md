@@ -1,4 +1,12 @@
+---
+term: nock.toolbox
+aliases: []
+description: "The nock.toolbox lead's brief: improve the project's .nock/ toolbox from its telemetry"
+---
+
 # The nock.toolbox subround
+
+Start the run with `.nock/nock reflect nock.toolbox`, or pick up the one under way: it prints the run's material, its agents with their briefs, the files to write and the submit.
 
 Set aside whatever this session was doing: the subround works from its
 material, not from memory.

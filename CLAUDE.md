@@ -39,7 +39,13 @@ standard library and nothing else: schemas are the JSON Schema subset in
   points at), and `docs/guides/` the guides, a page each, that nock.dev's
   docs are built from (`web/`, the site, outside the vendored core:
   `web/README.md`). Keep them true when behavior changes. The README is an
-  overview that links to the docs.
+  overview that links to the docs. Every skill nock installs is one line
+  pointing at a brief term (a subround's lead brief is the term of its name,
+  `docs/briefs/audit.security.md`). The docs are also hosted: `nock docs`
+  shows the newer signed bundle api.nock.dev serves (`hosted.py`,
+  `signing.py`; `NOCK_DOCS=bundled` for the core's own), which
+  `python3 scripts/publish_docs.py` publishes only on the owner's word, like a
+  release.
 
 ## How the code is shaped
 

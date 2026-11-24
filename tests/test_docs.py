@@ -88,7 +88,7 @@ def test_every_term_holds_to_the_rules() -> None:
         )
         assert len(term.article) <= limit and len(term.description) <= DESCRIPTION_LIMIT
         assert all(NAME.match(name) for name in term.names)
-    assert [term.term for term in docs.terms][:2] == ["checks", "checks.chains"]
+    assert [term.term for term in docs.terms][:2] == ["audit", "audit.performance"]
 
 
 @pytest.mark.parametrize(
@@ -176,8 +176,9 @@ def test_the_briefs_point_only_at_terms_and_the_toolbox_brief_at_the_framework()
                     assert docs.find(word), f"{path.name} points at `{word}`, not a term"
                     named.setdefault(path.name, set()).add(word)
     toolbox = named["reflection.toolbox.md"]
+    leads = set(rounds.manifests(None))
     for term in docs.terms:
-        if term.term.split(".")[0] in FRAMEWORK:
+        if term.term.split(".")[0] in FRAMEWORK and term.term not in leads:
             assert term.term in toolbox, f"the toolbox brief doesn't point at {term.term}"
     assert "reflection.nock.md" in named
 
@@ -200,15 +201,22 @@ def test_every_skill_and_subagent_nock_installs_points_at_its_brief() -> None:
         assert pointer and docs.find(pointer.group(1)), path
 
 
-def test_every_shipped_subround_has_its_lead_s_brief_and_one_for_each_agent() -> None:
+def test_every_shipped_round_and_subround_has_its_lead_s_brief_and_one_for_each_agent() -> None:
     manifests = rounds.manifests(None)
     assert set(manifests) == {
         "nock.toolbox", "nock.fit", "logika.analytics",
         "logika.instrument", "audit.performance", "audit.security", "audit.tests", "fuzz.api",
         "fuzz.ui",
     }  # fmt: skip
+    docs = Docs()
+    for group in {manifest.round for manifest in manifests.values()}:
+        brief = docs.find(group)
+        assert brief is not None and f"`.nock/nock reflect {group}`" in brief.article, group
     for manifest in manifests.values():
-        assert (manifest.folder / rounds.LEAD).read_text().startswith("# "), manifest.name
+        brief = docs.find(manifest.name)
+        assert brief is not None and brief.article.startswith("# "), manifest.name
+        assert f"`.nock/nock reflect {manifest.name}`" in brief.article, manifest.name
+        assert not (manifest.folder / "lead.md").exists(), manifest.name
         names = {agent["name"] for agent in manifest.data.get("agents", [])}
         assert {path.stem for path in (manifest.folder / "agents").glob("*.md")} == names
         for source in manifest.data.get("material", {}).values():

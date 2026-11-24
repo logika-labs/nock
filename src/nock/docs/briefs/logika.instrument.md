@@ -1,4 +1,12 @@
+---
+term: logika.instrument
+aliases: []
+description: "The logika.instrument lead's brief: split the code into areas, an agent each, then report"
+---
+
 # The logika.instrument subround
+
+Start the run with `.nock/nock reflect logika.instrument`, or pick up the one under way: it prints the run's material, its agents with their briefs, the files to write and the submit.
 
 You lead it: the parts instrument the code and write its rules, an area
 each; you split the code, check their work as a whole, report and submit.

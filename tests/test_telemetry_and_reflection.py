@@ -322,7 +322,8 @@ def test_a_round_is_submitted_with_its_report_its_summary_and_its_numbers(
     assert "`nock.toolbox` (on; " in material["catalogue"]
     assert "`logika.instrument` (cannot run here: not a Logika project" in material["catalogue"]
     begun = rounds["nock.fit"]
-    assert begun["brief"].startswith("# The nock.fit subround")
+    assert begun["brief"] == ".nock/nock docs nock.fit"
+    assert nock(project.root, "docs", "nock.fit").stdout.startswith("# The nock.fit subround")
     (agent,) = begun["agents"]
     assert agent["type"] == "nock-fit" and agent["brief"].endswith("agents/fit.md")
     assert agent["reads"] == [
@@ -462,7 +463,7 @@ def test_init_installs_the_skills(project: Project) -> None:
     skills = project.root / ".claude" / "skills"
     lead = (skills / "nock-reflect" / "SKILL.md").read_text()
     assert lead.startswith("---\nname: nock-reflect\n")
-    assert lead.endswith("\n---\n\nRun `.nock/nock reflect nock` and do what it says.\n")
+    assert lead.endswith("\n---\n\nRun `.nock/nock docs nock` and do what it says.\n")
     assert {path.name for path in (skills / "nock-reflect").iterdir()} == {"SKILL.md"}
     assert not (skills / "logika").exists(), "no logika.json here (tests/test_logika.py)"
     agents = project.root / ".claude" / "agents"
@@ -621,7 +622,7 @@ def test_reflect_lists_the_subrounds_plans_a_round_and_starts_a_subround(
     assert listed["audit.tests"]["measure"]["threshold"] == 500
     assert "task" not in listed["fuzz.ui"] and listed["fuzz.ui"]["skill"] == "/fuzz-ui"
     fuzz = json.loads(nock(project.root, "reflect", "fuzz.ui", "--json").stdout)
-    assert fuzz["agents"] == [] and fuzz["brief"].startswith("# The fuzz.ui subround")
+    assert fuzz["agents"] == [] and fuzz["brief"] == ".nock/nock docs fuzz.ui"
     assert Path(fuzz["material"]["earlier"]).read_text() == "No earlier run.\n"
     assert fuzz["report"].startswith("your final message reports the subround")
     plan = json.loads(nock(project.root, "reflect", "audit", "--json").stdout)
@@ -630,7 +631,7 @@ def test_reflect_lists_the_subrounds_plans_a_round_and_starts_a_subround(
         "audit.performance", "audit.security", "audit.tests",
     ]  # fmt: skip
     assert plan["subrounds"][1]["prompt"] == (
-        "Run `.nock/nock reflect audit.security` and do what it says: you lead this subround,"
+        "Run `.nock/nock docs audit.security` and do what it says: you lead this subround,"
         " and your final message reports it."
     )
     assert not (project.local / "reflections" / "audit.security").exists()
@@ -650,7 +651,12 @@ def test_a_project_s_own_subround_overrides_a_shipped_one_and_adds_its_own(
         '[[agents]]\nname = "docs"\nreads = ["readme"]\n'
         '[end]\ncommit = ["README.md"]\n'
     )
-    (own / "lead.md").write_text("# The docs round\n")
+    briefs = project.root / ".nock" / "docs" / "briefs"
+    briefs.mkdir(parents=True)
+    for term, article in (("team", "# The team round"), ("team.docs", "# The docs round")):
+        (briefs / f"{term}.md").write_text(
+            f"---\nterm: {term}\naliases: []\ndescription: {term}\n---\n\n{article}\n"
+        )
     (own / "agents" / "docs.md").write_text(
         "---\ndescription: Keeps the docs.\ntools: Read\n---\n\nRead the docs.\n"
     )
@@ -664,7 +670,8 @@ def test_a_project_s_own_subround_overrides_a_shipped_one_and_adds_its_own(
     )
     assert subround(project, "nock.toolbox").title == "Our toolbox"
     started = json.loads(nock(project.root, "reflect", "team.docs", "--json").stdout)
-    assert started["brief"] == "# The docs round"
+    assert started["brief"] == ".nock/nock docs team.docs"
+    assert nock(project.root, "docs", "team.docs").stdout.startswith("# The docs round")
     assert Path(started["material"]["readme"]).read_text() == "# A project\n"
     assert "Say what the project is" in Path(started["material"]["recent"]).read_text()
     assert started["agents"][0]["type"] == "team-docs"
@@ -673,7 +680,7 @@ def test_a_project_s_own_subround_overrides_a_shipped_one_and_adds_its_own(
     assert (
         (skills / "team-docs" / "SKILL.md")
         .read_text()
-        .endswith("Run `.nock/nock reflect team.docs` and do what it says.\n")
+        .endswith("Run `.nock/nock docs team.docs` and do what it says.\n")
     )
     assert not (skills / "team").exists(), "one subround on: no skill for the round"
     agent = (project.root / ".claude" / "agents" / "team-docs.md").read_text()

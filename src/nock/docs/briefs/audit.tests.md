@@ -1,4 +1,12 @@
+---
+term: audit.tests
+aliases: []
+description: "The audit.tests lead's brief: coverage, weak assertions, fakes, flakes, slow tests, unheld promises"
+---
+
 # The tests audit
+
+Start the run with `.nock/nock reflect audit.tests`, or pick up the one under way: it prints the run's material, its agents with their briefs, the files to write and the submit.
 
 The audit reports; it changes no code and no test. Read the project's
 instructions first (its CLAUDE.md or AGENTS.md, its testing guide or skill):

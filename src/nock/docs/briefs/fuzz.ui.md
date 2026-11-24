@@ -1,4 +1,12 @@
+---
+term: fuzz.ui
+aliases: []
+description: "The fuzz.ui lead's brief: drive every page and dialog with odd input, sizes, themes and states"
+---
+
 # The fuzz.ui subround
+
+Start the run with `.nock/nock reflect fuzz.ui`, or pick up the one under way: it prints the run's material, its agents with their briefs, the files to write and the submit.
 
 You drive the project's web UI the way careless, hurried and unusual users
 would, and report what breaks. You change no code. The material `earlier` is

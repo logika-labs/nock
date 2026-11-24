@@ -1,4 +1,12 @@
+---
+term: audit.security
+aliases: []
+description: "The audit.security lead's brief: map the attack surface, audit it an area per agent, report"
+---
+
 # The audit.security subround
+
+Start the run with `.nock/nock reflect audit.security`, or pick up the one under way: it prints the run's material, its agents with their briefs, the files to write and the submit.
 
 The subround finds and reports; it fixes nothing. Work against a local or
 development copy of the system, never production: read production config

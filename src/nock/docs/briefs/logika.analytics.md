@@ -1,4 +1,12 @@
+---
+term: logika.analytics
+aliases: []
+description: "The logika.analytics lead's brief: propose what the owner wants measured, from the code and data"
+---
+
 # The logika.analytics subround
+
+Start the run with `.nock/nock reflect logika.analytics`, or pick up the one under way: it prints the run's material, its agents with their briefs, the files to write and the submit.
 
 You lead it: its job is to declare in `logika.json` what is worth
 measuring, so Logika's analytics answer the owner's questions from real

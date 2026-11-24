@@ -1,4 +1,12 @@
+---
+term: audit.performance
+aliases: []
+description: "The audit.performance lead's brief: measure what users wait for, report each finding with its number"
+---
+
 # The performance audit
+
+Start the run with `.nock/nock reflect audit.performance`, or pick up the one under way: it prints the run's material, its agents with their briefs, the files to write and the submit.
 
 Find what makes the project slow or costly, with numbers, and report each
 finding to the owner. You change no code: you measure and report. You do the measuring yourself, one thing at a time, because timings

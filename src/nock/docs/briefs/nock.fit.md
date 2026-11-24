@@ -1,4 +1,12 @@
+---
+term: nock.fit
+aliases: []
+description: "The nock.fit lead's brief: judge how nock serves the project, set its rounds up, keep the memory"
+---
+
 # The nock.fit subround
+
+Start the run with `.nock/nock reflect nock.fit`, or pick up the one under way: it prints the run's material, its agents with their briefs, the files to write and the submit.
 
 1. Dispatch the `nock-fit` subagent with its material (below) and the
    run's window. It judges how nock serves this project and which rounds

@@ -104,17 +104,20 @@ round, `nock`, and a project can have more (see [Subrounds](#subrounds)):
   what is where, the owner's preferences), reshaping it from how it was used.
 
 When they are due, the session start says so. The `/nock-reflect` skill,
-which `nock init` installs, runs the round in a session like any other:
+which `nock init` installs, runs the round in a session like any other: like
+every skill nock installs, it says only which brief to follow (`nock docs
+nock`), so the brief can improve without touching the skill.
 
 1. **`nock reflect nock`** prints the plan: one subagent per subround that is
-   on here, each with its prompt. The session dispatches them all at once,
-   in the background, and tells you each one's report as it ends.
-2. **Each subagent leads its subround**: `nock reflect nock.fit` starts a run,
+   on here, each with its prompt, which points it at its lead's brief (`nock
+   docs nock.fit`). The session dispatches them all at once, in the
+   background, and tells you each one's report as it ends.
+2. **Each subagent leads its subround** by its brief: `nock reflect nock.fit` starts a run,
    named by its date, and writes what its agents will read into
    `.nock/local/reflections/`. Run again while a run is open, it picks it up
    and rewrites nothing; a run started after one finished the same day is
-   `DATE-2`. It prints what the lead does: its brief, its agents with their
-   briefs and material, the files to write and how to submit. A subround can
+   `DATE-2`. It prints what the lead works with: where its brief is, its
+   agents with their briefs and material, the files to write and how to submit. A subround can
    fan out agents of its own: one per area of the code, one per package.
 3. **The reports**, `.nock/local/reflections/<subround>/DATE/report.md`:
    what changed in the toolbox and the memory, what needs you, and how nock
@@ -167,14 +170,18 @@ what it is for, when it is due, what its lead and agents read (each material
 from a command, the commits that touched some paths, the earlier runs'
 records, or a function in `material.py`), what they write and what its end
 checks and commits;
-`lead.md` is the lead's brief and `agents/NAME.md` each agent's. nock ships
+`agents/NAME.md` declares each agent, pointing at its brief in `nock docs`;
+the lead's brief is the term named after the subround (`nock docs
+audit.security`, in `docs/briefs/`), and the round's the term named after
+the round (`nock docs audit`). nock ships
 its own, Logika's (see [nock in Logika](#nock-in-logika)), and audits and
 fuzzing (`audit.performance`, `audit.security`, `audit.tests`, `fuzz.api`,
 `fuzz.ui`); a project adds
-its own, or overrides a shipped one by name, in `.nock/rounds/`. `nock init`
-installs a skill for each one that is on outside nock's (`/team-docs` runs
-`nock reflect team.docs`) and one for a round with two or more (`/audit`
-runs `nock reflect audit`).
+its own, or overrides a shipped one by name, in `.nock/rounds/`, with its
+briefs in `.nock/docs/briefs/` (`team.docs.md`, and `team.md` for the round).
+`nock init` installs a skill for each one that is on outside nock's
+(`/team-docs` says to follow the brief `team.docs`) and one for a round with
+two or more (`/audit` says to follow `nock docs audit`).
 
 **When a subround is due.** Every subround whose `requires` holds is on (the
 logika subrounds where there is a `logika.json`), and due when enough changed since its
