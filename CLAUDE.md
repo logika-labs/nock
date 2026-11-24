@@ -3,21 +3,16 @@
 A toolbox coding agents build for themselves: an agent-friendly CLI framework
 (`commands.py`, `fixtures.py`, `render.py`, woven together in `cli.py`),
 telemetry of every call and session (`store.py`, `telemetry.py`,
-`sessions.py`), the topics where agents put their work before the owner —
-tasks, to the owner: decisions, proposals, assets and a review composed of
-blocks, with the owner's notes and one chat each (`records.py`, `fold.py`,
-`shared.py`, `topics.py`; the owner's page in `studio.py` and `pages/`, the
-headless answers and round runs it starts in `runs.py`, telling the owner it
-is their turn in `notify.py`), the memory of what nock learned
-(`.nock/shared/memory.md`), and
-reflection rounds that turn it all into better tools, the memory and an
-account of how nock is doing (`reflect.py`, `share.py`,
-the `/nock-reflect` skill in `briefs/nock-reflect/`; in a Logika project, the
-logika round in `logika.py` and `briefs/nock-reflect-logika/`). It is vendored into
-the projects that use it (`nock init` copies `src/nock` into their
-`.nock/core/`), so everything here must run on Python 3.12 with the standard
-library and nothing else: templates are `nock.templates`, schemas the JSON
-Schema subset in `schema.py`.
+`sessions.py`), the memory of what nock learned (`.nock/shared/memory.md`,
+`shared.py`), and reflection and audit rounds (`rounds.py`, `rounds/`) that
+turn it all into better tools, the memory and an account of how nock is
+doing (`reflect.py`, `share.py`; in a Logika project, the logika rounds in
+`logika.py`). A round reports its findings to the session that ran it, in
+its final message, with its report in `.nock/local/reflections/`. It is
+vendored into the projects that use it (`nock init` copies `src/nock` into
+their `.nock/core/`), so everything here must run on Python 3.12 with the
+standard library and nothing else: schemas are the JSON Schema subset in
+`schema.py`.
 
 - `uv run pytest -n 4`, `uv run ruff check`, `uv run ruff format`,
   `uv run basedpyright` — all green before a commit.
@@ -28,8 +23,9 @@ Schema subset in `schema.py`.
   the owner; `release.yaml` then gates the
   tagged commit and publishes to PyPI (README, "Developing nock"). Never push,
   tag or publish without the owner's word.
-- Tests use real git repositories and real processes; the dispatched agents
-  are `tests/fake_agent.py`, configured as `agent.command`. No mocks.
+- Tests use real git repositories and real processes; the dispatched agent
+  (the sharer) is `tests/fake_agent.py`, configured as `agent.command`. No
+  mocks.
 - `server/` is api.nock.dev, a separate distribution (Python 3.14, FastAPI,
   Postgres) that is never vendored or published, so it may have dependencies:
   `cd server && uv run pytest` (Docker, for Postgres), `uv run ruff check`,

@@ -19,12 +19,9 @@ on:
 
 - **every call and session is recorded** on your machine, in a SQLite file
   that is never committed;
-- **agents put their work before you** as tasks: what they decided, what
-  they propose, the files that show it, and a review telling the story. In
-  the studio (`.nock/nock studio`), when it suits you, you accept or reject
-  proposals, leave notes on anything, send them for an answer now, and
-  press Done; nock keeps a small memory of what it learned, which every
-  agent starts from;
+- **nock keeps a small memory** of what it learned about the project, which
+  every agent starts from, and every agent reports its work to whoever
+  dispatched it;
 - **every week or so a reflection round** reads the record and improves the
   toolbox: tools for the work that keeps costing turns, repairs for the ones
   that misbehave, the unused ones retired;
@@ -44,9 +41,8 @@ terms, the short articles agents read. Both are `src/nock/terms/`.
 1. [Why nock](https://nock.dev/docs/why/)
 2. [Agents that build their own tools](https://nock.dev/docs/reflection/)
 3. [A CLI agents can use](https://nock.dev/docs/cli/)
-4. [Review on your time](https://nock.dev/docs/review/)
-5. [nock in Logika](https://nock.dev/docs/logika/)
-6. [Setting up](https://nock.dev/docs/setup/)
+4. [nock in Logika](https://nock.dev/docs/logika/)
+5. [Setting up](https://nock.dev/docs/setup/)
 
 And the [reference](https://nock.dev/docs/terms/): every command, exit code and
 term.
