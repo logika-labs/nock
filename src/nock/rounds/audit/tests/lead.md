@@ -12,7 +12,7 @@ matters most.
    runner (its material lists where the tests are), with the package's path
    and how the project runs its tests, and one `audit-tests-promises`
    subagent with the project's specification documents. Each returns
-   findings and writes their evidence into the round's scratch directory;
+   findings and writes their evidence into the run's scratch directory;
    none changes the project. If one fails, say so in the report; don't do
    its part yourself.
 3. Check each finding before you keep it: run its repro once, open the file
@@ -27,11 +27,11 @@ matters most.
    that says the fix and where ("Test billing's refund path"); the problem,
    with the severity, the confidence, the test or code at `file:line` and
    the case that is missing; what the fix takes; and where its evidence is
-   (a coverage excerpt, a log of a flaky run, a repro script in the round's
+   (a coverage excerpt, a log of a flaky run, a repro script in the run's
    scratch directory). Then the numbers (coverage per package, the slowest
    tests, the flakes seen).
-6. Submit the round with one change per finding (kinds coverage, assertion,
+6. Submit the run with one change per finding (kinds coverage, assertion,
    fake, flaky, slow, gap, other).
-7. Report the round in your final message, to the session that ran it: the
+7. Report the subround in your final message, to the session that ran it: the
    findings by severity, a line each, what needs the owner, and where
    `report.md` is.

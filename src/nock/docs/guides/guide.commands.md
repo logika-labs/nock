@@ -13,12 +13,12 @@ description: Every nock command, and the exit codes that tell an agent what to d
 | `nock` | the toolbox: the project's tools first, then nock's |
 | `nock check [NAME…] [--all] [--fix]` | run the checks the branch's changes can affect (`--all` every one, or exactly the checks and chains named), side by side; prints nothing when all pass |
 | `nock run -- COMMAND` | run anything supervised and condensed (your agent asks you, as for the command itself) |
-| `nock docs [TERM…]` | nock's documentation for agents, a short article per term: with no term, the terms |
-| `nock status` | a round due, an unshared summary, a newer nock, a logika round to offer |
+| `nock docs [TERM…]` | nock's documentation for agents, a short article per term, and the project's own in `.nock/docs/` on top: with no term, the terms |
+| `nock status` | the subrounds due and the skill for each, the last fit run, an unshared summary, a newer nock |
 | `nock config [KEY [VALUE]] [--local]` | the team's settings (with `--local`, this machine's): listed, read, set (`share` too: your answer on sharing the usage report) |
 | `nock query SQL\|calls\|stats\|sessions` | the telemetry: read-only SQL, or one of its views |
-| `nock reflect [NAME]`, `nock reflect --submit JSON` | the rounds: listed; one protocol's started (`nock.toolbox`), or a namespace's at once (`nock`: `/nock-reflect`; `logika`: `/logika`); a round's result recorded |
-| `nock share [JSON]` | the fit round's summary as it would be sent, and sending it (asks you) |
+| `nock reflect [NAME]`, `nock reflect --submit JSON` | the subrounds: listed; a round's plan, one agent per subround (`nock`: `/nock-reflect`; `audit`: `/audit`); one subround's run started (`nock.toolbox`); a run's result recorded |
+| `nock share [JSON]` | the fit run's summary as it would be sent, and sending it (asks you) |
 | `nock report [TEXT] [--yes]` | send nock's makers what you need from nock or what is wrong with it (shows it and asks; with no terminal, only with `--yes`) |
 | `nock init`, `nock upgrade` | install (or re-wire), and upgrade the vendored core to the latest release, with a three-way merge (each asks you) |
 

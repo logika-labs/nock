@@ -1,15 +1,11 @@
-"""What a Logika project's rounds read (the `logika.rules`, `logika.analytics`
-and `logika.instrument` protocols in `nock.rounds`). In a Logika project — a
-`logika.json` ledger, and the `logika` CLI on PATH — the owner runs the first
-two with the `/logika` skill: **rules**, a subagent per directory, gives each
-event `logika map` lists as unread its rule over its values, or the reason it
-gets none, and each verdict-only event the values it decided on;
-**analytics** declares what is worth measuring (identities, dimensions,
-funnels, milestones, views). **instrument** is never adopted: an agent runs
-it by name for one area, instrumenting it and writing its rules until the
-map leaves each item closed or with its reason. `Material`, `Analytics` and
-`Instrument` are what each reads; `Logika`, the ledger and when a round is
-worth offering; `Map`, what `logika map` leaves open."""
+"""What a Logika project's subrounds read (`logika.instrument` and
+`logika.analytics` in `nock.rounds`). In a Logika project — a `logika.json`
+ledger, and the `logika` CLI on PATH — **instrument** splits the code into
+areas, an agent each, instrumenting it and writing its rules until `logika
+map` leaves each item closed or with its reason; **analytics** declares what
+is worth measuring (identities, dimensions, funnels, milestones, views).
+`Instrument` and `Analytics` are what each reads; `Logika`, the ledger and
+its problems; `Map`, what `logika map` leaves open."""
 
 from __future__ import annotations
 
@@ -29,12 +25,11 @@ if TYPE_CHECKING:
 
 LEDGER = "logika.json"
 PROGRAM = "logika"
-# The round's parts: each a brief in `nock docs` (`reflection.logika.PART`), and a material file.
 SECTION_ROWS = 40
 # What `logika map` leaves open, by kind: functions that log nothing, events whose
 # params are all verdicts, events no rule reads.
 OPEN = ("silent", "verdicts", "unread")
-# The change kind an instrument round leaves an open item with, its target the item.
+# The change kind an instrument run leaves an open item with, its target the item.
 REASON = "reason"
 # `logika map` reads the tree offline: past this it is stuck, not slow.
 MAP_SECONDS = 300
@@ -57,7 +52,7 @@ def event_of(reference: Any) -> str:
 
 
 class Ledger:
-    """The project's `logika.json`, as a round reads it."""
+    """The project's `logika.json`, as a subround reads it."""
 
     def __init__(self, project: Project) -> None:
         self.project = project
@@ -67,7 +62,7 @@ class Ledger:
         return self.project.here / LEDGER
 
     def unavailable(self) -> str:
-        """Why a logika round cannot run here, or nothing when it can."""
+        """Why a logika subround cannot run here, or nothing when it can."""
         if not self.path.is_file():
             return f"not a Logika project: there is no {LEDGER} at {self.project.here}"
         if shutil.which(PROGRAM) is None:
@@ -84,7 +79,7 @@ class Ledger:
         return ledger
 
     def counts(self, ledger: dict[str, Any]) -> dict[str, int]:
-        """What the ledger says must hold, in numbers: the next round compares."""
+        """What the ledger says must hold, in numbers: the next run compares."""
         events = [event for _, event in flattened(ledger.get("events"))]
         params = {
             name: param
@@ -114,8 +109,8 @@ class Ledger:
 
 
 class Logika:
-    """A Logika project as its rounds read it: the ledger, the commits that
-    changed it, and when a round is worth offering."""
+    """A Logika project as its subrounds read it: the ledger, the commits
+    that changed it, and what its end finds wrong."""
 
     def __init__(self, project: Project) -> None:
         self.project = project
@@ -150,38 +145,17 @@ class Logika:
         return []
 
 
-class Material:
-    """What the rules part reads, computed: what the ledger already says must
-    hold, per component and per event; what changed since the last round; and
-    what the last round changed and left for the next."""
+class Analytics:
+    """What the analytics part reads: what the ledger already measures — the
+    params marked as identities or dimensions, the numeric ones, the funnels,
+    milestones and views — beside the components, the history and the last
+    run."""
 
     def __init__(self, logika: Logika, ledger: dict[str, Any], last: dict[str, Any] | None) -> None:
         self.logika = logika
         self.ledger = ledger
         self.last = last
         self.since = last.get("finished") if last else None
-
-    def render(self) -> str:
-        sections = [
-            self.overview(),
-            self.components(),
-            self.events(),
-            self.relations(),
-            self.direction(),
-            self.previous(),
-        ]
-        return "\n\n".join(section for section in sections if section) + "\n"
-
-    def overview(self) -> str:
-        counts = self.logika.ledger.counts(self.ledger)
-        return (
-            f"# The ledger\n\n`{LEDGER}`, ledger `{self.ledger.get('ledger', '?')}`: "
-            f"{counts['params']} params, {counts['events']} events ({counts['spans']} spans; "
-            f"{counts['validated']} with `validate`, {counts['with_paths']} with paths, "
-            f"{counts['with_timeout']} with a timeout), {counts['rules']} rules, "
-            f"{counts['invariants']} invariants; {counts['instrumented']} of "
-            f"{counts['components']} components instrumented."
-        )
 
     def components(self) -> str:
         components = (self.ledger.get("map") or {}).get("components") or []
@@ -190,7 +164,7 @@ class Material:
         lines = [
             "# Components",
             "",
-            "Commits since the last logika round touching each component's paths: where "
+            "Commits since the last run touching each component's paths: where "
             "behaviour may have moved past the ledger.",
             "",
             "component,paths,languages,instrumented,commits_since,strategy",
@@ -231,65 +205,9 @@ class Material:
         except (GitError, ValueError):
             return "-"
 
-    def events(self) -> str:
-        events = flattened(self.ledger.get("events"))
-        if not events:
-            return "# Events\n\nThe ledger declares none yet: instrumentation comes first."
-        rules = [rule for rule in self.ledger.get("rules") or [] if isinstance(rule, dict)]
-        triggers = {event_of(rule.get("on")) for rule in rules}
-        expected = {event_of(item) for rule in rules for item in rule.get("expect") or []}
-        lines = [
-            "# Events",
-            "",
-            "What each declared event already says must hold; `-` is nothing yet. on/expected: "
-            "a rule's trigger or follow-up (`logika map` says which events no rule reads).",
-            "",
-            "event,kind,params,validate,paths,timeout,rules,anomaly",
-        ]
-        for path, event in events:
-            span = event.get("span") if isinstance(event.get("span"), dict) else None
-            role = [
-                word for word, names in (("on", triggers), ("expected", expected)) if path in names
-            ]
-            lines.append(
-                ",".join(
-                    [
-                        path,
-                        "span" if span is not None else "leaf",
-                        " ".join(str(param) for param in event.get("params") or []) or "-",
-                        json.dumps(event["validate"]) if event.get("validate") else "-",
-                        json.dumps(span.get("paths")) if span and span.get("paths") else "-",
-                        str(span.get("timeout")) if span and span.get("timeout") else "-",
-                        " ".join(role) or "-",
-                        "yes" if event.get("anomaly") else "-",
-                    ]
-                )
-            )
-        return "\n".join(lines)
-
-    def relations(self) -> str:
-        rules = [rule for rule in self.ledger.get("rules") or [] if isinstance(rule, dict)]
-        invariants = [
-            item for item in self.ledger.get("invariants") or [] if isinstance(item, dict)
-        ]
-        lines = ["# Rules and invariants", ""]
-        lines += [
-            f"- rule: {rule.get('on')} → {' | '.join(map(str, rule.get('expect') or []))}"
-            f" within {rule.get('within')}" + (f" if {rule['if']}" if rule.get("if") else "")
-            for rule in rules
-        ]
-        lines += [
-            f"- invariant `{item.get('name')}` (key {', '.join(map(str, item.get('key') or []))}): "
-            f"{item.get('description')}"
-            for item in invariants
-        ]
-        if not (rules or invariants):
-            lines.append("None yet.")
-        return "\n".join(lines)
-
     def direction(self) -> str:
         changes = self.logika.changes(self.since)
-        since = f"since the last logika round ({self.since})" if self.since else "so far"
+        since = f"since the last run ({self.since})" if self.since else "so far"
         if not changes:
             return f"# The ledger's history\n\nNo commit changed `{LEDGER}` {since}."
         return "\n".join(
@@ -299,9 +217,9 @@ class Material:
 
     def previous(self) -> str:
         if not self.last:
-            return "# The last logika round\n\nThis is the first logika round."
+            return "# The last run\n\nThis is the first run."
         lines = [
-            f"# The last logika round ({self.last['round']})",
+            f"# The last run ({self.last['run']})",
             "",
             str(self.last["summary"]),
             "",
@@ -314,13 +232,6 @@ class Material:
         if self.last.get("notes"):
             lines += ["", f"Notes it left: {self.last['notes']}"]
         return "\n".join(lines)
-
-
-class Analytics(Material):
-    """What the analytics part reads: what the ledger already measures — the
-    params marked as identities or dimensions, the numeric ones, the funnels,
-    milestones and views — beside the components, the history and the last
-    round."""
 
     def render(self) -> str:
         sections = [
@@ -404,7 +315,7 @@ class Analytics(Material):
 class Map:
     """`logika map --json` at the repository's root: what logs nothing, what
     logs only its verdicts and what no rule reads, as the open items an
-    instrument round closes."""
+    instrument run closes."""
 
     def __init__(self, project: Project) -> None:
         self.project = project
@@ -445,7 +356,7 @@ class Map:
 
 
 def items(found: dict[str, Any]) -> list[str]:
-    """Each open item as a round's submission names it: `silent <file>
+    """Each open item as a run's submission names it: `silent <file>
     <function>`, the file from the repository root; `verdicts <event>`;
     `unread <event>`."""
     base = str(found.get("path") or ".")
@@ -463,15 +374,15 @@ def items(found: dict[str, Any]) -> list[str]:
 
 
 class Instrument:
-    """What an instrument round reads: the repository's map when it starts —
+    """What an instrument run reads: the repository's map when it starts —
     its counts, its directories and each open item — and the reasons earlier
-    instrument rounds left items open with (changes of kind `reason`, by
+    instrument runs left items open with (changes of kind `reason`, by
     their target, the latest standing)."""
 
-    def __init__(self, mapping: Map, rounds: list[dict[str, Any]]) -> None:
+    def __init__(self, mapping: Map, runs: list[dict[str, Any]]) -> None:
         self.mapping = mapping
         self.reasons: dict[str, str] = {}
-        for record in rounds:
+        for record in runs:
             for change in record.get("changes") or []:
                 if change.get("kind") == REASON:
                     self.reasons[str(change.get("target"))] = str(change.get("why"))
@@ -490,7 +401,7 @@ class Instrument:
         counts = counts if isinstance(counts, dict) else {}
         left = ", ".join(f"{int(counts.get(kind) or 0)} {kind}" for kind in OPEN)
         return (
-            f"# The map\n\n`{PROGRAM} map --json` at the repository's root when the round "
+            f"# The map\n\n`{PROGRAM} map --json` at the repository's root when the run "
             f"started: {found.get('mode', '?')}, {found.get('files', '?')} files, "
             f"{found.get('events', '?')} events; open: {left}."
         )
@@ -522,7 +433,7 @@ class Instrument:
                 "# Open items",
                 "",
                 "Each as a submission's target names it. `left:` is the reason an earlier "
-                "round gave: keep it, or close the item.",
+                "run gave: keep it, or close the item.",
                 "",
             ]
             + [
@@ -533,8 +444,8 @@ class Instrument:
 
     def earlier(self) -> str:
         if not self.reasons:
-            return "# Reasons given\n\nNo earlier instrument round left an item with a reason."
+            return "# Reasons given\n\nNo earlier instrument run left an item with a reason."
         return "\n".join(
-            ["# Reasons given", "", "What earlier instrument rounds left open, and why:", ""]
+            ["# Reasons given", "", "What earlier instrument runs left open, and why:", ""]
             + [f"- {item} — left: {reason}" for item, reason in self.reasons.items()]
         )

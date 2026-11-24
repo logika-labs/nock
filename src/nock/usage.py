@@ -27,7 +27,7 @@ from nock.git import Git, GitError
 from nock.logika import LEDGER
 from nock.reflect import Reflection, Window, tool_rows
 from nock.releases import VERSION
-from nock.rounds import protocols
+from nock.rounds import subrounds
 from nock.sessions import Sessions
 from nock.shared import SETTINGS, SHARED, commit
 from nock.tools import BUILT_IN_SOURCE
@@ -259,9 +259,7 @@ class Usage:
                 "hooks": sum(1 for entry in registry.hooks if entry.source != BUILT_IN_SOURCE),
                 "load_failures": len(registry.failures),
             },
-            "rounds": {
-                protocol.name: len(protocol.rounds.all()) for protocol in protocols(project)
-            },
+            "rounds": {subround.name: len(subround.runs.all()) for subround in subrounds(project)},
         }
 
     def due(self) -> bool:

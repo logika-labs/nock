@@ -53,7 +53,7 @@ def test_with_reminders_off_nock_says_nothing_unasked_and_still_records(
     HookRunner(quiet, {"session_id": "s1", "transcript_path": str(path)}).handle("SessionEnd")
     assert quiet.store.rows("SELECT id FROM sessions") == [{"id": "s1"}]
     assert "deploy" in nock(project.root).stdout
-    assert "reflection" in json.loads(nock(project.root, "status", "--json").stdout)
+    assert "nock.fit" in json.loads(nock(project.root, "status", "--json").stdout)["due"]
 
 
 class Receiver(BaseHTTPRequestHandler):

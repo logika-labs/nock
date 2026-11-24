@@ -1,7 +1,7 @@
 ---
 term: reflection.logika
 aliases: [logika-round]
-description: The logika rounds: rules and analytics for the ledger, from the data, with the owner
+description: "The logika round: instrument and analytics, for the ledger, from the code and the data"
 ---
 
-`logika.rules` and `logika.analytics` run only when the owner asks (`/logika` both, `/logika-rules`, `/logika-analytics`); a session start offers them when due. Rules: a part per directory, each unread or verdicts item of `logika map` its rule, or a reason; analytics: what to measure. The session decides, asks the owner only directions and real ambiguities, ends with one `logika replay` noise check and submits each round. `logika.instrument`: `reflection.logika.instrument`.
+In a Logika project (`logika.json`, the `logika` CLI): `logika.instrument` splits the code into areas, an agent each (`reflection.logika.instrument`), instrumenting it and writing its rules until `logika map` leaves each item closed or with its reason; due once the map's open items grew by 5. `logika.analytics` declares what is worth measuring; due once 5 events were added. `/logika` runs both, `/logika-instrument` and `/logika-analytics` one; never unasked.

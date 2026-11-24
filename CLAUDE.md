@@ -6,9 +6,11 @@ telemetry of every call and session (`store.py`, `telemetry.py`,
 `sessions.py`), the memory of what nock learned (`.nock/shared/memory.md`,
 `shared.py`), and reflection and audit rounds (`rounds.py`, `rounds/`) that
 turn it all into better tools, the memory and an account of how nock is
-doing (`reflect.py`, `share.py`; in a Logika project, the logika rounds in
-`logika.py`). A round reports its findings to the session that ran it, in
-its final message, with its report in `.nock/local/reflections/`. It is
+doing (`reflect.py`, `share.py`; in a Logika project, the logika round in
+`logika.py`). A round (audit, fuzz, logika, nock) is a group of subrounds
+(`audit.security`); `nock reflect ROUND` prints the plan, one agent per
+subround, and each subround's lead reports its findings to the session that
+ran it, in its final message, with its report in `.nock/local/reflections/`. It is
 vendored into the projects that use it (`nock init` copies `src/nock` into
 their `.nock/core/`), so everything here must run on Python 3.12 with the
 standard library and nothing else: schemas are the JSON Schema subset in

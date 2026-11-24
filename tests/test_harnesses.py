@@ -216,12 +216,14 @@ def test_the_agents_md_section_follows_the_committed_settings(repository: Path) 
 def test_codex_hears_claude_code_s_format_and_cursor_its_own(
     project: Project, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    tool = project.root / ".nock" / "tools" / "hello.py"
-    tool.write_text("import nock\n\n\n@nock.command()\ndef hello() -> str:\n    return 'hi'\n")
     payload = json.dumps({"session_id": "x1", "cwd": str(project.root)})
     codex = nock(project.root, "hook", "SessionStart", "codex", stdin=payload)
     told = json.loads(codex.stdout)["hookSpecificOutput"]
-    assert told["hookEventName"] == "SessionStart" and "hello" in told["additionalContext"]
+    assert told["hookEventName"] == "SessionStart"
+    assert told["additionalContext"].startswith("nock: due — nock.fit;")
+    # The line is said once a day: the cursor session hears it as a new day would.
+    with project.store.connection() as connection:
+        connection.execute("DELETE FROM nudged")
     cursor = nock(
         project.root,
         "hook",
@@ -229,7 +231,7 @@ def test_codex_hears_claude_code_s_format_and_cursor_its_own(
         "cursor",
         stdin=json.dumps({"conversation_id": "c1", "workspace_roots": [str(project.root)]}),
     )
-    assert "hello" in json.loads(cursor.stdout)["additional_context"]
+    assert json.loads(cursor.stdout)["additional_context"].startswith("nock: due — nock.fit;")
     unknown = nock(project.root, "hook", "SessionStart", "emacs", stdin=payload)
     assert unknown.returncode == 0 and "unknown harness 'emacs'" in unknown.stderr
 

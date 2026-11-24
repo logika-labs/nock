@@ -1,20 +1,27 @@
 title = "Instrument"
-summary = "Instrument one area and write its rules, until `logika map` leaves each item closed or with its reason."
+summary = "Split the code into areas, one agent each, instrumenting it and writing its rules until `logika map` leaves each item closed or with its reason."
 relevant = "Logika projects: logika.json at the root."
 requires = { files = ["logika.json"], commands = ["logika"] }
-# Never adopted, so it joins neither `/logika` nor a skill of its own: the logika-instrument
-# skill's subagents run it by name, one per area, and it is never due on a schedule.
+
 [due]
-# Never due by itself: the logika-instrument skill starts it for one area.
-measure = "never"
+# Due once `logika map`'s open items (events no rule reads, verdict-only
+# events) grew by 5 since the last run.
+measure = "python"
+threshold = 5
 
 
 [material.instrument]
 python = "instrument"
 
-# No [[agents]]: the skill splits the code; the agent running the round works its area itself.
 [lead]
 reads = ["instrument"]
+writes = ["report.md"]
+
+[[agents]]
+name = "instrument"
+reads = ["instrument"]
+changes = ["the code of its area", "its own entries in logika.json"]
+fan_out = "each area of the code"
 
 [end]
 commit = ["logika.json"]

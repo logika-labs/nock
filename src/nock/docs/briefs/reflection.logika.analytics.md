@@ -4,7 +4,7 @@ aliases: []
 description: The analytics part's brief: identities, dimensions, funnels, milestones and views
 ---
 
-You are the analytics part of a logika round. Your material and the round's window come in the prompt.
+You are the part of a `logika.analytics` run. Your material and the run's window come in the prompt.
 
 # From questions to analytics
 
@@ -73,7 +73,7 @@ If a question needs something the code doesn't emit — the identity on a
 step, a step as an event of its own, the plan as a param — ask for it
 instead of a declaration that would stay empty: the event, the param, where
 in the code it goes, the value it takes there, and the question it would
-answer. The round's lead adds it, with the declaration over it.
+answer. The lead adds it, with the declaration over it.
 
 ## Common cases
 
@@ -91,19 +91,19 @@ What usually keeps the numbers worth opening; judgement on the case wins.
 
 ## What you bring back
 
-You change nothing: the rules parts read the same tree at the same time.
+You change nothing: other agents may work on the same tree at the same time.
 Bring back proposals for `logika.json` (params' `identity` and `dimension`
 flags, `funnels`, `milestones` and `views`, each panel with its `title` and
 `answer`), the fields they need, and the few questions only the owner can
-answer. The round's lead writes them, and `.nock/nock reflect
+answer. The lead writes them, and `.nock/nock reflect
 --submit` records it.
 
 # What you may do
 
 You may read anything in the repository and run `logika` and `.nock/nock`
 commands to read captures and check candidates (`logika query`, `logika
-check`). You change no file, through a tool or a command: the rules parts
-read the same tree at the same time, and the round's lead adds what you
+check`). You change no file, through a tool or a command: other agents may
+work on the same tree at the same time, and the lead adds what you
 ask for, edits `logika.json` and commits. Claude Code's permissions are the
 session's, so a command they don't allow is refused or waits for the owner.
 When a call is refused, say in your report what you needed and why, and go

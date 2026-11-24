@@ -26,7 +26,7 @@ launch to what bears on their work. Its rules, and only these:
   what you or your agents learned that the next piece of work needs,
   correct what is wrong. What a subagent reports worth remembering, you add.
 
-How it is grouped and shaped is the fit round's to work out for this
+How it is grouped and shaped is the fit subround's to work out for this
 project, from how it was used.
 
 ## For each piece of work

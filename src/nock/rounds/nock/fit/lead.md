@@ -1,12 +1,12 @@
-# The fit round
+# The nock.fit subround
 
 1. Dispatch the `nock-fit` subagent with its material (below) and the
-   round's window. It judges how nock serves this project and which rounds
+   run's window. It judges how nock serves this project and which rounds
    fit it and how each should be set here, changing nothing, reading its own
    brief. If it fails, say so in the report; don't do its part yourself.
-2. **Set the rounds up.** From the part's account, write each round's
+2. **Set the rounds up.** From the part's account, write each subround's
    settings in `.nock/config.toml` under `[rounds."NAME"]`: `enabled =
-   false` for a round that doesn't fit; `paths` (globs) for what it looks at
+   false` for a subround that doesn't fit; `paths` (globs) for what it looks at
    here — where this project authenticates, authorizes, routes requests and
    handles uploads for the security audit, its route code and API schema
    (`any`) for the API fuzz, its web UI for the UI fuzz, its source and tests
@@ -34,8 +34,8 @@
    nock's makers. If it gives `ask_the_owner`, ask the owner that, in its
    words, and record exactly their answer with `.nock/nock config share
    true` or `false`; nothing if they don't answer.
-7. Report the round in your final message, to the session that ran it: the
+7. Report the subround in your final message, to the session that ran it: the
    rounds set up, the memory's changes, what needs the owner, and where
-   `report.md` is. If the round found something nock itself lacks or gets
+   `report.md` is. If the run found something nock itself lacks or gets
    wrong, offer to send it to nock's makers with `.nock/nock report`, on
    their go-ahead.

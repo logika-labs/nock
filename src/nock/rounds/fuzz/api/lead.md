@@ -1,11 +1,11 @@
-# The API fuzzing round
+# The fuzz.api subround
 
-The round sends edge-case inputs to every route of the project's API and
+The subround sends edge-case inputs to every route of the project's API and
 reports what breaks. It changes no code: each finding goes to the owner,
 with the fix it proposes.
 
-Set aside whatever this session was doing: the round works from the API's
-description, a local server and its material (below): what earlier rounds
+Set aside whatever this session was doing: the subround works from the API's
+description, a local server and its material (below): what earlier runs
 found.
 
 1. **Find the surface.** Read the project's instructions and the API's
@@ -18,10 +18,10 @@ found.
    sign-ups), so every id of one can be tried as the other. Never send
    traffic to production, never print a secret, and stop only what you
    started.
-3. **Script the fuzzing.** Write one script that the next round reruns:
+3. **Script the fuzzing.** Write one script that the next run reruns:
    schemathesis or Hypothesis against the OpenAPI document where there is
    one, plus the cases a schema can't generate. Start from the last
-   round's script when this machine has it (in its scratch directory,
+   run's script when this machine has it (in its scratch directory,
    `.nock/local/reflections/fuzz.api/`). For each
    route, send:
    - empty bodies, missing and extra fields, nulls, wrong types;
@@ -51,14 +51,14 @@ found.
    will; medium: a hang, or a broken state; low: the rest) and how
    confident you are; what the fix takes; the evidence (the repro command
    or file, the server log of the failure). One finding per root cause,
-   however many routes it breaks. A finding an earlier round reported that
+   however many routes it breaks. A finding an earlier run reported that
    still holds is said to be still open, not reported as new.
-7. **Keep the script** in the round's scratch directory, beside the report,
+7. **Keep the script** in the run's scratch directory, beside the report,
    with how to start the server and the accounts and the command that runs
    it.
 8. Finish `report.md` for the owner with the routes and requests covered
-   and what the round could not reach. Submit with one change per finding
+   and what the run could not reach. Submit with one change per finding
    (kinds error, accepted, leak, hang, state, other).
-9. Report the round in your final message, to the session that ran it: the
+9. Report the subround in your final message, to the session that ran it: the
    findings by severity, a line each, what needs the owner, and where
    `report.md` and the script are.

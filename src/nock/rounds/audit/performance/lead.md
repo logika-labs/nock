@@ -6,9 +6,9 @@ taken side by side on one machine skew each other.
 
 Done when every hot path below that the project has is measured, each real
 finding has its evidence, `report.md` ranks them, `.nock/nock reflect
---submit` has recorded the round, and your final message has reported it.
+--submit` has recorded the run, and your final message has reported it.
 
-1. Read the material: what earlier rounds found. A finding that is still
+1. Read the material: what earlier runs found. A finding that is still
    there is measured again and reported as still open, not as new; one
    fixed since is said to be fixed, with its new number.
 2. Learn the project before you time it: the docs that say what it must
@@ -46,8 +46,8 @@ finding has its evidence, `report.md` ranks them, `.nock/nock reflect
    table where it says more); then what you could not measure and why.
 7. Submit, one change per finding (kinds latency, throughput, query,
    memory, startup, bundle, other): its `target` the file:line, its `why`
-   the numbers, its `expect` what the next round should measure once it
+   the numbers, its `expect` what the next run should measure once it
    is fixed.
-8. Report the round in your final message, to the session that ran it: the
+8. Report the subround in your final message, to the session that ran it: the
    findings worst first, a line each with its number, what needs the
    owner, and where `report.md` is.

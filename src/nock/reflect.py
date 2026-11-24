@@ -1,8 +1,8 @@
-"""What nock's own rounds read (the `nock.*` protocols in `nock.rounds`):
+"""What nock's own rounds read (the `nock.*` subrounds in `nock.rounds`):
 the telemetry turned into the toolbox's material (`Material`), the memory
-into the fit's (`Knowledge`), and the numbers of every round
-(`Evidence`); `Reflection`, the window since the last nock round and its
-metrics; and a round's record (`Record`). Each round keeps its numbers, so
+into the fit's (`Knowledge`), and the numbers of every run
+(`Evidence`); `Reflection`, the window since the last fit run and its
+metrics; and a run's record (`Record`). Each run keeps its numbers, so
 the next holds its changes to them, and the first is the baseline."""
 
 from __future__ import annotations
@@ -39,14 +39,13 @@ TWO_WORDS = {
 # Where an agent cut a command's output down by hand.
 TRIMMERS = re.compile(r"\|\s*(head|tail|grep|sed -n|awk|cut|wc)\b")
 SECTION_ROWS = 25
-# What the round's lead writes beside its record.
+# What the lead writes beside its record.
 REPORT = "report.md"
 SHARE = "share.md"
-# The checks nock's round must pass before it counts: nock's own.
-# nock's round whose records keep its metrics and its shareable summary.
+# The subround whose records keep nock's metrics and its shareable summary.
 FIT = "nock.fit"
-# Those quick enough for the end of a turn, when a round is left open.
-ROUND_FILE = "round.json"
+# Those quick enough for the end of a turn, when a run is left open.
+RUN_FILE = "run.json"
 RECORD_FILE = "record.json"
 # The window's calls, each marked `wrapped` when its exit code is the one a
 # command it supervised (`nock run -- pytest`, a tool's `sh`) exited with — not
@@ -88,24 +87,24 @@ class Change(TypedDict):
         "rounds", "memory", "risk", "other",
     ]  # fmt: skip
     """add, change, retire, check — the toolbox; validate, path,
-    timeout, rule, invariant, error — a logika round's rules; reason — an
+    timeout, rule, invariant, error — logika.instrument's rules; reason — an
     item `logika map` lists that it left open, with its one-line reason;
     instrumentation — the fields it added to the code for them; identity,
-    dimension, funnel, milestone, view — its analytics; recommend — a round
-    nock.fit recommends; rounds — a round's settings nock.fit set here;
+    dimension, funnel, milestone, view — logika.analytics'; recommend — what
+    nock.fit recommends; rounds — a subround's settings nock.fit set here;
     memory — a change to the memory; risk — a security audit's finding;
     other."""
     target: str
     """The tool, check or file: `failures`, `.nock/tools/db.py`; in a logika
-    round, the event or rule: `checkout`, `receipt_continuity`, or the item
+    run, the event or rule: `checkout`, `receipt_continuity`, or the item
     a reason leaves open: `silent app/refunds.py clean_amount`, `verdicts
     refund.decided`, `unread refund`."""
     why: str
     """The evidence: what in the material called for it."""
     expect: str
-    """What should be measurably different by the next round, and how to tell."""
+    """What should be measurably different by the next run, and how to tell."""
     tested: NotRequired[str]
-    """A logika round's, optional: what showed the change, such as the noise
+    """A logika run's, optional: what showed the change, such as the noise
     check a rule stayed quiet in, or the captures that showed the events and
     params it names."""
 
@@ -117,16 +116,16 @@ class Verdict(TypedDict):
 
 
 class Record(TypedDict):
-    protocol: str
-    """The round's protocol: `nock.toolbox`, `logika.rules`."""
+    subround: str
+    """The subround run: `nock.toolbox`, `logika.instrument`."""
     summary: str
-    """The round in a sentence or two."""
+    """The run in a sentence or two."""
     changes: list[Change]
     """What it changed in the toolbox."""
     verdicts: NotRequired[list[Verdict]]
-    """On each expectation the last round left."""
+    """On each expectation the last run left."""
     notes: NotRequired[str]
-    """What the next round should look at."""
+    """What the next run should look at."""
 
 
 def shape(command: str) -> str:
@@ -217,8 +216,8 @@ def said_spend(cost: float | None, unpriced: int) -> str:
     return f"${cost:.2f} at API prices{left_out}"
 
 
-class Rounds:
-    """A protocol's rounds: `directory/DATE/` — its record, committed — and,
+class Runs:
+    """A subround's runs: `directory/DATE/` — its record, committed — and,
     on this machine, what it reads and the lead's files (its report), in
     `scratch/DATE/`."""
 
@@ -228,7 +227,7 @@ class Rounds:
         self.scratch = scratch
 
     def all(self) -> list[dict[str, Any]]:
-        """Every finished round, oldest first."""
+        """Every finished run, oldest first."""
         if not self.directory.is_dir():
             return []
         records = []
@@ -237,27 +236,27 @@ class Rounds:
                 record = read_json(path)
             except PreconditionError:
                 continue
-            record.setdefault("round", path.parent.name)
+            record.setdefault("run", path.parent.name)
             records.append(record)
-        return sorted(records, key=lambda record: record.get("finished") or record["round"])
+        return sorted(records, key=lambda record: record.get("finished") or record["run"])
 
     def last(self) -> dict[str, Any] | None:
         records = self.all()
         return records[-1] if records else None
 
     def current(self) -> str | None:
-        """The round started and not finished, if there is one."""
+        """The run started and not finished, if there is one."""
         if not self.scratch.is_dir():
             return None
         started = sorted(
             path.parent.name
-            for path in self.scratch.glob(f"*/{ROUND_FILE}")
+            for path in self.scratch.glob(f"*/{RUN_FILE}")
             if not (self.directory / path.parent.name / RECORD_FILE).is_file()
         )
         return started[-1] if started else None
 
     def new_name(self) -> str:
-        """Today's date, with `-2`, `-3`… for another round the same day."""
+        """Today's date, with `-2`, `-3`… for another run the same day."""
         today = datetime.now(UTC).strftime("%Y-%m-%d")
         name, count = today, 1
         while (self.directory / name).exists() or (self.scratch / name).exists():
@@ -271,20 +270,20 @@ def schema() -> dict[str, Any]:
 
 
 class Reflection:
-    """nock's own numbers: the window since the last nock round (`nock.fit`'s,
+    """nock's own numbers: the window since the last fit run (`nock.fit`'s,
     whose records keep the metrics), the metrics over it, each tool's snapshot."""
 
     def __init__(self, project: Project) -> None:
         self.project = project
-        self.rounds = Rounds(
+        self.runs = Runs(
             project,
             directory=project.root / ".nock" / "shared" / "rounds" / FIT,
             scratch=project.local / "reflections" / FIT,
         )
 
     def window(self) -> Window:
-        """The sessions since the last round, the transcripts read up to now first."""
-        last = self.rounds.last()
+        """The sessions since the last run, the transcripts read up to now first."""
+        last = self.runs.last()
         since = last.get("finished") if last else None
         sessions = Sessions(self.project)
         sessions.catch_up()
@@ -297,14 +296,14 @@ class Reflection:
         return (datetime.now(UTC) - since).total_seconds() / 86400 if since else 0
 
     def record_shared(self, name: str, shared: dict[str, Any]) -> None:
-        path = self.rounds.directory / name / RECORD_FILE
+        path = self.runs.directory / name / RECORD_FILE
         write_json(path, {**read_json(path), "shared": shared})
 
     # --- the numbers --------------------------------------------------------------
 
     def snapshot(self, since: str | None) -> dict[str, Any]:
-        """Each tool's numbers over the window, kept in the round's record so
-        the next round can compare."""
+        """Each tool's numbers over the window, kept in the run's record so
+        the next run can compare."""
         return {
             row["tool"]: {
                 key: row[key]
@@ -314,8 +313,8 @@ class Reflection:
         }
 
     def metrics(self, window: Window) -> dict[str, Any]:
-        """The window in numbers, computed the same way every round: the work,
-        nock's use, the toolbox and the memory. The first round's are the
+        """The window in numbers, computed the same way every run: the work,
+        nock's use, the toolbox and the memory. The first run's are the
         baseline."""
         since = window.since or ""
         events = window.rows(self.project, "events", "rowid")
@@ -399,7 +398,7 @@ def tool_rows(project: Project, since: str | None) -> list[dict[str, Any]]:
 
 
 class Material:
-    """What the round's toolbox part reads, computed: the big picture first,
+    """What the toolbox part reads, computed: the big picture first,
     then the numbers."""
 
     def __init__(self, project: Project, window: Window, last: dict[str, Any] | None) -> None:
@@ -430,7 +429,7 @@ class Material:
         sessions = self.window.sessions
         tokens = self.window.tokens()
         since = (
-            f"since the last round ({self.since})"
+            f"since the last run ({self.since})"
             if self.window.since
             else "since nock was installed"
         )
@@ -495,9 +494,9 @@ class Material:
 
     def expectations(self) -> str:
         if not self.last:
-            return "# The last round\n\nThis is the first round."
+            return "# The last run\n\nThis is the first run."
         lines = [
-            f"# The last round ({self.last['round']})",
+            f"# The last run ({self.last['run']})",
             "",
             str(self.last.get("summary", "")),
             "",
@@ -515,7 +514,7 @@ class Material:
                     lines.append(
                         f"  now: {row['calls']} calls in {row['sessions']} sessions, {row['failures']} failed"
                         + (
-                            f" (the round before: {earlier.get('calls', 0)} calls, {earlier.get('failures', 0)} failed)"
+                            f" (the run before: {earlier.get('calls', 0)} calls, {earlier.get('failures', 0)} failed)"
                             if earlier
                             else ""
                         )
@@ -757,7 +756,7 @@ output_bytes, duration — every tool call of every session). Example:
 
 
 class Knowledge:
-    """What the fit round reads to keep the memory: the memory as it stands
+    """What the fit subround reads to keep the memory: the memory as it stands
     and what holds it back."""
 
     def __init__(self, project: Project, since: str | None) -> None:
@@ -777,8 +776,8 @@ class Knowledge:
 
 
 class Evidence:
-    """What the round's nock part reads: this window's numbers beside every
-    earlier round's — the first is the baseline."""
+    """What the fit part reads: this window's numbers beside every
+    earlier run's — the first is the baseline."""
 
     def __init__(
         self,
@@ -788,17 +787,17 @@ class Evidence:
     ) -> None:
         self.project = project
         self.metrics = metrics
-        self.rounds = [record for record in rounds if record.get("metrics")]
+        self.runs = [record for record in rounds if record.get("metrics")]
 
     def render(self) -> str:
-        columns = [*(record["round"] for record in self.rounds), "this window"]
-        rows = [*(record["metrics"] for record in self.rounds), self.metrics]
+        columns = [*(record["run"] for record in self.runs), "this window"]
+        rows = [*(record["metrics"] for record in self.runs), self.metrics]
         lines = [
             "# nock, in numbers",
             "",
-            "Each column is a round's window, computed the same way every time; the first is the baseline."
-            if self.rounds
-            else "This is the first round: these numbers are the baseline the next rounds compare to.",
+            "Each column is a fit run's window, computed the same way every time; the first is the baseline."
+            if self.runs
+            else "This is the first run: these numbers are the baseline the next runs compare to.",
             "",
             "| | " + " | ".join(columns) + " |",
             "|---|" + "---|" * len(columns),

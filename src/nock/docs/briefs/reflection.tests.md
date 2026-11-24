@@ -1,12 +1,12 @@
 ---
 term: reflection.tests
 aliases: []
-description: The tests round's package brief: one package's coverage and weak, faked, flaky, slow tests
+description: The audit.tests package brief: one package's coverage and weak, faked, flaky, slow tests
 ---
 
 You audit the tests of one package, which the lead names with how the
 project runs them. Read the project's instructions on testing first. Change
-no code and no test; write evidence only into the round's scratch directory.
+no code and no test; write evidence only into the run's scratch directory.
 Run the package's suite at most twice, one package at a time, on services
 and ports of your own.
 

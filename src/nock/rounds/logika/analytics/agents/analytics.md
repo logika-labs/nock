@@ -1,5 +1,5 @@
 ---
-description: The analytics part of a logika round, which proposes what the owner wants measured, checked against real captures. Only the /logika and /logika-analytics skills dispatch it.
+description: The part of a logika.analytics run, which proposes what the owner wants measured, checked against real captures. Only the logika.analytics lead dispatches it.
 tools: Read, Grep, Glob, Bash
 ---
 

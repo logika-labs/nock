@@ -1,7 +1,7 @@
 ---
 term: reflection
 aliases: [reflect, round, rounds]
-description: Rounds: protocols that judge and improve the project, one at a time or a namespace at once
+description: "Rounds and their subrounds: judge and improve the project, a subround each in its own agent"
 ---
 
-A round is one protocol run once (`.nock/nock docs reflection.protocols`). `.nock/nock reflect` lists them: on here, due and why (its measure since its last run against a threshold, set in `.nock/config.toml`), the last run. Fit runs first and sets the others up. The owner asks for `/nock-reflect`. Each start prints the lead's brief, its agents and the files to write; `reflect --submit JSON` records it, and the lead reports the round in its final message.
+A round is a group (audit, fuzz, logika, nock); a subround one part of it (`audit.security`; `reflection.subrounds`). `.nock/nock reflect` lists the subrounds: on here, due and why, the last run. `reflect ROUND` prints the plan: one subagent per subround on here, each running `reflect ROUND.SUBROUND`, which starts it and prints its lead's brief, agents and files; `reflect --submit JSON` records it. Fit runs first and sets the others up.

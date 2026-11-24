@@ -30,7 +30,7 @@ uvx nock init
   `.cursor/hooks.json`), keeping any hooks of yours there;
 - allows each `.nock/nock` command in Claude Code's permissions, one rule
   per command (more on that [below](#what-nocks-agents-may-do));
-- installs the skills, and the subagents a round's parts run as, in
+- installs the skills, and the subagents a subround's parts run as, in
   `.claude/skills/` and `.claude/agents/` (Cursor reads them there). Each is
   its trigger and one line, "Run `.nock/nock docs TERM` and do what it
   says.", so the text it follows always matches the vendored core.
@@ -41,9 +41,9 @@ uvx nock init
 
 Codex runs a project's hooks only once you trust them: `/hooks` in Codex.
 
-Commit the result. From then on every session in the repository starts with
-the toolbox listed, and is recorded when it ends. nock speaks up unasked only a
-little, and shares a usage report only if you say yes when it asks.
+Commit the result. From then on every session in the repository is recorded
+when it ends. nock speaks up unasked only a little (a line at a session's
+start when a round is due), and shares a usage report only if you say yes when it asks.
 
 ## Your tests as the gate
 
@@ -109,7 +109,7 @@ machine.
 | `reminders` | true | whether nock speaks up unasked; false: silent unless asked |
 | `run.deadline`, `run.silence` | 3600, 900 | seconds before a supervised process is stopped |
 | `checks.NAME.command`, `fix`, `chain`, `directory`, `deadline`, `silence`, `failure_codes` | — | a command that is a check; the command that fixes what it finds; its chain; where it runs and its bounds; the exit codes that mean the code is wrong (`[1]`) |
-| `agent.command`, `agent.model`, `agent.deadline` | `claude`, —, 1800 | the headless agent nock dispatches (the sharer, which vets a round's summary); it may not bypass or set permissions |
+| `agent.command`, `agent.model`, `agent.deadline` | `claude`, —, 1800 | the headless agent nock dispatches (the sharer, which vets a fit run's summary); it may not bypass or set permissions |
 | `permissions.confirm` | `ask` | `ask`: you approve each call of a `confirm=True` command, even in bypass mode; `allow`: the agent runs it only when your request calls for it |
 | `upgrade.check`, `upgrade.auto`, `upgrade.index` | true, true, PyPI's `nock` | whether a session start looks for a newer nock; whether it upgrades by itself when the merge is clean; where releases are looked up |
 | `share` | — (unanswered) | your answer on the weekly usage report: unset or false sends nothing |
@@ -153,7 +153,8 @@ never widen a seat; your user-level settings still apply.
 It cannot edit a file or reach the network. What
 the agent refused comes back with the session, in its record or log.
 
-**A round's parts** are subagents of the session running the round, narrowed by
+**A subround's parts** are subagents of the agent leading it, narrowed by
 the subagent types nock installs: the toolbox part reads, edits and runs
-commands, kept to `.nock/` by its brief;
-the nock part and the logika round's parts only read and run commands.
+commands, kept to `.nock/` by its brief, and the instrument parts edit their
+area of the code and `logika.json`; the fit and analytics parts and the
+audits' only read and run commands.

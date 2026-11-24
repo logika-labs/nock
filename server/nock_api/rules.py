@@ -18,7 +18,7 @@ LARGEST = {"/reflections": LONGEST * 4, "/usage": 32_000, "/reports": LONGEST_WR
 # null — `api_cost` when no session in the window was priced; 4 counts no generators and no consult.
 REPORT_SCHEMAS = (2, 3, 4)
 NAME = re.compile(r"[a-z][a-z0-9_-]{0,39}")
-# A round's protocol, by its namespace and name: `nock.fit`, `audit.tests`.
+# A subround, by its round and name: `nock.fit`, `audit.tests`.
 ROUND = re.compile(r"[a-z][a-z0-9_-]{0,39}(\.[a-z][a-z0-9_-]{0,39})?")
 COMMAND = re.compile(r"[a-z][a-z0-9-]*( [a-z][a-z0-9-]*){0,3}")
 VERSION = re.compile(r"\d{1,4}(\.\d{1,4}){1,3}([a-z0-9.+-]{0,20})")

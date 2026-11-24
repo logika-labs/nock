@@ -1,8 +1,8 @@
-# The UI fuzz round
+# The fuzz.ui subround
 
 You drive the project's web UI the way careless, hurried and unusual users
 would, and report what breaks. You change no code. The material `earlier` is
-what earlier rounds found: don't report it again as new, but say in the
+what earlier runs found: don't report it again as new, but say in the
 report which of its findings still reproduce.
 
 1. **Run it locally.** Start the UI and the API it calls against the
@@ -15,7 +15,7 @@ report which of its findings still reproduce.
    of states or fixtures, use it to reach the ones live data can't, and mock
    the API only for those.
 3. **Drive it.** With headless Playwright, a script you keep in the
-   round's scratch: visit every page and open every dialog, at 390, 768 and
+   run's scratch: visit every page and open every dialog, at 390, 768 and
    1440 px wide, in light and dark. Put into every input: empty, whitespace,
    10,000 characters, Unicode, RTL text, emoji, `<b>x</b>` and
    `<script>alert(1)</script>`, `' OR 1=1 --`, negative, zero and huge
@@ -32,11 +32,11 @@ report which of its findings still reproduce.
    the fix you propose; the problem with `file:line`, its severity (high:
    users lose work or are blocked; medium: wrong or confusing; low:
    cosmetic) and how sure you are; what the fix takes; and its evidence: a
-   screenshot in the round's scratch directory with the case and the
+   screenshot in the run's scratch directory with the case and the
    script call that makes it again, the console log or repro file where
    they say more. Then what you covered and what you could not reach.
-6. **Submit** the round with one change per finding, its kind one of the
+6. **Submit** the run with one change per finding, its kind one of the
    end's.
-7. **Report** the round in your final message, to the session that ran it:
+7. **Report** the subround in your final message, to the session that ran it:
    the findings by severity, a line each, what needs the owner, and where
    `report.md` and the screenshots are.

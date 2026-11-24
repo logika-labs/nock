@@ -185,7 +185,7 @@ def test_the_briefs_point_only_at_terms_and_the_toolbox_brief_at_the_framework()
 def test_every_skill_and_subagent_nock_installs_points_at_its_brief() -> None:
     """Their text lives in `nock docs`, so it always matches the vendored core
     and an upgrade never rewrites a skill: each keeps only its front matter
-    and one line. A round's agents are its protocol's, named when installed."""
+    and one line. A round's agents are its subround's, named when installed."""
     docs = Docs()
     skills = list(PACKAGE.joinpath("briefs").rglob("SKILL.md"))
     agents = list(PACKAGE.joinpath("rounds").glob("*/*/agents/*.md"))
@@ -200,10 +200,10 @@ def test_every_skill_and_subagent_nock_installs_points_at_its_brief() -> None:
         assert pointer and docs.find(pointer.group(1)), path
 
 
-def test_every_shipped_protocol_has_its_lead_s_brief_and_one_for_each_agent() -> None:
+def test_every_shipped_subround_has_its_lead_s_brief_and_one_for_each_agent() -> None:
     manifests = rounds.manifests(None)
     assert set(manifests) == {
-        "nock.toolbox", "nock.fit", "logika.rules", "logika.analytics",
+        "nock.toolbox", "nock.fit", "logika.analytics",
         "logika.instrument", "audit.performance", "audit.security", "audit.tests", "fuzz.api",
         "fuzz.ui",
     }  # fmt: skip
@@ -216,9 +216,9 @@ def test_every_shipped_protocol_has_its_lead_s_brief_and_one_for_each_agent() ->
 
 
 def test_a_brief_is_printed_whole_however_long(project: Project) -> None:
-    printed = nock(project.root, "docs", "reflection.logika.rules")
+    printed = nock(project.root, "docs", "reflection.logika.instrument")
     assert printed.returncode == 0, printed.stderr
-    article = Docs().find("reflection.logika.rules").article  # pyright: ignore[reportOptionalMemberAccess]
+    article = Docs().find("reflection.logika.instrument").article  # pyright: ignore[reportOptionalMemberAccess]
     assert len(article) > 8000 and printed.stdout.strip() == article
 
 

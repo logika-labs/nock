@@ -1,5 +1,5 @@
 ---
-description: The fit part of a nock round, which judges how nock serves this project and which rounds fit it, changing nothing. Only the /nock-reflect skill dispatches it.
+description: The part of a nock.fit run, which judges how nock serves this project and which rounds fit it, changing nothing. Only the nock.fit lead dispatches it.
 tools: Read, Grep, Glob, Bash
 ---
 

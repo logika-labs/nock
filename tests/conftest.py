@@ -105,11 +105,11 @@ def write_tool(project: Project, name: str, source: str) -> None:
 
 
 def own_protocol(project: Project, name: str, due: dict[str, object]) -> None:
-    """A project's own copy of a shipped protocol in `.nock/rounds/`, its due
+    """A project's own copy of a shipped subround in `.nock/rounds/`, its due
     rules changed: how a project sets when a round is due."""
-    namespace, protocol = name.split(".")
-    shipped = project.root / ".nock" / "core" / "nock" / "rounds" / namespace / protocol
-    target = project.root / ".nock" / "rounds" / namespace / protocol
+    namespace, subround = name.split(".")
+    shipped = project.root / ".nock" / "core" / "nock" / "rounds" / namespace / subround
+    target = project.root / ".nock" / "rounds" / namespace / subround
     shutil.copytree(shipped, target, dirs_exist_ok=True)
     manifest = target / "round.toml"
     text = manifest.read_text()

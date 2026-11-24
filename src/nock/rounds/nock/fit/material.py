@@ -7,27 +7,27 @@ from __future__ import annotations
 from typing import Any
 
 from nock.reflect import Evidence, Knowledge, Reflection
-from nock.rounds import protocols
+from nock.rounds import subrounds
 
 
-def metrics(protocol: Any) -> dict[str, Any]:
-    reflection = Reflection(protocol.project)
+def metrics(subround: Any) -> dict[str, Any]:
+    reflection = Reflection(subround.project)
     return reflection.metrics(reflection.window())
 
 
-def evidence(protocol: Any) -> str:
+def evidence(subround: Any) -> str:
     return Evidence(
-        protocol.project,
-        metrics(protocol),
-        protocol.rounds.all(),
+        subround.project,
+        metrics(subround),
+        subround.runs.all(),
     ).render()
 
 
-def knowledge(protocol: Any) -> str:
-    return Knowledge(protocol.project, protocol.since).render()
+def knowledge(subround: Any) -> str:
+    return Knowledge(subround.project, subround.since).render()
 
 
-def catalogue(protocol: Any) -> str:
+def catalogue(subround: Any) -> str:
     lines = [
         "# The rounds there are, and their settings here",
         "",
@@ -37,7 +37,7 @@ def catalogue(protocol: Any) -> str:
         " at once), `threshold`.",
         "",
     ]
-    for other in protocols(protocol.project):
+    for other in subrounds(subround.project):
         standing = other.standing()
         measure = standing["measure"]
         state = (
@@ -64,9 +64,9 @@ def catalogue(protocol: Any) -> str:
     return "\n".join(lines) + "\n"
 
 
-def begun(protocol: Any) -> dict[str, Any]:
-    return {"metrics": metrics(protocol)}
+def begun(subround: Any) -> dict[str, Any]:
+    return {"metrics": metrics(subround)}
 
 
-def kept(protocol: Any, started: dict[str, Any]) -> dict[str, Any]:
+def kept(subround: Any, started: dict[str, Any]) -> dict[str, Any]:
     return {"metrics": started["metrics"], "shared": None}

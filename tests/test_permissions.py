@@ -146,7 +146,7 @@ def test_a_new_tool_asks_until_init_allows_it(project: Project) -> None:
     assert nock(project.root, "check", "nock-wiring").returncode == 0
 
 
-def test_a_round_s_parts_are_subagents_with_only_the_tools_they_need(project: Project) -> None:
+def test_a_subround_s_parts_are_subagents_with_only_the_tools_they_need(project: Project) -> None:
     agents = project.root / ".claude" / "agents"
     tools = {
         path.stem: re.search(r"^tools: (.*)$", path.read_text(), re.MULTILINE)
@@ -155,13 +155,13 @@ def test_a_round_s_parts_are_subagents_with_only_the_tools_they_need(project: Pr
     assert {name: found and found.group(1) for name, found in tools.items()} == {
         "nock-toolbox": "Read, Grep, Glob, Edit, Write, Bash",
         "nock-fit": "Read, Grep, Glob, Bash",
-        # Every round that can run here is on: the audits' agents too.
+        # Every subround that can run here is on: the audits' agents too.
         "audit-security": "Read, Grep, Glob, Bash",
         "audit-tests-package": "Read, Grep, Glob, Bash",
         "audit-tests-promises": "Read, Grep, Glob, Bash",
     }
-    started = json.loads(nock(project.root, "reflect", "nock", "--json").stdout)
-    for begun in started["rounds"]:
+    for name in ("nock.fit", "nock.toolbox"):
+        begun = json.loads(nock(project.root, "reflect", name, "--json").stdout)
         (agent,) = begun["agents"]
         assert agent["type"] in tools and f"`{agent['type']}`" in begun["brief"]
 

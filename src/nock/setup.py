@@ -324,10 +324,10 @@ class Installer:
 
     def install_skills(self) -> None:
         """`/nock-work` and the rounds' skills from the
-        registry (`rounds`): `/nock-reflect` for nock's, `/<namespace>` for
-        another namespace with two or more adopted protocols and
-        `/<namespace>-<protocol>` for each adopted one outside nock, each
-        saying only which `reflect` to run, with each protocol's agents as
+        registry (`rounds`): `/nock-reflect` for nock's round, `/<round>` for
+        another round with two or more subrounds on and
+        `/<round>-<subround>` for each one on outside nock's, each
+        saying only which `reflect` to run, with each subround's agents as
         Claude Code subagents; `/nock-work`, which any harness can follow,
         also in the skills directory of each other harness found that reads
         none written already (Codex's), and taken out of a directory no
@@ -359,28 +359,28 @@ class Installer:
     def install_rounds(self) -> None:
         project = Project(self.root)
         wanted = [
-            protocol
-            for protocol in rounds.protocols(project)
-            if protocol.adopted() and not protocol.unavailable()
+            subround
+            for subround in rounds.subrounds(project)
+            if subround.adopted() and not subround.unavailable()
         ]
-        namespaces: dict[str, list[rounds.Protocol]] = {}
-        for protocol in wanted:
-            namespaces.setdefault(protocol.manifest.namespace, []).append(protocol)
+        groups: dict[str, list[rounds.Subround]] = {}
+        for subround in wanted:
+            groups.setdefault(subround.manifest.round, []).append(subround)
         skills: dict[str, tuple[str, str]] = {}
-        for namespace, members in namespaces.items():
-            titles = ", ".join(protocol.title.lower() for protocol in members)
-            if namespace == "nock" or len(members) > 1:
-                skills[rounds.skill_of(namespace)] = (
-                    namespace,
-                    f"Run the {namespace} rounds at once: {titles}. Use when nock says a round"
-                    " is due, or when asked to reflect.",
+        for group, members in groups.items():
+            titles = ", ".join(subround.title.lower() for subround in members)
+            if group == "nock" or len(members) > 1:
+                skills[rounds.skill_of(group)] = (
+                    group,
+                    f"Run the {group} round, each of its subrounds in its own agent: {titles}."
+                    " Use when nock says a round is due, or when asked to reflect.",
                 )
-            if namespace == "nock":
+            if group == "nock":
                 continue
-            for protocol in members:
-                skills[rounds.skill_of(namespace, protocol.manifest.protocol)] = (
-                    protocol.name,
-                    f"Run the {protocol.name} round: {protocol.manifest.data['summary']}"
+            for subround in members:
+                skills[rounds.skill_of(group, subround.manifest.subround)] = (
+                    subround.name,
+                    f"Run the {subround.name} subround: {subround.manifest.data['summary']}"
                     " Use when the owner asks, or agrees when nock says it is due.",
                 )
         for skill, (target, description) in skills.items():
@@ -393,10 +393,10 @@ class Installer:
                 f"Run `.nock/nock reflect {target}` and do what it says.\n",
                 f"the /{skill} skill, for Claude Code",
             )
-        for protocol in wanted:
-            for agent in protocol.manifest.data.get("agents", []):
-                kind = rounds.agent_type(protocol.manifest, agent["name"])
-                source = protocol.manifest.folder / "agents" / f"{agent['name']}.md"
+        for subround in wanted:
+            for agent in subround.manifest.data.get("agents", []):
+                kind = rounds.agent_type(subround.manifest, agent["name"])
+                source = subround.manifest.folder / "agents" / f"{agent['name']}.md"
                 text = source.read_text().replace("---\n", f"---\nname: {kind}\n", 1)
                 self.put(f".claude/agents/{kind}.md", text, f"the {kind} subagent, for Claude Code")
         for relative in RETIRED_ROUND_FILES:

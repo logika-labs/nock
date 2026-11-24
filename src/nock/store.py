@@ -97,7 +97,7 @@ CREATE TABLE IF NOT EXISTS callers (
 );
 CREATE INDEX IF NOT EXISTS callers_session ON callers (session, claimed);
 CREATE TABLE IF NOT EXISTS nudged (
-    round TEXT NOT NULL          -- a round whose unshared summary, or a week's logika-round offer, a session start mentioned
+    round TEXT NOT NULL          -- the day's line of the rounds due a session start said, by its digest
 );
 """
 

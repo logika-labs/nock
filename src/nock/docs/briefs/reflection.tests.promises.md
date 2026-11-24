@@ -1,7 +1,7 @@
 ---
 term: reflection.tests.promises
 aliases: []
-description: The tests round's promises brief: what the specification promises that no test holds
+description: The audit.tests promises brief: what the specification promises that no test holds
 ---
 
 You read the project's specification (the documents the lead names, else

@@ -1,19 +1,17 @@
 """Claude Code's hook events, handled: `nock hook EVENT` reads the payload on
 stdin and answers in Claude Code's hook format. nock's own: a session starts
-knowing the toolbox, upgraded to a newer nock when the merge is clean
-(`upgrade.auto`), and — when the human started it, once a day or when
-something new calls — where things stand, in a few lines (a reflection round
-due, a newer nock, another kind of round worth offering); a `.nock/nock`
-command about to run is noted with the subagent running it, if any
-(`callers.py`), so its call names its parent session; and when the session
-ends its transcript is read into telemetry and, when due, the usage
-statistics are shared. A turn that would end with a round this session
-started still open is refused once, saying what the round still needs —
-unless it ends only to wait on the background agents it launched, the
-round's parts. What calls for the owner is also said to the human. With
-`reminders = false` nock says nothing unasked, and still records. The
-project's `@nock.hook`s run after. Every handler fails open — a nock that
-cannot load must never block the tool call that would fix it."""
+upgraded to a newer nock when the merge is clean (`upgrade.auto`), and — when
+the human started it, once a day or when what is due changes — told in one
+line which rounds are due; a `.nock/nock` command about to run is noted with
+the subagent running it, if any (`callers.py`), so its call names its parent
+session; and when the session ends its transcript is read into telemetry
+and, when due, the usage statistics are shared. A turn that would end with a
+subround run this session started still open is refused once, saying what
+the run still needs — unless it ends only to wait on the background agents
+it launched. What is due is also said to the human. With `reminders = false`
+nock says nothing unasked, and still records. The project's `@nock.hook`s
+run after. Every handler fails open — a nock that cannot load must never
+block the tool call that would fix it."""
 
 from __future__ import annotations
 
@@ -38,11 +36,6 @@ EVENTS = {native: event for event, native in NATIVE_EVENTS.items()}
 NOCK_COMMANDS = "Bash(*.nock/nock *)"
 # The longest a session start waits on an upgrade, in seconds: two wheels downloaded, a merge.
 UPGRADE_DEADLINE = 120
-# What the standing a session starts with is, and what to do with it.
-STANDING_PREFACE = (
-    "Where the project stands with nock (not your task: take into account what bears on the"
-    " request, and mention the rest to the human only when relevant, or once you are done):"
-)
 
 
 class Block(Exception):
@@ -73,10 +66,11 @@ class HookRunner:
             refresh(self.project.here / NOCK_DIRECTORY)
             if self.project.current_role() is None:
                 upgraded = self.upgrade_itself()
-                messages.append(upgraded)
                 self.notices += [upgraded] if upgraded else []
-            if self.reminding:
-                messages.append(self.session_start())
+                if self.reminding:
+                    due = self.standing()
+                    messages.append(due)
+                    self.notices += [due] if due else []
         elif event is Event.BEFORE_TOOL:
             Callers(self.project.store).note(self.payload)
         elif event is Event.SESSION_END:
@@ -132,31 +126,6 @@ class HookRunner:
             return []
         return self.project.registry.hooks_for(event)
 
-    def session_start(self) -> str:
-        """The toolbox, so the session reaches for a tool before scripting one,
-        and — for a session the human started — where things stand."""
-        from nock.tools import CONFIRM_NOTES
-
-        registry = self.project.registry
-        lines = []
-        own = registry.project_tools()
-        if own:
-            note = CONFIRM_NOTES[self.project.configuration.confirm()]
-            lines.append("This project's nock tools (`.nock/nock NAME --help` for usage):")
-            lines += [
-                f"- {tool.command.usage()}: {tool.command.summary}" + (note if tool.confirm else "")
-                for tool in own
-            ]
-        if registry.failures:
-            lines += [f"nock: a tool did not load — {failure}" for failure in registry.failures]
-        if self.project.current_role() is None:
-            said = self.standing()
-            if said:
-                lines += [STANDING_PREFACE, *said]
-            # The human hears what calls for them too.
-            self.notices += [line for line in said if line.startswith("nock:")]
-        return "\n".join(lines)
-
     def upgrade_itself(self) -> str:
         """A newer release merged into the core by itself, when the merge is
         clean, said in a line; on a conflict nothing changes, and the standing
@@ -186,43 +155,23 @@ class HookRunner:
             "`.nock/` and `.claude/` changed, to commit (`upgrade.auto = false` turns this off)."
         )
 
-    def standing(self) -> list[str]:
-        """Where things stand, said once a day — sooner when something new
-        calls: a round falls due, a newer nock is out."""
+    def standing(self) -> str:
+        """The rounds due, in one line, said once a day, and at once when what
+        is due changes."""
         from nock.status import Standing
 
-        store = self.project.store
-
-        def seen(key: str) -> bool:
-            if store.rows("SELECT round FROM nudged WHERE round = ?", (key,)):
-                return True
-            store.insert("nudged", {"round": key})
-            return False
-
         standing = Standing(self.project)
-        collected = standing.collect()
-        offers = sorted(kind for kind, offer in collected["rounds"].items() if offer.get("due"))
-        news = [
-            bool(collected["reflection"]["due"]),
-            collected["unshared"],
-            collected["newer_nock"],
-            offers,
-        ]
-        if not standing.lines(collected):
-            return []
-        digest = hashlib.sha256(json.dumps(news).encode()).hexdigest()[:16]
-        if seen(f"standing:{datetime.now(UTC).date().isoformat()}:{digest}"):
-            return []
-        # An unshared summary is mentioned once per round.
-        if collected["unshared"] and seen(collected["unshared"]):
-            collected["unshared"] = None
-        # Another kind of round is offered gently: at most once a week while it is due.
-        year, week, _ = datetime.now(UTC).isocalendar()
-        for kind in offers:
-            offer = collected["rounds"][kind]
-            if seen(f"{kind}:{offer['last'] or 'never'}:{year}-{week}"):
-                del collected["rounds"][kind]
-        return standing.lines(collected)
+        due = standing.due()
+        line = standing.line(due)
+        if not line:
+            return ""
+        digest = hashlib.sha256(json.dumps(sorted(due)).encode()).hexdigest()[:16]
+        key = f"due:{datetime.now(UTC).date().isoformat()}:{digest}"
+        store = self.project.store
+        if store.rows("SELECT round FROM nudged WHERE round = ?", (key,)):
+            return ""
+        store.insert("nudged", {"round": key})
+        return line
 
     def waiting(self) -> bool:
         """Whether the turn ends only to wait on background agents it launched
@@ -244,14 +193,14 @@ class HookRunner:
         return path is not None and path.is_file() and bool(background_agents(path))
 
     def rounds_left_open(self) -> list[str]:
-        """Every round this session started and has not finished, with what it still needs."""
+        """Every subround run this session started and has not finished, with what it still needs."""
         session = self.payload.get("session_id")
         if not isinstance(session, str) or self.payload.get("stop_hook_active") is True:
             return []
-        from nock.rounds import protocols
+        from nock.rounds import subrounds
 
         return [
-            said for protocol in protocols(self.project) if (said := protocol.left_open(session))
+            said for subround in subrounds(self.project) if (said := subround.left_open(session))
         ]
 
     def session_end(self) -> None:

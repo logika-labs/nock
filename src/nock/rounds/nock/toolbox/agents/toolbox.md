@@ -1,5 +1,5 @@
 ---
-description: The toolbox part of a nock round, which improves the project's .nock/ toolbox from its telemetry. Only the /nock-reflect skill dispatches it.
+description: The part of a nock.toolbox run, which improves the project's .nock/ toolbox from its telemetry. Only the nock.toolbox lead dispatches it.
 tools: Read, Grep, Glob, Edit, Write, Bash
 ---
 

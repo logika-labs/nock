@@ -1,7 +1,8 @@
-"""The logika rounds: in a Logika project — a `logika.json` ledger, the `logika`
-CLI on PATH (here a stand-in script) — a round that reads the ledger and the
-last round's record, finishes with its report and a ledger that parses,
-commits the ledger and its record, and is offered gently, never run."""
+"""The logika round: in a Logika project — a `logika.json` ledger, the `logika`
+CLI on PATH (here a stand-in script) — its subrounds, instrument and
+analytics, each a run that reads the map or the ledger and the earlier runs'
+records, finishes with its report and a ledger that parses, commits the
+ledger and its record, and is said to be due, never run unasked."""
 
 from __future__ import annotations
 
@@ -17,7 +18,7 @@ import pytest
 from nock.hooks import HookRunner
 from nock.project import Project
 from nock.reflect import Reflection
-from nock.rounds import Protocol, named
+from nock.rounds import Subround, named
 
 from .conftest import git, nock
 
@@ -39,7 +40,7 @@ LEDGER: dict[str, Any] = {
     "map": {"components": [{"name": "shop", "paths": ["src"], "instrumented": True}]},
 }
 RECORD = {
-    "protocol": "logika.rules",
+    "subround": "logika.instrument",
     "summary": "Refunds are positive.",
     "changes": [
         {
@@ -93,19 +94,18 @@ def write_ledger(project: Project, ledger: dict[str, Any]) -> None:
     (project.root / "logika.json").write_text(json.dumps(ledger, indent=2) + "\n")
 
 
-def start(project: Project, name: str = "logika") -> dict[str, Any]:
-    """Start the logika rounds (or the one NAME names): each by its protocol."""
+def start(project: Project, name: str) -> dict[str, Any]:
+    """`reflect NAME`: a subround's run started, or a round's plan."""
     result = nock(project.root, "reflect", name, "--json")
     assert result.returncode == 0, result.stderr
-    started = json.loads(result.stdout)
-    return {begun["protocol"]: begun for begun in started.get("rounds", [started])}
+    return json.loads(result.stdout)
 
 
 def submit(project: Project, record: dict[str, Any]) -> subprocess.CompletedProcess[str]:
     return nock(project.root, "reflect", "--submit", json.dumps(record))
 
 
-def protocol(project: Project, name: str) -> Protocol:
+def subround(project: Project, name: str) -> Subround:
     (found,) = named(Project.discover(project.root), name)
     return found
 
@@ -114,7 +114,7 @@ def test_a_logika_round_needs_a_ledger_and_the_logika_cli(project: Project, on_p
     refused = nock(project.root, "reflect", "logika")
     assert refused.returncode == 42 and "not a Logika project" in refused.stderr
     assert not (project.root / ".claude" / "skills" / "logika").exists()
-    assert "logika" not in json.loads(nock(project.root, "status", "--json").stdout)["rounds"]
+    assert list(json.loads(nock(project.root, "status", "--json").stdout)["due"]) == ["nock.fit"]
     write_ledger(project, LEDGER)
     on_path.unlink()
     refused = nock(project.root, "reflect", "logika")
@@ -125,57 +125,57 @@ def test_init_installs_the_logika_skills_in_a_logika_project(logika: Project) ->
     skills = logika.root / ".claude" / "skills"
     for name, target in (
         ("logika", "logika"),
-        ("logika-rules", "logika.rules"),
+        ("logika-instrument", "logika.instrument"),
         ("logika-analytics", "logika.analytics"),
     ):
         lead = (skills / name / "SKILL.md").read_text()
         assert lead.startswith(f"---\nname: {name}\n")
         assert lead.endswith(f"Run `.nock/nock reflect {target}` and do what it says.\n")
         assert {path.name for path in (skills / name).iterdir()} == {"SKILL.md"}
-    assert not (skills / "nock-reflect-logika").exists()
+    assert not (skills / "logika-rules").exists()
     agents = logika.root / ".claude" / "agents"
-    rules = (agents / "logika-rules.md").read_text()
-    assert rules.startswith("---\nname: logika-rules\n")
-    assert rules.endswith("Run `.nock/nock docs reflection.logika.rules` and do what it says.\n")
+    instrument = (agents / "logika-instrument.md").read_text()
+    assert instrument.startswith("---\nname: logika-instrument\n")
+    assert "tools: Read, Grep, Glob, Edit, Write, Bash\n" in instrument
+    assert instrument.endswith(
+        "Run `.nock/nock docs reflection.logika.instrument` and do what it says.\n"
+    )
     analytics = (agents / "logika-analytics.md").read_text()
     assert analytics.endswith(
         "Run `.nock/nock docs reflection.logika.analytics` and do what it says.\n"
     )
-    assert "reflect --submit" in nock(logika.root, "docs", "reflection.logika.lead").stdout
 
 
 def test_a_skill_of_the_project_s_own_keeps_its_name_from_a_round(logika: Project) -> None:
-    own = logika.root / ".claude" / "skills" / "logika" / "SKILL.md"
-    own.write_text("---\nname: logika\ndescription: How this project logs.\n---\n\nLog it.\n")
+    own = logika.root / ".claude" / "skills" / "logika-instrument" / "SKILL.md"
+    own.write_text("---\nname: logika-instrument\ndescription: Ours.\n---\n\nLog it.\n")
     assert nock(logika.root, "init").returncode == 0
     assert own.read_text().endswith("Log it.\n")
-    rules = (logika.root / ".claude" / "skills" / "logika-rules" / "SKILL.md").read_text()
-    assert rules.endswith("Run `.nock/nock reflect logika.rules` and do what it says.\n")
+    analytics = (logika.root / ".claude" / "skills" / "logika-analytics" / "SKILL.md").read_text()
+    assert analytics.endswith("Run `.nock/nock reflect logika.analytics` and do what it says.\n")
 
 
-def test_the_material_says_what_the_ledger_holds(logika: Project) -> None:
-    begun = start(logika)
-    assert set(begun) == {"logika.rules", "logika.analytics"}
-    started = begun["logika.rules"]
-    assert started["agents"][0]["type"] == "logika-rules"
-    assert started["agents"][0]["one per"] == "each directory logika map shows open items in"
-    material = Path(started["material"]["rules"]).read_text()
-    assert "3 events (1 spans; 1 with `validate`, 0 with paths, 1 with a timeout)" in material
-    assert "event,kind,params,validate,paths,timeout,rules,anomaly\n" in material
-    assert 'checkout,span,order_id amount,"amount > 0",-,2m,on,-\n' in material
-    assert "checkout.reserved,leaf,sku,-,-,-,-,-\n" in material
-    assert "refund,leaf,order_id amount,-,-,-,expected,-\n" in material
-    assert "- rule: checkout.order_id → refund.order_id within 7d" in material
-    assert "shop,src,,yes,1," in material
-    assert "Instrument the shop" in material
-    assert "This is the first logika round." in material
-    assert started["write"] == [
-        str(logika.local / "reflections" / "logika.rules" / started["round"] / "report.md")
+def test_the_round_s_plan_is_an_agent_per_subround_and_starts_none(logika: Project) -> None:
+    plan = start(logika, "logika")
+    assert plan["round"] == "logika" and "dispatch 2 general-purpose subagents" in plan["do"]
+    assert [entry["subround"] for entry in plan["subrounds"]] == [
+        "logika.analytics",
+        "logika.instrument",
     ]
-    analytics = Path(begun["logika.analytics"]["material"]["analytics"]).read_text()
+    assert plan["subrounds"][1]["prompt"].startswith(
+        "Run `.nock/nock reflect logika.instrument` and do what it says"
+    )
+    assert not (logika.local / "reflections").exists()
+    started = start(logika, "logika.analytics")
+    assert started["write"] == [
+        str(logika.local / "reflections" / "logika.analytics" / started["run"] / "report.md")
+    ]
+    analytics = Path(started["material"]["analytics"]).read_text()
     assert "3 events, 3 params (0 identities, 0 dimensions), 0 funnels" in analytics
     assert "order_id,str,-,-,-,checkout refund" in analytics
+    assert "shop,src,,yes,1," in analytics
     assert "Instrument the shop" in analytics
+    assert "This is the first run." in analytics
 
 
 def test_the_analytics_part_reads_what_is_measured(logika: Project) -> None:
@@ -192,7 +192,7 @@ def test_the_analytics_part_reads_what_is_measured(logika: Project) -> None:
     ]
     ledger["views"] = [{"name": "Checkout", "panels": [{"event": "checkout", "by": "plan"}]}]
     write_ledger(logika, ledger)
-    started = start(logika, "logika.analytics")["logika.analytics"]
+    started = start(logika, "logika.analytics")
     analytics = Path(started["material"]["analytics"]).read_text()
     assert "(1 identities, 1 dimensions), 1 funnels, 1 milestones, 1 views" in analytics
     assert "user_id,str,yes,-,yes,checkout signup" in analytics
@@ -202,14 +202,14 @@ def test_the_analytics_part_reads_what_is_measured(logika: Project) -> None:
     assert "- view `Checkout`: 1 panels" in analytics
 
 
-def test_a_logika_round_finishes_and_commits_the_ledger_apart_from_nock_s_rounds(
+def test_a_logika_run_finishes_and_commits_the_ledger_apart_from_nock_s(
     logika: Project,
 ) -> None:
     assert submit(logika, RECORD).returncode == 42
-    started = start(logika)["logika.rules"]
+    started = start(logika, "logika.instrument")
     refused = submit(logika, RECORD)
     assert refused.returncode == 42 and "write report.md" in refused.stderr
-    (logika.root / started["write"][0]).write_text("# The round\n\nRefunds are positive.\n")
+    (logika.root / started["write"][0]).write_text("# The run\n\nRefunds are positive.\n")
     (logika.root / "logika.json").write_text("{ not json")
     broken = submit(logika, RECORD)
     assert broken.returncode == 1 and "logika.json does not parse" in broken.stdout
@@ -220,26 +220,25 @@ def test_a_logika_round_finishes_and_commits_the_ledger_apart_from_nock_s_rounds
     assert finished.returncode == 0, finished.stdout + finished.stderr
     assert git(logika.root, "status", "--porcelain") == ""
     subjects = git(logika.root, "log", "-3", "--format=%s").splitlines()
-    assert f"logika.rules round {started['round']}: Refunds are positive." in subjects
+    assert f"logika.instrument run {started['run']}: Refunds are positive." in subjects
     committed = git(logika.root, "log", "-3", "--name-only", "--format=")
     assert "logika.json" in committed
-    # The report stays on this machine; the lead reports the round in its final message.
-    assert "report the round to the session that ran it" in finished.stdout
-    shared = logika.root / ".nock" / "shared" / "rounds" / "logika.rules" / started["round"]
+    # The report stays on this machine; the lead reports the subround in its final message.
+    assert "report the subround to the session that ran it" in finished.stdout
+    shared = logika.root / ".nock" / "shared" / "rounds" / "logika.instrument" / started["run"]
     assert sorted(path.name for path in shared.iterdir()) == ["record.json"]
-    (record,) = protocol(logika, "logika.rules").rounds.all()
+    (record,) = subround(logika, "logika.instrument").runs.all()
     assert record["ledger_before"]["validated"] == 1 and record["ledger"]["validated"] == 2
     assert record["changes"][0]["tested"].startswith("quiet in the noise check")
     assert "tested" not in record["changes"][1]
-    assert protocol(logika, "logika.analytics").rounds.all() == []
-    assert protocol(logika, "nock.fit").rounds.all() == []
+    assert subround(logika, "logika.analytics").runs.all() == []
+    assert subround(logika, "nock.fit").runs.all() == []
     assert Reflection(logika).window().since is None
 
-    again = start(logika, "logika.rules")["logika.rules"]
-    assert again["round"] == f"{started['round']}-2"
-    material = Path(again["material"]["rules"]).read_text()
-    assert "# The last logika round" in material
-    assert "expected fires only on a refund of 0 or less" in material
+    again = start(logika, "logika.instrument")
+    assert again["run"] == f"{started['run']}-2"
+    material = Path(again["material"]["instrument"]).read_text()
+    assert "- unread refund — left: the provider refuses a second refund of an order" in material
 
 
 def test_a_logika_round_is_quiet_until_fit_ran_then_due_by_its_measure(logika: Project) -> None:
@@ -248,31 +247,36 @@ def test_a_logika_round_is_quiet_until_fit_ran_then_due_by_its_measure(logika: P
         return (begun or {}).get("systemMessage", "")
 
     assert "logika" not in said("s1")
-    assert protocol(logika, "logika.analytics").due() == ""
-    # The fit round ran: from its run on, each round is due by its own measure.
+    assert subround(logika, "logika.analytics").due() == ""
+    # The fit subround ran: from its run on, each subround is due by its own measure.
     fit = logika.root / ".nock" / "shared" / "rounds" / "nock.fit" / "2026-01-01"
     fit.mkdir(parents=True)
     (fit / "record.json").write_text(
         json.dumps(
             {
-                "protocol": "nock.fit",
+                "subround": "nock.fit",
                 "summary": "set up",
                 "changes": [],
-                "round": "2026-01-01",
+                "run": "2026-01-01",
                 "finished": "2026-01-01T00:00:00Z",
                 "commit": git(logika.root, "rev-parse", "HEAD"),
             }
         )
     )
-    analytics = protocol(logika, "logika.analytics")
+    analytics = subround(logika, "logika.analytics")
     assert analytics.measure()["value"] == 3 and analytics.due() == ""
     ledger = copy.deepcopy(LEDGER)
     ledger["events"] += [{"name": f"extra.{number}"} for number in range(2)]
     write_ledger(logika, ledger)
-    due = protocol(logika, "logika.analytics").due()
+    due = subround(logika, "logika.analytics").due()
     assert due == "5 of 5 events added to logika.json in what Analytics looks at", due
-    standing = json.loads(nock(logika.root, "status", "--json").stdout)["rounds"]["logika"]
-    assert standing["due"] == due
+    standing = json.loads(nock(logika.root, "status", "--json").stdout)["due"]
+    assert standing["logika.analytics"] == {"why": due, "skill": "/logika-analytics"}
+    assert (
+        said("s2")
+        == "nock: due — logika.analytics; offer the human `/logika-analytics`, never start one unasked."
+    )
+    assert said("s3") == ""
 
 
 MAP: dict[str, Any] = {
@@ -306,15 +310,13 @@ def mapped(logika: Project, on_path: Path) -> Path:
     return found
 
 
-def test_the_instrument_round_runs_by_name_only_and_starts_from_the_map(
+def test_the_instrument_subround_splits_the_code_and_starts_from_the_map(
     logika: Project, mapped: Path
 ) -> None:
-    assert set(start(logika)) == {"logika.rules", "logika.analytics"}
-    assert not (logika.root / ".claude" / "skills" / "logika-instrument").exists()
-    standing = json.loads(nock(logika.root, "status", "--json").stdout)["rounds"]
-    assert "logika.instrument" not in json.dumps(standing)
-    started = start(logika, "logika.instrument")["logika.instrument"]
-    assert started["agents"] == [] and "logika map <area>" in started["brief"]
+    started = start(logika, "logika.instrument")
+    (agent,) = started["agents"]
+    assert agent["type"] == "logika-instrument" and agent["one per"] == "each area of the code"
+    assert "logika-instrument" in started["brief"] and "logika map" in started["brief"]
     material = Path(started["material"]["instrument"]).read_text()
     assert "logika, 12 files, 9 events; open: 2 silent, 1 verdicts, 2 unread." in material
     assert "- app/: 9 events, 5 open" in material
@@ -326,17 +328,35 @@ def test_the_instrument_round_runs_by_name_only_and_starts_from_the_map(
         "unread refund.sent",
     ):
         assert f"- {item}\n" in material
-    begun = json.loads((Path(started["material"]["instrument"]).parent / "round.json").read_text())
+    begun = json.loads((Path(started["material"]["instrument"]).parent / "run.json").read_text())
     assert begun["open"] == {"silent": 2, "verdicts": 1, "unread": 2}
 
 
-def test_an_instrument_round_keeps_its_reasons_for_the_next_one(
+def test_the_instrument_subround_is_due_once_the_map_s_open_items_grew_by_5(
     logika: Project, mapped: Path
 ) -> None:
-    started = start(logika, "logika.instrument")["logika.instrument"]
-    (logika.root / started["write"][0]).write_text("# The round\n")
+    fit = logika.root / ".nock" / "shared" / "rounds" / "nock.fit" / "2026-01-01"
+    fit.mkdir(parents=True)
+    (fit / "record.json").write_text(
+        json.dumps({"subround": "nock.fit", "summary": "set up", "changes": [],
+                    "finished": "2026-01-01T00:00:00Z"})
+    )  # fmt: skip
+    instrument = subround(logika, "logika.instrument")
+    assert instrument.measure()["value"] == 3 and instrument.due() == ""
+    grown = copy.deepcopy(MAP)
+    grown["counts"] = {"silent": 9, "verdicts": 2, "unread": 3}
+    mapped.write_text(json.dumps(grown))
+    due = subround(logika, "logika.instrument").due()
+    assert due == "5 of 5 more open items in logika map in what Instrument looks at", due
+
+
+def test_an_instrument_run_keeps_its_reasons_for_the_next_one(
+    logika: Project, mapped: Path
+) -> None:
+    started = start(logika, "logika.instrument")
+    (logika.root / started["write"][0]).write_text("# The run\n")
     record: dict[str, Any] = {
-        "protocol": "logika.instrument",
+        "subround": "logika.instrument",
         "summary": "Refunds are logged and ruled.",
         "changes": [
             {
@@ -362,12 +382,12 @@ def test_an_instrument_round_keeps_its_reasons_for_the_next_one(
     mapped.write_text(json.dumps(later))
     finished = submit(logika, record)
     assert finished.returncode == 0, finished.stdout + finished.stderr
-    (kept,) = protocol(logika, "logika.instrument").rounds.all()
+    (kept,) = subround(logika, "logika.instrument").runs.all()
     assert kept["open_before"] == {"silent": 2, "verdicts": 1, "unread": 2}
     assert kept["open"] == {"silent": 0, "verdicts": 1, "unread": 1}
     assert kept["ledger"]["events"] == 3
 
-    again = start(logika, "logika.instrument")["logika.instrument"]
+    again = start(logika, "logika.instrument")
     material = Path(again["material"]["instrument"]).read_text()
     assert "- unread refund.sent — left: the provider acknowledges every send\n" in material
     assert "- verdicts refund.decided\n" in material
@@ -376,10 +396,10 @@ def test_an_instrument_round_keeps_its_reasons_for_the_next_one(
 
 def test_the_instrument_material_says_when_the_map_fails(logika: Project, mapped: Path) -> None:
     mapped.unlink()
-    started = start(logika, "logika.instrument")["logika.instrument"]
+    started = start(logika, "logika.instrument")
     material = Path(started["material"]["instrument"]).read_text()
     assert (
         "`logika map --json` exited 3: logika.json: the ledger does not parse: run it yourself."
         in material
     )
-    assert "No earlier instrument round left an item with a reason." in material
+    assert "No earlier instrument run left an item with a reason." in material

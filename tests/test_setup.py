@@ -261,23 +261,20 @@ def test_upgrade_merges_the_latest_release_from_pypi_and_rewires(project: Projec
     index.server.shutdown()
 
 
-def test_a_session_start_says_when_a_newer_nock_is_out_once_a_day(project: Project) -> None:
+def test_status_says_when_a_newer_nock_is_out_looking_once_a_day(project: Project) -> None:
     index = Index()
     index.releases[VERSION] = {}
     use(project, index, check=True)
-    start = HookRunner(project, {"session_id": "s1"}).handle("SessionStart")
-    assert start is None or "is out" not in start.get("systemMessage", "")
+    assert json.loads(nock(project.root, "status", "--json").stdout)["newer_nock"] is None
     index.releases["9.0.0"] = {}
     asked = index.asked
-    HookRunner(project, {"session_id": "s2"}).handle("SessionStart")
+    assert json.loads(nock(project.root, "status", "--json").stdout)["newer_nock"] is None
     assert index.asked == asked
     Updates(project).cache.unlink()
-    start = HookRunner(project, {"session_id": "s3"}).handle("SessionStart")
-    assert (
-        start is not None
-        and f"nock 9.0.0 is out (this project has {VERSION})" in start["systemMessage"]
-    )
     assert json.loads(nock(project.root, "status", "--json").stdout)["newer_nock"] == "9.0.0"
+    # A session start says only the rounds due.
+    start = HookRunner(project, {"session_id": "s1"}).handle("SessionStart")
+    assert start is not None and "is out" not in json.dumps(start)
     use(project, index, check=False)
     assert json.loads(nock(project.root, "status", "--json").stdout)["newer_nock"] is None
     index.server.shutdown()
@@ -303,7 +300,7 @@ def test_a_session_start_upgrades_nock_by_itself_when_the_merge_is_clean(
 
     said = start("s1")
     assert ours.read_text() == conflicted and "upgraded itself" not in said
-    assert f"nock 9.0.0 is out (this project has {VERSION})" in said
+    assert "is out" not in said
     asked = index.asked
     assert "upgraded itself" not in start("s2") and index.asked == asked
 
@@ -317,13 +314,14 @@ def test_a_session_start_upgrades_nock_by_itself_when_the_merge_is_clean(
     index.server.shutdown()
 
 
-def test_with_auto_off_a_session_start_only_says_a_newer_nock_is_out(project: Project) -> None:
+def test_with_auto_off_a_session_start_upgrades_nothing(project: Project) -> None:
     index = Index()
     index.releases[VERSION] = core_files(PACKAGE)
     index.releases["9.0.0"] = core_files(PACKAGE)
     use(project, index, check=True, auto=False)
     begun = HookRunner(project, {"session_id": "s1"}).handle("SessionStart") or {}
-    assert "nock 9.0.0 is out" in begun.get("systemMessage", "")
+    assert "upgraded itself" not in begun.get("systemMessage", "")
+    assert json.loads(nock(project.root, "status", "--json").stdout)["newer_nock"] == "9.0.0"
     version = json.loads((project.root / ".nock" / "core" / "VERSION.json").read_text())
     assert version["version"] == VERSION
     index.server.shutdown()

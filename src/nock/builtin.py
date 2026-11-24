@@ -24,7 +24,7 @@ from nock.project import NOCK_DIRECTORY, Project
 from nock.reflect import FIT, Reflection, tool_rows
 from nock.render import Problem
 from nock.reports import Reports
-from nock.rounds import named, protocols
+from nock.rounds import named, plan, subrounds
 from nock.rounds import submit as submit_round
 from nock.sessions import Sessions
 from nock.setup import (
@@ -330,16 +330,16 @@ def reflect(
     name: str | None = None,
     *,
     submit: Annotated[
-        str | None, Option(help="A round's result, as JSON: its protocol, summary and changes.")
+        str | None, Option(help="A run's result, as JSON: its subround, summary and changes.")
     ] = None,
 ) -> Any:
-    """Reflection rounds. Bare, the catalogue: every protocol, whether it can
-    run here and is adopted, when it is due and why, its last round and its
-    skill. NAME starts a round (`nock.toolbox`), or every adopted one of a
-    namespace at once (`nock`, `logika`), or picks up the one under way: what
-    its lead does, its agents and their material, the files to write, the
-    submit. `--submit JSON` checks a round's result and records it
-    (`nock docs reflection.record`)."""
+    """Reflection rounds. Bare, the catalogue: every subround, whether it can
+    run here and is on, when it is due and why, its last run and its skill.
+    ROUND (`audit`, `logika`) gives the plan: one agent per subround on here,
+    each starting and leading its own. ROUND.SUBROUND (`audit.security`)
+    starts a run, or picks up the one under way: what its lead does, its
+    agents and their material, the files to write, the submit. `--submit
+    JSON` checks a run's result and records it (`nock docs reflection.record`)."""
     if submit is not None:
         result = submit_round(project, payload(submit))
         shared = share_with_makers(project, result)
@@ -348,30 +348,22 @@ def reflect(
         ask(project, result, Moment.ROUND)
         return result
     if name is None:
-        return [protocol.standing() for protocol in protocols(project)]
-    begun = [protocol.start() for protocol in named(project, name)]
-    result: dict[str, Any] = (
-        begun[0]
-        if len(begun) == 1
-        else {
-            "do": f"{len(begun)} rounds at once: dispatch all their agents in one message, then"
-            " write each round's files and submit each",
-            "rounds": begun,
-        }
-    )
+        return [subround.standing() for subround in subrounds(project)]
+    every = named(project, name)
+    result = every[0].start() if every[0].name == name else plan(project, name)
     ask(project, result, Moment.ROUND)
     return result
 
 
 def share_with_makers(project: Project, result: dict[str, Any]) -> dict[str, Any] | None:
-    """A round whose protocol names a shareable summary, sent to nock's
+    """A run whose subround names a shareable summary, sent to nock's
     makers when the owner said yes: vetted first, as `nock share` does."""
-    if result["protocol"] != FIT or sharing(project) is not Answer.YES:
+    if result["subround"] != FIT or sharing(project) is not Answer.YES:
         return None
     try:
-        return Sharing(project).share({"round": result["round"], "send": True})
+        return Sharing(project).share({"run": result["run"], "send": True})
     except Error as error:
-        # The round stands recorded; its summary waits for `nock share`.
+        # The run stands recorded; its summary waits for `nock share`.
         return {"not_sent": str(error), "send": "`.nock/nock share` once that is fixed"}
 
 
@@ -380,7 +372,7 @@ def share(
     project: Project,
     request: ShareRequest = {},  # noqa: B006
 ) -> dict[str, Any]:
-    """A round's summary as it would be shared, and where it would go: a fresh
+    """A fit run's summary as it would be shared, and where it would go: a fresh
     agent vets it first, rewriting whatever would identify the project. With
     `send`, send it to nock's makers, who alone read it. Send only when the
     owner says so."""
@@ -526,8 +518,8 @@ def memory_holds(project: Project) -> list[Problem]:
 def summary_names_nothing(project: Project) -> list[Problem]:
     """The round's shareable summary names nothing of the project: no paths,
     file names, the project's or its people's names, addresses or links."""
-    rounds = Reflection(project).rounds
-    name = rounds.current() or ((rounds.last() or {}).get("round"))
+    rounds = Reflection(project).runs
+    name = rounds.current() or ((rounds.last() or {}).get("run"))
     return Sharing(project).problems(name) if name else []
 
 

@@ -53,25 +53,24 @@ src/nock/
   prices.py          Prices: LiteLLM's public table, cached daily, for API-equivalent cost
 
   # the loop
-  rounds.py          the registry of protocols (shipped, then `.nock/rounds/`), Protocol: whether
-                     it can run and is adopted, when it is due, its materials, a round started,
-                     picked up, left open and submitted; the round's commit
-  rounds/            the shipped protocols, a folder each: nock/toolbox, nock/fit,
-                     logika/rules, logika/analytics, logika/instrument, audit/performance,
-                     audit/security,
+  rounds.py          the registry of subrounds (shipped, then `.nock/rounds/`), a round's plan,
+                     Subround: whether it can run and is on, when it is due, its materials, a
+                     run started, picked up, left open and submitted; the run's commit
+  rounds/            the shipped subrounds, a folder each, by round: nock/toolbox, nock/fit,
+                     logika/instrument, logika/analytics, audit/performance, audit/security,
                      audit/tests, fuzz/api, fuzz/ui (round.toml, lead.md, agents/, material.py)
-  reflect.py         Rounds (a protocol's records and scratch), the Record schema, Reflection
-                     (nock's window and its metrics, over nock.fit's rounds), and the material
+  reflect.py         Runs (a subround's records and scratch), the Record schema, Reflection
+                     (nock's window and its metrics, over nock.fit's runs), and the material
                      builders: Material (the toolbox), Knowledge (the memory, for fit),
                      Evidence (fit)
   shared.py          `.nock/shared/`: the memory and its check, the team's settings, the
-                     rounds' records, and `commit`, the one way nock commits there
-  logika.py          Ledger (logika.json read and counted), Logika (where its rounds can run,
+                     runs' records, and `commit`, the one way nock commits there
+  logika.py          Ledger (logika.json read and counted), Logika (where its subrounds can run,
                      the ledger's problems), Map (`logika map --json`'s open items),
-                     and its rounds' material: Material, Analytics, Instrument
-  status.py          Standing: a round due, an unshared summary, a newer nock, the other
-                     rounds to offer
-  share.py           Sharing: a round's summary, held to naming nothing, sent on the owner's word
+                     and its subrounds' material: Instrument, Analytics
+  status.py          Standing: the subrounds due, the last fit run, an unshared summary, a
+                     newer nock; the one line a session start says
+  share.py           Sharing: a fit run's summary, held to naming nothing, sent on the owner's word
   usage.py           Usage: the report shared with nock's makers on the owner's yes (`share`),
                      the question asked once, the project's random id, the weekly send
   reports.py         Reports: what the user writes to nock's makers (`nock report`), shown and
@@ -86,8 +85,8 @@ src/nock/
   docs/              one article per term (`tools.caching.md`): front matter term, aliases,
                      description; at most 500 characters. The briefs point at the terms
     briefs/          the long texts the installed skills and subagents follow: the
-                     rounds' agents reflection.toolbox, .nock (fit's); the logika
-                     rounds' lead reflection.logika.lead and agents .rules, .analytics;
+                     subrounds' agents reflection.toolbox, .nock (fit's); the logika
+                     subrounds' agents reflection.logika.instrument, .analytics;
                      the audits' agents reflection.security, .tests (its package agent), .tests.promises;
                      work and work.subagent (the orchestrator, and what it dispatches)
     guides/          the documentation for people: a few long essays (guide.why, guide.cli, …)
@@ -270,7 +269,7 @@ evidence, or it returns the `Output` when `check=False`.
 | `runs` | `processes.Supervisor` | every supervised process |
 | `sessions`, `prompts`, `events`, `transcripts` | `sessions.Sessions.ingest` | at SessionEnd, after a dispatched session, and whenever telemetry is read (`catch_up`: a window, `usage`, `query`, `sessions`) |
 | `callers` | `callers.Callers.note` | before each `.nock/nock` Bash command, with the subagent running it |
-| `nudged` | `hooks.HookRunner.standing` | when a session start says the day's standing, a round's unshared summary, or a logika round's offer |
+| `nudged` | `hooks.HookRunner.standing` | when a session start says the day's line of the rounds due |
 
 Sessions are tied to calls through `CLAUDE_CODE_SESSION_ID`, which Claude Code
 sets in its Bash tool and nock records on each call.
@@ -364,13 +363,13 @@ re-execution; the project's modules are left as the variable says).
    discovers the project from its `cwd`;
 2. runs nock's own handlers:
    - **SessionStart** rewrites the primer when the committed settings say
-     otherwise (`primer.refresh`), then returns the project's tools, any
-     load failures, and, for a session the human started, `status.Standing`'s
-     short lines: a round due, a newer nock, another kind of round to offer,
-     and — once per round — an unshared summary. The standing is said once
-     a day, keyed in `nudged` by the date and a digest of what calls, so
-     something new is said at once and the same thing not again that day.
-     What calls for the human is said to them too, as `systemMessage`;
+     otherwise (`primer.refresh`), and, for a session the human started,
+     returns one line and nothing else: the subrounds due and the skills
+     that run them (`status.Standing.line`, bounded to a few names), or
+     nothing when none is. It is said once a day, keyed in `nudged` by the
+     date and a digest of the subrounds due, so a change is said at once and
+     the same line not again that day; the human sees it too, as
+     `systemMessage`, beside a line when nock upgraded itself;
    - **PreToolUse**, wired with a Bash matcher and the hook `if` rule
      `Bash(*.nock/nock *)` unless a project hook wants every tool, notes the
      `.nock/nock` command about to run with the subagent running it
@@ -409,7 +408,7 @@ payloads not being Claude Code's. The background-agents wait at a stop reads
 Claude Code's transcript, so it applies there only.
 
 `reminders = false` turns off everything nock's own handlers would add to
-the context (SessionStart's tools and standing), and the primer becomes a
+the context (SessionStart's line), and the primer becomes a
 short note on what nock is;
 ingest, the usage send and the project's own hooks go on.
    A broken toolbox must never block the tool call that would fix it.
@@ -436,8 +435,8 @@ still has one), or a command has no allow rule yet.
 
 `dispatch.Dispatcher.launch` runs `claude -p --output-format stream-json
 --session-id …` (`agent.command`, `agent.model`) for the session no human
-sits in: the sharer, which vets a round's summary. (A reflection
-round's parts are the lead's own subagents, not dispatched: the types in
+sits in: the sharer, which vets a fit run's summary. (A subround's
+parts are its lead's own subagents, not dispatched: the types in
 `briefs/KIND/agents/`, which `nock init` installs in `.claude/agents/`, each
 with only the tools its part needs.) It:
 
@@ -461,111 +460,110 @@ with only the tools its part needs.) It:
 
 ### Reflection
 
-A round is one protocol run once. A protocol is a folder
-`rounds/<namespace>/<protocol>/` (`rounds.manifests`: the shipped ones in
+A round is a group (audit, fuzz, logika, nock); a subround is one part of it,
+a folder `rounds/<round>/<subround>/` (`rounds.manifests`: the shipped ones in
 `nock/rounds/`, then the project's `.nock/rounds/`, which override by name):
 `round.toml` (title, summary, relevant, `requires` files and commands,
 `[due]` — its measure, paths, `any`, threshold —
 `[material.NAME]` with one source of python, command, git or records (the
-protocol's last N records, what each found and changed), `[lead]`
+subround's last N records, what each found and changed), `[lead]`
 reads, writes and `share`, `[[agents]]` with name, reads, changes and
 `fan_out`, `[end]` checks, quick, commit and kinds), `lead.md`,
 `agents/NAME.md`, and `material.py` for material no command gives. Its
-functions are the `python` materials and, where a protocol needs them,
-hooks `rounds.Protocol` calls: `unavailable`, `measure`, `begun` (kept in
-`round.json`), `kept` (kept in the record) and `problems` (the end's own).
+functions are the `python` materials and, where a subround needs them,
+hooks `rounds.Subround` calls: `unavailable`, `measure`, `begun` (kept in
+`run.json`), `kept` (kept in the record) and `problems` (the end's own).
 
-`rounds.Protocol` does the rest the same for every protocol. `unavailable`
-names a required file or command missing; `adopted` is on: every protocol
+`rounds.Subround` does the rest the same for every subround. `unavailable`
+names a required file or command missing; `adopted` is on: every subround
 that can run here, unless `.nock/config.toml` turns it off (`[rounds."NAME"]
 enabled = false`), and never one whose measure is `never`. `setting(key)`
 reads that config, then the manifest's `[due]`. `measure` counts from the
-baseline — its last run, or never run the fit round's — what it is about:
+baseline — its last run, or never run the fit subround's — what it is about:
 `lines` changed (`git diff --numstat` from the commit that run started at,
 lockfiles and `.nock/` left out unless its paths name them) in its `paths`,
 a file among `any` changed at all; `sessions`; project `tools` run and
 failing; or `python`, its `material.py`'s `measure`. `due`
 says why, against its threshold, unless snoozed (`snooze_until`, or
-`snooze_at` a measure): the fit round at once where it never ran, the
-others only once it has. `snooze` and `configure` write the config and
-commit it. `start`
-names the round by date (`Rounds.new_name`, or picks up `Rounds.current`),
+`snooze_at` a measure): the fit subround at once where it never ran, the
+others only once it has. `start`
+names the run by date (`Runs.new_name`, or picks up `Runs.current`),
 writes each material into `.nock/local/reflections/<name>/DATE/` with
-`round.json` (the sessions that started it, the commit), and returns what
+`run.json` (the sessions that started it, the commit), and returns what
 the lead does: its brief, each agent's subagent type
-(`<namespace>-<protocol>` for a protocol's one agent, else with `-<agent>`
+(`<round>-<subround>` for a subround's one agent, else with `-<agent>`
 after it), brief and material, the files to write beside the material (its
-`report.md`), the submit, and that its final message reports the round to
+`report.md`), the submit, and that its final message reports the subround to
 the session that ran it. `submit` checks the changes' kinds, requires the
 files, runs the end's checks, writes `record.json` in
 `.nock/shared/rounds/<name>/DATE/`, and commits the manifest's `commit`
 paths in the working tree and the record in the main checkout. The record
-is what other machines see of a round; its report stays on the machine
+is what other machines see of a run; its report stays on the machine
 that ran it.
 
-`builtin.reflect` is one command: bare, every protocol's `standing`; NAME
-starts a protocol, or every adopted one of a namespace at once; `--submit
-JSON` checks the record against the `Record` TypedDict (protocol, summary,
-changes, verdicts, notes) and hands it to its protocol, then sends the fit
-round's summary when `share` is true (`share_with_makers`; a send that
-fails leaves the round recorded and says so). The Stop hook refuses, once
-(never when `stop_hook_active`), the end of a turn of a session that
-started a round still open, with `Protocol.left_open`: the files unwritten,
-else what the quick checks find, and the submit to run.
+`builtin.reflect` is one command: bare, every subround's `standing`;
+ROUND.SUBROUND starts a run of it; ROUND, `rounds.plan`, starts nothing and
+prints the plan: one general-purpose subagent per subround on here, each
+told to run `reflect ROUND.SUBROUND` and lead it, all dispatched at once in
+the background, so the owner sees each one's report in the session; a
+subround fans out its own agents from there. `--submit JSON` checks the
+record against the `Record` TypedDict (subround, summary, changes, verdicts,
+notes) and hands it to its subround, then sends the fit run's summary when
+`share` is true (`share_with_makers`; a send that fails leaves the run
+recorded and says so). The Stop hook refuses, once (never when
+`stop_hook_active`), the end of a turn of a session that started a run
+still open, with `Subround.left_open`: the files unwritten, else what the
+quick checks find, and the submit to run.
 
-`setup.Installer.install_rounds` installs a skill per namespace of nock's
-(`/nock-reflect`, `reflect nock`), per other namespace with two or more
-adopted protocols (`/logika`) and per adopted protocol outside nock's
-(`/logika-rules`), each a single line naming its `reflect`, and each
-adopted protocol's agents into `.claude/agents/`, their name added to the
+`setup.Installer.install_rounds` installs a skill for nock's round
+(`/nock-reflect`, `reflect nock`), per other round with two or more
+subrounds on (`/audit`, `reflect audit`) and per subround on outside nock's
+(`/audit-security`), each a single line naming its `reflect`, and each
+subround's agents into `.claude/agents/`, their name added to the
 front matter; it removes the skills and subagents of the kinds of round
 that came before.
 
-nock's own protocols are `nock.toolbox` (material `process`,
+nock's own subrounds are `nock.toolbox` (material `process`,
 `reflect.Material`: the human's prompts, the commits and the areas they
-touch, the last round's `expect` lines beside each tool's numbers now and in
+touch, the last run's `expect` lines beside each tool's numbers now and in
 its snapshot; then per-tool calls, failures by kind, duration, bytes,
 capping, caching and retire candidates below ½·log₁₀(total calls), unknown
 commands, Bash commands grouped by `shape()`, the files read most, the
 sessions; its record keeps the per-tool snapshot; its end runs `nock-tools`)
 and `nock.fit` (`evidence`, `reflect.Evidence`: the
-window's metrics beside every earlier fit round's, the first being the
-baseline; `catalogue`, every protocol with its settings and measure, to set
+window's metrics beside every earlier fit run's, the first being the
+baseline; `catalogue`, every subround with its settings and measure, to set
 them up here; `knowledge`, `reflect.Knowledge`: the memory as it stands and
 what holds it back; its record keeps the
 metrics and `shared`; its end runs `nock-share` and `nock-memory` and
 commits `.nock/config.toml`). nock's window (`Reflection.window`, for
 the metrics, `nock query stats` and the usage report) opens at the latest
-fit round's `finished`. Rounds are directories named by date, so records
+fit run's `finished`. Runs are directories named by date, so records
 from different machines merge as plain files.
 
-**The logika protocols.** `logika.rules`, `logika.analytics` and `logika.instrument` require
-`logika.json` in the working tree and `logika` on PATH (`Logika.unavailable`);
-the first two are on where the ledger is, due by their measures (the rules:
-`logika map`'s open items grown by 5; the analytics: 5 events added);
-`status.Standing` offers them (`rounds`), and the session start says so at
-most once a week (`nudged` keys `KIND:LAST:WEEK`). Their material comes from
-the ledger, git and the last round's record: `rules.md` (`logika.Material`) and
+**The logika subrounds.** `logika.instrument` and `logika.analytics` require
+`logika.json` in the working tree and `logika` on PATH (`Logika.unavailable`),
+and are on where the ledger is, due by their measures (the instrument:
+`logika map`'s unread and verdicts items grown by 5 since its last run; the
+analytics: 5 events added). The instrument's lead splits the code into
+areas and dispatches a `logika-instrument` agent per area, each changing its
+area's code and its own entries in `logika.json`
+(`reflection.logika.instrument`); its material (`logika.Instrument`) is
+the whole repository's `logika map --json` at the start (`logika.Map`, a
+subprocess at the working tree's root): the counts, the directories and
+each open item as a submission names it (`silent <file> <function>`,
+`verdicts <event>`, `unread <event>`), with the reason its latest earlier
+run gave (a change of kind `reason`, by target); `begun` and `kept` keep
+the open counts beside the ledger's. The analytics material is
 `analytics.md` (`logika.Analytics`: params and their flags, funnels,
-milestones, views); `reflection.logika.lead` is the lead's guide and
-`reflection.logika.rules` and `.analytics` the agents' briefs. The rules
-material lists what each event already says must hold; the round's work
-list is `logika map`'s open items (unread and verdicts events), and the
-lead dispatches a rules agent per directory with open items.
-`logika.instrument` is never on or due (its measure is `never`) and has no agents: an agent
-runs it by name for one area. Several share one round, so its material
-(`logika.Instrument`) is the whole repository's `logika map --json` at the
-start (`logika.Map`, a subprocess at the working tree's root): the counts,
-the directories and each open item as a submission names it (`silent
-<file> <function>`, `verdicts <event>`, `unread <event>`), with the reason
-its latest earlier round gave (a change of kind `reason`, by target);
-`begun` and `kept` keep the open counts beside the ledger's. Each end requires
-`report.md` and a parsing ledger (`tested` is optional), keeps the ledger's
-counts before and after, and commits `logika.json`. The rounds read Logika's
-docs through the `logika` CLI rather than copying them.
+milestones, views), its one agent's brief `reflection.logika.analytics`,
+and its lead alone writes `logika.json`. Each end requires `report.md` and
+a parsing ledger (`tested` is optional), keeps the ledger's counts before
+and after, and commits `logika.json`. The subrounds read Logika's docs
+through the `logika` CLI rather than copying them.
 
 `usage.Usage` keeps `.nock/local/usage.json`: when this machine asked the
-owner whether nock shares (`ask`, called by a round's start and submit,
+owner whether nock shares (`ask`, called by `reflect` and its submit,
 only while `share` is unanswered), the answer (`answer`, from `nock config
 share true|false`: `share` written with `with_setting` into the team's
 settings, `.nock/shared/settings.toml`, and committed, or the
@@ -586,17 +584,17 @@ only to be shown (`nock config share`) never makes it: it shows `UNMADE` instead
 passed (a day after a failed try), with a three-second timeout. `nock config share`
 shows it all.
 
-`share.Sharing` reads a round's `share.md`. Its `problems` — the
+`share.Sharing` reads a fit run's `share.md`. Its `problems` — the
 `nock-share` check — flag every line naming the repository's directory or
 remotes, a tracked path or a file name (common ones aside), an author's
 name or address, an email address or a link off nock.dev. `share`
 dispatches the sharer (`briefs/share.md`) to vet the summary, scrubs its
-answer the same way, and keeps it in the round's scratch directory, keyed
+answer the same way, and keeps it in the run's scratch directory, keyed
 by the summary, so a preview and the send that follows vet once. It
 returns the text and where it would go; with `send`, it posts it to
-`endpoints.reflections`, records `shared` in the fit round's record, and
+`endpoints.reflections`, records `shared` in the fit run's record, and
 commits it; it refuses to send, before vetting, when `share` is false. The
-summary, `share.md`, is the fit round's lead's file, beside its report on
+summary, `share.md`, is the fit lead's file, beside its report on
 the machine that ran it.
 
 `reports.Reports` builds what `nock report` sends: the text (the argument,
@@ -636,7 +634,7 @@ Everything a project adds lives in `.nock/` and is committed:
 | command check | `.nock/config.toml` | `[checks.NAME] command = …` (and `fix = …`) | `checks.Checks`, through the `sh` fixture |
 | hook | `.nock/tools/*.py` | `@nock.hook(event)` | `hooks.HookRunner` |
 | brief | `.nock/briefs/share.md` | the file's presence | `share.Sharing.brief`, before the packaged brief |
-| skill | `.claude/skills/nock-reflect/`, `.claude/skills/nock-work/` (and `.agents/skills/nock-work/` where Codex is found), a skill per other adopted round (`.claude/skills/logika/`, `logika-rules/`, `logika-analytics/` in Logika projects), and the rounds' agents in `.claude/agents/` | `nock init` | Claude Code and Cursor, and Codex for `/nock-work`; `nock init` rewrites them |
+| skill | `.claude/skills/nock-reflect/`, `.claude/skills/nock-work/` (and `.agents/skills/nock-work/` where Codex is found), a skill per other round with two or more subrounds on and per subround on (`.claude/skills/audit/`, `audit-security/`; `logika/`, `logika-instrument/`, `logika-analytics/` in Logika projects), and the subrounds' agents in `.claude/agents/` | `nock init` | Claude Code and Cursor, and Codex for `/nock-work`; `nock init` rewrites them |
 | settings | `.nock/config.toml`, `.nock/local/config.toml` | — | `configuration.Configuration` |
 | the core itself | `.nock/core/nock/` | edit it | kept by `nock upgrade`'s three-way merge |
 
@@ -656,7 +654,7 @@ Notes:
   verdict is 1 (the code is wrong) or 42 (the machine is not ready). The
   first look names the cause.
 - **The archive.** `.nock/tools/archive/` holds retired tools. It is not
-  loaded, but it is kept, so a round can bring a tool back.
+  loaded, but it is kept, so a run can bring a tool back.
 - **Pinned tools** (`@nock.command(pinned=True)`) are never retire
   candidates, for tools that are rarely used but vital.
 
@@ -684,8 +682,9 @@ worktree's install is that branch's change, never the main checkout's):
   per command but `run`, and an `ask` rule per `confirm=True` command (an
   `allow` rule with `permissions.confirm = "allow"`);
 - writes the `/nock-reflect` and `/nock-work` skills into
-  `.claude/skills/`, and each other adopted round's (`/logika`,
-  `/logika-rules`, `/logika-analytics` in a Logika project), with their
+  `.claude/skills/`, and each other round's and subround's on here
+  (`/audit`, `/audit-security`; `/logika-instrument`, `/logika-analytics` in
+  a Logika project), with their
   agents' subagent types in
   `.claude/agents/`. `/nock-work`, which any harness can follow, goes also
   into each found harness's skills directory that no directory written

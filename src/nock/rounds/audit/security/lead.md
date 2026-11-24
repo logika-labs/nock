@@ -1,6 +1,6 @@
-# The security round
+# The audit.security subround
 
-The round finds and reports; it fixes nothing. Work against a local or
+The subround finds and reports; it fixes nothing. Work against a local or
 development copy of the system, never production: read production config
 freely, send it no traffic. Never print a secret; name the file and key.
 
@@ -40,6 +40,6 @@ freely, send it no traffic. Never print a secret; name the file and key.
    repro.
 5. Submit with one change per finding (kind risk, target the finding's
    file:line, why its severity) and kind other for an area left uncovered.
-6. Report the round in your final message, to the session that ran it: the
+6. Report the subround in your final message, to the session that ran it: the
    findings ranked, a line each with its severity and confidence, what
    needs the owner, and where `report.md` is.

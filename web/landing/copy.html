@@ -33,7 +33,7 @@ Agents that write the tools they need.
 <!-- end -->
 
 <!-- block reflection-copy -->
-<p>nock instruments your agents: every call and session is recorded on your machine, never committed. Every week or so a reflection round reads that record and the work since. It writes the tools that would have saved turns, repairs the ones that misbehave and retires the ones nobody uses, and the next round holds each change to what it expected.</p>
+<p>nock instruments your agents: every call and session is recorded on your machine, never committed. Every week or so a reflection round reads that record and the work since. It writes the tools that would have saved turns, repairs the ones that misbehave and retires the ones nobody uses, and the next run holds each change to what it expected.</p>
 <a class="more" href="/docs/reflection/">Reflection rounds</a>
 <!-- end -->
 
@@ -46,7 +46,7 @@ The reflection round that catches bugs before they happen.
 <!-- end -->
 
 <!-- block logika-copy -->
-<p><a href="{{ logika }}">Logika</a> is observability and analytics for coding agents. It runs its reflection rounds on nock: in the logika round, your agent reads Logika's map, what each event logs and which events no rule reads yet, and writes the rules with you from real captures. Logika then checks every span against them, so a bug is caught as an issue with its evidence before anyone notices it.</p>
+<p><a href="{{ logika }}">Logika</a> is observability and analytics for coding agents. It runs its reflection round on nock: in the logika round, your agent reads Logika's map, what each event logs and which events no rule reads yet, and writes the rules with you from real captures. Logika then checks every span against them, so a bug is caught as an issue with its evidence before anyone notices it.</p>
 <!-- end -->
 
 <!-- block community-title -->
@@ -122,7 +122,7 @@ CLAUDE.md, .claude/settings.json,
   <div class="text">
     <span class="label">Step 4</span>
     <h2>Work as you always do</h2>
-    <p>Start your coding agent and ask for something. Every session reads nock's primer through CLAUDE.md, starts with the project's tools listed once it has some, and is recorded: what you asked, each tool call, what failed, what it cost.</p>
+    <p>Start your coding agent and ask for something. Every session reads nock's primer through CLAUDE.md, and is recorded: what you asked, each tool call, what failed, what it cost.</p>
   </div>
   <figure class="shot">
     <div class="terminal"><span class="who">CLAUDE.md</span><span class="out">@.nock/context.md</span><span class="who">.nock/context.md, the primer</span><span class="out">## nock
@@ -140,7 +140,7 @@ they learned and the tools agents built.
 
 <!-- block start-next -->
 <h2>What happens next</h2>
-<p>After 15 sessions or 7 days, a session start says a reflection round is due; run <code>/nock-reflect</code> in a session, and read its report. Your agents' tools grow from there.</p>
+<p>After 10 sessions, a session start says the nock round is due; run <code>/nock-reflect</code> in a session, and read its report. Your agents' tools grow from there.</p>
 <div class="actions">
   <a class="button primary" href="/docs/">Read the docs</a>
   <a class="button" href="/docs/reflection/">Reflection rounds</a>

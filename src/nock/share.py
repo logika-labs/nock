@@ -42,8 +42,8 @@ COMMON_FILES = {
 
 
 class Request(TypedDict):
-    round: NotRequired[str]
-    """The round's date, as its directory is named; the default is the latest."""
+    run: NotRequired[str]
+    """The run's date, as its directory is named; the default is the latest."""
     send: NotRequired[bool]
     """Send it. Only on the owner's word; without it, see what would be sent."""
     again: NotRequired[bool]
@@ -55,16 +55,16 @@ class Sharing:
         self.project = project
         self.reflection = Reflection(project)
 
-    def round(self, name: str | None) -> dict[str, Any]:
-        rounds = [record for record in self.reflection.rounds.all() if record.get("metrics")]
+    def run(self, name: str | None) -> dict[str, Any]:
+        runs = [record for record in self.reflection.runs.all() if record.get("metrics")]
         if name is not None:
-            rounds = [record for record in rounds if record["round"] == name]
-        if not rounds:
-            raise NotFoundError(f"no finished round{f' {name}' if name else ''} to share")
-        return rounds[-1]
+            runs = [record for record in runs if record["run"] == name]
+        if not runs:
+            raise NotFoundError(f"no finished nock.fit run{f' {name}' if name else ''} to share")
+        return runs[-1]
 
     def text(self, name: str) -> str:
-        return (self.reflection.rounds.scratch / name / SHARE).read_text().strip()
+        return (self.reflection.runs.scratch / name / SHARE).read_text().strip()
 
     def brief(self) -> str:
         """The sharer's brief: the project's own `.nock/briefs/share.md`, else nock's."""
@@ -76,7 +76,7 @@ class Sharing:
         when the summary changed, or when asked — and scrubbed."""
         text = self.text(name)
         fingerprint = hashlib.sha256(text.encode()).hexdigest()
-        kept = self.reflection.rounds.scratch / name / "outgoing.json"
+        kept = self.reflection.runs.scratch / name / "outgoing.json"
         if not again and kept.is_file() and read_json(kept).get("fingerprint") == fingerprint:
             return read_json(kept)["text"]
         brief = self.brief().replace(PLACE, text)
@@ -111,12 +111,12 @@ class Sharing:
                 "`share` is false here, so nock sends nothing — set `share = true` in"
                 " .nock/config.toml to send the summary"
             )
-        record = self.round(request.get("round"))
-        name = record["round"]
+        record = self.run(request.get("run"))
+        name = record["run"]
         text = self.vetted(name, bool(request.get("again")))
         endpoint = str(self.project.configuration.get("endpoints.reflections"))
         if not request.get("send"):
-            return {"round": name, "to": endpoint, "shared": record.get("shared"), "text": text}
+            return {"run": name, "to": endpoint, "shared": record.get("shared"), "text": text}
         body = json.dumps({"summary": text, "round": name}).encode()
         post = urllib.request.Request(
             endpoint, data=body, headers={"Content-Type": "application/json"}, method="POST"
@@ -130,11 +130,11 @@ class Sharing:
         self.reflection.record_shared(name, shared)
         commit(
             self.project,
-            f"nock.fit round {name}: shared",
+            f"nock.fit run {name}: shared",
             [],
-            self.reflection.rounds.directory / name / RECORD_FILE,
+            self.reflection.runs.directory / name / RECORD_FILE,
         )
-        return {"round": name, **shared}
+        return {"run": name, **shared}
 
     # --- what the summary may not say -------------------------------------------
 
@@ -168,7 +168,7 @@ class Sharing:
     def problems(self, name: str) -> list[Problem]:
         """Every line of a round's summary that names the project, someone in
         it, an address or a link."""
-        path = self.reflection.rounds.scratch / name / SHARE
+        path = self.reflection.runs.scratch / name / SHARE
         if not path.is_file():
             return []
         return self.problems_in(path.read_text(), str(path))
@@ -192,8 +192,8 @@ class Sharing:
         return found
 
     def unshared(self) -> str | None:
-        """The latest round, when its summary has not been shared."""
-        records = [record for record in self.reflection.rounds.all() if record.get("metrics")]
+        """The latest run, when its summary has not been shared."""
+        records = [record for record in self.reflection.runs.all() if record.get("metrics")]
         if records and not records[-1].get("shared"):
-            return records[-1]["round"]
+            return records[-1]["run"]
         return None

@@ -1,7 +1,7 @@
 ---
 term: reflection.security
 aliases: []
-description: The security round's part brief: audit one area of the attack surface
+description: The audit.security part brief: audit one area of the attack surface
 ---
 
 You audit one area of the project's attack surface, named in your task.
