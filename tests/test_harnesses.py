@@ -69,6 +69,12 @@ def test_only_claude_code_is_wired_where_no_other_harness_is_found(repository: P
     assert said[-1].startswith("Next: commit what nock changed")
     for absent in (".agents", ".codex", ".cursor", "AGENTS.md"):
         assert not (repository / absent).exists(), absent
+    # nock's own handlers only: no hook after every tool call or at every prompt.
+    claude = repository / ".claude" / "settings.json"
+    assert hooks_of(claude) == {
+        event: [f'"$CLAUDE_PROJECT_DIR"/.nock/nock hook {event}']
+        for event in ("PreToolUse", "SessionEnd", "SessionStart", "Stop")
+    }
     again = Installer(repository).install()
     assert again[0] == "Found agent harnesses: Claude Code."
     assert again[-2:] == ["", "Nothing changed: nock is set up and wired already."]

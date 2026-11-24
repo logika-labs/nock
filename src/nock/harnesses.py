@@ -37,9 +37,7 @@ NATIVE_EVENTS = {
 # The events nock itself listens to in Claude Code.
 BUILT_IN_EVENTS = (
     Event.SESSION_START,
-    Event.PROMPT,
     Event.BEFORE_TOOL,
-    Event.AFTER_TOOL,
     Event.STOP,
     Event.SESSION_END,
 )
