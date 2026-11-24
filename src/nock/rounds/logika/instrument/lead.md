@@ -26,9 +26,9 @@ directions and genuine ambiguities, and reviews the rest in your report.
    each with the rule it settles and the answer you propose; carry on with
    your answer meanwhile.
 5. **As a whole.** Write the rules the parts brought back that relate one
-   area's events to another's. `logika check` passes. `logika map` again: an area that
-   left items open without a reason goes back to its part, or to a new one,
-   once. Then the noise check, once (`logika docs replay`): `logika test
+   area's events to another's. `logika check` passes. `logika map` again:
+   an area that left items open without a reason goes back to its part, or
+   to a new one, once. Then the noise check, once (`logika docs replay`): `logika test
    "<command>"` over the tests and what traffic you can run, then `logika
    replay '{"on": "capture"}'`. A test raises errors on purpose: one we
    would want to know about stays an error; an ordinary user mistake

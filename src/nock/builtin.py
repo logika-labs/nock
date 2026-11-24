@@ -120,13 +120,13 @@ def query(
     failed: Annotated[bool, Option(help="calls: only those that did not exit 0.")] = False,
     limit: Annotated[int | None, Option(help="calls, sessions: how many.")] = None,
     since: Annotated[
-        str | None, Option(help="stats: an ISO date; the default is the last reflection round.")
+        str | None, Option(help="stats: an ISO date; the default is the last fit run.")
     ] = None,
 ) -> list[dict[str, Any]]:
     """Read the telemetry: WHAT is read-only SQL over its tables (calls, runs,
-    sessions, prompts, events — a round's material explains them), or one of
+    sessions, prompts, events — a run's material explains them), or one of
     its views: `calls`, recent calls to nock, newest first; `stats`, each
-    command's use since the last round; `sessions`, recent sessions with their
+    command's use since the last fit run; `sessions`, recent sessions with their
     role, tokens and cost at API prices. The transcripts are read up to now
     first."""
     if what == "calls":
@@ -230,9 +230,9 @@ def sessions(project: Project, *, limit: int) -> list[dict[str, Any]]:
 
 @command
 def status(project: Project) -> dict[str, Any]:
-    """Where the project stands with nock: whether a reflection round is due,
-    a round summary not yet shared, whether a newer nock is out, and the
-    other kinds of round worth offering here."""
+    """Where the project stands with nock: the subrounds due, why and the
+    skill for each, the last fit run, a summary not yet shared, and whether
+    a newer nock is out."""
     return Standing(project).collect()
 
 
