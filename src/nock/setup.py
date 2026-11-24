@@ -113,13 +113,13 @@ OTHER_HOOK_COMMAND = '"$(git rev-parse --show-toplevel)"/.nock/nock hook {event}
 HOOK_TIMEOUT = 300
 HOOKS_WHAT = {
     Harness.CLAUDE_CODE: "Claude Code hooks, and a permission rule per nock command",
-    Harness.CODEX: "Codex hooks: the toolbox at a session's start, what a stop leaves open",
-    Harness.CURSOR: "Cursor hooks: the toolbox at a session's start, what a stop leaves open",
+    Harness.CODEX: "Codex hooks: the rounds due at a session's start, what a stop leaves open",
+    Harness.CURSOR: "Cursor hooks: the rounds due at a session's start, what a stop leaves open",
 }
 PRIMER_WHAT = "the primer: what nock is for here, as the settings have it"
 NEXT = (
-    "Next: commit what nock changed; each agent session from the next on starts with"
-    " nock's toolbox (`.nock/nock` lists it)."
+    "Next: commit what nock changed; `.nock/nock` lists the toolbox, and each agent session"
+    " from the next on is recorded."
 )
 # The rules nock writes into `.claude/settings.json`, and no others: one per
 # command, so the file says exactly what an agent runs unasked.
