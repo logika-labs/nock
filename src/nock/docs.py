@@ -59,13 +59,18 @@ class Term:
         return self.term.rpartition(".")[0] or None
 
 
-def parse(path: Path, limit: int = LIMIT) -> Term:
-    """The term in `path`, or a TermError saying what is wrong with it."""
+def limit_of(relative: str) -> int:
+    """The longest article the file at `relative` (to a docs directory) may hold."""
+    folder = relative.partition("/")[0] if "/" in relative else ""
+    return {BRIEFS: BRIEF_LIMIT, GUIDES: GUIDE_LIMIT}.get(folder, LIMIT)
+
+
+def parse(file: str, source: str, limit: int = LIMIT) -> Term:
+    """The term in `source`, the file named `file`, or a TermError saying what is wrong with it."""
 
     def fail(problem: str) -> TermError:
-        return TermError(f"{path.name}: {problem}")
+        return TermError(f"{file}: {problem}")
 
-    source = path.read_text()
     if not source.startswith("---\n") or "\n---\n" not in source[3:]:
         raise fail("no front matter: `---`, `term`, `aliases`, `description`, `---`")
     front, _, body = source[4:].partition("\n---\n")
@@ -94,7 +99,7 @@ def parse(path: Path, limit: int = LIMIT) -> Term:
     for name in (term, *aliases):
         if not NAME.match(name):
             raise fail(f"`{name}` is not a term: lowercase letters, digits and `-`, joined by `.`")
-    if path.name != f"{term}.md":
+    if file != f"{term}.md":
         raise fail(f"the term is `{term}`, so the file is {term}.md")
     if not description or len(description) > DESCRIPTION_LIMIT:
         raise fail(f"the description is {len(description)} characters; 1 to {DESCRIPTION_LIMIT}")
@@ -104,24 +109,46 @@ def parse(path: Path, limit: int = LIMIT) -> Term:
     return Term(term, aliases, description, article)
 
 
-def read(directory: Path) -> list[Term]:
-    """Every term in `directory`, its briefs and its guides."""
+def files(directory: Path) -> dict[str, str]:
+    """The text of every term file in `directory`, its briefs and its guides, by
+    its path relative to it (`tools.md`, `briefs/work.md`)."""
+    paths = [
+        *directory.glob("*.md"),
+        *(directory / BRIEFS).glob("*.md"),
+        *(directory / GUIDES).glob("*.md"),
+    ]
+    return {path.relative_to(directory).as_posix(): path.read_text() for path in sorted(paths)}
+
+
+def terms(texts: dict[str, str]) -> list[Term]:
+    """The terms in `texts`, file texts by their paths as `files` gives them."""
     return [
-        *(parse(path) for path in directory.glob("*.md")),
-        *(parse(path, BRIEF_LIMIT) for path in (directory / BRIEFS).glob("*.md")),
-        *(parse(path, GUIDE_LIMIT) for path in (directory / GUIDES).glob("*.md")),
+        parse(relative.rpartition("/")[2], text, limit_of(relative))
+        for relative, text in texts.items()
     ]
 
 
-class Docs:
-    """Every term in `directory`, and in `project`'s (`.nock/docs/`) on top,
-    where a term of the same name replaces nock's; parents before their children."""
+def read(directory: Path) -> list[Term]:
+    """Every term in `directory`, its briefs and its guides."""
+    return terms(files(directory))
 
-    def __init__(self, directory: Path = DOCS, project: Path | None = None) -> None:
+
+class Docs:
+    """Every term in `directory` (or in `hosted`, the texts of a hosted bundle
+    shown instead), and in `project`'s (`.nock/docs/`) on top, where a term of
+    the same name replaces nock's; parents before their children."""
+
+    def __init__(
+        self,
+        directory: Path = DOCS,
+        project: Path | None = None,
+        hosted: dict[str, str] | None = None,
+    ) -> None:
         own = read(project) if project is not None and project.is_dir() else []
         replaced = {term.term for term in own}
-        terms = [term for term in read(directory) if term.term not in replaced] + own
-        self.terms = sorted(terms, key=lambda term: term.term.split("."))
+        shipped = terms(hosted) if hosted is not None else read(directory)
+        found = [term for term in shipped if term.term not in replaced] + own
+        self.terms = sorted(found, key=lambda term: term.term.split("."))
 
     def problems(self) -> list[str]:
         """What is wrong across the terms: a name taken twice, a child without its parent."""

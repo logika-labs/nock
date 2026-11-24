@@ -12,15 +12,15 @@ import tomllib
 from pathlib import Path
 from typing import Annotated, Any
 
+from nock import hosted
 from nock.checks import Checks
 from nock.commands import Group, Option
 from nock.configuration import Confirm, scope_of, with_key
-from nock.docs import Docs
 from nock.errors import Error, ExitCode, Failed, UsageError
 from nock.fixtures import Shell
 from nock.harnesses import NATIVE_EVENTS
 from nock.processes import Output
-from nock.project import NOCK_DIRECTORY, Project
+from nock.project import Project
 from nock.reflect import FIT, Reflection, tool_rows
 from nock.render import Problem
 from nock.reports import Reports
@@ -101,8 +101,10 @@ def docs(project: Project, terms: list[str] | None = None) -> str | dict[str, st
     """nock's documentation, a short article per term: how to write a tool, a
     check or a hook, how telemetry and reflection work; the project's own
     terms (`.nock/docs/`) on top, replacing nock's of the same name. With no
-    term, the terms; with several, each in turn."""
-    documentation = Docs(project=project.here / NOCK_DIRECTORY / "docs")
+    term, the terms; with several, each in turn. The hosted docs, newer than
+    this nock's and signed by its makers, are shown in place of its own when
+    there are any (`nock docs docs.hosted`)."""
+    documentation = hosted.shown(project)
     if not terms:
         return documentation.index()
     return documentation.read(terms)
