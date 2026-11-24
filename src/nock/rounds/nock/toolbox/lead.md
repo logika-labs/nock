@@ -11,9 +11,11 @@ material, not from memory.
    and what should be measurably different by the next round. Only what
    they would act on or want to know.
 3. Submit with the part's changes (kinds add, change, retire, check,
-   generator, other) and its verdicts on the last round's expectations. It
-   runs nock's checks and refuses while one fails: fix it, or have the part
-   fix it, and submit again. A command the part added fails `nock-wiring`
-   until `.nock/nock init` allows it; Claude Code asks the owner for that.
-   It commits the toolbox and the record; commit a generated file outside
-   `.nock/` yourself.
+   other) and its verdicts on the last round's expectations. It runs nock's
+   checks and refuses while one fails: fix it, or have the part fix it, and
+   submit again. A command the part added fails `nock-wiring` until
+   `.nock/nock init` allows it; Claude Code asks the owner for that. It
+   commits the toolbox and the record.
+4. Report the round in your final message, to the session that ran it:
+   what changed in the toolbox and why, what needs the owner (the commands
+   `.nock/nock init` should allow), and where `report.md` is.

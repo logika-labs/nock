@@ -7,9 +7,7 @@ from __future__ import annotations
 
 import json
 import os
-import threading
 import uuid
-from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -72,8 +70,6 @@ class Seat:
     allowed: tuple[str, ...]
     denied: tuple[str, ...] = ()
     """Rules refused even where `allowed` would let them through."""
-    store: str = ""
-    """`read` or `write`: what it may do in the store, `.nock/shared/`."""
 
 
 READING = ("Read", "Grep", "Glob", "Bash")
@@ -81,64 +77,9 @@ READING = ("Read", "Grep", "Glob", "Bash")
 # accepts, down to `--ou`) writes their output to a file anywhere.
 GIT_READING = ("Bash(git log:*)", "Bash(git show:*)")
 GIT_WRITING = ("Bash(git * --ou*)",)
-# What a seat may do in the store (`.nock/shared/`, in the main checkout, maybe
-# outside the directory it runs in): read it and the topics' views, or write
-# events and versions there too, which nock settles when the session ends.
-READS, WRITES = "read", "write"
 SEATS = {
     # Reads what identifies the project and answers in its last message.
     "sharer": Seat(READING, (GIT_READING[0],), GIT_WRITING),
-    # The studio's answer now: answers the owner's message in a task's chat —
-    # a reply, an item revised, a new version of an asset or of the review, a
-    # change to the project's files — and checks it with the project's own
-    # gate. It commits no code (the owner looks first) and runs nothing else
-    # but the recipes of the task's assets, which the studio allows it one by
-    # one (never a recipe it wrote).
-    "answerer": Seat(
-        (*READING, "Edit", "Write"),
-        (
-            nock("search"),
-            nock("docs"),
-            nock("check"),
-            nock("test"),
-            "Edit(./**)",
-            "Write(./**)",
-            *GIT_READING,
-            "Bash(git diff:*)",
-            "Bash(git status:*)",
-        ),
-        GIT_WRITING,
-        WRITES,
-    ),
-    # A reflection round the owner started from the studio: its lead runs
-    # `nock reflect NAME`, dispatches the round's own subagents and submits;
-    # nock's reading commands, the checks and the tests, edits in the project.
-    "reflector": Seat(
-        (*READING, "Edit", "Write", "Agent", "Task"),
-        (
-            nock("reflect"),
-            nock("search"),
-            nock("docs"),
-            nock("query"),
-            nock("status"),
-            nock("check"),
-            nock("test"),
-            nock("gen"),
-            nock("inbox"),
-            "Bash(logika map:*)",
-            "Bash(logika docs:*)",
-            "Bash(logika check:*)",
-            "Bash(logika test:*)",
-            "Bash(logika replay:*)",
-            "Edit(./**)",
-            "Write(./**)",
-            *GIT_READING,
-            "Bash(git diff:*)",
-            "Bash(git status:*)",
-        ),
-        GIT_WRITING,
-        WRITES,
-    ),
 }
 
 
@@ -165,24 +106,12 @@ class Dispatcher:
         role: str,
         brief: str,
         directory: Path,
-        variables: dict[str, str] | None = None,
         deadline: float | None = None,
-        resume: str | None = None,
-        arguments: tuple[str, ...] = (),
-        listener: Callable[[bytes], None] | None = None,
-        stop: threading.Event | None = None,
-        allowed: tuple[str, ...] = (),
     ) -> Session:
-        """`resume` continues that session (`--resume`) instead of starting one;
-        `arguments` go to Claude Code before the brief; `listener` and `stop`
-        are the Supervisor's: the output as it comes, and a stop; `allowed`
-        rules widen the seat for this launch alone (an asset's recipe)."""
-        session = resume or str(uuid.uuid4())
+        session = str(uuid.uuid4())
         settings = self.project.configuration
         prompt, carried = self.carried(session, brief)
-        command = [*self.command(role, (*carried, *allowed))]
-        command += ["--resume", session] if resume else ["--session-id", session]
-        command += list(arguments)
+        command = [*self.command(role, carried), "--session-id", session]
         model = str(settings.get("agent.model") or "")
         if model:
             command += ["--model", model]
@@ -194,10 +123,8 @@ class Dispatcher:
             directory=directory,
             deadline=deadline or float(settings.get("agent.deadline")),
             silence=float(settings.get("agent.silence")),
-            environment={**self.environment(session, role), **(variables or {})},
+            environment=self.environment(session, role),
             session=session,
-            listener=listener,
-            stop=stop,
         ).run()
         transcript = find_transcript(self.project.root, session)
         if transcript is not None:
@@ -239,25 +166,9 @@ class Dispatcher:
             "--strict-mcp-config",
             "--tools",
             ",".join(seat.tools),
-            *(
-                ["--allowedTools", *seat.allowed, *self.store_rules(seat), *allowed]
-                if seat.allowed or allowed
-                else []
-            ),
+            *(["--allowedTools", *seat.allowed, *allowed] if seat.allowed or allowed else []),
             *(["--disallowedTools", *seat.denied] if seat.denied else []),
         ]
-
-    def store_rules(self, seat: Seat) -> tuple[str, ...]:
-        """Reading the store and the views; writing the store too."""
-        shared = (self.project.root / ".nock" / "shared").resolve()
-        views = (self.project.local / "views").resolve()
-        cache = (self.project.local / "cache").resolve()
-        if not seat.store:
-            return ()
-        reading = (f"Read(/{shared}/**)", f"Read(/{views}/**)", f"Read(/{cache}/**)")
-        if seat.store == READS:
-            return reading
-        return (*reading, f"Write(/{shared}/**)", f"Edit(/{shared}/**)")
 
     def environment(self, session: str, role: str) -> dict[str, str]:
         environment = {

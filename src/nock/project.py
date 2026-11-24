@@ -91,7 +91,7 @@ class Project:
 
     def code_path(self, *parts: str) -> Path:
         """A place in the project's nock code — settings, tools, briefs,
-        generators, reflections — in the working tree the call runs in."""
+        rounds — in the working tree the call runs in."""
         return (self.here / NOCK_DIRECTORY).joinpath(*parts)
 
     # --- settings, tools and telemetry --------------------------------------------
@@ -173,7 +173,7 @@ class Project:
         return HEADLESS if headless(os.environ.get(ENTRYPOINT_VARIABLE)) else None
 
     def writer(self) -> dict[str, str | None]:
-        """Who writes, as every record in Topics keeps it: `session`, `role`,
+        """Who is calling, as its telemetry and what it dispatches keep it: `session`, `role`,
         and `parent`, the session that dispatched it, for a subagent (its
         session the subagent's id, its role the subagent's type) or a
         session nock dispatched."""

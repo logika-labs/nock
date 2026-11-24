@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import json
 import threading
-import urllib.request
 import uuid
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
@@ -19,11 +18,9 @@ import pytest
 
 from nock.hooks import HookRunner
 from nock.project import Project
-from nock.studio import Studio
-from nock.usage import IDENTITY, QUESTION, QUESTION_VERSION, UNMADE, Moment, Usage
+from nock.usage import IDENTITY, QUESTION, QUESTION_VERSION, UNMADE, Usage
 
 from .conftest import git, nock, write_tool
-from .store import propose, topics_in
 from .test_telemetry_and_reflection import transcript
 
 
@@ -44,7 +41,6 @@ def test_with_reminders_off_nock_says_nothing_unasked_and_still_records(
     project: Project,
 ) -> None:
     write_tool(project, "work", "import nock\n\n@nock.command\ndef deploy():\n    '''Ship it.'''\n")
-    topics_in(project.root).judge(propose(project.root), "accepted")
     quiet = configure(project, "reminders = true", "reminders = false")
     assert HookRunner(quiet, {"session_id": "s1"}).handle("SessionStart") is None
     assert HookRunner(quiet, {"session_id": "s1"}).handle("UserPromptSubmit") is None
@@ -52,14 +48,12 @@ def test_with_reminders_off_nock_says_nothing_unasked_and_still_records(
     assert HookRunner(quiet, payload).handle("PostToolUse") is None
     primer = (project.root / ".nock" / "context.md").read_text()
     assert "It stays quiet here" in primer
-    assert "Put your work before the owner in Topics" not in primer
+    assert "Report to whoever dispatched you" not in primer
     path = transcript(quiet, "s1", ["Deploy it"], [("make deploy", 10, False)])
     HookRunner(quiet, {"session_id": "s1", "transcript_path": str(path)}).handle("SessionEnd")
     assert quiet.store.rows("SELECT id FROM sessions") == [{"id": "s1"}]
     assert "deploy" in nock(project.root).stdout
-    assert json.loads(nock(project.root, "status", "--json").stdout)["topics"]["awaiting_agents"][
-        "orders"
-    ] == ["orders/archive"]
+    assert "reflection" in json.loads(nock(project.root, "status", "--json").stdout)
 
 
 class Receiver(BaseHTTPRequestHandler):
@@ -242,28 +236,6 @@ def test_share_is_only_true_or_false(project: Project) -> None:
     assert refused.returncode == 42 and "it is true or false" in refused.stderr
 
 
-def test_the_page_asks_until_the_owner_answers_with_its_buttons(project: Project) -> None:
-    assert Usage(project).ask(Moment.STUDIO) is not None
-    assert Usage(project).ask(Moment.STUDIO) is None, "asked once"
-    studio = Studio(project, 0)
-    threading.Thread(target=studio.serve_forever, daemon=True).start()
-    try:
-        page = urllib.request.urlopen(studio.address).read().decode()
-        assert 'data-share="true">Share</button>' in page and "Don't share</button>" in page
-        post = urllib.request.Request(
-            studio.address + "usage", data=json.dumps({"share": False}).encode(), method="POST"
-        )
-        answered = json.loads(urllib.request.urlopen(post).read())
-        assert answered["share"] == "no" and answered["answered"]["via"] == "studio"
-        assert (
-            "\nshare = false\n" in (project.root / ".nock" / "shared" / "settings.toml").read_text()
-        )
-        assert 'id="usage"' not in urllib.request.urlopen(studio.address).read().decode()
-    finally:
-        studio.shutdown()
-        studio.server_close()
-
-
 def test_a_share_that_is_not_true_or_false_is_refused_plainly(project: Project) -> None:
     shared(project, '"everything"')
     result = nock(project.root, "config", "share")
@@ -275,8 +247,5 @@ def test_the_primer_follows_the_committed_settings_not_the_machine_s(project: Pr
     local.write_text("reminders = false\n" + local.read_text())
     quiet = Project.discover(project.root)
     assert HookRunner(quiet, {"session_id": "s1"}).handle("SessionStart") is None
-    assert (
-        "Put your work before the owner in Topics"
-        in (project.root / ".nock" / "context.md").read_text()
-    )
+    assert "Report to whoever dispatched you" in (project.root / ".nock" / "context.md").read_text()
     assert git(project.root, "status", "--porcelain") == ""

@@ -18,9 +18,9 @@ writes = ["report.md"]
 [[agents]]
 name = "toolbox"
 reads = ["process"]
-changes = [".nock/tools/", ".nock/config.toml", ".nock/generators/"]
+changes = [".nock/tools/", ".nock/config.toml"]
 
 [end]
-checks = ["nock-tools", "nock-generators"]
-commit = [".nock/tools", ".nock/config.toml", ".nock/generators"]
-kinds = ["add", "change", "retire", "check", "generator", "other"]
+checks = ["nock-tools"]
+commit = [".nock/tools", ".nock/config.toml"]
+kinds = ["add", "change", "retire", "check", "other"]

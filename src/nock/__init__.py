@@ -17,9 +17,6 @@ What a project's `.nock/tools/` modules use (`.nock/nock docs` explains it):
 
     @nock.hook("session-start")
     def remind(payload) -> str: ...
-
-    @nock.generator("src/errors.py")
-    def errors(root) -> str: ...
 """
 
 import importlib
@@ -45,7 +42,7 @@ if TYPE_CHECKING:
     from nock.processes import Output
     from nock.project import Project
     from nock.render import Problem
-    from nock.tools import check, command, fixture, generator, hook
+    from nock.tools import check, command, fixture, hook
 
 # Where each name above lives: loaded on first use, so `python -m nock hook`
 # loads only what the hook needs.
@@ -65,7 +62,6 @@ MODULES = {
     "check": "nock.tools",
     "command": "nock.tools",
     "fixture": "nock.tools",
-    "generator": "nock.tools",
     "hook": "nock.tools",
 }
 
@@ -94,6 +90,5 @@ __all__ = [
     "check",
     "command",
     "fixture",
-    "generator",
     "hook",
 ]

@@ -1,19 +1,16 @@
 # The performance audit
 
-Find what makes the project slow or costly, with numbers, and put each
-finding before the owner as a proposal. You change no code: you measure and
-record. You do the measuring yourself, one thing at a time, because timings
+Find what makes the project slow or costly, with numbers, and report each
+finding to the owner. You change no code: you measure and report. You do the measuring yourself, one thing at a time, because timings
 taken side by side on one machine skew each other.
 
 Done when every hot path below that the project has is measured, each real
-finding is a proposal with its evidence, `report.md` ranks them, and
-`.nock/nock reflect --submit` has recorded the round.
+finding has its evidence, `report.md` ranks them, `.nock/nock reflect
+--submit` has recorded the round, and your final message has reported it.
 
-1. Read the material: the proposals earlier rounds left in the round's
-   task, `round-audit-performance` (`.nock/local/views/round-audit-performance.md`).
-   A finding that is still there, accepted and not fixed, is measured again
-   and kept, not recorded twice; one the owner rejected is dropped unless
-   the numbers changed. Starting the round opened the task (or revived it).
+1. Read the material: what earlier rounds found. A finding that is still
+   there is measured again and reported as still open, not as new; one
+   fixed since is said to be fixed, with its new number.
 2. Learn the project before you time it: the docs that say what it must
    handle (sizes, rates, budgets), its benchmarks and their baseline, how
    it runs locally. Work against the local stack, never production, and
@@ -36,24 +33,21 @@ finding is a proposal with its evidence, `report.md` ranks them, and
    don't speculate: a cost you only read in the code is a lead to measure,
    not a finding.
 5. A finding is a cost that breaks a stated budget, grows faster than its
-   input, or is large next to the work it does. For each, record a
-   proposal in the round's task (`.nock/nock docs topics.items files.item`):
-   - the title says the fix and what it brings ("Index orders by account:
+   input, or is large next to the work it does. For each:
+   - a title that says the fix and what it brings ("Index orders by account:
      the list drops from 900 to 40 ms");
-   - `means`: the problem in a line or two, with file:line and the
-     numbers, its severity (critical, high, medium, low: how many users
-     wait and for how long, or what it costs) and how confident you are;
-   - `takes`: roughly what the fix takes;
-   - assets in the task: the repro command or script, its output, a
-     profile, each a derived file with its recipe (`.nock/nock docs
-     topics.derived`), so the owner can run it again.
-6. Write `report.md` for the owner: the findings, worst first, each in a
-   line with its number and its item; then the paths you measured that are
-   fine, with their numbers; then what you could not measure and why.
-   Submitting puts it in the task's review with the proposals; add a
-   `table` or `chart` block of the numbers where they say more
-   (`.nock/nock docs review`).
+   - the problem in a line or two, with file:line and the numbers, its
+     severity (critical, high, medium, low: how many users wait and for how
+     long, or what it costs) and how confident you are;
+   - roughly what the fix takes;
+   - the repro command or script, so the owner can run it again.
+6. Write `report.md` for the owner: the findings, worst first, each as
+   above; then the paths you measured that are fine, with their numbers (a
+   table where it says more); then what you could not measure and why.
 7. Submit, one change per finding (kinds latency, throughput, query,
    memory, startup, bundle, other): its `target` the file:line, its `why`
    the numbers, its `expect` what the next round should measure once it
    is fixed.
+8. Report the round in your final message, to the session that ran it: the
+   findings worst first, a line each with its number, what needs the
+   owner, and where `report.md` is.

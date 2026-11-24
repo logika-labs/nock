@@ -57,12 +57,12 @@ over its tables.
 
 Every session starts with the project's toolbox listed, through the agent's
 session-start hook. CLAUDE.md imports a short primer, `.nock/context.md`: why
-the project uses nock, to read its memory first, to put work before you
-in topics, to run noisy commands through `nock run`, and to offer to tell nock's
-makers what nock lacks.
+the project uses nock, to read its memory first, to report to whoever
+dispatched the work, to run noisy commands through `nock run`, and to offer
+to tell nock's makers what nock lacks.
 
 A session you start also hears where things stand, in a few lines, once a day
-or sooner when something new calls (a round falls due, you reject an item),
+or sooner when something new calls (a round falls due, a newer nock is out),
 with a word on what to do with it: take into account what bears on your
 request, and mention the rest only when relevant or once the work is done.
 
@@ -94,19 +94,16 @@ can have more (see [Protocols](#protocols)):
 - **`nock.toolbox`** reads the work and the telemetry: what you asked for,
   where the code is going, each tool's calls and failures, the commands
   agents tried that don't exist, the raw shell work that recurs, and what the
-  last round expected. It adds, changes or retires tools, checks and
-  generators, or changes nothing, when nothing earns a change;
+  last round expected. It adds, changes or retires tools and checks, or
+  changes nothing, when nothing earns a change;
 - **`nock.fit`** reads the window's numbers beside every earlier round's (the
   first round's are the baseline), looks behind them, and forms an opinion:
   what works, what doesn't, what nock should change. It sets up the other
-  rounds for the project, keeps the memory (`.nock/shared/memory.md`: what is
-  where, the owner's preferences, how long work really takes against its
-  estimates), reshaping it from how it was used, and grows how reviews are
-  shown (see [Review on your time](#review-on-your-time)).
+  rounds for the project, and keeps the memory (`.nock/shared/memory.md`:
+  what is where, the owner's preferences), reshaping it from how it was used.
 
-When they are due, the studio shows it and the session start says so. Run
-in the studio starts one in the background; the `/nock-reflect` skill, which
-`nock init` installs, runs both at once in a session like any other:
+When they are due, the session start says so. The `/nock-reflect` skill,
+which `nock init` installs, runs both at once in a session like any other:
 
 1. **`nock reflect nock`** starts a round of each, named by its date, and
    writes what its agents will read into `.nock/local/reflections/`. Run
@@ -115,18 +112,18 @@ in the studio starts one in the background; the `/nock-reflect` skill, which
    what the lead does: its brief, its agent with its brief and material, the
    files to write and how to submit.
 2. **Two subagents** run at once, one per round.
-3. **The reports**, `.nock/shared/rounds/<protocol>/DATE/report.md`: what
-   changed in the toolbox and the memory, what needs you, and how nock is
-   doing here; each goes in the round's task (`round-nock-fit`), with its
-   changes as decisions and what needs you as proposals, to review.
+3. **The reports**, `.nock/local/reflections/<protocol>/DATE/report.md`:
+   what changed in the toolbox and the memory, what needs you, and how nock
+   is doing here. The session tells you the same in a few lines when the
+   rounds are done.
 4. **The summary to share**, the fit round's `share.md`: the same, abstractly
    enough that nobody could tell which project it is.
 5. **`nock reflect --submit JSON`**, once per round, requires its files and
    runs its checks: the tools load and their examples run, the memory is
-   small and its citations hold, and the summary names nothing of the project (no paths,
-   file names, names of the project or its authors, addresses or links). It
-   records the round beside its files and commits them, with the toolbox or
-   the memory it changed.
+   small, and the summary names nothing of the project (no paths, file
+   names, names of the project or its authors, addresses or links). It
+   commits the round's record, in `.nock/shared/rounds/<protocol>/DATE/`,
+   with the toolbox or the memory it changed.
 
 `nock reflect` alone lists every protocol: whether it can run here, whether
 it is on, whether it is due and why (its measure against its threshold), its last round and its skill.
@@ -149,8 +146,7 @@ first and gives each a verdict, held or not, with its evidence, or too early to
 tell. So over a few rounds the toolbox calibrates itself:
 
 - **adding** what's missing: a tool for the chore that keeps costing turns, a
-  check for the mistake that keeps coming back, a generator for the file that
-  keeps drifting;
+  check for the mistake that keeps coming back;
 - **retiring** what's unused: a tool nobody has called in weeks moves to
   `.nock/tools/archive/`, kept but never loaded, so a later round can bring it
   back (a tool rarely used but vital is `pinned=True`, and never retired);
@@ -165,8 +161,9 @@ breaks fails the gate instead of quietly misleading the next agent.
 
 A protocol is a folder, `rounds/<namespace>/<protocol>/`: `round.toml` says
 what it is for, when it is due, what its lead and agents read (each material
-from a command, a topic, the commits that touched some paths, or a function
-in `material.py`), what they write and what its end checks and commits;
+from a command, the commits that touched some paths, the earlier rounds'
+records, or a function in `material.py`), what they write and what its end
+checks and commits;
 `lead.md` is the lead's brief and `agents/NAME.md` each agent's. nock ships
 its own, Logika's (see [nock in Logika](#nock-in-logika)), and audits and
 fuzzing (`audit.performance`, `audit.security`, `audit.tests`, `fuzz.api`,
@@ -202,32 +199,29 @@ project: which fit, the paths each looks at (where this project
 authenticates, routes requests, keeps its web UI), the thresholds. It writes
 them in `.nock/config.toml` (`[rounds."audit.security"]`: `enabled`,
 `paths`, `any`, `threshold`), where everything about the rounds lives, and
-records what it set as a decision in its task. From then on each round is
-due by its own measure. The studio shows a round that is due as a hint with
-its measure ("1,240 of 500 lines changed in what Tests looks at"): **Run**
-starts it in the background, a headless session that runs it whole, its
-result a task to review (`round-audit-tests`); or remind me in a few days,
-after twice the changes, or never (off). Nothing starts a round but your
-click or your request. Each protocol keeps its own rounds, so none moves
-another's window.
+says in its report what it set. From then on each round is due by its own
+measure, and the session start says so with its measure ("1,240 of 500
+lines changed in what Tests looks at"). Nothing starts a round but your
+request: its skill (`/audit-tests`) runs it in the session, which ends by
+telling you what it found. Each protocol keeps its own rounds, so none
+moves another's window.
 
 ## What nock shares
 
 nock tells its makers how it's used, so they can improve it ([privacy
 policy](https://nock.dev/privacy/)), but only with your yes. It asks once on a
 machine, the first time you engage with nock there: the first reflection
-round or opening the studio. Your answer is
+round. Your answer is
 `share` in `.nock/config.toml`, and it has no default:
 
 - **unanswered**: nothing is sent, and no id is made;
 - **`share = true`**: a weekly usage report, counts and categories only:
   nock's version, Python's and the platform; the window's numbers a round also
   keeps (sessions, requests, tool calls and failed ones, tokens, cost, nock
-  calls by how they ended, topics, items, proposals decided, notes); calls
-  and failures per nock command, by nock's own names; how many tools, checks,
-  hooks and generators the toolbox has. Never code, paths, file or tool names,
-  prompts, command arguments, what items say, or anything else written in the
-  project. It carries the project's id, a random UUID committed in
+  calls by how they ended, the memory's size); calls and failures per nock
+  command, by nock's own names; how many tools, checks and hooks the toolbox
+  has. Never code, paths, file or tool names, prompts, command arguments, or
+  anything else written in the project. It carries the project's id, a random UUID committed in
   `.nock/project.json` and derived from nothing, so the makers can count
   projects without knowing which;
 - **`share = false`**: nothing is ever sent, round summaries included.
@@ -247,7 +241,7 @@ And when nock lacks something you need, or something in it is broken or
 confusing, tell its makers:
 
 ```sh
-.nock/nock report "I need nock to list the decisions a commit touched."
+.nock/nock report "I need nock to say which checks a file is read by."
 ```
 
 It goes with nock's version and the platform, and nothing from the repository

@@ -13,7 +13,7 @@ import subprocess
 import sys
 import threading
 import time
-from collections.abc import Callable, Iterator
+from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -96,11 +96,7 @@ class Supervisor:
         session: str | None = None,
         stdin: str | None = None,
         stream: bool = False,
-        listener: Callable[[bytes], None] | None = None,
-        stop: threading.Event | None = None,
     ) -> None:
-        """`listener` hears each chunk of output as it arrives (the studio's
-        chat streams an agent's words so); `stop`, once set, kills the child."""
         settings = project.configuration
         self.project = project
         self.command = command
@@ -115,8 +111,6 @@ class Supervisor:
         self.session = session if session is not None else project.current_session()
         self.stdin = stdin
         self.streaming = stream
-        self.listener = listener
-        self.stop = stop
 
     def run(self) -> Output:
         """Spawn, stream, bound and record."""
@@ -225,9 +219,6 @@ class Supervisor:
         open_stream = True
         while True:
             moment = time.monotonic()
-            if self.stop is not None and self.stop.is_set():
-                kill_group(process)
-                return ExitCode.KILLED, "stopped"
             if moment - started > self.deadline:
                 kill_group(process)
                 return ExitCode.TIMED_OUT, f"still running after {self.deadline:g}s; killed"
@@ -247,8 +238,6 @@ class Supervisor:
                 if chunk:
                     log.write(chunk)
                     chunks.append(chunk)
-                    if self.listener is not None:
-                        self.listener(chunk)
                     if self.streaming:
                         sys.stdout.buffer.write(chunk)
                         sys.stdout.flush()

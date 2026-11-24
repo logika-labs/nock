@@ -1,6 +1,6 @@
 # The security round
 
-The round finds and records; it fixes nothing. Work against a local or
+The round finds and reports; it fixes nothing. Work against a local or
 development copy of the system, never production: read production config
 freely, send it no traffic. Never print a secret; name the file and key.
 
@@ -31,17 +31,15 @@ freely, send it no traffic. Never print a secret; name the file and key.
    point at in the code, merge duplicates, and rank them by severity
    (critical, high, medium, low, info) with how confident you are (proven
    by a repro, read in the code, suspected).
-4. Record each finding as a proposal in the round's task,
-   `round-audit-security` (`.nock/nock docs topics.items`): its title the fix
-   you propose; `means` the problem in a line or two, with the severity, the
-   confidence and the evidence (file:line, the repro command and what it
-   printed); `takes` what the fix takes. Add what proves it as assets of
-   the task: the log, the repro script, a screenshot with the recipe that
-   makes it again. Put nothing exploitable against production in an
-   item: describe the class and the local repro.
-5. Write `report.md` for the owner: the findings ranked, top first, each in
-   a line with its severity, confidence and item; the areas covered and
-   those not; what blocked the parts. Submitting puts it at the head of
-   the task's review, with the proposals.
-6. Submit with one change per finding (kind risk, target the item, why
-   its severity) and kind other for an area left uncovered.
+4. Write `report.md` for the owner: the findings ranked, top first, each
+   with the fix you propose as its title; the problem in a line or two,
+   with the severity, the confidence and the evidence (file:line, the
+   repro command and what it printed); what the fix takes. Then the areas
+   covered and those not, and what blocked the parts. Put nothing
+   exploitable against production in it: describe the class and the local
+   repro.
+5. Submit with one change per finding (kind risk, target the finding's
+   file:line, why its severity) and kind other for an area left uncovered.
+6. Report the round in your final message, to the session that ran it: the
+   findings ranked, a line each with its severity and confidence, what
+   needs the owner, and where `report.md` is.

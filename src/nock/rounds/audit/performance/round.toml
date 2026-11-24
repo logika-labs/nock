@@ -1,5 +1,5 @@
 title = "Performance"
-summary = "Measure what users wait for, find what costs the most, and put each finding before the owner as a decision."
+summary = "Measure what users wait for, find what costs the most, and report each finding with its measurement."
 relevant = "Projects whose speed users feel: a server, a pipeline or scheduled job, a CLI, or a web app."
 agents = []
 
@@ -11,7 +11,7 @@ threshold = 1500
 
 
 [material.earlier]
-topic = "round-audit-performance"
+records = 5
 
 [lead]
 reads = ["earlier"]

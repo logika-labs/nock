@@ -21,8 +21,7 @@ INTRODUCTION = """\
 
 This project uses nock to stay coherent across sessions, which matters as
 much as getting each task done: you start knowing nothing of earlier
-sessions, and nock keeps what they decided, what the owner said about it, and
-the tools agents built.
+sessions, and nock keeps what they learned and the tools agents built.
 """
 
 MEMORY = """\
@@ -33,33 +32,12 @@ MEMORY = """\
   keeps the file.
 """
 
-TOPICS = """\
-- **Put your work before the owner in Topics** (tasks, to the owner): files
-  you write in `.nock/shared/topics/` (`.nock/nock docs files` has each
-  kind; nock fills in the rest and commits them). Find the topic for what
-  you are doing (`.nock/nock search …`, then its view in
-  `.nock/local/views/`) or open one; a done one that comes back is revived.
-  Into it, as you go, short: a **decision** for what you decided and carried
-  on with (a title, 1–3 lines on what it means for the owner, maybe why), a
-  **proposal** for a todo you want done (the same, plus what it takes), and
-  **assets** for files the owner should look at, versioned (before and
-  after). Never the owner's own instruction or a routine detail. What only
-  the owner can settle: propose it and carry on; don't wait.
-- **Keep your topic's state and status current:** when you start work, set
-  it active with a status (a `state` event, `{"kind": "state", "state":
-  "active", "status": "…"}`); update the status at each milestone ("waiting
-  for the gate on main", "benchmarks running, about 2 h"). When you have
-  finished, compose its review if there is anything for the owner
-  (`.nock/nock docs review`) and set it `review`; `done` or `abandoned`
-  when the work is over. Work you dispatch is tracked the same way, in the
-  topic it serves.
-- **Check what awaits you** with `.nock/nock inbox` when you start and
-  before you finish: the owner's messages and the notes they carry,
-  proposals they accepted (carry them out, then mark them `implemented`) or
-  rejected. When the owner is in the session, discuss with them here and
-  leave at most a line in the chat; when they are away, answer in the
-  topic's chat (a message event): a short summary, with blocks where
-  something is better shown.
+WORK = """\
+- **Report to whoever dispatched you:** the owner in the session, or the
+  agent that dispatched you, in your final message: what changed and where
+  (paths, commits), what you checked, what needs the owner's word, what is
+  left, and anything worth remembering. What only the owner can settle: say
+  so, carry on with the most conservative reasonable answer, and don't wait.
 - **Run noisy or long commands through `.nock/nock run -- COMMAND`**
   (Claude Code asks about it as about the command itself), and
   `.nock/nock check` before you finish: the checks your changes can affect
@@ -79,8 +57,8 @@ REPORT = """\
 QUIET = """\
 ## nock
 
-This project has nock (`.nock/nock`): a toolbox agents build for the project,
-and the topics where they put their work before the owner. It stays quiet here:
+This project has nock (`.nock/nock`): a toolbox agents build for the project.
+It stays quiet here:
 use it when the human asks. `.nock/nock` lists the tools, `.nock/nock status`
 says where things stand, `.nock/shared/memory.md` what it has learned. When
 the human needs something nock lacks or finds it broken, offer to send that to nock's makers with
@@ -91,7 +69,7 @@ the human needs something nock lacks or finds it broken, offer to send that to n
 def primer(configuration: Configuration) -> str:
     if configuration.get("reminders") is False:
         return QUIET
-    return INTRODUCTION + "\n" + MEMORY + TOPICS + REPORT
+    return INTRODUCTION + "\n" + MEMORY + WORK + REPORT
 
 
 def with_section(text: str, section: str) -> str:

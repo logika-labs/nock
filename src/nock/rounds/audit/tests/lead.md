@@ -1,6 +1,6 @@
 # The tests audit
 
-The audit records; it changes no code and no test. Read the project's
+The audit reports; it changes no code and no test. Read the project's
 instructions first (its CLAUDE.md or AGENTS.md, its testing guide or skill):
 they say what must be real in a test, how to run the suites, and what
 matters most.
@@ -23,15 +23,15 @@ matters most.
    an error path, a promise or a slow suite that costs every run; **low**
    the rest. Give each a confidence: confirmed (reproduced), likely (read in
    the code), or possible.
-5. Record each finding as a proposal in the round's task (`round-audit-tests`;
-   `.nock/nock docs topics.items`): the title says the fix and where ("Test
-   billing's refund path"); `means` the problem, with the severity, the
-   confidence, the test or code at `file:line` and the case that is missing;
-   `takes` what the fix takes. The evidence goes in the task's assets, each a
-   derived file with its recipe: a coverage excerpt, a log of a flaky run, a
-   repro script, a duration table, a screenshot.
-6. Write `report.md`: the findings in order of severity, one line each with
-   its item, then the numbers (coverage per package, the slowest tests, the
-   flakes seen). Then submit the round (it puts the report in the task's review)
-   with one change per finding (kinds coverage, assertion, fake, flaky, slow,
-   gap, other).
+5. Write `report.md`: the findings in order of severity, each with a title
+   that says the fix and where ("Test billing's refund path"); the problem,
+   with the severity, the confidence, the test or code at `file:line` and
+   the case that is missing; what the fix takes; and where its evidence is
+   (a coverage excerpt, a log of a flaky run, a repro script in the round's
+   scratch directory). Then the numbers (coverage per package, the slowest
+   tests, the flakes seen).
+6. Submit the round with one change per finding (kinds coverage, assertion,
+   fake, flaky, slow, gap, other).
+7. Report the round in your final message, to the session that ran it: the
+   findings by severity, a line each, what needs the owner, and where
+   `report.md` is.

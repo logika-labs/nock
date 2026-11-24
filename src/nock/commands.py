@@ -396,7 +396,7 @@ def option_flag(name: str) -> str:
 
 
 class Group:
-    """Commands under a common word: `topics list`, `reflect logika finish`.
+    """Commands under a common word: `db migrate`, `db seed`.
     A command named like the group is its default, run when no command of
     the group is named (`reflect`); it takes no arguments but `--json` and
     `--full`."""

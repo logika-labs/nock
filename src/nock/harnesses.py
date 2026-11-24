@@ -115,16 +115,11 @@ class Harness(StrEnum):
     @property
     def own_events(self) -> tuple[Event, ...]:
         """The events nock itself listens to there. Elsewhere than Claude
-        Code, a tool call names no subagent and an edit no file, and a
-        session's end has no transcript nock reads; after a tool, nock looks
-        only for what it wrote in `.nock/shared/`."""
+        Code, a tool call names no subagent, and a session's end has no
+        transcript nock reads."""
         if self is Harness.CLAUDE_CODE:
             return BUILT_IN_EVENTS
-        return tuple(
-            event
-            for event in (Event.SESSION_START, Event.PROMPT, Event.AFTER_TOOL, Event.STOP)
-            if event in self.events
-        )
+        return tuple(event for event in (Event.SESSION_START, Event.STOP) if event in self.events)
 
 
 def found(root: Path) -> list[Harness]:

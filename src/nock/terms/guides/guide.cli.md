@@ -122,9 +122,9 @@ A tool raises the one it means: `nock.UsageError` is 40,
 1 and 42 matters most: a test that fails because Docker is down is not a bug in
 the code, and 42 tells the agent to fix the machine, not the code.
 
-## Checks, hooks and generators
+## Checks and hooks
 
-Tools are what an agent calls. Three other kinds of code are what keep the
+Tools are what an agent calls. Two other kinds of code are what keep the
 project in step without anyone calling them.
 
 **Checks** are functions that return their problems, as strings or as
@@ -153,15 +153,6 @@ changes can affect, side by side, and prints nothing when they all pass;
 asks for `payload`, the event's JSON; text it returns is added to what the agent
 reads; `raise nock.Block("why")` at `stop` refuses the end of the turn. Hooks
 run on every event of every session, so prefer a check.
-
-**Generators** keep derived files in step with their source.
-`@nock.generator("src/version.py")` returns one file's text (or its bytes,
-written exactly). A **catalog** is a list that code is generated from, such as error codes,
-feature flags or strings, kept as plain files an agent edits: a schema of one
-entry, the entries, and templates naming the files they render. `nock gen`
-writes every generated file out of step, refusing entries that don't fit
-their schema, and
-`nock check` fails when one has drifted.
 
 Together they are the order nock prefers: a rule a check enforces can't be
 ignored, a behavior a hook triggers can't be forgotten, and prose is the last

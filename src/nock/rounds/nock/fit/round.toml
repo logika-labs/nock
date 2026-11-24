@@ -1,5 +1,5 @@
 title = "Fit"
-summary = "Judge how nock serves this project, set up the rounds that fit it, keep its memory, and grow how the reviews are shown."
+summary = "Judge how nock serves this project, set up the rounds that fit it, and keep its memory."
 relevant = "Every project with nock."
 
 [due]
@@ -15,23 +15,20 @@ python = "evidence"
 [material.catalogue]
 python = "catalogue"
 
-[material.presentation]
-python = "presentation"
-
 [material.knowledge]
 python = "knowledge"
 
 [lead]
-reads = ["evidence", "catalogue", "presentation", "knowledge"]
+reads = ["evidence", "catalogue", "knowledge"]
 writes = ["report.md", "share.md"]
 share = "share.md"
 
 [[agents]]
 name = "fit"
-reads = ["evidence", "catalogue", "presentation", "knowledge"]
+reads = ["evidence", "catalogue", "knowledge"]
 
 [end]
 checks = ["nock-share", "nock-memory"]
 quick = ["nock-share", "nock-memory"]
-kinds = ["recommend", "rounds", "review", "memory", "other"]
+kinds = ["recommend", "rounds", "memory", "other"]
 commit = [".nock/config.toml"]

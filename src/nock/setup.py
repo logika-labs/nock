@@ -16,12 +16,11 @@ from nock.configuration import Confirm
 from nock.errors import ConflictError, NotFoundError, PreconditionError
 from nock.git import Git, GitError
 from nock.harnesses import NATIVE_EVENTS, Event, Harness
-from nock.hooks import EDIT_TOOLS, NOCK_COMMANDS
+from nock.hooks import NOCK_COMMANDS
 from nock.primer import AGENTS, MARK_START, PRIMER, refresh, with_section
 from nock.project import NOCK_DIRECTORY, Project
 from nock.releases import PYPI, VERSION, Releases
 from nock.shared import MEMORY, SETTINGS
-from nock.templates import Library
 from nock.utils import read_json, write_atomic, write_json
 
 PACKAGE = Path(__file__).resolve().parent
@@ -54,7 +53,7 @@ branch = "main"
 # command = "pytest -q"
 
 [agent]
-# The model of the agents nock dispatches (the studio's answers and rounds); empty is Claude Code's default.
+# The model of the agents nock dispatches (the sharer that vets a round's summary); empty is Claude Code's default.
 model = ""
 
 [permissions]
@@ -69,12 +68,11 @@ GITIGNORE = "local/\n__pycache__/\n"
 
 SETTINGS_STUB = """\
 # The team's settings: whatever the people working on this project share,
-# committed with the topics. `.nock/nock config` lists and sets them; the code's
+# committed. `.nock/nock config` lists and sets them; the code's
 # settings are in .nock/config.toml, one machine's in .nock/local/config.toml.
 
 # Whether nock speaks up unasked: the primer's advice, the toolbox and an
-# occasional word on where things stand at a session's start, the owner's
-# word in the tasks, the tasks whose assets show an edited file. false: silent unless asked.
+# occasional word on where things stand at a session's start. false: silent unless asked.
 reminders = true
 
 # Whether nock shares a usage report with its makers, weekly: counts and
@@ -89,15 +87,14 @@ MEMORY_STUB = """\
 # What nock has learned here
 
 What is where, for the work: short lines, each pointing to the files that
-hold the detail (a task, an item by its ref in brackets, a doc). Read first;
-kept small.
+hold the detail (a doc, a module, a test). Read first; kept small.
 """
 
 IMPORT_LINE = "@.nock/context.md"
 # Claude Code skills, from `briefs/NAME/`, besides the rounds' (`install_rounds`).
 # Each SKILL.md is its trigger and one line pointing at its brief in `nock docs`,
 # so the text always matches the vendored core and an upgrade never rewrites a skill.
-SKILLS = ("nock-triage", "nock-work")
+SKILLS = ("nock-work",)
 # Skills any harness can follow, written to `.agents/skills/` too, where Codex reads them.
 PORTABLE_SKILLS = ("nock-work",)
 RETIRED_ROUND_FILES = (
@@ -116,8 +113,7 @@ OTHER_HOOK_COMMAND = '"$(git rev-parse --show-toplevel)"/.nock/nock hook {event}
 HOOK_TIMEOUT = 300
 HOOKS_WHAT = {
     Harness.CLAUDE_CODE: "Claude Code hooks, and a permission rule per nock command",
-    Harness.CODEX: "Codex hooks: the toolbox at a session's start, the owner's word at a prompt,"
-    " what a stop leaves open",
+    Harness.CODEX: "Codex hooks: the toolbox at a session's start, what a stop leaves open",
     Harness.CURSOR: "Cursor hooks: the toolbox at a session's start, what a stop leaves open",
 }
 PRIMER_WHAT = "the primer: what nock is for here, as the settings have it"
@@ -327,7 +323,7 @@ class Installer:
         self.changes.append(Change(relative, what, "removed"))
 
     def install_skills(self) -> None:
-        """`/nock-triage`, `/nock-work` and the rounds' skills from the
+        """`/nock-work` and the rounds' skills from the
         registry (`rounds`): `/nock-reflect` for nock's, `/<namespace>` for
         another namespace with two or more adopted protocols and
         `/<namespace>-<protocol>` for each adopted one outside nock, each
@@ -337,7 +333,6 @@ class Installer:
         none written already (Codex's), and taken out of a directory no
         harness found reads. Kept in step with the core like the primer."""
         briefs = PACKAGE / "briefs"
-        library = Library(briefs)
         portable = [
             harness
             for harness in harnesses.skill_installs(self.harnesses)
@@ -345,7 +340,7 @@ class Installer:
         ]
         for name in SKILLS:
             for source in sorted((briefs / name).glob("*.md")):
-                text = library.render(f"{name}/{source.name}")
+                text = source.read_text()
                 self.put(
                     f".claude/skills/{name}/{source.name}",
                     text,
@@ -546,15 +541,15 @@ def hook_entry(harness: Harness, event: Event, project_events: set[Event]) -> di
     if harness is not Harness.CLAUDE_CODE:
         hook["timeout"] = HOOK_TIMEOUT
     entry: dict[str, Any] = {"hooks": [hook]}
-    # nock's own after-tool handler wants edits and shell commands (either may write
-    # in .nock/shared/), its before-tool one only its own commands; a project hook
+    # nock's own before-tool handler wants only its own commands; a project hook
     # may want every tool.
-    if harness is Harness.CLAUDE_CODE:
-        if event is Event.AFTER_TOOL and Event.AFTER_TOOL not in project_events:
-            entry["matcher"] = f"{EDIT_TOOLS}|Bash"
-        if event is Event.BEFORE_TOOL and Event.BEFORE_TOOL not in project_events:
-            entry["matcher"] = "Bash"
-            hook["if"] = NOCK_COMMANDS
+    if (
+        harness is Harness.CLAUDE_CODE
+        and event is Event.BEFORE_TOOL
+        and Event.BEFORE_TOOL not in project_events
+    ):
+        entry["matcher"] = "Bash"
+        hook["if"] = NOCK_COMMANDS
     return entry
 
 

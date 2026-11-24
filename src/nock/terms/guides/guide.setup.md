@@ -79,8 +79,7 @@ A check's `fix` is the command that fixes what it finds, run first with `--fix`.
 ## Quiet
 
 `reminders = false` keeps nock silent unless asked: no toolbox or standing at
-a session's start, nothing of the owner's word at a prompt, no tasks after an edit, and a
-primer that only says what nock is. Every session is still recorded, and `nock
+a session's start, and a primer that only says what nock is. Every session is still recorded, and `nock
 status` still answers. Set it in `.nock/local/config.toml` to quiet only your
 own machine.
 
@@ -108,13 +107,10 @@ machine.
 |---|---|---|
 | `branch` | `main` | the main branch, which `changed` diffs against |
 | `reminders` | true | whether nock speaks up unasked; false: silent unless asked |
-| `notifications` | true | whether nock tells you when a topic is your turn again (moved to review, an agent answered you, a rejected item reworked): on the desktop, or in the studio while it is open; once per topic per five minutes, and never without a display (CI, a headless agent). On macOS a click opens the topic with `terminal-notifier` installed (`brew install terminal-notifier`); without it, the notification names the address |
 | `run.deadline`, `run.silence` | 3600, 900 | seconds before a supervised process is stopped |
 | `checks.NAME.command`, `fix`, `chain`, `directory`, `deadline`, `silence`, `failure_codes` | — | a command that is a check; the command that fixes what it finds; its chain; where it runs and its bounds; the exit codes that mean the code is wrong (`[1]`) |
-| `agent.command`, `agent.model`, `agent.deadline` | `claude`, —, 1800 | the headless agent nock dispatches (share, the studio's answers and rounds); it may not bypass or set permissions |
+| `agent.command`, `agent.model`, `agent.deadline` | `claude`, —, 1800 | the headless agent nock dispatches (the sharer, which vets a round's summary); it may not bypass or set permissions |
 | `permissions.confirm` | `ask` | `ask`: you approve each call of a `confirm=True` command, even in bypass mode; `allow`: the agent runs it only when your request calls for it |
-| `studio.port` | 8765 | the port `nock studio` serves on, and the one a notification links to while no studio runs |
-| `studio.transcribe_url`, `transcribe_model`, `transcribe_key_variable` | —, `whisper-1`, — | the Whisper server the studio's recorder sends what you say to (OpenAI's `/v1/audio/transcriptions` form: OpenAI, whisper.cpp's server, faster-whisper-server), the model, and the name of the environment variable holding its key (never the key); set in the studio's settings too |
 | `upgrade.check`, `upgrade.auto`, `upgrade.index` | true, true, PyPI's `nock` | whether a session start looks for a newer nock; whether it upgrades by itself when the merge is clean; where releases are looked up |
 | `share` | — (unanswered) | your answer on the weekly usage report: unset or false sends nothing |
 | `endpoints.reflections`, `endpoints.usage`, `endpoints.reports` | `https://api.nock.dev/…` | where a summary, the usage reports and `nock report` go |
@@ -153,10 +149,8 @@ never widen a seat; your user-level settings still apply.
 | seat | may |
 |---|---|
 | sharer | read; `git log` |
-| answerer (Send, in a task's chat) | read, and edit files inside the project and the store; `search`, `docs`, `check`, `test`, the task's assets' recipes; `git log`, `show`, `diff`, `status` |
-| reflector (Run, on a round) | read, and edit files inside the project and the store; dispatch the round's subagents; `reflect`, `search`, `docs`, `query`, `status`, `check`, `test`, `gen`, `inbox`, `logika`'s reading and checking commands; `git log`, `show`, `diff`, `status` |
 
-None but the answerer and the reflector can edit a file, and none can reach the network. What
+It cannot edit a file or reach the network. What
 the agent refused comes back with the session, in its record or log.
 
 **A round's parts** are subagents of the session running the round, narrowed by

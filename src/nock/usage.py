@@ -3,7 +3,7 @@ categories, and a random id for the project so they can count projects
 without knowing which, never the project's code, paths, names or text. Only
 with the owner's yes: `share` unset is unanswered, and nothing is sent. nock
 asks once per machine, the first time the owner engages with it (a
-reflection round, the page, their word on a proposal), and their answer is
+reflection round), and their answer is
 written to `share` in the config, with when they gave it and which question
 they answered kept in the machine's state."""
 
@@ -29,7 +29,7 @@ from nock.reflect import Reflection, Window, tool_rows
 from nock.releases import VERSION
 from nock.rounds import protocols
 from nock.sessions import Sessions
-from nock.shared import SETTINGS, Shared, by_for
+from nock.shared import SETTINGS, SHARED, commit
 from nock.tools import BUILT_IN_SOURCE
 from nock.utils import now, parse_moment, read_json, write_json
 
@@ -37,7 +37,7 @@ if TYPE_CHECKING:
     from nock.project import Project
 
 # The shape of a report, so a reader can tell versions apart.
-SCHEMA = 3
+SCHEMA = 4
 # Days between reports, and between attempts after one failed.
 INTERVAL = 7
 RETRY = 1
@@ -55,8 +55,6 @@ class Moment(StrEnum):
     """When the owner engages with nock enough to be asked whether it shares."""
 
     ROUND = "round"
-    STUDIO = "studio"
-    REVIEW = "review"
 
 
 class Answer(StrEnum):
@@ -69,14 +67,13 @@ class Answer(StrEnum):
 
 # The words the owner is asked; a new version is a new number, and an answer
 # records the version it answered.
-QUESTION_VERSION = 1
+QUESTION_VERSION = 2
 QUESTION = (
     "May nock share a weekly usage report with its makers, to improve nock? It holds counts"
     " and categories only (sessions, calls to nock's own commands and how they ended, how many"
-    " tools, checks and topics there are, the versions of nock and Python) and a random id"
+    " tools and checks there are, the versions of nock and Python) and a random id"
     " for this project, made when the first report is sent and committed in .nock/project.json"
-    " so its clones share it; never code, paths, names, prompts, arguments or what items"
-    " say. Nothing is sent unless you say yes; the first report would go a week after, then at"
+    " so its clones share it; never code, paths, names, prompts or arguments. Nothing is sent unless you say yes; the first report would go a week after, then at"
     " most weekly, and `.nock/nock config share` shows exactly what it would carry. You can change your"
     " answer at any time with `share` in .nock/config.toml."
 )
@@ -129,7 +126,7 @@ class Usage:
     def __init__(self, project: Project) -> None:
         self.project = project
         self.path = project.local / STATE
-        # In the main checkout, like the topics, so a worktree never makes a second id.
+        # In the main checkout, so a worktree never makes a second id.
         self.identity_path = project.root / ".nock" / IDENTITY
 
     def state(self) -> dict[str, Any]:
@@ -150,11 +147,11 @@ class Usage:
 
     def answer(self, share: bool, via: str) -> dict[str, Any]:
         """The owner's answer, written to `share` in the team's settings
-        (`.nock/shared/settings.toml`, committed with the topics) or, where the
+        (`.nock/shared/settings.toml`, committed) or, where the
         machine's own config already sets it, in that; when and how it was
         given, and to which question, kept in this machine's state."""
         local = self.project.local / "config.toml"
-        team = self.project.root / ".nock" / "shared" / SETTINGS
+        team = self.project.root / SHARED / SETTINGS
         setting = local if sets(local, "share") else team
         setting.parent.mkdir(parents=True, exist_ok=True)
         text = setting.read_text() if setting.is_file() else ""
@@ -164,14 +161,10 @@ class Usage:
         state["answered"] = {"share": share, "at": now(), "via": via, "prompt": QUESTION_VERSION}
         write_json(self.path, state)
         if setting == team:
-            store = Shared(self.project)
-            by = by_for(self.project)
-            settled = store.settle(by, only=[team], commit=False)
-            store.commit(
-                settled.written,
-                by,
-                settled,
-                subject=f"nock: the owner's answer on sharing nock's usage report, share = {str(share).lower()}",
+            commit(
+                self.project,
+                [str(SHARED / SETTINGS)],
+                f"nock: the owner's answer on sharing nock's usage report, share = {str(share).lower()}",
             )
         return self.standing()
 
@@ -264,9 +257,6 @@ class Usage:
                 "tools": len(registry.project_tools()),
                 "checks": len(own_checks) + len(command_checks),
                 "hooks": sum(1 for entry in registry.hooks if entry.source != BUILT_IN_SOURCE),
-                "generators": sum(
-                    1 for entry in registry.generators if entry.source != BUILT_IN_SOURCE
-                ),
                 "load_failures": len(registry.failures),
             },
             "rounds": {

@@ -1,9 +1,9 @@
 # The UI fuzz round
 
 You drive the project's web UI the way careless, hurried and unusual users
-would, and record what breaks. You change no code. The material `earlier` is
-the round's task `round-fuzz-ui` as it stands: don't record again what is there, but say
-in the report which of its findings still reproduce.
+would, and report what breaks. You change no code. The material `earlier` is
+what earlier rounds found: don't report it again as new, but say in the
+report which of its findings still reproduce.
 
 1. **Run it locally.** Start the UI and the API it calls against the
    project's dev stack, on ports of your own, with seeded data (the project's
@@ -28,15 +28,15 @@ in the report which of its findings still reproduce.
    not at all, an accessibility violation, or a state that leaves the user
    unsure what happened or what to do. Reproduce each once more before you
    keep it; group the same cause seen on many pages into one finding.
-5. **Record.** In the round's task, `round-fuzz-ui` (starting the round
-   opened it), each finding is a proposal (`.nock/nock docs topics.items
-   topics.derived`): its title the fix you propose; `means` the problem with
-   `file:line`, its severity (high: users lose work or are blocked; medium:
-   wrong or confusing; low: cosmetic) and how sure you are; `takes` what the
-   fix takes. Add a screenshot as an asset of the task, a derived file with
-   `from` the files it shows, `when` the case, and a `recipe` that makes it
-   again (the script and its arguments), plus the console log or repro file
-   where they say more; show it in the review beside its proposal.
-6. **Report.** Write `report.md`: the findings ranked by severity, a line
-   each with its ref, what you covered and what you could not reach. Then
-   submit the round (it puts the report in the task's review) with one change per finding, its kind one of the end's.
+5. **Write each finding** in `report.md`, ranked by severity: its title
+   the fix you propose; the problem with `file:line`, its severity (high:
+   users lose work or are blocked; medium: wrong or confusing; low:
+   cosmetic) and how sure you are; what the fix takes; and its evidence: a
+   screenshot in the round's scratch directory with the case and the
+   script call that makes it again, the console log or repro file where
+   they say more. Then what you covered and what you could not reach.
+6. **Submit** the round with one change per finding, its kind one of the
+   end's.
+7. **Report** the round in your final message, to the session that ran it:
+   the findings by severity, a line each, what needs the owner, and where
+   `report.md` and the screenshots are.

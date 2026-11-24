@@ -1,7 +1,7 @@
-"""The logika topic: in a Logika project — a `logika.json` ledger, the `logika`
+"""The logika rounds: in a Logika project — a `logika.json` ledger, the `logika`
 CLI on PATH (here a stand-in script) — a round that reads the ledger and the
-the items earlier rounds left in the `logika` topic, finishes with its report and a ledger that
-parses, commits both, and is offered gently, never run."""
+last round's record, finishes with its report and a ledger that parses,
+commits the ledger and its record, and is offered gently, never run."""
 
 from __future__ import annotations
 
@@ -20,8 +20,6 @@ from nock.reflect import Reflection
 from nock.rounds import Protocol, named
 
 from .conftest import git, nock
-from .store import item as record_item
-from .store import topics_in
 
 LEDGER: dict[str, Any] = {
     "ledger": "shop",
@@ -155,16 +153,7 @@ def test_a_skill_of_the_project_s_own_keeps_its_name_from_a_round(logika: Projec
     assert rules.endswith("Run `.nock/nock reflect logika.rules` and do what it says.\n")
 
 
-def test_the_material_says_what_the_ledger_holds_and_what_was_decided(logika: Project) -> None:
-    ref = record_item(
-        logika.root,
-        "logika",
-        "refunds-capped",
-        kind="proposal",
-        title="Refunds never exceed the charge",
-        means="A rule would hold every refund to its charge.",
-    )
-    topics_in(logika.root).judge(ref, "rejected")
+def test_the_material_says_what_the_ledger_holds(logika: Project) -> None:
     begun = start(logika)
     assert set(begun) == {"logika.rules", "logika.analytics"}
     started = begun["logika.rules"]
@@ -180,17 +169,13 @@ def test_the_material_says_what_the_ledger_holds_and_what_was_decided(logika: Pr
     assert "shop,src,,yes,1," in material
     assert "Instrument the shop" in material
     assert "This is the first logika round." in material
-    assert (
-        f"- [{ref}] rejected: Refunds never exceed the charge — A rule would hold every refund"
-        " to its charge." in material
-    )
     assert started["write"] == [
-        ".nock/shared/rounds/logika.rules/" + started["round"] + "/report.md"
+        str(logika.local / "reflections" / "logika.rules" / started["round"] / "report.md")
     ]
     analytics = Path(begun["logika.analytics"]["material"]["analytics"]).read_text()
     assert "3 events, 3 params (0 identities, 0 dimensions), 0 funnels" in analytics
     assert "order_id,str,-,-,-,checkout refund" in analytics
-    assert "Instrument the shop" in analytics and "Refunds never exceed the charge" in analytics
+    assert "Instrument the shop" in analytics
 
 
 def test_the_analytics_part_reads_what_is_measured(logika: Project) -> None:
@@ -238,12 +223,10 @@ def test_a_logika_round_finishes_and_commits_the_ledger_apart_from_nock_s_rounds
     assert f"logika.rules round {started['round']}: Refunds are positive." in subjects
     committed = git(logika.root, "log", "-3", "--name-only", "--format=")
     assert "logika.json" in committed
-    # Its result is a task to review: the report and each change as a decision.
-    task = topics_in(logika.root)
-    assert task.topic("round-logika-rules")["state"] == "review"
-    review = task.current_review("round-logika-rules")
-    assert review is not None and review["summary"] == "Refunds are positive."
-    assert len(task.items("round-logika-rules")) == len(RECORD["changes"])
+    # The report stays on this machine; the lead reports the round in its final message.
+    assert "report the round to the session that ran it" in finished.stdout
+    shared = logika.root / ".nock" / "shared" / "rounds" / "logika.rules" / started["round"]
+    assert sorted(path.name for path in shared.iterdir()) == ["record.json"]
     (record,) = protocol(logika, "logika.rules").rounds.all()
     assert record["ledger_before"]["validated"] == 1 and record["ledger"]["validated"] == 2
     assert record["changes"][0]["tested"].startswith("quiet in the noise check")

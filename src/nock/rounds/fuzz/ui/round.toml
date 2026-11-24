@@ -1,5 +1,5 @@
 title = "UI fuzz"
-summary = "Drive every page and dialog of the web UI with odd input, sizes, themes and states; record each break as a decision."
+summary = "Drive every page and dialog of the web UI with odd input, sizes, themes and states; report each break."
 relevant = "Projects with a web UI that runs locally against a dev stack."
 requires = { commands = ["node"] }
 agents = []
@@ -12,7 +12,7 @@ threshold = 300
 
 
 [material.earlier]
-topic = "round-fuzz-ui"
+records = 5
 
 [lead]
 reads = ["earlier"]

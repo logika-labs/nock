@@ -16,10 +16,10 @@ from nock.harnesses import Harness
 from nock.hooks import HookRunner
 from nock.primer import MARK_END, MARK_START
 from nock.project import Project
+from nock.rounds import named
 from nock.setup import Installer
 
 from .conftest import git, nock
-from .test_topics import submit
 
 CODEX_COMMAND = '"$(git rev-parse --show-toplevel)"/.nock/nock hook {event} codex'
 CURSOR_COMMAND = '"$(git rev-parse --show-toplevel)"/.nock/nock hook {event} cursor'
@@ -86,10 +86,8 @@ def test_codex_found_by_its_directory_gets_its_skill_hooks_and_the_agents_md_sec
     assert "Codex runs a project's hooks once you trust them: `/hooks` in Codex." in printed
     work = (repository / ".claude" / "skills" / "nock-work" / "SKILL.md").read_text()
     assert (repository / ".agents" / "skills" / "nock-work" / "SKILL.md").read_text() == work
-    assert not (repository / ".agents" / "skills" / "nock-triage").exists()
     assert hooks_of(repository / ".codex" / "hooks.json") == {
-        event: [CODEX_COMMAND.format(event=event)]
-        for event in ("PostToolUse", "SessionStart", "Stop", "UserPromptSubmit")
+        event: [CODEX_COMMAND.format(event=event)] for event in ("SessionStart", "Stop")
     }
     stop = json.loads((repository / ".codex" / "hooks.json").read_text())["hooks"]["Stop"]
     assert stop == [
@@ -230,9 +228,9 @@ def test_codex_hears_claude_code_s_format_and_cursor_its_own(
     assert unknown.returncode == 0 and "unknown harness 'emacs'" in unknown.stderr
 
     monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "c2")
-    submit(project.root)
+    named(project, "nock.toolbox")[0].start()
     stop = {"conversation_id": "c2", "workspace_roots": [str(project.root)], "loop_count": 1}
     assert HookRunner(project, stop, Harness.CURSOR).handle("Stop") is None
     asked = HookRunner(project, {**stop, "loop_count": 0}, Harness.CURSOR).handle("Stop")
     assert asked is not None and set(asked) == {"followup_message"}
-    assert "orders" in asked["followup_message"]
+    assert "nock.toolbox" in asked["followup_message"]

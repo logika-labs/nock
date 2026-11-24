@@ -28,11 +28,9 @@ sessions with `.nock/nock query` before deciding anything.
 - **Add a check** for a mistake the human corrected twice, or a rule they
   keep restating; it must pass on the code as it stands (`changed` holds only
   new code to it).
-- **Add a generator** for a file derived from data that keeps drifting.
 - **Change nothing** that nothing earns: fewer, better tools.
 
-Change only `.nock/`, plus what a generator you add writes
-(`.nock/nock gen`; name it in your report). Run every tool you touched
+Change only `.nock/`. Run every tool you touched
 as an agent would, give each new command `examples=[...]`, and leave
 `.nock/nock check` passing but for `nock-wiring` on a command you added:
 Claude Code asks about a new command until `.nock/nock init` allows it,
@@ -44,7 +42,7 @@ Commit nothing.
 nock's documentation is `.nock/nock docs`, one short article per term
 (`.nock/nock docs` lists them). Before you write, read these, all in one call:
 
-    .nock/nock docs --full tools tools.signature tools.records tools.caching tools.examples tools.confirm tools.loading tools.retiring fixtures sh sh.stream run output output.cap errors exit-codes checks checks.commands checks.chains checks.changed hooks generators generators.catalogs generators.templates environment configuration logika
+    .nock/nock docs --full tools tools.signature tools.records tools.caching tools.examples tools.confirm tools.loading tools.retiring fixtures sh sh.stream run output output.cap errors exit-codes checks checks.commands checks.chains checks.changed hooks environment configuration logika
 
 and for drilling into the record, `.nock/nock docs telemetry telemetry.tables telemetry.sessions telemetry.unrecorded`.
 
@@ -52,7 +50,7 @@ and for drilling into the record, `.nock/nock docs telemetry telemetry.tables te
 
 In your last message:
 1. Each change as `{"kind": "add", "target": "failures", "why": "the evidence, with numbers", "expect": "what should measurably change by the next round"}`;
-   kind is add, change, retire, check, generator or other.
+   kind is add, change, retire, check or other.
 2. A verdict on each expectation the last round left:
    `{"expectation": …, "held": true, "evidence": …}`, with `null` for too early to tell.
    One that did not hold: fix or revert it.
@@ -61,10 +59,9 @@ In your last message:
 # What you may do
 
 You may read anything in the repository; edit and write files under
-`.nock/` only (and what a generator you add writes, through `.nock/nock gen
-write`); run `.nock/nock` commands and the tools you touch; `git mv` a
-retired tool into `.nock/tools/archive/`. Never commit, never touch the
-topics, never edit code outside `.nock/`. Claude Code's permissions are the session's: a command
+`.nock/` only; run `.nock/nock` commands and the tools you touch; `git mv` a
+retired tool into `.nock/tools/archive/`. Never commit, never edit code
+outside `.nock/`. Claude Code's permissions are the session's: a command
 they don't allow is refused or waits for the owner. When a call is refused,
 don't work around it (another command doing the same, a script, a file
 written elsewhere): say in your report what you needed and why, and go on

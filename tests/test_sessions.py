@@ -232,7 +232,7 @@ def test_an_unpriced_session_is_unknown_never_zero_and_priced_once_it_can_be(
     assert (metrics["api_cost"], metrics["unpriced_sessions"]) == (None, 2)
     assert "cost unknown" in Material(project, window, None).overview()
     usage = json.loads(nock(project.root, "config", "share", "--json").stdout)["would_send"]
-    assert usage["schema"] == 3 and usage["metrics"]["api_cost"] is None
+    assert usage["schema"] == 4 and usage["metrics"]["api_cost"] is None
     listed = json.loads(nock(project.root, "query", "sessions", "--json").stdout)
     assert {row["api_cost"] for row in listed} == {"unknown"}
     # Back online: the cache and its failed try are gone, the table is fetched.

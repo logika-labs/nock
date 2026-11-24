@@ -1,7 +1,7 @@
 ---
 term: guide.why
 aliases: []
-description: Why nock exists: the usual problems of AI engineering, the queue it grew into, and an experiment
+description: Why nock exists: the usual problems of AI engineering, code over prose, and an experiment
 ---
 
 # Why nock
@@ -40,34 +40,11 @@ nobody calls. How that works is in [Agents that build their own
 tools](#agents-that-build-their-own-tools), and what makes a command easy for an
 agent to use is in [A CLI agents can use](#a-cli-agents-can-use).
 
-## A queue instead of a task manager
-
-To keep track of work, I created a central queue into which the agent could
-submit its decisions: first in the form of potentially blocking questions.
-But then I found that it's better to let it work, record what it decided and
-what it proposes for me to review, and discuss them with it on demand, and to
-keep a small memory of what is where, which the orchestrating agent reads
-first and uses to point every agent it launches at what was already decided.
-
-I wanted to avoid a complex task management system, so I realized it's
-simplest to group these decisions by topics, which I can manipulate in bulk,
-search through, see progress on and so on.
-
-Then I also realized that other generated artifacts I'd like to review by
-hand, like skills, microcopy, and things like UI interfaces or emails that can
-be rendered into images or interactive videos, should also be submitted for me
-to review in the same queue, with convenient ways for me to leave a comment
-on further work, compare different versions, choose amongst several options
-and so on.
-
-That queue is the studio's Topics tab, and the whole of it is in [Review on your
-time](#review-on-your-time).
-
 ## An experiment
 
 I developed nock while developing [Logika](https://logika.host), to handle the
 scope of that project and its complexity. Logika's agents keep their own
-toolbox and submit their work to me in topics, and in a Logika project nock
+toolbox, and in a Logika project nock
 runs a second kind of reflection round, which writes the rules that catch bugs
 before they happen ([nock in Logika](#nock-in-logika)).
 

@@ -1,5 +1,5 @@
 title = "API fuzzing"
-summary = "Send edge-case inputs to every route of the project's API on a local server, and record each 5xx, wrong acceptance, leak, hang or broken state as a decision."
+summary = "Send edge-case inputs to every route of the project's API on a local server, and report each 5xx, wrong acceptance, leak, hang or broken state."
 relevant = "Projects that serve an HTTP API they can run locally, best with an OpenAPI description."
 agents = []
 
@@ -13,7 +13,7 @@ threshold = 300
 
 
 [material.past]
-topic = "round-fuzz-api"
+records = 5
 
 [lead]
 reads = ["past"]

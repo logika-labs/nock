@@ -22,7 +22,6 @@ from typing import TYPE_CHECKING, Any
 
 from nock.errors import Failed, PreconditionError
 from nock.git import Git, GitError
-from nock.topics import Topics
 from nock.utils import read_json
 
 if TYPE_CHECKING:
@@ -30,8 +29,6 @@ if TYPE_CHECKING:
 
 LEDGER = "logika.json"
 PROGRAM = "logika"
-# What a round decides, and suggests, goes in this topic so the next round finds it.
-TOPIC = "logika"
 # The round's parts: each a brief in `nock docs` (`reflection.logika.PART`), and a material file.
 SECTION_ROWS = 40
 # What `logika map` leaves open, by kind: functions that log nothing, events whose
@@ -156,7 +153,7 @@ class Logika:
 class Material:
     """What the rules part reads, computed: what the ledger already says must
     hold, per component and per event; what changed since the last round; and
-    the decisions and suggestions earlier rounds left."""
+    what the last round changed and left for the next."""
 
     def __init__(self, logika: Logika, ledger: dict[str, Any], last: dict[str, Any] | None) -> None:
         self.logika = logika
@@ -172,7 +169,6 @@ class Material:
             self.relations(),
             self.direction(),
             self.previous(),
-            self.decided(),
         ]
         return "\n\n".join(section for section in sections if section) + "\n"
 
@@ -319,32 +315,12 @@ class Material:
             lines += ["", f"Notes it left: {self.last['notes']}"]
         return "\n".join(lines)
 
-    def decided(self) -> str:
-        """What earlier rounds decided and suggested (the `logika` topic), and where each stands."""
-        topics = Topics(self.logika.project)
-        found = topics.items(TOPIC) if TOPIC in topics.names() else []
-        if not found:
-            return f"# Decisions and proposals\n\nNothing in the `{TOPIC}` topic yet."
-        lines = [
-            "# Decisions and proposals",
-            "",
-            f"The items of the `{TOPIC}` topic, the open proposals first. A decision holds;"
-            " an open proposal waits for the owner; an accepted one is to be carried out; a"
-            " rejected one is dropped: don't bring it back.",
-            "",
-        ]
-        for item in sorted(
-            found, key=lambda item: (item["status"] != "open", item["created"]["moment"])
-        ):
-            lines.append(f"- [{item['ref']}] {item['status']}: {item['title']} — {item['means']}")
-        return "\n".join(lines)
-
 
 class Analytics(Material):
     """What the analytics part reads: what the ledger already measures — the
     params marked as identities or dimensions, the numeric ones, the funnels,
-    milestones and views — beside the components, the history, the last
-    round and the earlier rounds' decisions."""
+    milestones and views — beside the components, the history and the last
+    round."""
 
     def render(self) -> str:
         sections = [
@@ -354,7 +330,6 @@ class Analytics(Material):
             self.components(),
             self.direction(),
             self.previous(),
-            self.decided(),
         ]
         return "\n\n".join(section for section in sections if section) + "\n"
 

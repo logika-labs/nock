@@ -1,5 +1,5 @@
-"""Payload validation against the subset of JSON Schema nock's records and
-generators use: type, required, properties, additionalProperties, items, enum,
+"""Payload validation against the subset of JSON Schema nock's records use:
+type, required, properties, additionalProperties, items, enum,
 const, pattern, bounds on numbers, strings and arrays, uniqueItems, anyOf and
 oneOf. A record that does not fit its schema is a usage error, naming every problem."""
 

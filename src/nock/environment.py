@@ -1,4 +1,4 @@
-"""The project's environment, which its tools, checks, generators and hooks
+"""The project's environment, which its tools, checks and hooks
 run in: the interpreter that can import the project's own packages
 (`environment.python`, which nock re-executes itself on), directories put
 first on PATH, and a dotenv file's variables. nock itself stays

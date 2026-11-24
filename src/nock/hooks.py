@@ -3,25 +3,17 @@ stdin and answers in Claude Code's hook format. nock's own: a session starts
 knowing the toolbox, upgraded to a newer nock when the merge is clean
 (`upgrade.auto`), and — when the human started it, once a day or when
 something new calls — where things stand, in a few lines (a reflection round
-due, what is new in Topics and what waits on an agent there, another kind of round worth
-offering); a
-prompt brings what the owner said in the tasks the session worked in; a `.nock/nock` command about to run is noted with the subagent
-running it, if any (`callers.py`), so what it writes names its parent session;
-an edit to a file shows the tasks whose assets show it; and when the session ends
-its transcript is read into telemetry and, when due, the usage statistics
-are shared. A turn that would end with a round this session started still
-open is refused once, saying what the round still needs — unless it ends only
-to wait on the background agents it launched, the round's parts — and so, once a
-session, is one that wrote to a topic without ever setting where it stands
-(its state or status). What calls for the owner is also said to the human. With
+due, a newer nock, another kind of round worth offering); a `.nock/nock`
+command about to run is noted with the subagent running it, if any
+(`callers.py`), so its call names its parent session; and when the session
+ends its transcript is read into telemetry and, when due, the usage
+statistics are shared. A turn that would end with a round this session
+started still open is refused once, saying what the round still needs —
+unless it ends only to wait on the background agents it launched, the
+round's parts. What calls for the owner is also said to the human. With
 `reminders = false` nock says nothing unasked, and still records. The
 project's `@nock.hook`s run after. Every handler fails open — a nock that
-cannot load must never block the tool call that would fix it.
-
-A hook runs on every tool call, so each handler imports what only it needs
-inside itself, and the project's toolbox is loaded only when it has a hook for
-the event (`Project.hook_events`): loading all of nock for each call would be
-most of a hook's time."""
+cannot load must never block the tool call that would fix it."""
 
 from __future__ import annotations
 
@@ -42,8 +34,6 @@ if TYPE_CHECKING:
     from nock.tools import Hook
 
 EVENTS = {native: event for event, native in NATIVE_EVENTS.items()}
-# The tools whose use is an edit, as a Claude Code matcher: the after-tool handler's.
-EDIT_TOOLS = "Edit|MultiEdit|Write|NotebookEdit"
 # The before-tool handler's: only Bash commands running nock, as Claude Code's hook `if` rule.
 NOCK_COMMANDS = "Bash(*.nock/nock *)"
 # The longest a session start waits on an upgrade, in seconds: two wheels downloaded, a merge.
@@ -54,9 +44,6 @@ STANDING_PREFACE = (
     " request, and mention the rest to the human only when relevant, or once you are done):"
 )
 
-
-# A bad store is said in a few lines: its full list once flooded agents' context.
-PROBLEMS_SHOWN = 5
 
 class Block(Exception):
     """Raised by a `stop` hook to refuse the end of a turn, with the reason."""
@@ -90,29 +77,13 @@ class HookRunner:
                 self.notices += [upgraded] if upgraded else []
             if self.reminding:
                 messages.append(self.session_start())
-        elif event is Event.PROMPT and self.reminding:
-            messages.append(self.reviews())
         elif event is Event.BEFORE_TOOL:
             Callers(self.project.store).note(self.payload)
-        elif event is Event.AFTER_TOOL and self.reminding:
-            messages.append(self.items_about())
         elif event is Event.SESSION_END:
             self.session_end()
         blocks: list[str] = []
-        if event is Event.AFTER_TOOL:
-            # Whatever the tool wrote in the store, settled now: a bad edit is said in
-            # this same turn, for the agent to fix.
-            refused = self.settled(self.writer(), once=True)
-            if refused:
-                return self.refusal(refused)
-        elif event in (Event.SESSION_START, Event.PROMPT, Event.STOP):
-            refused = self.settled({})
-            if refused and event is Event.STOP:
-                blocks.append(refused)
         if event is Event.STOP and not self.waiting():
             blocks += self.rounds_left_open()
-            if self.reminding:
-                blocks += self.topics_unstated()
         for entry in self.own_hooks(event):
             from nock.fixtures import Call, Scope
 
@@ -151,77 +122,6 @@ class HookRunner:
             output["hookSpecificOutput"] = {"hookEventName": native, "additionalContext": text}
         return output or None
 
-    def writer(self) -> dict[str, str | None]:
-        """Who the tool call was, from the payload: a subagent by its own id,
-        its session its parent."""
-        session = self.payload.get("session_id")
-        agent = self.payload.get("agent_id")
-        if isinstance(agent, str) and agent:
-            role = self.payload.get("agent_type")
-            return {
-                "session": agent,
-                "parent": session if isinstance(session, str) else None,
-                "role": role if isinstance(role, str) and role else "subagent",
-            }
-        return {
-            "session": session if isinstance(session, str) else None,
-            "role": self.project.current_role() or "interactive",
-        }
-
-    def settled(self, writer: dict[str, str | None], once: bool = False) -> str:
-        """Settle what changed in the store (`nock.shared`), as `writer`
-        wrote it (no one known: a sweep); the problems left, said, or nothing;
-        `once`: nothing when this session was already told the same problems."""
-        root = self.project.root / NOCK_DIRECTORY / "shared"
-        if not root.is_dir():
-            return ""
-        from nock.shared import Shared, by_for
-
-        store = Shared(self.project)
-        settled = store.settle_changes(lambda: by_for(self.project, writer=writer))
-        if settled.topics or settled.commit:
-            from nock.topics import Topics
-
-            Topics(self.project).heard(settled)
-        if not settled.problems:
-            return ""
-        if once and not self.first_saying(settled.problems, writer):
-            return ""
-        lines = [
-            "nock: these changes in .nock/shared/ don't hold, so none of them was committed"
-            " — fix them, or remove them (`.nock/nock docs files` has each kind):"
-        ]
-        lines += [f"- {problem}" for problem in settled.problems[:PROBLEMS_SHOWN]]
-        if len(settled.problems) > PROBLEMS_SHOWN:
-            lines.append(f"- and {len(settled.problems) - PROBLEMS_SHOWN} more")
-        return "\n".join(lines)
-
-    def first_saying(self, problems: list[str], writer: dict[str, str | None]) -> bool:
-        """Whether this session has not yet been told these same problems: a
-        hook that repeats them after every tool call floods the agent's context."""
-        import hashlib
-
-        digest = hashlib.sha256("\n".join(sorted(problems)).encode()).hexdigest()
-        session = writer.get("session") or "sweep"
-        said = self.project.root / NOCK_DIRECTORY / "local" / "said-problems" / session
-        try:
-            if said.read_text() == digest:
-                return False
-        except OSError:
-            pass
-        try:
-            said.parent.mkdir(parents=True, exist_ok=True)
-            said.write_text(digest)
-        except OSError:
-            pass
-        return True
-
-    def refusal(self, reason: str) -> dict[str, Any]:
-        """A bad edit, said to the agent in the turn that made it."""
-        if self.harness is Harness.CURSOR:
-            return {"followup_message": reason}
-        return {"decision": "block", "reason": reason}
-
     def own_hooks(self, event: Event) -> list[Hook]:
         """The project's hooks for the event; none at Cursor, whose payloads
         they are not written for. The toolbox is loaded only when it may hold one."""
@@ -253,10 +153,8 @@ class HookRunner:
             said = self.standing()
             if said:
                 lines += [STANDING_PREFACE, *said]
-            # The human hears what calls for them; the backlog and their own notes, they know.
-            self.notices += [
-                line for line in said if line.startswith("nock:") and "the owner" not in line
-            ]
+            # The human hears what calls for them too.
+            self.notices += [line for line in said if line.startswith("nock:")]
         return "\n".join(lines)
 
     def upgrade_itself(self) -> str:
@@ -290,7 +188,7 @@ class HookRunner:
 
     def standing(self) -> list[str]:
         """Where things stand, said once a day — sooner when something new
-        calls: a round falls due, the owner rejects something."""
+        calls: a round falls due, a newer nock is out."""
         from nock.status import Standing
 
         store = self.project.store
@@ -306,8 +204,6 @@ class HookRunner:
         offers = sorted(kind for kind, offer in collected["rounds"].items() if offer.get("due"))
         news = [
             bool(collected["reflection"]["due"]),
-            collected["topics"]["awaiting_you"],
-            collected["topics"]["awaiting_agents"],
             collected["unshared"],
             collected["newer_nock"],
             offers,
@@ -327,69 +223,6 @@ class HookRunner:
             if seen(f"{kind}:{offer['last'] or 'never'}:{year}-{week}"):
                 del collected["rounds"][kind]
         return standing.lines(collected)
-
-    def items_about(self) -> str:
-        """The items about the file just edited (holding it, or derived from
-        it), the first time this session edits it."""
-        session = self.payload.get("session_id")
-        tool_input = self.payload.get("tool_input")
-        if not isinstance(session, str) or not isinstance(tool_input, dict):
-            return ""
-        target = tool_input.get("file_path") or tool_input.get("notebook_path")
-        if not isinstance(target, str):
-            return ""
-        path = Path(target)
-        path = path if path.is_absolute() else self.project.here / path
-        if not path.resolve().is_relative_to(self.project.here.resolve()):
-            return ""
-        relative = str(path.resolve().relative_to(self.project.here.resolve()))
-        from nock.topics import Topics
-
-        found = Topics(self.project).governing(session, relative)
-        if not found:
-            return ""
-        lines = [
-            f"nock: tasks in Topics show {relative} — keep to their decisions, or say why not:"
-        ]
-        for entry in found:
-            lines.append(f"- {entry['topic']} (asset {entry['asset']})")
-            lines += [f"  - [{item['ref']}] {item['title']}" for item in entry["decisions"]]
-        lines.append("Each topic's view, `.nock/local/views/TOPIC.md`, has them in full.")
-        return "\n".join(lines)
-
-    def reviews(self) -> str:
-        """What the owner said in the topics this session worked in, the first
-        time it sees it: messages (with their notes), their word on
-        proposals, Done on a review."""
-        session = self.payload.get("session_id")
-        if not isinstance(session, str):
-            return ""
-        from nock.topics import Topics
-
-        lines = []
-        for news in Topics(self.project).news_for(session):
-            kind = news["kind"]
-            if kind == "message":
-                lines.append(f"- {news['topic']}, the owner wrote: {news['text'] or '(no text)'}")
-                lines += [f"  - note on {note['target']}: {note['text']}" for note in news["notes"]]
-                if news["files"]:
-                    lines.append(f"  attached (Read them): {', '.join(news['files'])}")
-            elif kind == "reviewed":
-                lines.append(f"- {news['topic']}: the owner is done with the review")
-            elif kind == "accepted":
-                lines.append(f"- [{news['ref']}] {news['title']}: accepted — carry it out")
-            else:
-                lines.append(f"- [{news['ref']}] {news['title']}: rejected — dropped, leave it")
-        if not lines:
-            return ""
-        return "\n".join(
-            [
-                "nock: the owner said something in your tasks:",
-                *lines,
-                "Answer in the topic's chat (a message event) when they are away; carry out an"
-                " accepted proposal and mark it implemented (`.nock/nock docs topics.items`).",
-            ]
-        )
 
     def waiting(self) -> bool:
         """Whether the turn ends only to wait on background agents it launched
@@ -419,30 +252,6 @@ class HookRunner:
 
         return [
             said for protocol in protocols(self.project) if (said := protocol.left_open(session))
-        ]
-
-    def topics_unstated(self) -> list[str]:
-        """Once a session: the topics it wrote to (itself or through its
-        subagents) and never said where they stand."""
-        session = self.payload.get("session_id")
-        if not isinstance(session, str) or self.payload.get("stop_hook_active") is True:
-            return []
-        store = self.project.store
-        if store.rows("SELECT session FROM stated WHERE session = ?", (session,)):
-            return []
-        from nock.topics import Topics
-
-        names = Topics(self.project).unstated(session)
-        if not names:
-            return []
-        store.insert("stated", {"session": session})
-        listed = ", ".join(names)
-        return [
-            f"nock: you worked in topic(s) {listed} and never set where they stand. Before you"
-            f" stop: a `state` event in .nock/shared/topics/{names[0]}/events/,"
-            ' `{"kind": "state", "status": "…"}` — or `"state": "review"` when it is built and'
-            ' its review is composed (`.nock/nock docs review`), `"state": "done"` (or'
-            ' "abandoned") when the work is finished.'
         ]
 
     def session_end(self) -> None:

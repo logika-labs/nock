@@ -67,8 +67,7 @@ ledger declares events, or 30 days after its last round (the protocol's
    ledger already says per event and per component, with the commits that
    touched each component since the last round; for analytics, each param with
    the events that carry it, and what's already declared; for both, the
-   ledger's history, the last round's changes and expectations, and the items
-   of the `logika` topic.
+   ledger's history, and the last round's changes and expectations.
 2. **The session decides what must hold.** `logika map` lists the open
    items, per directory: the events unread and of verdicts. A rules part per
    directory with open items reads the code, the product's docs and copy and
@@ -87,8 +86,8 @@ ledger declares events, or 30 days after its last round (the protocol's
    parts read.
 5. **You settle only directions and genuine ambiguities**, asked in the session
    with the answer the session proposes and carries on with; a question for
-   later becomes a proposal in the `logika` topic. The rest you review in
-   each round's report.
+   later goes in the round's report with that answer. The rest you read in
+   each round's report, and in what the session tells you at the end.
 6. **`nock reflect --submit JSON`**, once per round, requires its report and
    a `logika.json` that parses, records the rules, reasons and declarations changed,
    each with what showed it, and the ledger's numbers before and after, and

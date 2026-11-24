@@ -15,81 +15,18 @@ from nock.dispatch import ARGUMENT_LIMIT, BYPASS, SEATS, Dispatcher
 from nock.errors import PolicyError
 from nock.project import Project
 from nock.rounds import named
-from nock.runs import REFLECTOR
 from nock.share import ROLE as SHARER
-from nock.topics import ANSWERER
 
 from .conftest import FAKE_AGENT, nock, write_tool
-from .store import submit
 from .test_telemetry_and_reflection import RECORD
 from .test_telemetry_and_reflection import submit as submit_round
 
 ROOT = Path(__file__).resolve().parents[1]
 READING = "Read,Grep,Glob,Bash"
 GIT = ["Bash(git log:*)", "Bash(git show:*)"]
-EXPECTED = {
-    SHARER: ["Bash(git log:*)"],
-    ANSWERER: [
-        "Bash(.nock/nock search:*)",
-        "Bash(.nock/nock docs:*)",
-        "Bash(.nock/nock check:*)",
-        "Bash(.nock/nock test:*)",
-        "Edit(./**)",
-        "Write(./**)",
-        *GIT,
-        "Bash(git diff:*)",
-        "Bash(git status:*)",
-    ],
-    REFLECTOR: [
-        "Bash(.nock/nock reflect:*)",
-        "Bash(.nock/nock search:*)",
-        "Bash(.nock/nock docs:*)",
-        "Bash(.nock/nock query:*)",
-        "Bash(.nock/nock status:*)",
-        "Bash(.nock/nock check:*)",
-        "Bash(.nock/nock test:*)",
-        "Bash(.nock/nock gen:*)",
-        "Bash(.nock/nock inbox:*)",
-        "Bash(logika map:*)",
-        "Bash(logika docs:*)",
-        "Bash(logika check:*)",
-        "Bash(logika test:*)",
-        "Bash(logika replay:*)",
-        "Edit(./**)",
-        "Write(./**)",
-        *GIT,
-        "Bash(git diff:*)",
-        "Bash(git status:*)",
-    ],
-}
-# What each seat may do in the store: read it and the views, or write it too.
-STORE = {ANSWERER: "write", REFLECTOR: "write"}
-
-
-def allowed_of(project: Project, role: str) -> list[str]:
-    """A seat's rules, the store's after its own."""
-    shared = (project.root / ".nock" / "shared").resolve()
-    views, cache = (project.local / "views").resolve(), (project.local / "cache").resolve()
-    store = STORE.get(role)
-    rules = list(EXPECTED[role])
-    if store:
-        rules += [f"Read(/{shared}/**)", f"Read(/{views}/**)", f"Read(/{cache}/**)"]
-    if store == "write":
-        rules += [f"Write(/{shared}/**)", f"Edit(/{shared}/**)"]
-    return rules
-
-
+EXPECTED = {SHARER: ["Bash(git log:*)"]}
 WRITING_GIT = ["--disallowedTools", "Bash(git * --ou*)"]
-DENIED = {
-    SHARER: WRITING_GIT,
-    ANSWERER: WRITING_GIT,
-    REFLECTOR: WRITING_GIT,
-}
-# The answerer edits; the reflector edits and dispatches the round's subagents.
-TOOLS: dict[str, str] = {
-    ANSWERER: "Read,Grep,Glob,Bash,Edit,Write",
-    REFLECTOR: "Read,Grep,Glob,Bash,Edit,Write,Agent,Task",
-}
+DENIED = {SHARER: WRITING_GIT}
 
 
 def seat_flags(role: str, allowed: list[str]) -> list[str]:
@@ -104,7 +41,7 @@ def seat_flags(role: str, allowed: list[str]) -> list[str]:
         "user",
         "--strict-mcp-config",
         "--tools",
-        TOOLS.get(role, READING),
+        READING,
         *(["--allowedTools", *allowed] if allowed else []),
     ]
 
@@ -125,23 +62,17 @@ def test_each_seat_gets_exactly_its_tools_and_rules(
 ) -> None:
     arguments = tmp_path / "arguments.json"
     monkeypatch.setenv("FAKE_ARGUMENTS", str(arguments))
-    brief = (
-        "NOTHING TO SHARE: <question> <intent> When each of the project's topics and items matters:"
-        " # Answer now: the task `orders` # Run the round: `.nock/nock reflect nock.fit`"
-        " <message>\nhi\n</message>"
-    )
+    brief = "NOTHING TO SHARE: or the summary, vetted"
     session = Dispatcher(project).launch(role, brief, project.root)
     assert session.exit_code == 0 and session.denied == []
-    assert launched(arguments) == seat_flags(role, allowed_of(project, role)) + DENIED[role]
+    assert launched(arguments) == seat_flags(role, EXPECTED[role]) + DENIED[role]
 
 
 def test_a_refusal_is_kept_with_the_session_and_in_its_log(
     project: Project, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    submit(project.root)
     monkeypatch.setenv("FAKE_TRY", json.dumps([".nock/nock", "run", "--", "curl", "example.com"]))
-    brief = "# Answer now: the task `orders` <message>\nhi\n</message>"
-    session = Dispatcher(project).launch(ANSWERER, brief, project.root)
+    session = Dispatcher(project).launch(SHARER, "NOTHING TO SHARE: or the summary", project.root)
     assert session.exit_code == 0
     assert session.denied == ["Bash: .nock/nock run -- curl example.com"]
     assert "nock: Claude Code refused Bash: .nock/nock run -- curl example.com" in (
@@ -194,9 +125,7 @@ def test_init_allows_each_command_but_run_and_asks_for_the_owner_s(project: Proj
     allowed = permissions["allow"]
     assert "Bash(.nock/nock:*)" not in allowed
     assert not [rule for rule in allowed if "nock run" in rule]
-    assert {"Bash(.nock/nock)", "Bash(.nock/nock check:*)", "Bash(.nock/nock search:*)"} <= {
-        *allowed
-    }
+    assert {"Bash(.nock/nock)", "Bash(.nock/nock check:*)", "Bash(.nock/nock docs:*)"} <= {*allowed}
     assert all(rule.startswith("Bash(.nock/nock") for rule in allowed)
     assert permissions["ask"] == [
         "Bash(.nock/nock share:*)",
@@ -243,7 +172,7 @@ def test_git_that_would_write_a_file_is_refused(
     project: Project, role: str, option: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv("FAKE_TRY", json.dumps(["git", "log", "-p", option]))
-    brief = "NOTHING TO SHARE: <question> When each of the project's topics and items matters:"
+    brief = "NOTHING TO SHARE: or the summary, vetted"
     session = Dispatcher(project).launch(role, brief, project.root)
     assert session.denied == [f"Bash: git log -p {option}"]
     assert not (project.root / "leak.txt").exists()
@@ -255,7 +184,7 @@ def test_a_sharer_refused_its_way_says_what_was_refused(
     (fit,) = named(project, "nock.fit")
     started = fit.start()
     for path, text in zip(started["write"], ("# Report\n", "Early days.\n"), strict=True):
-        (project.root / path).write_text(text)
+        Path(path).write_text(text)
     assert submit_round(project, RECORD).returncode == 0
     monkeypatch.setenv("FAKE_SHARE", "nothing")
     monkeypatch.setenv("FAKE_TRY", json.dumps(["curl", "https://example.com"]))

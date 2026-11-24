@@ -1,76 +1,20 @@
 """Where the project stands with nock, in one place: whether a reflection round
-is due, the open items by topic (new to the owner), what waits on an agent in
-the topics (threads where the owner wrote last, items they rejected), a round
-summary not yet shared, a newer nock, and whether another kind of round (a
-logika round, in a Logika project) is worth offering. `nock status` prints
-it, with its nudges for the session asking (`nudges`); a session the human
-starts begins with the standing alone."""
+is due, a round summary not yet shared, a newer nock, and whether another
+kind of round (a logika round, in a Logika project) is worth offering.
+`nock status` prints it; a session the human starts begins with it, in a few
+lines."""
 
 from __future__ import annotations
 
-from collections import Counter
 from typing import TYPE_CHECKING, Any
 
-from nock.generators import Generators
-from nock.inbox import Inbox
 from nock.reflect import Reflection
 from nock.releases import Updates
 from nock.rounds import Protocol, protocols, skill_of
 from nock.share import Sharing
-from nock.shared import Shared
-from nock.topics import Topics
 
 if TYPE_CHECKING:
     from nock.project import Project
-
-
-# The most items of a kind the session start lists; `nock status` has them all.
-SHOWN = 3
-# Claude Code's tools that change a file.
-EDITING = ("Edit", "MultiEdit", "Write", "NotebookEdit")
-# How many commits since the session last recorded anything ask it to record.
-UNRECORDED_COMMITS = 3
-
-
-def record_nudge(project: Project, session: str | None) -> str:
-    """Commits since this session's last write to the topics (the last commit
-    nock made for it, by its `Nock-Session` trailer), none of them nock's own;
-    nothing for a session that wrote nothing yet."""
-    if not session:
-        return ""
-    last = project.git(
-        "log", "-1", "--format=%H", "--fixed-strings", f"--grep=Nock-Session: {session}",
-        "HEAD", check=False,
-    ).strip()  # fmt: skip
-    if not last:
-        return ""
-    subjects = project.git("log", "--format=%s", f"{last}..HEAD", check=False)
-    commits = [line for line in subjects.splitlines() if line and not line.startswith("nock:")]
-    if len(commits) < UNRECORDED_COMMITS:
-        return ""
-    return (
-        f"nock: {len(commits)} commit(s) since this session last recorded anything in Topics —"
-        " what you decided is a decision to record, what you want done a proposal, and what"
-        " you made to show the work an asset (`.nock/nock docs topics.items`)."
-    )
-
-
-def gen_nudge(project: Project) -> str:
-    """Generated files edited by hand: out of step with their generator."""
-    drifted = Generators(project).drifted(project.here)
-    if not drifted:
-        return ""
-    return (
-        f"nock: {', '.join(drifted[:SHOWN])} {'is' if len(drifted) == 1 else 'are'} generated"
-        " and out of step with the generator — the change belongs in the generator;"
-        " `.nock/nock gen` writes them again."
-    )
-
-
-def nudges(project: Project, session: str | None) -> list[str]:
-    """What the session asking `nock status` might do next, each when it applies."""
-    found = [record_nudge(project, session), gen_nudge(project)]
-    return [text for text in found if text]
 
 
 def offered(project: Project, every: list[Protocol]) -> dict[str, Any]:
@@ -102,10 +46,9 @@ class Standing:
     def __init__(self, project: Project) -> None:
         self.project = project
 
-    def collect(self, nudging: bool = False) -> dict[str, Any]:
+    def collect(self) -> dict[str, Any]:
         reflection = Reflection(self.project)
         window = reflection.window()
-        topics = Topics(self.project)
         every = protocols(self.project)
         own = [protocol for protocol in every if protocol.manifest.namespace == "nock"]
         why = next((reason for protocol in own if (reason := protocol.due())), "")
@@ -116,18 +59,8 @@ class Standing:
                 "sessions_since": len(window.sessions),
                 "days_since": round(reflection.days(window), 1),
             },
-            # What waits on the owner by topic, and on agents.
-            "topics": topics.summary(),
-            # What the owner said that no agent has addressed, by kind.
-            "inbox": dict(
-                Counter(entry["kind"] for entry in Inbox(self.project).entries(every=True))
-            ),
-            # What was written in the store and not committed: it does not hold.
-            "uncommitted": [path for _, path in Shared(self.project).changes()],
             "unshared": Sharing(self.project).unshared(),
             "newer_nock": Updates(self.project).newer(),
-            # What the session asking might do next: only `nock status` asks.
-            **({"nudges": nudges(self.project, self.project.current_session())} if nudging else {}),
             # The other kinds of round that can run here, each offered when due.
             "rounds": offered(self.project, every),
         }
@@ -137,34 +70,7 @@ class Standing:
         lines = []
         due = standing["reflection"]["due"]
         if due:
-            lines.append(
-                f"nock: {due} — the studio offers it (Run); or offer the human `/nock-reflect`."
-            )
-        summary = standing["topics"]
-        waiting = summary["awaiting_you"]
-        if waiting:
-            total = sum(waiting.values())
-            by_topic = ", ".join(f"{name}: {count}" for name, count in list(waiting.items())[:5])
-            more = ", …" if len(waiting) > 5 else ""
-            lines.append(
-                f"nock: {total} waiting on the owner in their tasks ({by_topic}{more}) — reviews"
-                " and proposals, on `.nock/nock studio`."
-            )
-        agents = summary["awaiting_agents"]
-        if agents:
-            refs = [ref for found in agents.values() for ref in found]
-            lines.append(
-                f"nock: waiting on agents in Topics — {len(refs)}: `.nock/nock inbox` has them."
-            )
-            lines += [f"- {ref}" for ref in refs[:SHOWN]]
-            if len(refs) > SHOWN:
-                lines.append("- and more — `.nock/nock inbox` has them all")
-        lines += standing.get("nudges") or []
-        if standing.get("uncommitted"):
-            lines.append(
-                f"nock: {len(standing['uncommitted'])} change(s) in .nock/shared/ don't hold and"
-                " stay uncommitted — fix or remove them (`.nock/nock docs files`)."
-            )
+            lines.append(f"nock: {due} — offer the human `/nock-reflect`; never start it unasked.")
         if standing["newer_nock"]:
             lines.append(
                 f"nock: nock {standing['newer_nock']} is out (this project has "

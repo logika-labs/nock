@@ -1,6 +1,6 @@
 """What nock's own rounds read (the `nock.*` protocols in `nock.rounds`):
-the telemetry turned into the toolbox's material (`Material`), the topics
-and the memory into the fit's (`Knowledge`), and the numbers of every round
+the telemetry turned into the toolbox's material (`Material`), the memory
+into the fit's (`Knowledge`), and the numbers of every round
 (`Evidence`); `Reflection`, the window since the last nock round and its
 metrics; and a round's record (`Record`). Each round keeps its numbers, so
 the next holds its changes to them, and the first is the baseline."""
@@ -25,7 +25,7 @@ from nock.errors import PreconditionError
 from nock.git import GitError
 from nock.project import HEADLESS
 from nock.sessions import Sessions
-from nock.topics import Topics, progress
+from nock.shared import memory_path, memory_problems
 from nock.utils import format_duration, parse_moment, read_json, write_json
 
 if TYPE_CHECKING:
@@ -82,19 +82,19 @@ class Ending(StrEnum):
 
 class Change(TypedDict):
     kind: Literal[
-        "add", "change", "retire", "check", "generator",
+        "add", "change", "retire", "check",
         "validate", "path", "timeout", "rule", "invariant", "error", "reason",
         "instrumentation", "identity", "dimension", "funnel", "milestone", "view", "recommend",
-        "rounds", "review", "memory", "risk", "other",
+        "rounds", "memory", "risk", "other",
     ]  # fmt: skip
-    """add, change, retire, check, generator — the toolbox; validate, path,
+    """add, change, retire, check — the toolbox; validate, path,
     timeout, rule, invariant, error — a logika round's rules; reason — an
     item `logika map` lists that it left open, with its one-line reason;
     instrumentation — the fields it added to the code for them; identity,
     dimension, funnel, milestone, view — its analytics; recommend — a round
     nock.fit recommends; rounds — a round's settings nock.fit set here;
-    review — a review preference or a built-in block it proposes; memory —
-    a change to the memory; risk — a security audit's finding; other."""
+    memory — a change to the memory; risk — a security audit's finding;
+    other."""
     target: str
     """The tool, check or file: `failures`, `.nock/tools/db.py`; in a logika
     round, the event or rule: `checkout`, `receipt_continuity`, or the item
@@ -218,8 +218,8 @@ def said_spend(cost: float | None, unpriced: int) -> str:
 
 
 class Rounds:
-    """A protocol's rounds: `directory/DATE/` — its record and the lead's
-    files, in the store — and, while one runs, what it reads, in
+    """A protocol's rounds: `directory/DATE/` — its record, committed — and,
+    on this machine, what it reads and the lead's files (its report), in
     `scratch/DATE/`."""
 
     def __init__(self, project: Project, directory: Path, scratch: Path) -> None:
@@ -315,18 +315,14 @@ class Reflection:
 
     def metrics(self, window: Window) -> dict[str, Any]:
         """The window in numbers, computed the same way every round: the work,
-        nock's use, the decisions and how the owner met them, the toolbox and
-        the map. The first round's are the baseline."""
+        nock's use, the toolbox and the memory. The first round's are the
+        baseline."""
         since = window.since or ""
         events = window.rows(self.project, "events", "rowid")
         prompts = window.rows(self.project, "prompts", "rowid")
         cost, unpriced = window.spend()
         calls = self.project.store.rows(CALLS, (since,))
         endings = Counter(Ending.of(row) for row in calls)
-        topics = Topics(self.project)
-        every = topics.every()
-        submitted = [item for item in every if item["created"]["moment"] > since]
-        decided = [item for item in every if item["verdict"] and item["verdict"]["moment"] > since]
         tools = [row for row in tool_rows(self.project, since) if row["source"] != "nock"]
         try:
             commits = int(
@@ -334,9 +330,8 @@ class Reflection:
             )
         except GitError:
             commits = 0
-        memory = topics.memory.read_text() if topics.memory.is_file() else ""
-        plans = [step for name in topics.names() for step in topics.topic(name)["plan"]]
-        finished = [step for step in plans if step["done"] and step["done"] > since]
+        path = memory_path(self.project)
+        memory = path.read_text() if path.is_file() else ""
         return {
             "days": round(self.days(window), 1),
             "sessions": len(window.sessions),
@@ -355,30 +350,11 @@ class Reflection:
             "nock_failed": endings[Ending.FAILED],
             "nock_refused": endings[Ending.REFUSED],
             "nock_broke": endings[Ending.BROKE],
-            "topics": len(topics.names()),
-            "items_submitted": len(submitted),
-            "items_decisions": sum(1 for item in submitted if not item["proposed"]),
-            "items_proposals": sum(1 for item in submitted if item["proposed"]),
-            "items_decided": len(decided),
-            "items_accepted": sum(
-                1 for item in decided if item["verdict"]["verdict"] == "accepted"
-            ),
-            "items_rejected": sum(
-                1 for item in decided if item["verdict"]["verdict"] == "rejected"
-            ),
-            "items_open": sum(1 for item in every if item["status"] == "open"),
-            "notes": sum(
-                1
-                for name in topics.names()
-                for note in topics.topic(name)["notes"]
-                if note["moment"] > since
-            ),
             "tools": len(tools),
             "tools_used": sum(1 for row in tools if row["calls"]),
             "tool_calls_to_project_tools": sum(row["calls"] for row in tools),
             "memory_lines": sum(1 for line in memory.splitlines() if line.startswith("- ")),
             "memory_characters": len(memory),
-            "steps_done": len(finished),
         }
 
 
@@ -782,60 +758,22 @@ output_bytes, duration — every tool call of every session). Example:
 
 class Knowledge:
     """What the fit round reads to keep the memory: the memory as it stands
-    and what holds it back, the owner's notes on its lines, the items
-    changed since the last round, every topic with its items in a line, and
-    each finished step's estimate beside its actual time, for calibration."""
+    and what holds it back."""
 
     def __init__(self, project: Project, since: str | None) -> None:
-        self.topics = Topics(project)
+        self.project = project
         self.since = since or ""
 
     def render(self) -> str:
-        topics = self.topics
-        current = topics.memory.read_text() if topics.memory.is_file() else ""
+        path = memory_path(self.project)
+        current = path.read_text() if path.is_file() else ""
         lines = ["# The memory as it stands", "", current.strip() or "Empty.", ""]
-        problems = topics.memory_problems()
+        problems = memory_problems(self.project)
         if problems:
             lines += ["What holds it back:"]
             lines += [f"- {problem}" for problem in problems]
             lines.append("")
-        notes = []
-        if "memory" in topics.names():
-            notes = [n for n in topics.topic("memory")["notes"] if n["on"].get("memory")]
-        lines += ["# The owner's notes on its lines", ""]
-        lines += [
-            f"- line {note['on'].get('line', '?')}: {' '.join(note['text'].split())}"
-            for note in notes
-        ] or ["None."]
-        recent = [item for item in topics.every() if item["updated"] > self.since]
-        lines += ["", f"# Items new or changed since the last round ({self.since or 'never'})", ""]
-        lines += [
-            f"- [{item['ref']}] {item['status']}: {item['title']} — {' '.join(item['means'].split())}"
-            for item in recent
-        ] or ["None."]
-        lines += ["", "# Every topic and its items", ""]
-        for name in topics.names():
-            row = topics.row(name)
-            lines.append(f"- {name} ({row['state']}): {row['description']}")
-            lines += [
-                f"  - [{item['ref']}] {item['status']}: {item['title']}"
-                for item in topics.items(name)
-            ]
-        lines += ["", "# Estimates beside actual times (minutes), the steps finished", ""]
-        rows = []
-        for name in topics.names():
-            plan = progress(topics.topic(name)["plan"], self.since or "")
-            for step in (plan or {}).get("steps", []):
-                if step["actual"] is not None:
-                    rows.append(
-                        f"| {name} | {step['title']} | {step['estimate']} | {step['actual']} |"
-                    )
-        lines += (
-            ["| task | step | estimate | actual |", "|---|---|---|---|", *rows]
-            if rows
-            else ["None yet."]
-        )
-        return "\n".join(lines) + "\n"
+        return "\n".join(lines)
 
 
 class Evidence:
@@ -882,9 +820,5 @@ does not pay per token), over the priced ones, and `unpriced_sessions`; commits.
 to nock, and how many `failed` (the tool ran and its answer was no: exit 1, or
 the failing code of a command it ran, such as pytest's under `run` — never
 nock refusing), were `refused` by nock (40s: called wrong, a precondition,
-policy) or `broke` (50s). `topics`: how many there are. `items_*`:
-submitted in the window (decisions and proposals), proposals the owner
-decided in it (accepted, rejected), and every proposal still open; `notes`
-the owner left in it. `tools`: the project's
-own commands, how many were used, and how often. `memory_*`: the memory's
-lines and size; `steps_done`: plan steps finished in the window."""
+policy) or `broke` (50s). `tools`: the project's own commands, how many
+were used, and how often. `memory_*`: the memory's lines and size."""

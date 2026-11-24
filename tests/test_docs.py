@@ -42,7 +42,6 @@ FRAMEWORK = (
     "exit-codes",
     "checks",
     "hooks",
-    "generators",
     "environment",
     "configuration",
     "telemetry",
@@ -129,7 +128,7 @@ def test_nock_docs_lists_the_terms_reads_them_and_answers_a_miss(project: Projec
     assert listed.returncode == 0, listed.stderr
     index = json.loads(listed.stdout)
     assert index["tools.caching"] == Docs().find("cache").description  # pyright: ignore[reportOptionalMemberAccess]
-    assert "topics.items" in index and "review" in index and "studio" in index
+    assert "reflection.record" in index and "work" in index and "telemetry.tables" in index
 
     by_alias = nock(project.root, "docs", "CACHE")
     assert by_alias.returncode == 0 and by_alias.stdout.startswith("`@nock.command(cache=")
@@ -168,8 +167,7 @@ def test_the_briefs_point_only_at_terms_and_the_toolbox_brief_at_the_framework()
     for term in docs.terms:
         if term.term.split(".")[0] in FRAMEWORK:
             assert term.term in toolbox, f"the toolbox brief doesn't point at {term.term}"
-    for brief in ("answer.md", "round.md", "reflection.nock.md"):
-        assert brief in named, brief
+    assert "reflection.nock.md" in named
 
 
 def test_every_skill_and_subagent_nock_installs_points_at_its_brief() -> None:
@@ -179,7 +177,7 @@ def test_every_skill_and_subagent_nock_installs_points_at_its_brief() -> None:
     docs = Docs()
     skills = list(PACKAGE.joinpath("briefs").rglob("SKILL.md"))
     agents = list(PACKAGE.joinpath("rounds").glob("*/*/agents/*.md"))
-    assert (len(skills), len(agents)) == (2, 7)
+    assert (len(skills), len(agents)) == (1, 7)
     for path in skills + agents:
         front, _, body = path.read_text()[4:].partition("\n---\n")
         named = f"name: {path.parent.name}\n" if path.name == "SKILL.md" else ""
@@ -202,7 +200,7 @@ def test_every_shipped_protocol_has_its_lead_s_brief_and_one_for_each_agent() ->
         names = {agent["name"] for agent in manifest.data.get("agents", [])}
         assert {path.stem for path in (manifest.folder / "agents").glob("*.md")} == names
         for source in manifest.data.get("material", {}).values():
-            assert len(source) == 1 and set(source) <= {"python", "command", "topic", "git"}
+            assert len(source) == 1 and set(source) <= {"python", "command", "records", "git"}
 
 
 def test_a_brief_is_printed_whole_however_long(project: Project) -> None:
@@ -217,7 +215,7 @@ def test_every_guide_is_a_page_under_guide_with_its_title(project: Project) -> N
     its title, printed whole however long, and listed by `nock docs guide`."""
     docs = Docs()
     guides = [term for term in docs.terms if term.term.startswith("guide.")]
-    assert len(guides) == len(list((TERMS / GUIDES).glob("*.md"))) >= 7
+    assert len(guides) == len(list((TERMS / GUIDES).glob("*.md"))) >= 6
     for guide in guides:
         assert guide.article.startswith("# ") and "\n" in guide.article, guide.term
     longest = max(guides, key=lambda guide: len(guide.article))

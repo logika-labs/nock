@@ -16,10 +16,9 @@ from typing import TYPE_CHECKING, Any, NotRequired, TypedDict
 from nock.dispatch import Dispatcher
 from nock.errors import ExternalError, Failed, NotFoundError, PolicyError
 from nock.git import GitError
-from nock.reflect import SHARE, Reflection
+from nock.reflect import RECORD_FILE, SHARE, Reflection
 from nock.render import Problem
 from nock.rounds import commit
-from nock.templates import Library
 from nock.usage import Answer, sharing
 from nock.utils import now, read_json, write_json
 
@@ -28,6 +27,8 @@ if TYPE_CHECKING:
 
 ROLE = "sharer"
 BRIEFS = Path(__file__).resolve().parent / "briefs"
+# Where the summary goes in the sharer's brief.
+PLACE = "{{ text }}"
 # How the vetting agent says the summary cannot be shared at all.
 NOTHING = "NOTHING TO SHARE:"
 EMAIL = re.compile(r"[\w.+-]+@[\w-]+\.[\w.-]+")
@@ -63,7 +64,12 @@ class Sharing:
         return rounds[-1]
 
     def text(self, name: str) -> str:
-        return (self.reflection.rounds.directory / name / SHARE).read_text().strip()
+        return (self.reflection.rounds.scratch / name / SHARE).read_text().strip()
+
+    def brief(self) -> str:
+        """The sharer's brief: the project's own `.nock/briefs/share.md`, else nock's."""
+        own = self.project.code_path("briefs", "share.md")
+        return (own if own.is_file() else BRIEFS / "share.md").read_text()
 
     def vetted(self, name: str, again: bool) -> str:
         """The summary as it would be sent: vetted by an agent — again only
@@ -73,7 +79,7 @@ class Sharing:
         kept = self.reflection.rounds.scratch / name / "outgoing.json"
         if not again and kept.is_file() and read_json(kept).get("fingerprint") == fingerprint:
             return read_json(kept)["text"]
-        brief = Library(self.project.code_path("briefs"), BRIEFS).render("share.md", text=text)
+        brief = self.brief().replace(PLACE, text)
         session = Dispatcher(self.project).launch(ROLE, brief, self.project.here)
         result = (session.result or "").strip()
         if session.exit_code != 0 or not result:
@@ -126,7 +132,7 @@ class Sharing:
             self.project,
             f"nock.fit round {name}: shared",
             [],
-            self.reflection.rounds.directory / name,
+            self.reflection.rounds.directory / name / RECORD_FILE,
         )
         return {"round": name, **shared}
 
@@ -162,10 +168,10 @@ class Sharing:
     def problems(self, name: str) -> list[Problem]:
         """Every line of a round's summary that names the project, someone in
         it, an address or a link."""
-        path = self.reflection.rounds.directory / name / SHARE
+        path = self.reflection.rounds.scratch / name / SHARE
         if not path.is_file():
             return []
-        return self.problems_in(path.read_text(), str(path.relative_to(self.project.root)))
+        return self.problems_in(path.read_text(), str(path))
 
     def problems_in(self, text: str, place: str) -> list[Problem]:
         loose, exact = self.identifiers()

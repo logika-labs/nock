@@ -17,15 +17,9 @@ DEFAULTS: dict[str, Any] = {
     # The project's main branch.
     "branch": "main",
     # Whether nock speaks up unasked: the primer's advice, the toolbox and the
-    # occasional standing at a session's start, the owner's word at a prompt,
-    # the items about an edited file. False keeps nock silent unless asked
-    # (telemetry is still recorded).
+    # occasional standing at a session's start. False keeps nock silent unless
+    # asked (telemetry is still recorded).
     "reminders": True,
-    # Whether nock tells the owner when a topic is their turn again (it moved to
-    # review, an agent answered them, an item they rejected has a new version):
-    # on the desktop, or in the studio's page while it is open. Nothing shows
-    # without a display (CI, a headless agent).
-    "notifications": True,
     "run": {
         # Bounds on a supervised process (`sh`, `nock run`), in seconds; silence
         # is how long it may print nothing before it counts as hung.
@@ -33,7 +27,7 @@ DEFAULTS: dict[str, Any] = {
         "silence": 900,
     },
     "environment": {
-        # What the project's tools, checks, generators and hooks run in. `python`
+        # What the project's tools, checks and hooks run in. `python`
         # is the interpreter nock re-executes itself on, so tools can import the
         # project's packages (a path is relative to the working tree, so each
         # worktree has its own; empty is whatever runs the shim). `setup` is the
@@ -58,25 +52,12 @@ DEFAULTS: dict[str, Any] = {
         "unaffected": [],
     },
     "agent": {
-        # The headless agent nock dispatches (the studio's answers and rounds, the sharer) and its model
+        # The headless agent nock dispatches (the sharer, which vets a round's summary) and its model
         # ("" is Claude Code's default); bounds in seconds.
         "command": ["claude"],
         "model": "",
         "deadline": 1800,
         "silence": 600,
-    },
-    "studio": {
-        # The port `nock studio` serves on, and the one a notification's link
-        # names while no studio runs.
-        "port": 8765,
-    },
-    "inbox": {
-        # How long `nock inbox --wait` waits, in seconds: under Claude Code's
-        # ten-minute limit on a command.
-        "wait": 540,
-        # How long the owner is quiet after a verdict or Done before the waiting
-        # agent hears them, so a look through the studio lands as one batch.
-        "settle": 60,
     },
     "upgrade": {
         # Whether a session the human starts says when a newer nock is out
@@ -190,32 +171,20 @@ def with_table_settings(text: str, table: str, values: dict[str, Any]) -> str:
     return "".join(lines)
 
 
-# Who a setting belongs to, which says the file `nock config KEY VALUE`
-# writes: the team's in `.nock/shared/settings.toml`, committed with the topics;
-# one machine's in `.nock/local/config.toml`. The code's (checks, environment,
-# permissions, …) stay in `.nock/config.toml`, written by hand.
-TEAM = ("share", "reminders", "inbox", "agent")
-MACHINE = (
-    "notifications",
-    "studio.port",
-    "studio.transcribe_url",
-    "studio.transcribe_model",
-    "studio.transcribe_key_variable",
-)
+# The settings `nock config KEY VALUE` writes: the team's, in
+# `.nock/shared/settings.toml`, committed (or one machine's, with `--local`, in
+# `.nock/local/config.toml`). The code's (checks, environment, permissions, …)
+# stay in `.nock/config.toml`, written by hand.
+TEAM = ("share", "reminders", "agent")
 
 
 def scope_of(key: str) -> str | None:
-    """`team`, `machine`, or None for a key `nock config` does not write."""
-    if key in MACHINE:
-        return "machine"
-    if key.split(".")[0] in TEAM:
-        return "team"
-    return None
+    """`team`, or None for a key `nock config` does not write."""
+    return "team" if key.split(".")[0] in TEAM else None
 
 
 def with_key(text: str, key: str, value: Any) -> str:
-    """A TOML file's text with a dotted key set: `share`, `studio.port`,
-    `inbox.settle`."""
+    """A TOML file's text with a dotted key set: `share`, `agent.model`."""
     table, _, name = key.rpartition(".")
     if table:
         return with_table_settings(text, table, {name: value})

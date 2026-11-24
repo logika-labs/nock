@@ -5,33 +5,32 @@ lead's brief (`lead.md`), its agents' briefs (`agents/NAME.md`) and, only for
 material no command gives, `material.py`. nock ships some (`nock/rounds/`); a
 project adds or overrides its own in `.nock/rounds/`. A round is one protocol
 run once: `nock reflect NAMESPACE.PROTOCOL` starts it (or picks it up),
-`nock reflect --submit JSON` checks and records it, in the store at
-`.nock/shared/rounds/<namespace.protocol>/<date>/`."""
+`nock reflect --submit JSON` checks and records it: its record committed at
+`.nock/shared/rounds/<namespace.protocol>/<date>/`, its material and the
+lead's files (its report) on this machine, in
+`.nock/local/reflections/<namespace.protocol>/<date>/`. The lead reports
+the round's findings to the session that ran it, as its final message."""
 
 from __future__ import annotations
 
 import difflib
 import fnmatch
 import importlib.util
-import json
 import shutil
 import subprocess
 import sys
 import tomllib
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import ModuleType
 from typing import TYPE_CHECKING, Any
 
 from nock.checks import Checks, matches
-from nock.configuration import with_table_settings
 from nock.errors import Failed, NotFoundError, PreconditionError, UsageError
 from nock.git import Git, GitError
 from nock.reflect import RECORD_FILE, ROUND_FILE, Record, Rounds, schema
 from nock.schema import validate
 from nock.sessions import Sessions
-from nock.topics import Topics
 from nock.utils import now, read_json, write_json
 
 if TYPE_CHECKING:
@@ -236,8 +235,6 @@ class Protocol:
             found |= {"unit": "tool runs", "value": len(rows)}
             if failing:
                 found["any"] = [f"{tool} failed 3 times" for tool in failing[:5]]
-        elif kind == "topics":
-            found |= {"unit": "task changes", "value": topic_changes(self.project, since)}
         elif kind == "python":
             function = self.hook("measure")
             if function is not None:
@@ -308,7 +305,6 @@ class Protocol:
             "snooze_until": self.config().get("snooze_until"),
             "snooze_at": self.config().get("snooze_at"),
             "paths": self.setting("paths") or [],
-            "task": task_of(self),
             "skill": f"/{self.skill()}",
         }
 
@@ -350,12 +346,26 @@ class Protocol:
             return done.stdout + (
                 f"\n(exit {done.returncode})\n{done.stderr}" if done.returncode else ""
             )
-        if kind == "topic":
-            view = self.project.local / "views" / f"{value}.md"
-            return view.read_text() if view.is_file() else f"(no topic {value} yet)"
+        if kind == "records":
+            return self.earlier(int(value))
         if kind == "git":
             return "\n".join(self.changes([str(path) for path in value], self.since)) or "(none)"
         raise PreconditionError(f"{self.name}: material {name!r} has an unknown source {kind!r}")
+
+    def earlier(self, count: int) -> str:
+        """Its last COUNT rounds' records: what each found and changed, so a
+        round does not report again what an earlier one did."""
+        records = self.rounds.all()[-count:]
+        if not records:
+            return "No earlier round.\n"
+        lines = []
+        for record in records:
+            lines += ["", f"# {record['round']}: {record.get('summary', '')}", ""]
+            lines += [
+                f"- {change.get('kind')}: {change.get('target')} — {change.get('why')}"
+                for change in record.get("changes") or []
+            ] or ["Nothing recorded."]
+        return "\n".join(lines).strip() + "\n"
 
     def reads(self) -> list[str]:
         names = list(self.manifest.section("lead").get("reads") or [])
@@ -408,8 +418,6 @@ class Protocol:
                 **(begun(self) if begun else {}),
             },
         )
-        (self.rounds.directory / name).mkdir(parents=True, exist_ok=True)
-        ensure_task(self, name)
         return self.started(name, material)
 
     def started(self, name: str, material: dict[str, str]) -> dict[str, Any]:
@@ -433,21 +441,18 @@ class Protocol:
             "protocol": self.name,
             "round": name,
             "since": self.since,
-            "task": f"{task_of(self)}: the round's result goes before the owner there; record"
-            " what needs them as proposals in it (`.nock/nock docs topics.items`)",
+            "report": "your final message reports the round to the session that ran it: what it"
+            " found and changed, what needs the owner's word, and where the report file is",
             "brief": lead.read_text().strip() if lead.is_file() else "",
             "material": material,
             "agents": agents,
-            "write": [
-                str((self.rounds.directory / name / file).relative_to(self.project.root))
-                for file in self.files
-            ],
+            "write": [str(self.rounds.scratch / name / file) for file in self.files],
             "submit": f'.nock/nock reflect --submit \'{{"protocol": "{self.name}", "summary": …,'
             ' "changes": [{"kind": …, "target": …, "why": …, "expect": …}]}\'',
         }
 
     def unwritten(self, name: str) -> list[str]:
-        directory = self.rounds.directory / name
+        directory = self.rounds.scratch / name
         return [
             file
             for file in self.files
@@ -478,15 +483,16 @@ class Protocol:
                 raise UsageError(
                     f"{self.name} records changes of kind {', '.join(kinds)}, not {', '.join(wrong)}"
                 )
-        directory = self.rounds.directory / name
+        scratch = self.rounds.scratch / name
         missing = self.unwritten(name)
         if missing:
-            raise PreconditionError(f"write {' and '.join(missing)} in {directory} first")
+            raise PreconditionError(f"write {' and '.join(missing)} in {scratch} first")
         problems = self.problems(finishing=True)
         if problems:
             raise Failed(f"the {self.name} round does not pass its checks yet", problems)
-        started = read_json(self.rounds.scratch / name / ROUND_FILE)
+        started = read_json(scratch / ROUND_FILE)
         kept = self.hook("kept")
+        directory = self.rounds.directory / name
         write_json(
             directory / RECORD_FILE,
             {
@@ -504,16 +510,14 @@ class Protocol:
             self.project,
             f"{self.name} round {name}: {record['summary']}",
             [str(path) for path in self.manifest.section("end").get("commit") or []],
-            directory,
+            directory / RECORD_FILE,
         )
-        task = write_task(self, name, record, directory)
         return {
             "protocol": self.name,
             "round": name,
-            "task": task,
-            "wrote": [
-                str((directory / file).relative_to(self.project.root)) for file in self.files
-            ],
+            "record": str(directory / RECORD_FILE),
+            "wrote": [str(scratch / file) for file in self.files],
+            "report": "now report the round to the session that ran it, in your final message",
         }
 
     def left_open(self, session: str) -> str | None:
@@ -525,11 +529,7 @@ class Protocol:
         started = read_json(self.rounds.scratch / name / ROUND_FILE)
         if session not in started.get("sessions", []):
             return None
-        directory = self.rounds.directory / name
-        owed = [
-            f"write {file} in {directory.relative_to(self.project.root)}"
-            for file in self.unwritten(name)
-        ]
+        owed = [f"write {file} in {self.rounds.scratch / name}" for file in self.unwritten(name)]
         if not owed:
             owed += [f"fix what its checks find: {problem}" for problem in self.problems(False)]
         owed.append(
@@ -595,188 +595,6 @@ def changed_files(project: Project, commit: str | None, globs: list[str]) -> lis
     return [path for _, path in numstat(project, commit) if matches(path, globs)]
 
 
-def topic_changes(project: Project, since: str | None) -> int:
-    """How many events the tasks gained since a moment: the map round's measure."""
-    root = project.root / ".nock" / "shared" / "topics"
-    if not root.is_dir():
-        return 0
-    stamp = (since or "").replace("-", "").replace(":", "")[:15]
-    count = 0
-    for path in root.rglob("events/*.json"):
-        if path.name[:15] > stamp:
-            count += 1
-    return count
-
-
-def task_of(protocol: Protocol) -> str:
-    """The task a round's result goes in: one per round, revived each run."""
-    return f"round-{protocol.manifest.namespace}-{protocol.manifest.protocol}"
-
-
-def ensure_task(protocol: Protocol, name: str) -> str:
-    """The round's task, opened (or revived) and active as the round starts,
-    so its lead can record its items there."""
-    from nock.shared import Shared, by_for
-
-    project = protocol.project
-    shared = Shared(project)
-    task = task_of(protocol)
-    folder = shared.topic_folder(task)
-    existing = shared.fold.topic(task)
-    written: list[Path] = []
-    status = {"kind": "state", "state": "active", "status": f"the {name} round is running"}
-    if existing is None:
-        written.append(
-            shared.draft(
-                folder,
-                {
-                    "kind": "created",
-                    "description": f"What the {protocol.title} round finds and changes here.",
-                },
-            )
-        )
-        written.append(shared.draft(folder, status))
-    elif existing["state"] in ("done", "abandoned"):
-        written.append(
-            shared.draft(folder, {**status, "revived": True, "note": f"the {name} round"})
-        )
-    elif existing["state"] != "active":
-        written.append(shared.draft(folder, status))
-    if written:
-        settled = shared.settle(by_for(project), only=written)
-        Topics(project).heard(settled)
-    return task
-
-
-def write_task(protocol: Protocol, name: str, record: Record, directory: Path) -> str | None:
-    """A round's result as a task to review: its changes as decisions, and a
-    review telling the round — its summary, its report, what its lead
-    recorded there, the changes — then the task set to review."""
-    from nock.shared import Shared, by_for
-
-    project = protocol.project
-    shared = Shared(project)
-    task = ensure_task(protocol, name)
-    folder = shared.topic_folder(task)
-    written: list[Path] = []
-    blocks: list[dict[str, Any]] = [{"kind": "text", "text": f"**{record['summary']}**"}]
-    report = directory / "report.md"
-    if report.is_file() and report.read_text().strip():
-        blocks.append({"kind": "text", "text": report.read_text().strip()})
-    started = protocol.rounds.scratch / name / ROUND_FILE
-    since = read_json(started).get("started", "") if started.is_file() else ""
-    for item in shared.fold.items(task):
-        if item["created"]["moment"] >= since and item["status"] != "rejected":
-            blocks.append({"kind": "item", "item": item["slug"]})
-    recorded = {
-        change["target"] for change in record["changes"] if change["kind"] in ("rounds", "review")
-    }
-    taken = set(shared.fold.slugs(task))
-    for place, change in enumerate(record["changes"], start=1):
-        if change["target"] in recorded and change["kind"] in ("rounds", "review"):
-            continue
-        slug = f"{name}-{place}"
-        while slug in taken:
-            slug += "-b"
-        taken.add(slug)
-        written.append(
-            shared.draft(
-                shared.item_folder(task, slug),
-                {
-                    "kind": "created",
-                    "type": "decision",
-                    "title": f"{change['kind']}: {change['target']}"[:200],
-                    "means": f"{change['why']} Expect: {change['expect']}"[:1200],
-                },
-            )
-        )
-        blocks.append({"kind": "item", "item": slug})
-    with project.lock("shared"):
-        settled = shared.settle(by_for(project), only=written) if written else None
-        review = shared.review_folder(task) / "versions" / "next" / "review.json"
-        review.parent.mkdir(parents=True, exist_ok=True)
-        review.write_text(
-            json.dumps({"summary": record["summary"][:2000], "blocks": blocks}, indent=2)
-        )
-        state = shared.draft(
-            folder, {"kind": "state", "state": "review", "status": f"the {name} round, to review"}
-        )
-        reviewed = shared.settle(by_for(project), only=[review, state])
-    topics = Topics(project)
-    if settled is not None:
-        topics.heard(settled)
-    topics.heard(reviewed)
-    return None if reviewed.problems else task
-
-
-def listing(project: Project) -> list[dict[str, Any]]:
-    """Every round with its standing, for the studio's settings."""
-    return [protocol.standing() for protocol in protocols(project)]
-
-
-def hints(project: Project) -> list[dict[str, Any]]:
-    """The rounds due now, for the studio's hints."""
-    return [protocol.standing() for protocol in protocols(project) if protocol.due()]
-
-
-def config_write(project: Project, name: str, values: dict[str, Any]) -> None:
-    """Set a round's keys in `.nock/config.toml`'s `[rounds."NAME"]`, kept in git."""
-    path = project.code_path("config.toml")
-    text = path.read_text() if path.is_file() else ""
-    path.write_text(with_table_settings(text, f'rounds."{name}"', values))
-    project.__dict__.pop("configuration", None)
-    said = ", ".join(f"{key} = {json.dumps(value)}" for key, value in values.items())
-    with project.lock("shared"):
-        git = Git(project.here)
-        relative = str(path.relative_to(project.here))
-        if git("status", "--porcelain", "--", relative, check=False).strip():
-            git.changing(
-                "commit", "--quiet", "--no-verify", "--only", "-m",
-                f"nock: round {name}: {said}", "--", relative,
-            )  # fmt: skip
-
-
-def one(project: Project, name: str) -> Protocol:
-    found = [protocol for protocol in protocols(project) if protocol.name == name]
-    if not found:
-        raise NotFoundError(f"no round {name!r}")
-    return found[0]
-
-
-def snooze(project: Project, name: str, how: dict[str, Any]) -> dict[str, Any]:
-    """Remind me in DAYS days, after twice the changes, or never (off)."""
-    protocol = one(project, name)
-    if how.get("never"):
-        config_write(project, name, {"enabled": False})
-    elif how.get("twice"):
-        value = protocol.measure()["value"] or 0
-        threshold = int(protocol.setting("threshold") or 0)
-        config_write(project, name, {"snooze_at": int(value) + threshold})
-    else:
-        days = how.get("days")
-        if not isinstance(days, int) or days < 1:
-            raise UsageError("snooze for `days` (1 or more), `twice` or `never`")
-        until = (datetime.now(UTC) + timedelta(days=days)).strftime("%Y-%m-%d")
-        config_write(project, name, {"snooze_until": until})
-    return one(project, name).standing()
-
-
-def configure(project: Project, name: str, values: dict[str, Any]) -> dict[str, Any]:
-    """The owner's settings for a round: on or off, its threshold, its paths."""
-    one(project, name)
-    kept: dict[str, Any] = {}
-    if isinstance(values.get("enabled"), bool):
-        kept["enabled"] = values["enabled"]
-    if isinstance(values.get("threshold"), int) and values["threshold"] > 0:
-        kept["threshold"] = values["threshold"]
-    if isinstance(values.get("paths"), list) and all(isinstance(p, str) for p in values["paths"]):
-        kept["paths"] = values["paths"]
-    if not kept:
-        raise UsageError("set `enabled`, `threshold` or `paths`")
-    config_write(project, name, kept)
-    return one(project, name).standing()
-
-
 def agent_type(manifest: Manifest, agent: str) -> str:
     """Its subagent type: `<namespace>-<protocol>` when it is its protocol's
     one agent, else `<namespace>-<protocol>-<agent>`."""
@@ -808,7 +626,7 @@ def commit(project: Project, message: str, paths: list[str], record: Path) -> No
         places.append((project.root, [*here, store]))
     else:
         places += [(project.here, here), (project.root, [store])]
-    # The store's lock: its record is committed in the main checkout, as every store commit is.
+    # The `shared` lock: its record is committed in the main checkout, as everything there is.
     with project.lock("shared"):
         for root, wanted in places:
             if not wanted:

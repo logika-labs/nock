@@ -98,7 +98,7 @@ def test_init_from_a_checkout_rewires_and_keeps_the_vendored_core(
     ours = project.root / ".nock" / "core" / "nock" / "utils.py"
     ours.write_text(ours.read_text() + "\n\ndef local_helper() -> int:\n    return 1\n")
     vendored = core_files(ours.parent)
-    skill = project.root / ".claude" / "skills" / "nock-triage" / "SKILL.md"
+    skill = project.root / ".claude" / "skills" / "nock-work" / "SKILL.md"
     skill.unlink()
     result = subprocess.run(
         [str(project.root / ".nock" / "nock"), "init"],
@@ -121,7 +121,7 @@ def test_upgrade_from_a_checkout_rewires_with_the_new_core(
     base = core_files(PACKAGE)
     index.releases[VERSION] = base
     theirs = dict(base)
-    theirs["briefs/nock-triage/SKILL.md"] = base["briefs/nock-triage/SKILL.md"] + b"\nUPSTREAM\n"
+    theirs["briefs/nock-work/SKILL.md"] = base["briefs/nock-work/SKILL.md"] + b"\nUPSTREAM\n"
     index.releases["9.0.0"] = theirs
     use(project, index, check=False)
     source = checkout_of(project, tmp_path)
@@ -136,7 +136,7 @@ def test_upgrade_from_a_checkout_rewires_with_the_new_core(
     assert "kept the vendored core" not in result.stdout
     version = json.loads((project.root / ".nock" / "core" / "VERSION.json").read_text())
     assert version["version"] == "9.0.0"
-    skill = project.root / ".claude" / "skills" / "nock-triage" / "SKILL.md"
+    skill = project.root / ".claude" / "skills" / "nock-work" / "SKILL.md"
     assert skill.read_text().rstrip().endswith("UPSTREAM")
     index.server.shutdown()
 
@@ -249,7 +249,7 @@ def test_upgrade_merges_the_latest_release_from_pypi_and_rewires(project: Projec
     use(project, index, check=False)
     ours = project.root / ".nock" / "core" / "nock" / "utils.py"
     ours.write_text(ours.read_text() + "\n\ndef local_helper() -> int:\n    return 1\n")
-    (project.root / ".claude" / "skills" / "nock-triage" / "SKILL.md").unlink()
+    (project.root / ".claude" / "skills" / "nock-work" / "SKILL.md").unlink()
     result = nock(project.root, "upgrade")
     assert result.returncode == 0, result.stdout + result.stderr
     merged = ours.read_text()
@@ -257,7 +257,7 @@ def test_upgrade_merges_the_latest_release_from_pypi_and_rewires(project: Projec
     assert (ours.parent / "new_module.py").read_text() == "VALUE = 2\n"
     version = json.loads((project.root / ".nock" / "core" / "VERSION.json").read_text())
     assert version == {"version": "9.0.0", "source": "pypi", "commit": None}
-    assert (project.root / ".claude" / "skills" / "nock-triage" / "SKILL.md").is_file()
+    assert (project.root / ".claude" / "skills" / "nock-work" / "SKILL.md").is_file()
     index.server.shutdown()
 
 

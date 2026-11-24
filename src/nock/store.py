@@ -1,7 +1,7 @@
 """The telemetry store: one SQLite database in `.nock/local/`, never committed —
 every call to a nock command, every supervised process, and what each Claude
-Code session did (and how far its transcript has been read), read from its transcript (and which items it was told of or
-shown), and which of a session's agents runs each nock command. Reflection reads it; so can any
+Code session did (and how far its transcript has been read), read from its
+transcript, and which of a session's agents runs each nock command. Reflection reads it; so can any
 agent, with `nock query`."""
 
 from __future__ import annotations
@@ -87,15 +87,6 @@ CREATE TABLE IF NOT EXISTS transcripts (
     offset INTEGER NOT NULL,     -- bytes read so far, to the end of a whole line
     state TEXT NOT NULL          -- JSON: the totals and open tool calls reading on needs
 );
-CREATE TABLE IF NOT EXISTS told (
-    session TEXT NOT NULL,       -- a session told of the owner's word on an item it made
-    item TEXT NOT NULL,          -- the item's ref, topic/slug
-    updated TEXT NOT NULL        -- the owner's word on it, as told: its moment and digest (`owner_word`)
-);
-CREATE TABLE IF NOT EXISTS shown_items (
-    session TEXT NOT NULL,       -- a session shown an item about a file it edited
-    item TEXT NOT NULL
-);
 CREATE TABLE IF NOT EXISTS callers (
     session TEXT NOT NULL,       -- the Claude Code session a `.nock/nock` Bash command runs in
     agent TEXT,                  -- the subagent running it (hook input's `agent_id`); NULL: the session's own thread
@@ -105,29 +96,6 @@ CREATE TABLE IF NOT EXISTS callers (
     claimed INTEGER NOT NULL DEFAULT 0 -- 1 once the command, running, took it as its own
 );
 CREATE INDEX IF NOT EXISTS callers_session ON callers (session, claimed);
-CREATE TABLE IF NOT EXISTS wrote (
-    session TEXT NOT NULL,       -- a session that did work in a topic: opened it, or an item, a version or a reply there
-    parent TEXT,                 -- the session that dispatched it, for a subagent or a session nock dispatched
-    topic TEXT NOT NULL
-);
-CREATE TABLE IF NOT EXISTS stated (
-    session TEXT NOT NULL        -- a session the stop hook asked once to set its topics' status
-);
-CREATE TABLE IF NOT EXISTS notifications (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    moment TEXT NOT NULL,        -- when the owner was told it is their turn in a topic
-    topic TEXT NOT NULL,
-    reason TEXT NOT NULL,        -- review, answered or reworked
-    text TEXT NOT NULL,          -- what it said
-    shown TEXT NOT NULL,         -- studio (a page watching), desktop, or nowhere (no display)
-    event TEXT,                  -- the timeline event it told of (`nock.timeline`), by its key
-    address TEXT,                -- where in the studio it leads: `#topics/REF~chat`
-    preview TEXT                 -- the event's preview: what the agent said, the item's description
-);
-CREATE TABLE IF NOT EXISTS inbox_shown (
-    reader TEXT NOT NULL,        -- a session (a subagent by its own id) `nock inbox` showed an entry to
-    entry TEXT NOT NULL          -- the entry, by its key: the owner's message's or verdict's event id
-);
 CREATE TABLE IF NOT EXISTS nudged (
     round TEXT NOT NULL          -- a round whose unshared summary, or a week's logika-round offer, a session start mentioned
 );

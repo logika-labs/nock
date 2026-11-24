@@ -9,19 +9,14 @@ import os
 import shutil
 import subprocess
 import sys
-import threading
-import urllib.error
-import urllib.request
 from collections.abc import Iterator
 from pathlib import Path
-from typing import Any
 
 import pytest
 
 from nock.prices import Prices
 from nock.project import Project
 from nock.setup import Installer
-from nock.studio import Studio
 
 FAKE_AGENT = Path(__file__).with_name("fake_agent.py")
 # A copy of a few entries of LiteLLM's price table, so no test reaches the network.
@@ -36,7 +31,7 @@ def git(directory: Path, *arguments: str) -> str:
 
 @pytest.fixture(autouse=True)
 def isolated(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
-    """No Claude Code session, nock seat, git identity or display leaks in from outside."""
+    """No Claude Code session, nock seat or git identity leaks in from outside."""
     for name in list(os.environ):
         if name.startswith(("CLAUDE", "NOCK_", "GIT_")):
             monkeypatch.delenv(name)
@@ -46,8 +41,6 @@ def isolated(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     monkeypatch.setenv("GIT_COMMITTER_NAME", "Test")
     monkeypatch.setenv("GIT_COMMITTER_EMAIL", "test@example.com")
     monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(tmp_path / "gitconfig"))
-    # No display: a test never shows the owner a desktop notification.
-    monkeypatch.setenv("CI", "1")
     # Only Claude Code, unless a test puts another harness's command on PATH.
     harnesses = ("codex", "cursor", "cursor-agent")
     monkeypatch.setenv(
@@ -126,34 +119,3 @@ def own_protocol(project: Project, name: str, due: dict[str, object]) -> None:
     for key, value in due.items():
         kept[key] = f"{key} = {json.dumps(value)}"
     manifest.write_text(head + "[due]\n" + "\n".join(kept.values()) + "\n\n" + tail)
-
-
-@pytest.fixture
-def page(project: Project) -> Iterator[str]:
-    """The studio, serving on a free port for the test."""
-    server = Studio(project, 0)
-    thread = threading.Thread(target=server.serve_forever, daemon=True)
-    thread.start()
-    yield server.address
-    server.shutdown()
-    server.server_close()
-
-
-def post(address: str, route: str, body: dict[str, object]) -> tuple[int, Any]:
-    """The studio's page posting to its API."""
-    request = urllib.request.Request(
-        f"{address}api/{route}",
-        data=json.dumps(body).encode(),
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
-    try:
-        with urllib.request.urlopen(request) as response:
-            return response.status, json.loads(response.read())
-    except urllib.error.HTTPError as error:
-        return error.code, json.loads(error.read())
-
-
-def get(address: str, route: str) -> Any:
-    with urllib.request.urlopen(f"{address}api/{route}") as response:
-        return json.loads(response.read())

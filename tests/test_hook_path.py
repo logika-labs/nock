@@ -39,7 +39,7 @@ atexit.register(report)
 sys.argv = ["nock", *sys.argv[1:]]
 runpy.run_module("nock", run_name="__main__", alter_sys=True)
 """
-# What the hook after a `.nock/nock` command needs, and nothing more.
+# What a hook needs (before a `.nock/nock` command, after a tool, at a prompt), and nothing more.
 BEFORE_TOOL_MODULES = {
     "nock",
     "nock.callers",
@@ -53,18 +53,7 @@ BEFORE_TOOL_MODULES = {
     "nock.store",
     "nock.utils",
 }
-# The prompt and edit hooks read Topics too, from the store.
-TOPICS_MODULES = {
-    "nock.notify",
-    "nock.render",
-    "nock.condense",
-    "nock.topics",
-    "nock.fold",
-    "nock.records",
-    "nock.schema",
-    "nock.shared",
-}
-NEVER_IN_A_HOOK = {"nock.cli", "nock.builtin", "nock.tools", "nock.reflect", "nock.kinds"}
+NEVER_IN_A_HOOK = {"nock.cli", "nock.builtin", "nock.tools", "nock.reflect", "nock.shared"}
 
 
 def probe(project: Project, event: str, payload: dict[str, Any]) -> dict[str, Any]:
@@ -95,7 +84,7 @@ PAYLOADS = {
     "PreToolUse": {
         "session_id": "s1",
         "tool_name": "Bash",
-        "tool_input": {"command": ".nock/nock topics list"},
+        "tool_input": {"command": ".nock/nock check"},
     },
     "PostToolUse": {
         "session_id": "s1",
@@ -113,8 +102,7 @@ def test_a_hook_loads_only_what_its_event_needs_and_starts_no_more_than_one_git(
     nock(project.root, "hook", event, stdin=json.dumps(PAYLOADS[event]))
     found = probe(project, event, PAYLOADS[event])
     modules = set(found["modules"])
-    allowed = BEFORE_TOOL_MODULES | (TOPICS_MODULES if event != "PreToolUse" else set())
-    assert modules <= allowed, sorted(modules - allowed)
+    assert modules <= BEFORE_TOOL_MODULES, sorted(modules - BEFORE_TOOL_MODULES)
     assert not modules & NEVER_IN_A_HOOK
     assert len(git_calls(found)) <= 1, git_calls(found)
     assert found["stdout"] == ""
