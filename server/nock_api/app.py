@@ -1,7 +1,7 @@
-"""The ASGI app: `GET /health`, `POST /reflections`, `POST /usage`, `POST /reports`, and the edge every
-request passes.
+"""The ASGI app: `GET /health`, `POST /reflections`, `POST /usage`, `POST /reports`, `POST /docs` and
+`GET /docs/{cli}` (nock's hosted docs, `nock_api.docs`), and the edge every request passes.
 
-Every `POST` answers `201` with `{"id": N}`, or `{"error": "…"}` with `400` naming what is wrong, `411`
+Every `POST` but `/docs` answers `201` with `{"id": N}` (`/docs`: the bundle's `min_cli` and `version`), or `{"error": "…"}` with `400` naming what is wrong, `411`
 without a `Content-Length`, `413` when the body is too large (refused unread), `429` beyond the rate limit
 (with `Retry-After`); anything else is `404` (`501` for a method other than `GET` and `POST`). Rows are
 kept with the moment they arrived, `now()`, and nothing about the sender.
@@ -15,14 +15,14 @@ from datetime import datetime
 from typing import Any, LiteralString
 
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from psycopg import AsyncConnection
 from psycopg.types.json import Jsonb
 from psycopg_pool import AsyncConnectionPool
 from starlette.exceptions import HTTPException
 from starlette.types import ASGIApp, Receive, Scope, Send
 
-from nock_api import rules
+from nock_api import docs, rules
 from nock_api.limit import BURST, Limit
 from nock_api.telemetry import tracer
 
@@ -108,7 +108,7 @@ async def read[T](request: Request, path: str, rule: Callable[[Any], T]) -> T:
         announced = -1
     if announced < 0:
         raise Refusal(400, "Content-Length is a whole number of at least 0", "no_length")
-    largest = rules.LARGEST[path]
+    largest = docs.LARGEST if path == "/docs" else rules.LARGEST[path]
     if announced > largest:
         raise Refusal(413, f"at most {largest} bytes", "too_large")
     try:
@@ -123,9 +123,13 @@ async def read[T](request: Request, path: str, rule: Callable[[Any], T]) -> T:
         raise Refusal(400, str(error), "value") from error
 
 
-def create(database_url: str, now: Callable[[], datetime], limit: Limit) -> ASGIApp:
+def create(
+    database_url: str, now: Callable[[], datetime], limit: Limit, docs_key: str = docs.PUBLIC_KEY
+) -> ASGIApp:
     """The app over the database at `database_url`, its rows received at `now()`, its posts limited by
-    `limit`. The connection pool opens and closes with the app's lifespan."""
+    `limit`, the docs it keeps signed with `docs_key` (base64). The connection pool opens and closes with
+    the app's lifespan."""
+    public = docs.key(docs_key)
     pool = AsyncConnectionPool[AsyncConnection](
         database_url,
         min_size=CONNECTIONS[0],
@@ -232,6 +236,51 @@ def create(database_url: str, now: Callable[[], datetime], limit: Limit) -> ASGI
                 "report.kept", attributes={"row_id": identity, "text_chars": len(text)}
             ).end()
         return JSONResponse({"id": identity}, 201)
+
+    @app.post("/docs")
+    async def publish(request: Request) -> JSONResponse:
+        with tracer.start_as_current_span("docs", attributes=size(request)):
+            try:
+                bundle = await read(request, "/docs", lambda sent: docs.bundle(sent, public))
+                async with pool.connection() as connection:
+                    cursor = await connection.execute(
+                        "INSERT INTO docs (min_cli, version, bundle, received)"
+                        " VALUES (%s, %s, %s, %s) ON CONFLICT (min_cli) DO UPDATE"
+                        " SET version = excluded.version, bundle = excluded.bundle,"
+                        " received = excluded.received WHERE docs.version <= excluded.version"
+                        " RETURNING version",
+                        (bundle.min_cli, bundle.version, bundle.text, now()),
+                    )
+                    if await cursor.fetchone() is None:
+                        raise Refusal(
+                            409,
+                            f"a newer bundle for nock {bundle.min_cli} is kept already",
+                            "older",
+                        )
+            except Refusal as refusal:
+                tracer.start_span("docs.refused", attributes=refusal.attributes()).end()
+                return refusal.answer()
+            tracer.start_span(
+                "docs.kept",
+                attributes={"min_cli": bundle.min_cli, "version": bundle.version},
+            ).end()
+        return JSONResponse({"min_cli": bundle.min_cli, "version": bundle.version}, 201)
+
+    @app.get("/docs/{cli}")
+    async def served(cli: str) -> Response:
+        if not docs.SEMANTIC.fullmatch(cli):
+            return JSONResponse({"error": "the version is MAJOR.MINOR.PATCH"}, 400)
+        async with pool.connection() as connection:
+            cursor = await connection.execute("SELECT min_cli, version, bundle FROM docs")
+            rows = await cursor.fetchall()
+        fitting = [row for row in rows if docs.release(row[0]) <= docs.release(cli)]
+        with tracer.start_as_current_span(
+            "docs_asked", attributes={"cli": cli, "found": bool(fitting)}
+        ):
+            if not fitting:
+                return JSONResponse({"error": f"no docs for nock {cli}"}, 404)
+            newest = max(fitting, key=lambda row: row[1])
+        return Response(newest[2], media_type="application/json")
 
     return Edge(app, limit, now)
 
