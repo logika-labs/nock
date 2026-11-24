@@ -15,15 +15,20 @@ LONGEST_WRITTEN = 10_000
 # a real usage report is about two thousand.
 LARGEST = {"/reflections": LONGEST * 4, "/usage": 32_000, "/reports": LONGEST_WRITTEN * 4}
 # The usage report's shapes this server reads (nock's `usage.SCHEMA`): 3 adds metrics that may be
-# null — `api_cost` when no session in the window was priced.
-REPORT_SCHEMAS = (2, 3)
+# null — `api_cost` when no session in the window was priced; 4 counts no generators and no consult.
+REPORT_SCHEMAS = (2, 3, 4)
 NAME = re.compile(r"[a-z][a-z0-9_-]{0,39}")
+# A round's protocol, by its namespace and name: `nock.fit`, `audit.tests`.
+ROUND = re.compile(r"[a-z][a-z0-9_-]{0,39}(\.[a-z][a-z0-9_-]{0,39})?")
 COMMAND = re.compile(r"[a-z][a-z0-9-]*( [a-z][a-z0-9-]*){0,3}")
 VERSION = re.compile(r"\d{1,4}(\.\d{1,4}){1,3}([a-z0-9.+-]{0,20})")
 PYTHON = re.compile(r"\d\.\d{1,3}")
 PLATFORM = re.compile(r"[a-z][a-z0-9]{0,19}")
-SETTINGS = ("reminders", "consult", "logika")
-TOOLBOX = ("tools", "checks", "hooks", "generators", "load_failures")
+SETTINGS = ("reminders", "logika")
+TOOLBOX = ("tools", "checks", "hooks", "load_failures")
+# Before schema 4, the toolbox counted generators too, and the settings said whether nock consulted.
+TOOLBOX_BEFORE_4 = (*TOOLBOX, "generators")
+SETTINGS_BEFORE_4 = ("reminders", "consult", "logika")
 COUNT = ("calls", "failures")
 REPORT = (
     "schema",
@@ -121,7 +126,8 @@ def report(sent: Any) -> dict[str, Any]:
     text(body["nock"], "nock", VERSION)
     text(body["python"], "python", PYTHON)
     text(body["platform"], "platform", PLATFORM)
-    for name, value in fields(body["settings"], "settings", SETTINGS).items():
+    settings = SETTINGS if body["schema"] >= 4 else SETTINGS_BEFORE_4
+    for name, value in fields(body["settings"], "settings", settings).items():
         if not isinstance(value, bool):
             raise Refused(f"`settings.{name}` is true or false")
     for name, value in names(body["metrics"], "metrics", NAME, 64).items():
@@ -131,9 +137,10 @@ def report(sent: Any) -> dict[str, Any]:
     for name, counts in names(body["commands"], "commands", COMMAND, 120).items():
         for field, value in fields(counts, f"commands.{name}", COUNT).items():
             count(value, f"commands.{name}.{field}")
-    for name, value in fields(body["toolbox"], "toolbox", TOOLBOX).items():
+    toolbox = TOOLBOX if body["schema"] >= 4 else TOOLBOX_BEFORE_4
+    for name, value in fields(body["toolbox"], "toolbox", toolbox).items():
         count(value, f"toolbox.{name}")
-    for name, value in names(body["rounds"], "rounds", NAME, 20).items():
+    for name, value in names(body["rounds"], "rounds", ROUND, 20).items():
         count(value, f"rounds.{name}")
     return body
 

@@ -73,11 +73,11 @@ def test_the_report_nock_builds_is_kept_as_it_arrived(
     project: Project, api: Api, clock: Clock
 ) -> None:
     built = Usage(project).report(sending=True)
-    assert built["schema"] == 3
+    assert built["schema"] == 4
     status, answer = api.post("/usage", built)
     assert (status, answer) == (201, {"id": 1})
     (row,) = api.rows("usage")
-    assert str(row["project"]) == built["project"] and row["schema"] == 3
+    assert str(row["project"]) == built["project"] and row["schema"] == 4
     assert row["report"] == built and row["received"] == clock.moment
 
 
@@ -100,8 +100,9 @@ def test_the_report_nock_builds_is_kept_as_it_arrived(
         ({"project": "/Users/someone/acme"}, "`project` is a random UUID"),
         ({"project": "6F1C2B9E-3D4A-4E5F-8A7B-1C2D3E4F5A6B"}, "`project` is a random UUID"),
         ({"project": "6f1c2b9e-3d4a-1e5f-8a7b-1c2d3e4f5a6b"}, "`project` is a random UUID"),
-        ({"schema": 1}, "`schema` is one of 2, 3"),
-        ({"schema": True}, "`schema` is one of 2, 3"),
+        ({"schema": 1}, "`schema` is one of 2, 3, 4"),
+        ({"schema": True}, "`schema` is one of 2, 3, 4"),
+        ({"schema": 4}, "unexpected fields: consult"),
         ({"schema": 2, "metrics": {"api_cost": None}}, "metrics.api_cost"),
         ({"platform": "a laptop at acme"}, "platform"),
         ({"nock": "latest"}, "nock"),
@@ -118,6 +119,14 @@ def test_a_report_with_anything_unexpected_is_refused_whole(
 
 def test_a_schema_3_report_may_have_null_metrics(api: Api) -> None:
     sent = {**REPORT, "schema": 3, "metrics": {"api_cost": None, "sessions": 2}}
+    assert api.post("/usage", sent) == (201, {"id": 1})
+    assert api.rows("usage")[0]["report"] == sent
+
+
+def test_a_schema_4_report_counts_no_generators(api: Api) -> None:
+    toolbox = {"tools": 1, "checks": 2, "hooks": 0, "load_failures": 0}
+    settings = {"reminders": True, "logika": False}
+    sent = {**REPORT, "schema": 4, "toolbox": toolbox, "settings": settings}
     assert api.post("/usage", sent) == (201, {"id": 1})
     assert api.rows("usage")[0]["report"] == sent
 
