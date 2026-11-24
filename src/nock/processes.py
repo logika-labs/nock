@@ -185,7 +185,7 @@ class Supervisor:
     def wind_down(self, process: subprocess.Popen[bytes], log: Any, chunks: list[bytes]) -> None:
         """Ask the child's group to stop, and keep its last words, for a grace
         period."""
-        with contextlib.suppress(ProcessLookupError):
+        with contextlib.suppress(ProcessLookupError, PermissionError):
             os.killpg(process.pid, signal.SIGINT)
         self.deadline = self.silence = INTERRUPT_GRACE
         with contextlib.suppress(KeyboardInterrupt):
@@ -286,8 +286,14 @@ def raise_interrupt(signal_number: int, frame: object) -> None:
 
 
 def kill_group(process: subprocess.Popen[bytes]) -> None:
-    with contextlib.suppress(ProcessLookupError):
+    """Kill the child's process group; a group already gone, or one no longer
+    ours to signal (macOS says EPERM once its leader exited and what is left
+    moved on), leaves the child itself to kill."""
+    try:
         os.killpg(process.pid, signal.SIGKILL)
+    except (ProcessLookupError, PermissionError):
+        with contextlib.suppress(ProcessLookupError, PermissionError):
+            process.kill()
     process.wait()
 
 

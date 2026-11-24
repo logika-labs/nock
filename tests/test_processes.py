@@ -13,7 +13,10 @@ import termios
 import time
 from pathlib import Path
 
+import pytest
+
 from nock.condense import clean, excerpt
+from nock.processes import kill_group
 from nock.project import Project
 
 from .conftest import git, nock, write_tool
@@ -264,3 +267,19 @@ def test_an_interrupted_server_is_asked_to_stop_before_it_is_killed(project: Pro
     process.wait(timeout=30)
     logs = sorted((project.root / ".nock" / "local" / "logs").glob("run-*.log"))
     assert "stopping" in logs[-1].read_text()
+
+
+def test_killing_a_group_that_is_gone_or_not_ours_is_not_a_crash(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    gone = subprocess.Popen(["true"], start_new_session=True)
+    gone.wait()
+    kill_group(gone)  # the group no longer exists
+    child = subprocess.Popen(["sleep", "30"], start_new_session=True)
+
+    def refused(group: int, number: int) -> None:
+        raise PermissionError(1, "Operation not permitted")
+
+    monkeypatch.setattr(os, "killpg", refused)
+    kill_group(child)  # a group the kernel will not let us signal: the child itself is killed
+    assert child.returncode == -signal.SIGKILL
