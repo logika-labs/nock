@@ -17,7 +17,6 @@
 <section class="card theatre" aria-label="What nock does">
   <div class="tablist" role="tablist" aria-label="The parts" data-tabs-for="films">
     <button type="button" role="tab" data-tab="reflection" aria-selected="true">{{ copy:reflection-label }}</button>
-    <button type="button" role="tab" data-tab="review" aria-selected="false">{{ copy:review-label }}</button>
   </div>
   <div class="films">
     <figure class="film" data-panel="reflection" data-panel-for="films" id="reflection">
@@ -30,19 +29,6 @@
           <source src="/videos/reflection.webm" type="video/webm">
           <source src="/videos/reflection.mp4" type="video/mp4">
           <track kind="captions" src="/videos/reflection.vtt" srclang="en" label="English">
-        </video>
-      </div>
-    </figure>
-    <figure class="film" data-panel="review" data-panel-for="films" id="review">
-      <figcaption>
-        <h2>{{ copy:review-title }}</h2>
-        {{ copy:review-copy }}
-      </figcaption>
-      <div class="screen">
-        <video controls muted playsinline preload="none" poster="/videos/review.jpg" width="1920" height="1080" aria-label="You decide, when it suits you: a minute on reviewing in the studio">
-          <source src="/videos/review.webm" type="video/webm">
-          <source src="/videos/review.mp4" type="video/mp4">
-          <track kind="captions" src="/videos/review.vtt" srclang="en" label="English">
         </video>
       </div>
     </figure>

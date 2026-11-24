@@ -29,7 +29,7 @@ deploy.py          build, and release to Logika's box (/srv/sites/nock.dev), wit
                    Caddy's site for it there
 ```
 
-The column, the type scale and the look are the studio's (`src/nock/pages/`).
+The column, the type scale and the look are nock's own, in `site/style.css`.
 
 ## Build
 
@@ -52,8 +52,7 @@ house style (as Logika's `banners` tool does), then cut to the three sizes above
 at 480x270 for the list, and `-resize 1200x675^ -extent 1200x630 -quality 68` for `NAME.jpg`.
 
 **The icons** are a black lowercase n with nock's pink (#ff9ad5) offset up-left and cyan (#8fe9ff)
-down-right, no tile: `favicon.svg` is the drawing, and the studio's tab wears the same SVG inline
-(`src/nock/pages/studio.html`). The PNGs are rendered from it in Chromium (an `<img>` at the size,
+down-right, no tile: `favicon.svg` is the drawing. The PNGs are rendered from it in Chromium (an `<img>` at the size,
 screenshotted with a transparent background): `favicon-32.png` as drawn; `favicon-16.png` from the
 same n redrawn on a 16-pixel grid (stems and arch on whole pixels, the colours 1 pixel off), since
 the drawing's half-pixel edges blur at 16; `apple-touch-icon.png` (180) with the n at 80% on a white

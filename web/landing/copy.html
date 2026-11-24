@@ -7,7 +7,7 @@ The toolbox your agent was missing.
 <!-- end -->
 
 <!-- block hero-lead -->
-<p class="lead">Software engineering is not so much about writing code anymore – it's about managing complexity with our coding agents. nock is a framework that records their work, lets you review it and helps you reflect on how to make it better.</p>
+<p class="lead">Software engineering is not so much about writing code anymore – it's about managing complexity with our coding agents. nock is a framework that records their work and helps them reflect on how to make it better.</p>
 <!-- end -->
 
 <!-- block install -->
@@ -35,19 +35,6 @@ Agents that write the tools they need.
 <!-- block reflection-copy -->
 <p>nock instruments your agents: every call and session is recorded on your machine, never committed. Every week or so a reflection round reads that record and the work since. It writes the tools that would have saved turns, repairs the ones that misbehave and retires the ones nobody uses, and the next round holds each change to what it expected.</p>
 <a class="more" href="/docs/reflection/">Reflection rounds</a>
-<!-- end -->
-
-<!-- block review-label -->
-Review
-<!-- end -->
-
-<!-- block review-title -->
-You judge what they made, when it suits you.
-<!-- end -->
-
-<!-- block review-copy -->
-<p>Agents never wait on you. They open a topic for each piece of work and put in it the decisions they made, with the alternatives they weighed, and what they made to show it: screenshots, texts, pages. In the studio's Work tab you accept, reject, or chat about each; what you reject comes back as a new version.</p>
-<a class="more" href="/docs/review/">Review on your time</a>
 <!-- end -->
 
 <!-- block logika-label -->
@@ -96,11 +83,10 @@ Getting started
 .nock/config.toml, .nock/context.md, .nock/tools/.gitkeep,
 CLAUDE.md, .claude/settings.json,
 .claude/skills/nock-reflect/SKILL.md,
-.claude/skills/nock-triage/SKILL.md,
 .claude/skills/nock-work/SKILL.md,
 .agents/skills/nock-work/SKILL.md,
-.claude/agents/nock-reflect-toolbox.md, …,
-.nock/topics/map.md</span></div>
+.claude/agents/nock-toolbox.md, …,
+.nock/shared/memory.md</span></div>
     <figcaption>What <code>nock init</code> writes, in a fresh repository.</figcaption>
   </figure>
 </li>
@@ -144,45 +130,10 @@ CLAUDE.md, .claude/settings.json,
 This project uses nock to stay coherent across sessions,
 which matters as much as getting each task done: you start
 knowing nothing of earlier sessions, and nock keeps what
-they decided, what the owner said about it, and the tools
-agents built.
+they learned and the tools agents built.
 
-- Consult before you change code, …</span><span class="who">you</span><span class="out ask">The nightly sweep requeues charges that are still retrying. Fix it.</span></div>
+- Read `.nock/shared/memory.md` first, …</span><span class="who">you</span><span class="out ask">The nightly sweep requeues charges that are still retrying. Fix it.</span></div>
     <figcaption>What every session reads first.</figcaption>
-  </figure>
-</li>
-<li class="step" id="step-submit" data-step="4">
-  <div class="text">
-    <span class="label">Step 5</span>
-    <h2>Your agent puts its work before you</h2>
-    <p>It opens a topic for the work, carries on, and submits what a later reader would ask "why" about: the choice it made, with what it weighed instead. It never waits on you.</p>
-  </div>
-  <figure class="shot">
-    <div class="terminal"><span class="prompt">.nock/nock topics create '{"name": "charge-sweep", …}'</span><span class="out">name: charge-sweep</span><span class="prompt">.nock/nock items create charge-sweep '{"title": "The sweep requeues dead charges only",
-  "decision": {"answer": "…", "alternatives": […]}}'</span><span class="out">ref: charge-sweep/the-sweep-requeues-dead-charges-only</span></div>
-    <figcaption>A decision item: the answer, and the alternatives really weighed.</figcaption>
-  </figure>
-</li>
-<li class="step" id="step-studio" data-step="5">
-  <div class="text">
-    <span class="label">Step 6</span>
-    <h2>Open the studio</h2>
-    <p>Run <code>.nock/nock studio</code>. Its Work tab lists the topics, newest activity first: what each holds, its verdicts, where the work stands.</p>
-  </div>
-  <figure class="shot">
-    <img class="still" src="/videos/review-work.webp" alt="The studio's Work tab: the charge-sweep topic, with the decision an agent made while you were away." width="1200" height="675" loading="lazy" decoding="async">
-    <figcaption>From the review video: a topic waiting in Work.</figcaption>
-  </figure>
-</li>
-<li class="step" id="step-verdict" data-step="6">
-  <div class="text">
-    <span class="label">Step 7</span>
-    <h2>Give your first verdict</h2>
-    <p>Open the decision, read the answer and what was considered instead, and accept it — or reject it, and the agent reworks it as its thread says. The first time, nock asks once whether to share a weekly usage report of counts; nothing is sent unless you say yes.</p>
-  </div>
-  <figure class="shot">
-    <img class="still" src="/videos/review-verdict.webp" alt="The decision open in the studio: its answer, what was considered instead, and the pointer on Accept." width="1200" height="675" loading="lazy" decoding="async">
-    <figcaption>From the review video: accepting the decision.</figcaption>
   </figure>
 </li>
 <!-- end -->

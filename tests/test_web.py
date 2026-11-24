@@ -29,7 +29,7 @@ def ids(text: str) -> set[str]:
     return set(re.findall(r'id="([^"]+)"', text))
 
 
-ESSAYS = ["why", "reflection", "cli", "review", "logika", "setup"]
+ESSAYS = ["why", "reflection", "cli", "logika", "setup"]
 
 
 def test_the_docs_are_one_list_of_essays_each_with_its_art_and_a_reference_page_last(
@@ -136,7 +136,7 @@ def test_the_story_pages_are_one_layout_with_a_minute_of_video_per_tab(tmp_path:
     assert not (tmp_path / "studio").exists()
     assert 'data-tabs-for="films"' in home
     tabs = re.findall(r'data-tab="(\w+)" aria-selected="(\w+)"', home)
-    assert tabs == [("reflection", "true"), ("review", "false")]
+    assert tabs == [("reflection", "true")]
     for name, _ in tabs:
         film = home.split(
             f'<figure class="film" data-panel="{name}" data-panel-for="films" id="{name}">'
@@ -150,10 +150,10 @@ def test_the_story_pages_are_one_layout_with_a_minute_of_video_per_tab(tmp_path:
         for made in (f"{name}.jpg", f"{name}.vtt"):
             assert (WEB / "site" / "videos" / made).is_file()
     assert "uvx nock init" in home and 'href="https://logika.host"' in home
-    assert start.count('class="step"') == 7 and "data-stepper" in start
+    assert start.count('class="step"') == 4 and "data-stepper" in start
     for still in re.findall(r'<img class="still" src="/videos/([^"]+)"', start):
         assert (WEB / "site" / "videos" / still).is_file()
-    assert start.count('class="still"') == 2
+    assert start.count('class="still"') == 0
 
 
 def test_the_home_page_shows_nock_in_logika_with_its_art_beside_and_no_logika_scene(
