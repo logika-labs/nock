@@ -87,6 +87,11 @@ with that Caddyfile (the previous one goes back if Caddy refuses it) and reloads
 issues nock.dev's and www.nock.dev's certificates. Nothing
 runs before you answer `y`.
 
+A release or rollback naming box-1 goes to its standby right after (`STANDBY`, the spare that takes over a
+dead box-1: `deploy/runbooks/restore.md` §7 in Logika's repository), so nock.dev's files are there when a
+takeover repoints its records. While the standby stands by (its Postgres following box-1's), `nock.dev.caddy`
+waits as `/srv/sites/nock.dev/nock.dev.caddy`, out of Caddy's reach, and the takeover installs it.
+
 ## The API
 
 api.nock.dev, where `nock share` sends a summary, nock its usage reports and
