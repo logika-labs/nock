@@ -31,10 +31,10 @@ standard library and nothing else: schemas are the JSON Schema subset in
   `cd server && uv run pytest` (Docker, for Postgres), `uv run ruff check`,
   `uv run ruff format --check`, `uv run basedpyright` — green too before a
   commit that touches it. Its README has the deploy and the provisioning.
-- `terms/` is nock's documentation, one source for agents and people: the
+- `src/nock/docs/` is nock's documentation, one source for agents and people: the
   terms are short articles agents read (`nock docs`, which the briefs point
-  at; `terms/briefs/` the long texts every installed skill and subagent
-  points at), and `terms/guides/` the guides, a page each, that nock.dev's
+  at; `docs/briefs/` the long texts every installed skill and subagent
+  points at), and `docs/guides/` the guides, a page each, that nock.dev's
   docs are built from (`web/`, the site, outside the vendored core:
   `web/README.md`). Keep them true when behavior changes. The README is an
   overview that links to the docs.

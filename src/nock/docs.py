@@ -1,13 +1,15 @@
 """nock's documentation for agents (`nock docs`): one short article per term,
-each a file in `terms/` named by its dotted term (`tools.caching.md`), opening
+each a file in `docs/` named by its dotted term (`tools.caching.md`), opening
 with front matter — `term`, `aliases`, `description` — between `---` lines.
 A dotted term is a child of the term before its last dot, which must exist;
-an article lists its children. A term in `terms/briefs/` is a brief a skill or
+an article lists its children. A term in `docs/briefs/` is a brief a skill or
 a subagent nock installs follows (`Run .nock/nock docs TERM and do what it
-says.`), so it may run long, and is printed whole. A term in `terms/guides/`
+says.`), so it may run long, and is printed whole. A term in `docs/guides/`
 (`guide.cli`) is a page of the documentation for people, an essay or the
 reference, nock.dev's docs built from it, and may run long too: a short term is what an agent needs at a
-glance, a guide everything there is to know."""
+glance, a guide everything there is to know. A project's own terms, in
+`.nock/docs/` laid out the same way, are read on top of nock's: one of the
+same name replaces nock's."""
 
 from __future__ import annotations
 
@@ -19,7 +21,7 @@ from pathlib import Path
 
 from nock.errors import NotFoundError, PreconditionError
 
-TERMS = Path(__file__).resolve().with_name("terms")
+DOCS = Path(__file__).resolve().with_name("docs")
 BRIEFS = "briefs"
 GUIDES = "guides"
 # The longest article and description, in characters; a brief's or a guide's article may be longer.
@@ -102,15 +104,23 @@ def parse(path: Path, limit: int = LIMIT) -> Term:
     return Term(term, aliases, description, article)
 
 
-class Docs:
-    """Every term in `directory`, parents before their children."""
+def read(directory: Path) -> list[Term]:
+    """Every term in `directory`, its briefs and its guides."""
+    return [
+        *(parse(path) for path in directory.glob("*.md")),
+        *(parse(path, BRIEF_LIMIT) for path in (directory / BRIEFS).glob("*.md")),
+        *(parse(path, GUIDE_LIMIT) for path in (directory / GUIDES).glob("*.md")),
+    ]
 
-    def __init__(self, directory: Path = TERMS) -> None:
-        terms = [
-            *(parse(path) for path in directory.glob("*.md")),
-            *(parse(path, BRIEF_LIMIT) for path in (directory / BRIEFS).glob("*.md")),
-            *(parse(path, GUIDE_LIMIT) for path in (directory / GUIDES).glob("*.md")),
-        ]
+
+class Docs:
+    """Every term in `directory`, and in `project`'s (`.nock/docs/`) on top,
+    where a term of the same name replaces nock's; parents before their children."""
+
+    def __init__(self, directory: Path = DOCS, project: Path | None = None) -> None:
+        own = read(project) if project is not None and project.is_dir() else []
+        replaced = {term.term for term in own}
+        terms = [term for term in read(directory) if term.term not in replaced] + own
         self.terms = sorted(terms, key=lambda term: term.term.split("."))
 
     def problems(self) -> list[str]:

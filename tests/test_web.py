@@ -182,7 +182,7 @@ def test_no_page_or_source_names_a_community_channel(tmp_path: Path) -> None:
         WEB / "README.md",
         ROOT / "README.md",
         *(WEB / "landing").glob("*.html"),
-        *(ROOT / "src" / "nock" / "terms").rglob("*.md"),
+        *(ROOT / "src" / "nock" / "docs").rglob("*.md"),
     ]
     for text in [*pages.values(), *(path.read_text() for path in sources)]:
         assert not re.search(r"telegram|t\.me/", text, re.I)

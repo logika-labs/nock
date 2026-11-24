@@ -20,7 +20,7 @@ site/              style.css, story.js (the landing page's tabs, Getting started
                    wide, at its top; NAME-480.webp on the list; NAME.jpg, its 1200x630 link
                    preview); the pages, robots.txt, sitemap.xml and
                    the llms files are built into it (gitignored)
-build.py           the pages: landing/; the docs from ../src/nock/terms/ (a page per
+build.py           the pages: landing/; the docs from ../src/nock/docs/ (a page per
                    essay, and the reference page with every term); legal/; and
                    what crawlers read: each page's canonical link and JSON-LD, robots.txt,
                    sitemap.xml (each page dated by its sources' last commit), llms.txt and
@@ -38,7 +38,7 @@ python3 web/build.py
 python3 -m http.server -d web/site   # then open http://localhost:8000
 ```
 
-The docs are nock's own: the guides in `src/nock/terms/guides/` (`nock docs guide.NAME`) and the
+The docs are nock's own: the guides in `src/nock/docs/guides/` (`nock docs guide.NAME`) and the
 short terms beside them (what agents read), so edit those, never `site/`. The guides are a few long
 essays, `ESSAYS` in `build.py` in reading order, a page each at `/docs/NAME/` with its art across the
 top, a way back to the list beside its title and the next essay as a button at its foot; and the

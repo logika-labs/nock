@@ -36,7 +36,7 @@ project, so it is the project's own code. It shares nothing without your yes.
 The documentation is at [nock.dev/docs](https://nock.dev/docs/): nock from
 first principles, in a few long essays, best read in order. The same text is in
 nock itself: `.nock/nock docs guide` lists the essays, and `.nock/nock docs` the
-terms, the short articles agents read. Both are `src/nock/terms/`.
+terms, the short articles agents read. Both are `src/nock/docs/`.
 
 1. [Why nock](https://nock.dev/docs/why/)
 2. [Agents that build their own tools](https://nock.dev/docs/reflection/)
@@ -58,7 +58,7 @@ uv run ruff check && uv run ruff format && uv run basedpyright
 [ARCH.md](ARCH.md) has how the code is laid out, and `.nock/nock docs
 guide.cli` (or [the essay](https://nock.dev/docs/cli/#nock-is-its-own-first-user))
 the gate and how a release goes. `web/` is nock.dev, its docs built from
-`src/nock/terms/` (`web/README.md`).
+`src/nock/docs/` (`web/README.md`).
 
 ## Thanks
 

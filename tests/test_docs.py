@@ -16,11 +16,11 @@ from nock.docs import (
     BRIEF_LIMIT,
     BRIEFS,
     DESCRIPTION_LIMIT,
+    DOCS,
     GUIDE_LIMIT,
     GUIDES,
     LIMIT,
     NAME,
-    TERMS,
     Docs,
     TermError,
 )
@@ -79,9 +79,9 @@ def write_term(directory: Path, term: str, front: str, article: str = "An articl
 def test_every_term_holds_to_the_rules() -> None:
     docs = Docs()
     assert docs.problems() == []
-    briefs = {path.stem for path in (TERMS / BRIEFS).glob("*.md")}
-    guides = {path.stem for path in (TERMS / GUIDES).glob("*.md")}
-    assert len(docs.terms) == len(list(TERMS.glob("*.md"))) + len(briefs) + len(guides)
+    briefs = {path.stem for path in (DOCS / BRIEFS).glob("*.md")}
+    guides = {path.stem for path in (DOCS / GUIDES).glob("*.md")}
+    assert len(docs.terms) == len(list(DOCS.glob("*.md"))) + len(briefs) + len(guides)
     for term in docs.terms:
         limit = (
             BRIEF_LIMIT if term.term in briefs else GUIDE_LIMIT if term.term in guides else LIMIT
@@ -148,13 +148,25 @@ def test_nock_docs_lists_the_terms_reads_them_and_answers_a_miss(project: Projec
     assert nothing_alike.returncode == 44 and len(nothing_alike.stdout.splitlines()) == 3
 
 
+def test_a_projects_own_terms_are_read_on_top_of_nocks(project: Project) -> None:
+    own = project.root / ".nock" / "docs"
+    own.mkdir()
+    write_term(own, "billing", "term: billing\naliases: []\ndescription: What billing is for")
+    write_term(own, "tools", "term: tools\naliases: []\ndescription: Our tools", "Ours.")
+    index = json.loads(nock(project.root, "docs", "--json").stdout)
+    assert index["billing"] == "What billing is for" and index["tools"] == "Our tools"
+    assert "tools.caching" in index
+    assert nock(project.root, "docs", "billing").stdout.strip() == "An article."
+    assert nock(project.root, "docs", "tools").stdout.startswith("Ours.\n\nMore:")
+
+
 def test_the_briefs_point_only_at_terms_and_the_toolbox_brief_at_the_framework() -> None:
     docs = Docs()
     named: dict[str, set[str]] = {}
     sources = [
         *PACKAGE.joinpath("briefs").rglob("*.md"),
-        *(TERMS / BRIEFS).glob("*.md"),
-        *(TERMS / GUIDES).glob("*.md"),
+        *(DOCS / BRIEFS).glob("*.md"),
+        *(DOCS / GUIDES).glob("*.md"),
         *PACKAGE.parent.parent.glob("*.md"),
     ]
     for path in sources:
@@ -215,7 +227,7 @@ def test_every_guide_is_a_page_under_guide_with_its_title(project: Project) -> N
     its title, printed whole however long, and listed by `nock docs guide`."""
     docs = Docs()
     guides = [term for term in docs.terms if term.term.startswith("guide.")]
-    assert len(guides) == len(list((TERMS / GUIDES).glob("*.md"))) >= 6
+    assert len(guides) == len(list((DOCS / GUIDES).glob("*.md"))) >= 6
     for guide in guides:
         assert guide.article.startswith("# ") and "\n" in guide.article, guide.term
     longest = max(guides, key=lambda guide: len(guide.article))

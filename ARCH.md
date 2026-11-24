@@ -2,7 +2,7 @@
 
 This document covers how nock is built: the repository, the layers, what
 happens on each path through the code, and where a project plugs in. The
-guides (`src/nock/terms/guides/`, nock.dev's docs) cover what nock is for and how to use it.
+guides (`src/nock/docs/guides/`, nock.dev's docs) cover what nock is for and how to use it.
 
 ## Constraints that shape everything
 
@@ -83,7 +83,7 @@ src/nock/
   primer.py          the primer `.nock/context.md`, as the committed settings have it, and
                      its copy between nock's markers in AGENTS.md
   docs.py            Docs: the terms of `nock docs`, parsed and validated; the closest to a miss
-  terms/             one article per term (`tools.caching.md`): front matter term, aliases,
+  docs/              one article per term (`tools.caching.md`): front matter term, aliases,
                      description; at most 500 characters. The briefs point at the terms
     briefs/          the long texts the installed skills and subagents follow: the
                      rounds' agents reflection.toolbox, .nock (fit's); the logika
@@ -310,10 +310,10 @@ merge. What is shared is the reflection record (see below).
 
 ## Documentation for agents
 
-`nock docs` serves `terms/`, one Markdown file per term, named by it
+`nock docs` serves `docs/`, one Markdown file per term, named by it
 (`tools.caching.md`). Its front matter holds `term`, `aliases` and a
 one-line `description` (at most 100 characters); the article is at most 500,
-but for the briefs in `terms/briefs/` and the guides in `terms/guides/`,
+but for the briefs in `docs/briefs/` and the guides in `docs/guides/`,
 which may run to 16,000 and are printed whole (`docs.Article`, which the
 output cap passes through). A guide (`guide.cli`, a child of `guide`) is a
 page of the documentation for people, an essay or the reference: it opens with its `# ` title, and
@@ -328,6 +328,11 @@ closest: names it nearly spells (`difflib`), then the articles that mention
 it most, then the most alike names. The briefs name the terms their agents
 read (`.nock/nock docs TERM …`), and a test holds each name to a term. A new
 area is a new root term with its children, such as `telemetry.*`.
+
+A project's own terms live in `.nock/docs/`, laid out the same way, and
+`nock docs` reads them on top of nock's (`Docs(project=…)`): a project term
+of the same name replaces nock's, so a project documents its own areas, what
+each is for and why, where its agents already look.
 
 Every skill and subagent nock installs is its front matter (the trigger)
 and one line, "Run `.nock/nock docs TERM` and do what it says.": the text

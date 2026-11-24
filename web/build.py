@@ -1,4 +1,4 @@
-"""Build nock.dev into `site/`: the landing page, About and Getting started from `landing/`; the docs from nock's guides and terms (`src/nock/terms/`, what
+"""Build nock.dev into `site/`: the landing page, About and Getting started from `landing/`; the docs from nock's guides and terms (`src/nock/docs/`, what
 `nock docs` reads too), a page per essay with its art and a reference page with every term; the
 legal pages from `legal/`, each with its plain-words summary. Every page is set in `layout.html`.
 Standard library only, and nock's own `docs` module, to read the terms as `nock docs` does.
@@ -21,7 +21,7 @@ from typing import NamedTuple
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent / "src"))
 
-from nock.docs import TERMS, Docs, Term  # noqa: E402  (nock's source, beside the site)
+from nock.docs import DOCS, Docs, Term  # noqa: E402  (nock's source, beside the site)
 
 SITE = HERE / "site"
 LAYOUT = HERE / "layout.html"
@@ -898,7 +898,7 @@ def build(site: Path, terms: Path | None = None, today: str | None = None) -> li
     """Write every page under `site`, and what crawlers read beside them; the files written. A
     page's sitemap date is the day its sources last changed in git, `today` (the build's day by
     default) for sources not yet committed."""
-    terms = terms or TERMS
+    terms = terms or DOCS
     today = today or date.today().isoformat()
     docs = Docs(terms)
     pages = docs_pages(docs)
