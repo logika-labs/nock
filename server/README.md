@@ -159,6 +159,24 @@ release keeps working), the unit, the Caddy site when it changed (validated,
 else the previous one is put back), the `current` symlink, the restart, and
 the prune.
 
+A deploy naming box-1 installs the same release on its standby right after
+(`STANDBY` in `deploy.py`, the spare that takes over a dead box-1:
+`deploy/runbooks/restore.md` §7 in Logika's repository); naming the standby
+installs there alone. There, while its Postgres follows box-1's
+(`standby.signal`), `install.sh` runs no migration, leaves the Caddy site out
+and keeps `nock-api` disabled and stopped; the takeover runs it again once
+Postgres is promoted, which migrates, installs the site and starts it.
+
+The standby is provisioned once, as root there, with the user and directories
+below (`id nock-api || useradd …`, `install -d …`) but no role, database or
+password (they come with box-1's Postgres); box-1's settings go over a pipe,
+never printed:
+
+```sh
+ssh ops@box-1 sudo cat /etc/nock-api/nock-api.env \
+  | ssh ops@62.210.212.206 'sudo sh -c "umask 077; cat > /etc/nock-api/nock-api.env"'
+```
+
 ### Provisioning
 
 Once, on the box, as root (`sudo -i`). The user may already exist from the

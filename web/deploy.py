@@ -11,6 +11,12 @@ box's Caddyfile (the previous one back if Caddy refuses it), and Caddy reloaded.
 home page, beside the legal pages and what they load, so opening the site later is one release without it. The steps are printed first, and nothing runs before the answer
 is yes. Standard library only.
 
+Box-1's standby (`STANDBY`, the spare that takes over a dead box-1: Logika's deploy/runbooks/restore.md §7) gets every
+release and rollback naming another box too, right after it, from the same build (`boxes`), so nock.dev's files are
+there when a takeover repoints its records. While it stands by (its Postgres following box-1's, `standby.signal`),
+Caddy's site waits as `/srv/sites/nock.dev/nock.dev.caddy` instead, since Caddy would ask ACME for nock.dev while its
+record points at box-1; the takeover installs it.
+
     python3 web/deploy.py HOST [--coming-soon | --rollback]
 """
 
@@ -32,6 +38,8 @@ HERE = Path(__file__).resolve().parent
 DOMAIN = "nock.dev"
 SITES = "/srv/sites"
 CADDY_SITES = "/etc/caddy/sites"
+STANDBY = "ops@62.210.212.206"
+STANDBY_SIGNAL = "/var/lib/postgresql/17/main/standby.signal"
 CADDY_SITE = HERE / "nock.dev.caddy"
 KEEP = 5
 VIDEOS = HERE / "site" / "videos"
@@ -103,8 +111,14 @@ def close(directory: Path) -> None:
     (directory / "index.html").write_text(coming_soon())
 
 
-def plan(host: str, release: str, build_directory: Path) -> list[Step]:
-    """Every command of a release once it is staged as `build_directory/release`, in order."""
+def boxes(host: str) -> list[str]:
+    """The boxes a release or rollback naming `host` changes, in order: `host`, then the standby unless `host` is it."""
+    return [host] if host == STANDBY else [host, STANDBY]
+
+
+def plan(hosts: list[str], release: str, build_directory: Path) -> list[Step]:
+    """Every command of a release to each of `hosts` once it is staged as `build_directory/release`, in order:
+    packed once, then copied to and switched on each box."""
     tarball = build_directory / f"{release}.tar.gz"
     remote = f"/tmp/{DOMAIN}-{release}.tar.gz"
     script = activate(SITES, CADDY_SITES, release, remote, CADDY_SITE.read_text())
@@ -123,16 +137,25 @@ def plan(host: str, release: str, build_directory: Path) -> list[Step]:
                 release,
             ],
         ),
-        Step(f"copy it to {host}", ["scp", "-q", str(tarball), f"{host}:{remote}"]),
-        Step(f"switch {host} to it", ["ssh", host, shlex.join(["sudo", "sh", "-c", script])]),
+        *(
+            step
+            for host in hosts
+            for step in (
+                Step(f"copy it to {host}", ["scp", "-q", str(tarball), f"{host}:{remote}"]),
+                Step(
+                    f"switch {host} to it", ["ssh", host, shlex.join(["sudo", "sh", "-c", script])]
+                ),
+            )
+        ),
     ]
 
 
-def rollback_plan(host: str) -> list[Step]:
+def rollback_plan(hosts: list[str]) -> list[Step]:
     return [
         Step(
             f"switch {host} back", ["ssh", host, shlex.join(["sudo", "sh", "-c", rollback(SITES)])]
         )
+        for host in hosts
     ]
 
 
@@ -146,10 +169,18 @@ FLIP = """flip() {
 """
 
 
-def activate(sites: str, caddy_sites: str, release: str, tarball: str, caddy_site: str) -> str:
+def activate(
+    sites: str,
+    caddy_sites: str,
+    release: str,
+    tarball: str,
+    caddy_site: str,
+    standby_signal: str = STANDBY_SIGNAL,
+) -> str:
     """The box's side of a release: Caddy's site for nock.dev installed if it changed (and taken back if
-    Caddy refuses it), `tarball` (holding the directory `release`) unpacked under `sites`, readable by
-    Caddy, `current` switched to it, and the KEEP newest releases kept (names sort by age)."""
+    Caddy refuses it), or on a standby (`standby_signal` exists) kept beside the releases for a takeover,
+    `tarball` (holding the directory `release`) unpacked under `sites`, readable by Caddy, `current`
+    switched to it, and the KEEP newest releases kept (names sort by age)."""
     site = shlex.quote(f"{sites}/{DOMAIN}")
     caddy = shlex.quote(f"{caddy_sites}/{DOMAIN}.caddy")
     name, packed = shlex.quote(release), shlex.quote(tarball)
@@ -159,7 +190,10 @@ caddy={caddy}
 {FLIP}mkdir -p "$site/releases" "$(dirname "$caddy")"
 cat > "$caddy.new" <<'CADDY'
 {caddy_site}CADDY
-if cmp -s "$caddy.new" "$caddy"; then
+if [ -e {shlex.quote(standby_signal)} ]; then
+\techo "a standby: Caddy's site waits in $site/{DOMAIN}.caddy"
+\tmv "$caddy.new" "$site/{DOMAIN}.caddy"
+elif cmp -s "$caddy.new" "$caddy"; then
 \trm "$caddy.new"
 else
 \t[ ! -f "$caddy" ] || cp "$caddy" "$caddy.previous"
@@ -229,9 +263,10 @@ def main(argv: list[str] | None = None) -> int:
         print(f"deploy: {problem}", file=sys.stderr)
         return 2
     if arguments.rollback:
+        hosts = boxes(host)
         steps, what = (
-            rollback_plan(host),
-            f"Switch {host} back to the release before its current one?",
+            rollback_plan(hosts),
+            f"Switch {' and '.join(hosts)} back to the release before its current one?",
         )
     else:
 
@@ -264,7 +299,11 @@ def main(argv: list[str] | None = None) -> int:
                 file=sys.stderr,
             )
             return 1
-        steps, what = plan(host, release, build_directory), f"Release {release} to {host}?"
+        hosts = boxes(host)
+        steps, what = (
+            plan(hosts, release, build_directory),
+            f"Release {release} to {' and '.join(hosts)}?",
+        )
     for step in steps:
         print(f"- {step.what}: {shlex.join(step.command)[:200]}")
     if input(f"{what} [y/N] ").strip().lower() != "y":
@@ -276,7 +315,9 @@ def main(argv: list[str] | None = None) -> int:
             print(f"deploy: failed to {step.what}", file=sys.stderr)
             return 1
     print(
-        f"switched {host} back" if arguments.rollback else f"released {release} to https://{DOMAIN}"
+        f"switched {' and '.join(hosts)} back"
+        if arguments.rollback
+        else f"released {release} to https://{DOMAIN}"
     )
     return 0
 

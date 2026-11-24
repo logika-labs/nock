@@ -42,6 +42,7 @@ class Box:
         self.local.mkdir(parents=True)
         self.log = root / "log"
         self.refuse = root / "refuse"
+        self.standby_signal = root / "standby.signal"
         stubs = root / "stubs"
         stubs.mkdir()
         for tool in ("caddy", "systemctl"):
@@ -73,7 +74,14 @@ class Box:
         subprocess.run(["tar", "-C", str(self.local), "-czf", str(tarball), name], check=True)
         shutil.rmtree(staged)
         return self.run(
-            DEPLOY.activate(str(self.sites), str(self.caddy), name, str(tarball), caddy_site)
+            DEPLOY.activate(
+                str(self.sites),
+                str(self.caddy),
+                name,
+                str(tarball),
+                caddy_site,
+                str(self.standby_signal),
+            )
         )
 
     def served(self) -> str:
@@ -115,6 +123,40 @@ def test_a_caddy_site_caddy_refuses_is_taken_back_and_nothing_switches(tmp_path:
     assert box.calls()[-1].startswith("caddy validate")
 
 
+def test_a_standby_gets_the_release_with_caddys_site_kept_aside_for_a_takeover(
+    tmp_path: Path,
+) -> None:
+    box = Box(tmp_path)
+    box.standby_signal.touch()
+    released = box.release("20261101T000000Z-a", "first")
+    assert released.returncode == 0, released.stderr
+    assert box.served() == "first"
+    assert (box.sites / "nock.dev" / "nock.dev.caddy").read_text() == CADDY_SITE
+    assert list(box.caddy.iterdir()) == [] and box.calls() == []
+    # Promoted, the box is no standby: the next release installs the site and reloads Caddy.
+    box.standby_signal.unlink()
+    assert box.release("20261102T000000Z-b", "second").returncode == 0
+    assert (box.caddy / "nock.dev.caddy").read_text() == CADDY_SITE
+    assert box.calls()[-1] == "systemctl reload caddy.service"
+
+
+def test_a_release_naming_box_1_goes_to_its_standby_after_it(tmp_path: Path) -> None:
+    assert DEPLOY.boxes("ops@box-1") == ["ops@box-1", DEPLOY.STANDBY]
+    assert DEPLOY.boxes(DEPLOY.STANDBY) == [DEPLOY.STANDBY]
+    steps = DEPLOY.plan(DEPLOY.boxes("ops@box-1"), "20261105T120000Z-abc", tmp_path)
+    assert [step.what for step in steps] == [
+        "pack the release",
+        "copy it to ops@box-1",
+        "switch ops@box-1 to it",
+        f"copy it to {DEPLOY.STANDBY}",
+        f"switch {DEPLOY.STANDBY} to it",
+    ]
+    assert [step.what for step in DEPLOY.rollback_plan(DEPLOY.boxes("ops@box-1"))] == [
+        "switch ops@box-1 back",
+        f"switch {DEPLOY.STANDBY} back",
+    ]
+
+
 def test_the_five_newest_releases_are_kept_and_a_rollback_steps_back(tmp_path: Path) -> None:
     box = Box(tmp_path)
     names = [f"2026110{day}T000000Z-r{day}" for day in range(1, 8)]
@@ -136,7 +178,7 @@ def test_the_release_is_staged_from_the_committed_tree_and_switched_last(tmp_pat
     DEPLOY.stage(staged)
     assert DEPLOY.problems(staged) == []
     assert (staged / "fonts" / "OFL.txt").is_file() and (staged / "story.js").is_file()
-    steps = DEPLOY.plan("ops@box-1", "20261105T120000Z-abc", tmp_path / "release")
+    steps = DEPLOY.plan(["ops@box-1"], "20261105T120000Z-abc", tmp_path / "release")
     assert [step.what for step in steps] == [
         "pack the release",
         "copy it to ops@box-1",

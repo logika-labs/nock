@@ -35,7 +35,7 @@ def test_the_box_is_always_named() -> None:
 
 
 def test_the_remote_half_copies_unpacks_and_installs_under_opt(tmp_path: Path) -> None:
-    steps = DEPLOY.plan("ops@box-1", RELEASE, tmp_path)
+    steps = DEPLOY.plan(["ops@box-1"], RELEASE, tmp_path)
     remote = f"/tmp/nock-api-{RELEASE}.tar.gz"
     box = f"/opt/nock-api/releases/{RELEASE}"
     assert [step.command for step in steps[-3:]] == [
@@ -52,10 +52,26 @@ def test_the_remote_half_copies_unpacks_and_installs_under_opt(tmp_path: Path) -
     assert pack[:2] == ["env", "COPYFILE_DISABLE=1"] and pack[2] == "tar"
 
 
+def test_a_deploy_to_box_1_installs_the_same_release_on_its_standby_after_it(
+    tmp_path: Path,
+) -> None:
+    assert DEPLOY.boxes("ops@box-1") == ["ops@box-1", DEPLOY.STANDBY]
+    assert DEPLOY.boxes(DEPLOY.STANDBY) == [DEPLOY.STANDBY]
+    steps = DEPLOY.plan(DEPLOY.boxes("ops@box-1"), RELEASE, tmp_path)
+    assert [step.what for step in steps if step.what.startswith("pack")] == ["pack the release"]
+    assert [step.what for step in steps[-6:]] == [
+        f"{verb} {host}"
+        for host in ("ops@box-1", DEPLOY.STANDBY)
+        for verb in ("copy it to", "unpack it on", "install it on")
+    ]
+    tarballs = {step.command[2] for step in steps if step.command[0] == "scp"}
+    assert tarballs == {str(tmp_path / f"{RELEASE}.tar.gz")}
+
+
 def test_the_local_half_packs_a_wheel_hashed_requirements_migrations_and_the_ledger(
     tmp_path: Path,
 ) -> None:
-    steps = DEPLOY.plan("ops@box-1", RELEASE, tmp_path)
+    steps = DEPLOY.plan(["ops@box-1"], RELEASE, tmp_path)
     for step in steps[:-3]:
         subprocess.run(step.command, cwd=SERVER, check=True)
     with tarfile.open(tmp_path / f"{RELEASE}.tar.gz") as packed:

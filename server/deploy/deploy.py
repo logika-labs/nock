@@ -7,6 +7,12 @@ tarball, copied over SSH, unpacked under `/opt/nock-api/releases/ID`, and instal
 `deploy/install.sh`: interpreter and packages, migrations, the unit and the Caddy site, the `current`
 symlink, the restart, and the five newest releases kept. The steps are printed first, and nothing runs
 before the answer is yes. Standard library only.
+
+Box-1's standby (`STANDBY`, the spare that takes over a dead box-1: Logika's deploy/runbooks/restore.md
+§7) must hold the release box-1 runs, so a deploy naming any other box installs the same release there right
+after, from the same build (`boxes`); naming the standby installs there alone. On the standby, whose Postgres
+follows box-1's, `install.sh` runs no migration, leaves the Caddy site out and keeps `nock-api` stopped,
+until a takeover runs it again.
 """
 
 import argparse
@@ -19,6 +25,7 @@ from pathlib import Path
 
 SERVER = Path(__file__).resolve().parents[1]
 RELEASES = "/opt/nock-api/releases"
+STANDBY = "ops@62.210.212.206"
 
 
 @dataclass(frozen=True)
@@ -27,13 +34,16 @@ class Step:
     command: list[str]
 
 
-def plan(host: str, release: str, build: Path) -> list[Step]:
-    """Every command of a deploy, in order, run in `server/`; the release is staged under `build`."""
+def boxes(host: str) -> list[str]:
+    """The boxes a deploy naming `host` installs on, in order: `host`, then the standby unless `host` is it."""
+    return [host] if host == STANDBY else [host, STANDBY]
+
+
+def plan(hosts: list[str], release: str, build: Path) -> list[Step]:
+    """Every command of a deploy to each of `hosts`, in order, run in `server/`; the release is staged under
+    `build` and packed once."""
     stage = build / release
     tarball = build / f"{release}.tar.gz"
-    remote = f"/tmp/nock-api-{release}.tar.gz"
-    box = f"{RELEASES}/{release}"
-    unpack = f"mkdir -p {RELEASES} && tar -C {RELEASES} -xzf {remote} && rm {remote}"
     return [
         Step("stage the release", ["mkdir", "-p", f"{stage}/wheels"]),
         Step(
@@ -55,6 +65,16 @@ def plan(host: str, release: str, build: Path) -> list[Step]:
             "pack the release",
             ["env", "COPYFILE_DISABLE=1", "tar", "-C", str(build), "-czf", str(tarball), release],
         ),
+        *(step for host in hosts for step in ship(host, release, tarball)),
+    ]
+
+
+def ship(host: str, release: str, tarball: Path) -> list[Step]:
+    """Copy the packed release to `host`, unpack and install it there."""
+    remote = f"/tmp/nock-api-{release}.tar.gz"
+    box = f"{RELEASES}/{release}"
+    unpack = f"mkdir -p {RELEASES} && tar -C {RELEASES} -xzf {remote} && rm {remote}"
+    return [
         Step(f"copy it to {host}", ["scp", "-q", str(tarball), f"{host}:{remote}"]),
         Step(f"unpack it on {host}", ["ssh", host, shlex.join(["sudo", "sh", "-c", unpack])]),
         Step(
@@ -94,10 +114,11 @@ def main(argv: list[str] | None = None) -> int:
         print("deploy: server/ has uncommitted changes; commit them first", file=sys.stderr)
         return 1
     release = release_id(datetime.now(UTC), git("rev-parse", "--short=12", "HEAD"))
-    steps = plan(host, release, SERVER / "build" / "release")
+    hosts = boxes(host)
+    steps = plan(hosts, release, SERVER / "build" / "release")
     for step in steps:
         print(f"- {step.what}: {shlex.join(step.command)}")
-    if input(f"Deploy {release} to {host}? [y/N] ").strip().lower() != "y":
+    if input(f"Deploy {release} to {' and '.join(hosts)}? [y/N] ").strip().lower() != "y":
         print("deploy: nothing done")
         return 1
     for step in steps:
@@ -105,7 +126,7 @@ def main(argv: list[str] | None = None) -> int:
         if subprocess.run(step.command, cwd=SERVER).returncode != 0:
             print(f"deploy: failed to {step.what}", file=sys.stderr)
             return 1
-    print(f"deployed {release} to {host}")
+    print(f"deployed {release} to {' and '.join(hosts)}")
     return 0
 
 

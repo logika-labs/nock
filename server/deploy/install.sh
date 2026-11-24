@@ -6,6 +6,12 @@
 # The box must be provisioned first (server/README.md, "Provisioning"): the system user nock-api, the
 # nock role and database in Postgres, /etc/nock-api/nock-api.env, uv, Caddy importing
 # /etc/caddy/sites/*.caddy.
+#
+# On box-1's standby (Logika's deploy/runbooks/restore.md §7), whose Postgres follows box-1's, nothing serves
+# until a takeover promotes it: the database is read-only and its schema box-1's, so no migration runs, the
+# unit is installed but kept disabled and stopped, and the Caddy site stays out (Caddy would ask ACME for
+# api.nock.dev while its record points at box-1). Promotion removes standby.signal, and the takeover runs this
+# again, which then does all of it.
 set -eu
 
 release=${1:?usage: install.sh /opt/nock-api/releases/ID}
@@ -22,6 +28,9 @@ if [ ! -f "$env_file" ]; then
 	exit 1
 fi
 
+standby=
+[ ! -e /var/lib/postgresql/17/main/standby.signal ] || standby=1
+
 echo "== interpreter and packages"
 export UV_PYTHON_INSTALL_DIR=/opt/nock-api/python
 uv venv --quiet --python 3.14 "$release/venv"
@@ -33,15 +42,17 @@ chmod -R a+rX,go-w "$release" "$UV_PYTHON_INSTALL_DIR"
 
 echo "== migrations"
 # Before the restart, with the new release: migrations are forward-only, so the running release keeps working.
-systemd-run --quiet --wait --pipe --collect --uid=nock-api --gid=nock-api \
-	-p EnvironmentFile="$env_file" -p WorkingDirectory="$release" \
-	"$release/venv/bin/nock-api" migrate --directory "$release/migrations"
+if [ -z "$standby" ]; then
+	systemd-run --quiet --wait --pipe --collect --uid=nock-api --gid=nock-api \
+		-p EnvironmentFile="$env_file" -p WorkingDirectory="$release" \
+		"$release/venv/bin/nock-api" migrate --directory "$release/migrations"
+fi
 
 echo "== system files"
 install -m 0644 "$release/deploy/nock-api.service" /etc/systemd/system/nock-api.service
 systemctl daemon-reload
 site=/etc/caddy/sites/nock-api.caddy
-if ! cmp -s "$release/deploy/nock-api.caddy" "$site"; then
+if [ -z "$standby" ] && ! cmp -s "$release/deploy/nock-api.caddy" "$site"; then
 	install -d /etc/caddy/sites
 	[ ! -f "$site" ] || cp "$site" "$site.previous"
 	install -m 0644 "$release/deploy/nock-api.caddy" "$site"
@@ -64,8 +75,13 @@ ln -sfn "$release" /opt/nock-api/current.new
 mv -T /opt/nock-api/current.new /opt/nock-api/current
 
 echo "== restart"
-systemctl enable --quiet nock-api.service
-systemctl restart nock-api.service
+if [ -n "$standby" ]; then
+	systemctl disable --quiet --now nock-api.service
+	echo "a standby: nock-api stays stopped"
+else
+	systemctl enable --quiet nock-api.service
+	systemctl restart nock-api.service
+fi
 
 echo "== prune"
 # Keep the five newest releases; names start with their UTC time, so they sort by age.
