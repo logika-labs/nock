@@ -13,7 +13,7 @@ import pytest
 from nock_api import migrate
 
 FIRST = "0001_reflections_and_usage.sql"
-EVERY = [FIRST, "0002_reports.sql", "0003_docs.sql"]
+EVERY = [FIRST, "0002_reports.sql", "0003_docs.sql", "0004_no_docs.sql"]
 
 
 def tables(url: str) -> set[str]:
@@ -29,13 +29,7 @@ def test_an_empty_database_gets_every_migration_once(empty_database_url: str) ->
         assert migrate.migrate(connection, migrate.MIGRATIONS) == EVERY
         assert migrate.migrate(connection, migrate.MIGRATIONS) == []
         assert migrate.applied(connection) == set(EVERY)
-    assert tables(empty_database_url) == {
-        "schema_migrations",
-        "reflections",
-        "usage",
-        "reports",
-        "docs",
-    }
+    assert tables(empty_database_url) == {"schema_migrations", "reflections", "usage", "reports"}
 
 
 def test_concurrent_runners_apply_each_migration_once(empty_database_url: str) -> None:

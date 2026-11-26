@@ -119,4 +119,4 @@ def test_a_key_the_enhancer_cannot_use_never_takes_the_server_down(
         timeout=120,
     )
     assert ran.returncode == 0, ran.stderr
-    assert "3 migration(s) applied" in ran.stdout
+    assert "4 migration(s) applied" in ran.stdout
