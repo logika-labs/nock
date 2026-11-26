@@ -33,7 +33,7 @@ standby=
 
 echo "== interpreter and packages"
 export UV_PYTHON_INSTALL_DIR=/opt/nock-api/python
-uv venv --quiet --python 3.14 "$release/venv"
+uv venv --quiet --allow-existing --python 3.14 "$release/venv"
 uv pip install --quiet --compile-bytecode --python "$release/venv/bin/python" --require-hashes --no-deps \
 	-r "$release/requirements.txt"
 uv pip install --quiet --compile-bytecode --python "$release/venv/bin/python" --no-deps "$release"/wheels/*.whl
