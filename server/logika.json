@@ -12,11 +12,7 @@
     "text_chars": {"type": "int"},
     "dated": {"type": "bool", "dimension": true},
     "retry_after": {"type": "int"},
-    "migration": {"type": "str"},
-    "min_cli": {"type": "str", "dimension": true},
-    "version": {"type": "int"},
-    "cli": {"type": "str", "dimension": true},
-    "found": {"type": "bool", "dimension": true}
+    "migration": {"type": "str"}
   },
   "events": [
     {
@@ -49,17 +45,6 @@
         {"name": "refused", "message": "Refused with {http_status} ({reason})", "params": ["http_status", "reason"]}
       ]
     },
-    {
-      "name": "docs",
-      "message": "A docs bundle published, of {bytes} bytes",
-      "params": ["bytes?"],
-      "span": {},
-      "children": [
-        {"name": "kept", "message": "Kept the docs for nock {min_cli} and newer, version {version}", "params": ["min_cli", "version"]},
-        {"name": "refused", "message": "Refused with {http_status} ({reason})", "params": ["http_status", "reason"]}
-      ]
-    },
-    {"name": "docs_asked", "message": "nock {cli} asked for its docs; found: {found}", "params": ["cli", "found"], "span": {}},
     {"name": "limited", "message": "A sender past the rate limit, told to retry in {retry_after} s", "params": ["retry_after"]},
     {
       "name": "migrate",
@@ -79,7 +64,7 @@
         "init": ["nock_api/telemetry.py"],
         "version": "pyproject.toml: project.version",
         "instrumented": true,
-        "strategy": "Plain OTel spans on nock_api.telemetry.tracer, the enhancer installed by the entry point when the SDK key is set. Each POST is a `reflection`, `usage`, `report` or `docs` operation whose outcome is a `kept` or `refused` child; a docs request a `docs_asked` operation; the rate limit a `limited` moment; migrations a `migrate` operation. Counts, outcomes, schema versions and ids of our own rows only: never an address, a header or what a body says."
+        "strategy": "Plain OTel spans on nock_api.telemetry.tracer, the enhancer installed by the entry point when the SDK key is set. Each POST is a `reflection`, `usage` or `report` operation whose outcome is a `kept` or `refused` child; the rate limit a `limited` moment; migrations a `migrate` operation. Counts, outcomes, schema versions and ids of our own rows only: never an address, a header or what a body says."
       }
     ],
     "exclude": ["tests/**", "deploy/**", "migrations/**"]

@@ -2,14 +2,13 @@
 
 Where nock sends its makers a reflection round's summary (`nock share`, on the
 owner's word), the weekly anonymous usage report (on the owner's yes) and what
-someone writes to them with `nock report` (on their word), and where nock asks
-for its hosted docs, newer than those it shipped with. It is
+someone writes to them with `nock report` (on their word). It is
 not part of nock: a distribution of its own (`nock-api`, Python 3.14), never
 published or vendored, while nock itself stays standard-library only.
 
 ```
 nock_api/          the server: app.py (the edge and the routes), rules.py (what is kept, field
-                   by field), docs.py (the hosted docs' bundles), limit.py (the rate limit), migrate.py, telemetry.py, __main__.py
+                   by field), limit.py (the rate limit), migrate.py, telemetry.py, __main__.py
 migrations/        NNNN_name.sql, forward-only, applied by `nock-api migrate`
 deploy/            deploy.py (from a laptop), install.sh (on the box), nock-api.service,
                    nock-api.caddy
@@ -25,7 +24,7 @@ arguments.
 ## The API
 
 What arrives is kept with the moment it arrived and nothing about the sender
-(no address, no headers). Every `POST` but `/docs` answers `201` with `{"id": N}`, or
+(no address, no headers). Every `POST` answers `201` with `{"id": N}`, or
 `400` with `{"error": "…"}` naming what is wrong — a body with any field it
 should not have is refused whole — `413` when the body is too large (refused
 unread), `411` without a `Content-Length`, `429` beyond the rate limit, `404`
@@ -66,20 +65,6 @@ answers `{"ok": true}`.
   sudo systemd-run --quiet --wait --pipe --collect --uid=nock-api --gid=nock-api \
     -p EnvironmentFile=/etc/nock-api/nock-api.env /opt/nock-api/current/venv/bin/nock-api reports
   ```
-
-- **`POST /docs`**: a bundle of nock's docs, as `scripts/publish_docs.py`
-  builds it: `{"manifest": TEXT, "signature": BASE64, "docs": {PATH: TEXT}}`,
-  the manifest the JSON of `{"format": 1, "version": N, "min_cli":
-  "X.Y.Z", "docs": {PATH: SHA256}}` and the signature Ed25519 over it with
-  the makers' key (`NOCK_DOCS_PUBLIC_KEY` names its public half; nock's own
-  by default). The signature is the only credential. Kept in `docs`, one per
-  `min_cli`, replacing one of an older or equal version; `201` with
-  `{"min_cli", "version"}`, `409` for a version older than the one kept, `400`
-  for a bundle not whole or not signed so (the body at most 1 MB).
-- **`GET /docs/{cli}`**: the kept bundle with the highest version among those
-  whose `min_cli` is at most `cli`, exactly as sent; `404` when there is
-  none, `400` when `cli` is not `X.Y.Z`. nock asks it at most once an hour and
-  verifies what it gets (`src/nock/hosted.py`).
 
 The rate limit is the server's: per client address, 6 requests a minute with a
 burst of 5, one limit across every `POST` (a project sends a usage report at

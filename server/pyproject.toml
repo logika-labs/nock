@@ -9,7 +9,6 @@ dependencies = [
     "psycopg[binary,pool]>=3.3",
     "opentelemetry-api>=1.45",
     "logika-otel>=0.0.2",
-    "cryptography>=44",
 ]
 
 [project.scripts]

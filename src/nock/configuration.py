@@ -82,9 +82,6 @@ DEFAULTS: dict[str, Any] = {
         "usage": "https://api.nock.dev/usage",
         # Where `nock report` sends what the user wrote, on their word.
         "reports": "https://api.nock.dev/reports",
-        # Where `nock docs` asks for docs newer than the vendored core's, at
-        # most once an hour (`nock docs docs.hosted`).
-        "docs": "https://api.nock.dev/docs",
     },
 }
 

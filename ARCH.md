@@ -83,9 +83,6 @@ src/nock/
   primer.py          the primer `.nock/context.md`, as the committed settings have it, and
                      its copy between nock's markers in AGENTS.md
   docs.py            Docs: the terms of `nock docs`, parsed and validated; the closest to a miss
-  hosted.py          the hosted docs: a bundle built, signed and verified; Hosted, the one
-                     kept in `.nock/local/docs.json`, asked of api.nock.dev at most hourly
-  signing.py         Ed25519 (RFC 8032) in plain Python: a bundle's signature
   docs/              one article per term (`tools.caching.md`): front matter term, aliases,
                      description; at most 500 characters. The briefs point at the terms
     briefs/          the long texts the installed skills and subagents follow: the
@@ -340,32 +337,8 @@ each is for and why, where its agents already look.
 
 Every skill and subagent nock installs is its front matter (the trigger)
 and one line, "Run `.nock/nock docs TERM` and do what it says.": the text
-it follows is a brief term, so it always matches the docs nock shows, and an
-upgrade or a hosted bundle changes what a skill says without rewriting the
-skill.
-
-### Hosted docs
-
-nock's own docs also live on api.nock.dev, so they improve between releases
-(`hosted.py`). A bundle is one JSON document: `manifest`, a JSON string of
-`{"format": 1, "version": N, "min_cli": "X.Y.Z", "docs": {PATH: SHA256}}`
-(the version the Unix time of the last commit to `docs/`, the oldest nock
-that may show it), `signature`, standard base64 of an Ed25519 signature over
-the manifest's UTF-8 bytes, and `docs`, each file's text by its path in
-`docs/` (`tools.md`, `briefs/work.md`). A bundle stands only when it
-verifies with nock's built-in public key (`PUBLIC_KEY`;
-`NOCK_DOCS_PUBLIC_KEY` stands in for it in tests), its files are exactly the
-manifest's with their hashes, and its terms hold to the rules. `nock docs`,
-and nothing else, asks `endpoints.docs` (`GET /docs/{VERSION}`) at most once
-an hour with a 2-second timeout, recording the ask whatever the answer, and
-keeps a bundle that stands and fits this nock in `.nock/local/docs.json`;
-the docs it shows are the kept bundle's while it stands, fits and is newer
-than the core's own (`hosted.committed`: the last commit to the core's
-`docs/`, 0 where git cannot say), else the core's, with the project's own on
-top either way. `NOCK_DOCS=bundled` shows the core's alone and asks
-nothing. `scripts/publish_docs.py` builds a bundle from the committed docs,
-signs it with `NOCK_DOCS_SIGNING_KEY`, and posts it on the owner's yes
-(`server/README.md` has the routes).
+it follows is a brief term, so it always matches the vendored core, and an
+upgrade changes what a skill says without rewriting the skill.
 
 ## The loop
 

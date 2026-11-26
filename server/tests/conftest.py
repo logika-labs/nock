@@ -4,12 +4,10 @@ virtual clock.
 
 - `postgres`: the run's server; `admin`: a connection to its `postgres` database, to make more.
 - `database_url`: a fresh database with every migration applied; `empty_database_url`: one with nothing.
-- `clock`: the virtual time the server reads; `api`: the server, answering over HTTP, the docs it keeps
-  signed with `DOCS_SEED`.
+- `clock`: the virtual time the server reads; `api`: the server, answering over HTTP.
 - `spans`: the spans the server emits, through the real OpenTelemetry SDK into memory.
 """
 
-import base64
 import json
 import socket
 import subprocess
@@ -26,8 +24,6 @@ from typing import Any
 import psycopg
 import pytest
 import uvicorn
-from cryptography.hazmat.primitives import serialization
-from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from opentelemetry import trace
 from opentelemetry.sdk.trace import ReadableSpan, TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
@@ -39,13 +35,6 @@ from nock_api import app, migrate
 from nock_api.limit import Limit
 
 IMAGE = "postgres:17-alpine"
-# The tests' own docs signing key: its seed signs, its public half is the server's.
-DOCS_SEED = bytes(range(32))
-DOCS_KEY = base64.b64encode(
-    Ed25519PrivateKey.from_private_bytes(DOCS_SEED)
-    .public_key()
-    .public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw)
-).decode()
 TEMPLATE = "migrated"
 STARTUP = 60.0
 
@@ -141,9 +130,7 @@ def clock() -> Clock:
 class Api:
     """The server, run by uvicorn on a socket of its own, as the box runs it."""
 
-    def __init__(
-        self, database_url: str, clock: Clock, limit: Limit, docs_key: str = DOCS_KEY
-    ) -> None:
+    def __init__(self, database_url: str, clock: Clock, limit: Limit) -> None:
         self.database_url = database_url
         self.limit = limit
         self.socket = socket.socket()
@@ -151,7 +138,7 @@ class Api:
         self.port = self.socket.getsockname()[1]
         self.address = f"http://127.0.0.1:{self.port}"
         config = uvicorn.Config(
-            app.create(database_url, clock, limit, docs_key),
+            app.create(database_url, clock, limit),
             log_level="warning",
             access_log=False,
             proxy_headers=False,

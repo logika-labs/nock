@@ -1,8 +1,7 @@
 """`nock-api serve`, `nock-api migrate` and `nock-api reports`: the entry point, the only place that
 reads the environment and the clock.
 
-`DATABASE_URL` names the database; `NOCK_DOCS_PUBLIC_KEY`, when set, the key the docs it keeps are signed
-with (nock's own otherwise); when `OTEL_EXPORTER_OTLP_HEADERS` holds an SDK key, the server sends
+`DATABASE_URL` names the database; when `OTEL_EXPORTER_OTLP_HEADERS` holds an SDK key, the server sends
 its own spans to Logika, else it runs untraced. On the box both come from `/etc/nock-api/nock-api.env`.
 """
 
@@ -15,7 +14,7 @@ from pathlib import Path
 import psycopg
 import uvicorn
 
-from nock_api import app, docs, migrate, telemetry
+from nock_api import app, migrate, telemetry
 from nock_api.limit import Limit
 
 
@@ -56,12 +55,7 @@ def main(argv: list[str] | None = None) -> int:
             print(latest_reports(connection, arguments.limit))
         return 0
     uvicorn.run(
-        app.create(
-            database_url,
-            lambda: datetime.now(UTC),
-            Limit(),
-            os.environ.get("NOCK_DOCS_PUBLIC_KEY") or docs.PUBLIC_KEY,
-        ),
+        app.create(database_url, lambda: datetime.now(UTC), Limit()),
         host=arguments.host,
         port=arguments.port,
         # No access log: the server keeps nothing about its senders.
